@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.1] - 2026-09-14
+
+A fresh clone works: `setup` used to run the API patcher from inside the tools checkout, where
+this repository's own build props demand a game install the consumer's `.extools/` never has,
+so the patch failed and every test that mocks a player failed with it; the patcher now runs
+from a scratch copy, and a failure is a warning that names the cause. `exmod test` prints each
+failing test's name and first message line under its project's FAIL line. `exmod starter` and
+`exmod new` write `.vscode/tasks.json` and `.vscode/launch.json` (the stage, pack, test and
+launch-prep tasks and one launch configuration per game series, like the family repositories
+carry), and the generated README opens with what a new modder needs before the first `setup`.
+
 ## [0.3.0] - 2026-09-14
 
 `exmod scaffold` (alias `g`) puts a compiling, tested block, item, recipe, megablock, multiblock,
