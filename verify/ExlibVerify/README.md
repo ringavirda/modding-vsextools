@@ -23,6 +23,10 @@ What it checks:
   because this tool reads only what is on disk.
 - **Recipe codes** resolve to a block or item that exists once every patch has been applied.
 - **Handbook and lang coverage**: a key the assets reference and no locale defines.
+- **Shape texture codes**: every `#code` a blocktype's or itemtype's shape faces use resolves in
+  the shape's own texture map or the definition's own `textures`/`texturesByType` for that variant
+  (`all`/`sides`/`horizontals`/`verticals` shorthands included) - a block finding is an error, an
+  item finding informational, matching how silently the client leaves an item face untextured.
 
 Exit codes: `0` clean, `1` findings, `2` a usage or load failure. `--strict` makes informational
 findings count; `--json` prints the findings as JSON for a CI step to read.

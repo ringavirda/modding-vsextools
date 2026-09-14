@@ -1,0 +1,8 @@
+{
+  "code": "slabblock",
+  "shape": { "base": "fixturemod:slabblock" },
+  "textures": {
+    "horizontals": { "base": "fixturemod:block/side" },
+    "verticals": { "base": "fixturemod:block/cap" }
+  }
+}

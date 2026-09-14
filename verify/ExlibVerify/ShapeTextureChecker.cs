@@ -10,10 +10,13 @@ namespace ExpandedLib.Verify;
 /// Checks that every texture code a blocktype's or itemtype's shape actually uses (a face's
 /// <c>texture</c> is <c>#code</c>) is covered by either the shape's own <c>textures</c> map or the
 /// definition's own <c>textures</c>/<c>texturesByType</c> resolved for that concrete variant - the
-/// same lookup the client's shape tesselator performs. A code neither covers logs "Missing mapping
-/// for texture code #code during shape tesselation of block ..." and draws the face untextured; a
-/// block finding is an error (the client always logs it), an item finding is a warning (the client
-/// is silent there - vanilla's own metalbit/nugget pair leaves <c>#granite</c> unmapped this way).
+/// same lookup the client's shape tesselator performs, <c>all</c>/<c>sides</c>/<c>horizontals</c>/
+/// <c>verticals</c> shorthands included (see <c>ExpandedLib.Shapes.Schematic.Shorthands</c>, whose
+/// same table fixed the slab-lined furnace cores rendering magenta). A code neither covers logs
+/// "Missing mapping for texture code #code during shape tesselation of block ..." and draws the
+/// face untextured; a block finding is an error (the client always logs it), an item finding is a
+/// warning (the client is silent there - vanilla's own metalbit/nugget pair leaves <c>#granite</c>
+/// unmapped this way).
 /// </summary>
 public static class ShapeTextureChecker {
   /// <summary>Every missing-mapping finding among <paramref name="definitionFiles"/> - the mod's
@@ -70,7 +73,12 @@ public static class ShapeTextureChecker {
       );
 
       foreach (string faceCode in FaceCodes(elements).Distinct(StringComparer.Ordinal)) {
-        if (shapeCodes.Contains(faceCode) || declaredCodes.Contains(faceCode))
+        if (
+          shapeCodes.Contains(faceCode)
+          || declaredCodes.Contains(faceCode)
+          || CoveredByShorthand(faceCode, shapeCodes)
+          || CoveredByShorthand(faceCode, declaredCodes)
+        )
           continue;
         findings.Add(
           new Finding(
@@ -85,6 +93,18 @@ public static class ShapeTextureChecker {
       }
     }
   }
+
+  private static readonly string[] Horizontals = ["north", "east", "south", "west"];
+  private static readonly string[] Verticals = ["up", "down"];
+
+  // "all" and "sides" stand in for any face code at all; "horizontals"/"verticals" for the four
+  // side faces and the two vertical ones - the game's own convention, matching
+  // ExpandedLib.Shapes.Schematic.Shorthands.
+  private static bool CoveredByShorthand(string faceCode, HashSet<string> codes) =>
+    codes.Contains("all")
+    || codes.Contains("sides")
+    || (Horizontals.Contains(faceCode) && codes.Contains("horizontals"))
+    || (Verticals.Contains(faceCode) && codes.Contains("verticals"));
 
   // Every shape a variant can draw: its own shape/shapeByType base, plus every alternates[].base
   // beside it - each is a distinct shape file the client can tesselate for that block.
@@ -110,12 +130,17 @@ public static class ShapeTextureChecker {
       : (value[..colon], value[(colon + 1)..]);
   }
 
-  // Every `#code` a shape's elements (children included) name on a face.
+  // Every `#code` a shape's elements (children included) name on a face - `#null` excepted,
+  // Model Creator's own marker for a face with no texture at all, which no block ever assigns.
   private static IEnumerable<string> FaceCodes(JArray elements) {
     foreach (JToken el in elements) {
       if (el["faces"] is JObject faces)
         foreach (JProperty face in faces.Properties())
-          if ((string?)face.Value["texture"] is { } tex && tex.StartsWith('#'))
+          if (
+            (string?)face.Value["texture"] is { } tex
+            && tex.StartsWith('#')
+            && tex != "#null"
+          )
             yield return tex[1..];
       if (el["children"] is JArray children)
         foreach (string code in FaceCodes(children))

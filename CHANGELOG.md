@@ -13,6 +13,14 @@ mouse look needs, so the launcher and the launch configuration hand GLFW a displ
 compositor answers to and it falls back to XWayland. `exmod client -Software` runs the game on
 Mesa's software rasterizer for a GPU driver that hangs it.
 
+`exlib-verify` now catches the client's own "Missing mapping for texture code" defect headlessly: a
+new check reads every shape a blocktype's or itemtype's `shape`/`shapeByType` (alternates included)
+names, and reports a face's `#code` that neither the shape's own `textures` nor the definition's
+`textures`/`texturesByType` for that variant covers - the `all`/`sides`/`horizontals`/`verticals`
+shorthands honoured the same way `exlib-shapes` reads them. A block finding is an error, since the
+client always logs one; an item finding is informational, since the client silently leaves the face
+untextured there instead.
+
 ## [0.3.2] - 2026-09-14
 
 `exlib-shapes item FILE --out DIR [--variant CODE]` renders an itemtype variant: the isometric view
