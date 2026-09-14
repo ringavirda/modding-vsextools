@@ -77,24 +77,6 @@ public class PosesTests {
     using SKBitmap actual = Renderer.Render(shape, Renderer.NamedViews["south"], ppu: 8, poses: poses, grid: false);
     using SKBitmap expected = SKBitmap.Decode(FixturePath.Expected("simple-clip-south-f7.5.png"));
 
-    Assert.Equal(expected.Width, actual.Width);
-    Assert.Equal(expected.Height, actual.Height);
-
-    int differing = 0;
-    const int tolerance = 2;
-    for (int y = 0; y < expected.Height; y++)
-      for (int x = 0; x < expected.Width; x++) {
-        SKColor e = expected.GetPixel(x, y);
-        SKColor a = actual.GetPixel(x, y);
-        if (
-          Math.Abs(e.Red - a.Red) > tolerance
-          || Math.Abs(e.Green - a.Green) > tolerance
-          || Math.Abs(e.Blue - a.Blue) > tolerance
-        )
-          differing++;
-      }
-
-    Console.WriteLine($"simple-clip bob@7.5 south: {differing} differing pixel(s) beyond tolerance {tolerance}");
-    Assert.Equal(0, differing);
+    PixelCompare.Assert(expected, actual, "simple-clip bob@7.5 south");
   }
 }

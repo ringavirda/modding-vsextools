@@ -1,7 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- infra/tools/ sits outside mods/, so it does not inherit ../../mods/Directory.Build.props the
-       way every mod test project does automatically - imported explicitly for $(GamePath), the
-       same way samples/HelloExpanded.csproj does. -->
+  <!-- GamePath comes from the repository root's Directory.Build.props. -->
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>

@@ -66,7 +66,7 @@ public static class Schematic {
     );
   }
 
-  // colorsys.hsv_to_rgb, the same algorithm and branch order.
+  // HSV to RGB, the standard six-sector conversion.
   private static (double R, double G, double B) HsvToRgb(double h, double s, double v) {
     if (s == 0.0)
       return (v, v, v);
@@ -170,22 +170,22 @@ public static class Schematic {
         double ex = cx0 + dir.Dx * cell * 0.4;
         double ez = cz0 + dir.Dz * cell * 0.4;
         sb.Append(
-          $"<line class=\"connector\" x1=\"{Py(cx0)}\" y1=\"{Py(cz0)}\" x2=\"{Py(ex)}\" y2=\"{Py(ez)}\" "
+          $"<line class=\"connector\" x1=\"{Svg(cx0)}\" y1=\"{Svg(cz0)}\" x2=\"{Svg(ex)}\" y2=\"{Svg(ez)}\" "
             + "stroke=\"red\" stroke-width=\"2\" marker-end=\"url(#arrow)\" />"
         );
       }
     }
 
-    sb.Append($"<text x=\"{Py(width / 2.0)}\" y=\"-10\" text-anchor=\"middle\">north</text>");
-    sb.Append($"<text x=\"{width + 4}\" y=\"{Py(height / 2.0)}\">x</text>");
-    sb.Append($"<text x=\"-14\" y=\"{Py(height / 2.0)}\">z</text>");
+    sb.Append($"<text x=\"{Svg(width / 2.0)}\" y=\"-10\" text-anchor=\"middle\">north</text>");
+    sb.Append($"<text x=\"{width + 4}\" y=\"{Svg(height / 2.0)}\">x</text>");
+    sb.Append($"<text x=\"-14\" y=\"{Svg(height / 2.0)}\">z</text>");
     sb.Append("</g></svg>");
     return sb.ToString();
   }
 
   // .NET's default double.ToString() omits the decimal point for a whole number (16, not
   // 16.0); appended back so every coordinate in the SVG text shows one.
-  private static string Py(double v) {
+  private static string Svg(double v) {
     string s = v.ToString("R", CultureInfo.InvariantCulture);
     return s.Contains('.') || s.Contains('e') || s.Contains('E') ? s : s + ".0";
   }

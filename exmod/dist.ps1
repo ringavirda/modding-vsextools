@@ -102,8 +102,9 @@ the current game version only; on 1.21 and 1.20 a consumer references it from so
 
 #region nuget
 
-# The packable projects named by exmod.json's `packages`. Versions come from exlib's
-# modinfo.json (see each csproj), so a release bumps one number and all of them follow.
+# The packable projects named by exmod.json's `packages`. Each reads its version from this
+# repository's exmod.json `tools` value (see each csproj), so a release bumps one number and
+# both follow.
 function Invoke-Nuget([string[]]$Argv) {
   $configuration = Get-Opt $Argv '-Configuration' 'Release'
   $out = Get-Opt $Argv '-Out' 'dist/nuget'

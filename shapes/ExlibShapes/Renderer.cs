@@ -139,7 +139,7 @@ public static class Renderer {
     public static Mat4d Scale(double x, double y, double z) =>
       new([x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0, 0, 0, 0, 1]);
 
-    // Mat4f.RotateByXYZ, column-vector convention, exactly geom.py's rotate_by_xyz.
+    // Mat4f.RotateByXYZ, column-vector convention.
     public static Mat4d RotateByXyz(double rx, double ry, double rz) {
       double sx = Math.Sin(rx * Math.PI / 180), cx = Math.Cos(rx * Math.PI / 180);
       double sy = Math.Sin(ry * Math.PI / 180), cy = Math.Cos(ry * Math.PI / 180);
@@ -174,7 +174,7 @@ public static class Renderer {
 
     public (double X, double Y, double Z) Mul((double X, double Y, double Z) v) => Mul(v.X, v.Y, v.Z);
 
-    // The upper-left 3x3 applied to a direction (geom.py's rot3 @ v): computed straight from the
+    // The upper-left 3x3 applied to a direction: computed straight from the
     // matrix's own linear entries, not by subtracting two transformed points - that subtraction
     // rounds differently at the ULP level, enough to matter at an exactly grazing face (view-space
     // normal.z essentially 0) the cull test is deciding.
@@ -559,7 +559,7 @@ public static class Renderer {
     return bmp;
   }
 
-  // World AABB per leaf element path, double precision - geom.py's element_boxes.
+  // World AABB per leaf element path, double precision.
   private static Dictionary<string, ((double X, double Y, double Z) Lo, (double X, double Y, double Z) Hi)> ElementBoxesD(
     LoadedShape shape, Dictionary<string, Mat4d> mats
   ) {

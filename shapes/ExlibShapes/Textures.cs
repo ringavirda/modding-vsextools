@@ -16,8 +16,7 @@ public sealed class TextureRoots {
 
   /// <summary>The game install (holding <c>assets/survival/textures</c>) - resolved on first
   /// access, not when these roots are built: a shape whose textures are all absolute or WSL
-  /// paths never touches this and so needs no install at all, matching <c>textures.py</c>, which
-  /// only opens <c>.game/</c> when a <c>game:</c> or bare reference actually asks for it.</summary>
+  /// paths never touches this and so needs no install at all.</summary>
   /// <exception cref="System.IO.DirectoryNotFoundException">No install could be found, and a
   /// <c>game:</c> or bare-path texture reference asked to resolve against one.</exception>
   public string GamePath => _gamePath.Value;
@@ -236,8 +235,8 @@ public sealed class TextureSet {
 
   private static byte[,,] Decode(string path) {
     using SKCodec codec = SKCodec.Create(path) ?? throw new IOException($"{path}: not a decodable image");
-    // Decoded straight into unpremultiplied RGBA, matching PIL's convert("RGBA"): SKBitmap.Decode
-    // defaults to premultiplied alpha, which darkens every partially transparent texel.
+    // Decoded straight into unpremultiplied RGBA: SKBitmap.Decode defaults to premultiplied
+    // alpha, which darkens every partially transparent texel.
     var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
     using SKBitmap rgba = new(info);
     SKCodecResult result = codec.GetPixels(info, rgba.GetPixels());

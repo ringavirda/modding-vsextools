@@ -1,5 +1,5 @@
-# Scaffolding one thing into an existing mod: a block, a megablock, a multiblock machine or a
-# network node, from the templates exlib ships as ExpandedLib.Templates.
+# Scaffolding one thing into an existing mod: a block, item, recipe, behaviour, config,
+# migration or command, from the templates exlib ships as ExpandedLib.Templates.
 #
 #   exmod scaffold <kind> <Name> [-Mod <id>]
 
@@ -72,7 +72,9 @@ function Invoke-Scaffold([string[]]$Argv) {
   Write-Step "Scaffolding $kind $name into mods/$modId"
   Install-ScaffoldTemplate $kind
   # The dry run lists the files the template will write, so the summary names them whatever the kind.
-  $planned = dotnet new "exlib-$kind" -n $name -o $modDir --Domain $modId --Namespace $ns --force --dry-run 2>&1 | Where-Object { $_ -match '^\s+(Creating|File):?\s' -or $_ -match '\.(cs|json)$' }
+  $dryRunOutput = dotnet new "exlib-$kind" -n $name -o $modDir --Domain $modId --Namespace $ns --force --dry-run 2>&1
+  if ($LASTEXITCODE -ne 0) { throw "dotnet new exlib-$kind --dry-run failed." }
+  $planned = $dryRunOutput | Where-Object { $_ -match '^\s+(Creating|File):?\s' -or $_ -match '\.(cs|json)$' }
   dotnet new "exlib-$kind" -n $name -o $modDir --Domain $modId --Namespace $ns --force
   if ($LASTEXITCODE -ne 0) { throw "dotnet new exlib-$kind failed." }
   $keys = Get-ScaffoldLangKeys $kind $modId $name.ToLowerInvariant()
@@ -82,16 +84,17 @@ function Invoke-Scaffold([string[]]$Argv) {
   if ($keys.Count -gt 0) { Write-Host "  lang keys merged: $($keys.Keys -join ', ')" }
 }
 
-Add-ExmodCommand -Group start -Name scaffold -Alias @('g') -Summary 'scaffold a block, megablock, multiblock or node into a mod' -Action {
+Add-ExmodCommand -Group start -Name scaffold -Alias @('g') -Summary 'scaffold a block, item, recipe, behaviour, config, migration or command into a mod' -Action {
   param([string[]]$Argv) Invoke-Scaffold $Argv
 } -Detail @'
 exmod scaffold <kind> <Name> [-Mod <id>]
 
-Puts a compiling, tested <kind> named <Name> into mods/<id>: src/Blocks/Block<Name>.cs,
-src/BlockEntities/BlockEntity<Name>.cs and tests/<Name>Tests.cs, from the dotnet new templates
-exlib ships (ExpandedLib.Templates, at the version Directory.Packages.props pins; the sibling
-exlib checkout's own templates when the workspace has one). The lang keys the generated code
-reads are merged into assets/<id>/lang/en.json.
+Puts a compiling, tested <kind> named <Name> into mods/<id>, from the dotnet new templates exlib
+ships (ExpandedLib.Templates, at the version Directory.Packages.props pins; the sibling exlib
+checkout's own templates when the workspace has one) - the files that kind's template writes (a
+block: src/Blocks/Block<Name>.cs, src/BlockEntities/BlockEntity<Name>.cs, tests/<Name>Tests.cs);
+the command prints what it wrote. The lang keys the generated code reads are merged into
+assets/<id>/lang/en.json.
 
   kind     block (a block and its entity with a saved counter), item (a code-first item), recipe (a
            grid recipe), megablock (a 3x3 filler footprint with per-cell interaction), multiblock (a

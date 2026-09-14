@@ -101,8 +101,8 @@ internal static class Program {
   }
 
   // --name VALUE or --name=VALUE, every occurrence, in order; a bare `--name` also swallows every
-  // following token up to the next `--flag` or the end (the help text's `--roots PATH...`, argparse's
-  // nargs="+"), so `--roots a b --game x` names two roots rather than silently dropping `b`.
+  // following token up to the next `--flag` or the end (the help text's `--roots PATH...`), so
+  // `--roots a b --game x` names two roots rather than silently dropping `b`.
   private static List<string> OptAllOf(string[] args, string name) {
     string prefix = name + "=";
     var result = new List<string>();
@@ -320,7 +320,7 @@ internal static class Program {
 
   private static string G(double v) => v.ToString("G6", CultureInfo.InvariantCulture);
 
-  // One leaf element's world-space axis-aligned bounds, path to (lo, hi) - geom.element_boxes.
+  // One leaf element's world-space axis-aligned bounds, path to (lo, hi).
   private static Dictionary<string, (Vector3 Lo, Vector3 Hi)> ElementBoxes(LoadedShape shape) {
     Dictionary<string, System.Numerics.Matrix4x4> mats = Geometry.WorldMatrices(shape);
     var result = new Dictionary<string, (Vector3, Vector3)>();
@@ -331,8 +331,7 @@ internal static class Program {
     return result;
   }
 
-  // geom.overlap_volume: the shared volume of two axis-aligned boxes, 0 when they do not overlap
-  // on some axis.
+  // The shared volume of two axis-aligned boxes, 0 when they do not overlap on some axis.
   private static double OverlapVolume((Vector3 Lo, Vector3 Hi) a, (Vector3 Lo, Vector3 Hi) b) {
     double ox = Math.Max(0, Math.Min(a.Hi.X, b.Hi.X) - Math.Max(a.Lo.X, b.Lo.X));
     double oy = Math.Max(0, Math.Min(a.Hi.Y, b.Hi.Y) - Math.Max(a.Lo.Y, b.Lo.Y));

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Newtonsoft.Json.Linq;
 using Xunit;
 
 namespace ExpandedLib.Shapes.Tests;
@@ -12,17 +13,14 @@ namespace ExpandedLib.Shapes.Tests;
 public class BlocksTests {
   private static string DemoRoot => FixturePath.Of("schematic");
 
-  // The family workspace's own sibling checkouts - present only on a contributor's machine that
-  // has cloned exlib/exmods next to this repo, absent from a bare checkout of this repo alone.
-  // A test naming one of these skips (an early return, xunit 2 having no built-in
-  // skip-with-reason) rather than failing.
+  // The family workspace's sibling checkouts; a fact naming one returns early when it is absent.
   private static string? ExlibRoot => FixturePath.Workspace("exlib");
   private static string? BlastcoreGolden =>
     FixturePath.Workspace("exmods/mods/iiex/tests/goldens/iiex/blocktypes/furnace/blastcore.json");
 
-  // This checkout's own .game, provisioned by every contributor and by CI alike - unlike the
-  // family workspace above, its absence is a real failure, not something to skip past.
-  private static string GameRoot => FixturePath.RepoRoot;
+  // This checkout's own root; BlockIndex reads .game/<version> under it. Its absence fails
+  // rather than skips.
+  private static string RootWithGame => FixturePath.RepoRoot;
 
   [Fact]
   public void Demo_wall_north_resolves_with_its_shapeByType_rotation() {
@@ -77,8 +75,8 @@ public class BlocksTests {
 
   [Fact]
   public void A_vanilla_code_resolves_when_the_game_root_is_present() {
-    Assert.True(Directory.Exists(GameRoot), "the workspace always carries .game; this must fail, not skip");
-    BlockIndex index = BlockIndex.Build([GameRoot]);
+    Assert.True(Directory.Exists(Path.Combine(RootWithGame, ".game")), "the workspace always carries .game; this must fail, not skip");
+    BlockIndex index = BlockIndex.Build([RootWithGame]);
     // A plain cube block ships no shape file of its own (the engine draws a default unit cube), so
     // this only pins that the code resolves and carries a texture, not a shape_path.
     ResolvedBlock? block = index.Resolve("game:cobblestone-andesite");
@@ -88,8 +86,8 @@ public class BlocksTests {
 
   [Fact]
   public void SkipVariants_drops_the_listed_state_from_the_game_index() {
-    Assert.True(Directory.Exists(GameRoot), "the workspace always carries .game; this must fail, not skip");
-    BlockIndex index = BlockIndex.Build([GameRoot]);
+    Assert.True(Directory.Exists(Path.Combine(RootWithGame, ".game")), "the workspace always carries .game; this must fail, not skip");
+    BlockIndex index = BlockIndex.Build([RootWithGame]);
     // mudbrickslab.json declares skipVariants: ["*-up-snow"]; the engine never registers it.
     Assert.Null(index.Resolve("game:mudbrickslab-dark-up-snow"));
     Assert.NotNull(index.Resolve("game:mudbrickslab-dark-up-free"));
@@ -102,13 +100,13 @@ public class BlocksTests {
     // stone/cobble/cobblestone.json, the file whose own base code equals the selector's text
     // before the "*", not the coral variant a first-match rule would give; and record the
     // ambiguity naming both files.
-    BlockIndex index = BlockIndex.Build([GameRoot]);
+    BlockIndex index = BlockIndex.Build([RootWithGame]);
     ResolvedBlock? first = index.Resolve("game:cobblestone-*");
     Assert.NotNull(first);
     Assert.StartsWith("game:cobblestone-", first!.Code);
     Assert.DoesNotContain("coral", first.Code);
 
-    BlockIndex second = BlockIndex.Build([GameRoot]);
+    BlockIndex second = BlockIndex.Build([RootWithGame]);
     ResolvedBlock? repeat = second.Resolve("game:cobblestone-*");
     Assert.Equal(first.Code, repeat!.Code);
 
@@ -151,6 +149,20 @@ public class BlocksTests {
       BlockIndex index = BlockIndex.Build([root]);
       Assert.Null(index.Resolve("broken:anything"));
       Assert.Contains(index.ParseWarnings, w => w.Contains(brokenFile));
+
+      Layout layout = Layout.Load(FixturePath.Of("schematic/kiln.json"));
+      JObject manifest = Schematic.Manifest(
+        layout,
+        Schematic.LegendColors(layout),
+        [],
+        null,
+        null,
+        index.ParseWarnings
+      );
+      Assert.Contains(
+        manifest["warnings"]!.Select(w => (string)w!),
+        w => w.Contains(brokenFile)
+      );
     } finally {
       Directory.Delete(root, true);
     }
@@ -162,9 +174,9 @@ public class BlocksTests {
     // vanilla file must not come out ambiguous between that file's two spellings.
     string linked = Path.Combine(Path.GetTempPath(), "exlib-shapes-" + Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(linked);
-    Directory.CreateSymbolicLink(Path.Combine(linked, ".game"), Path.Combine(GameRoot, ".game"));
+    Directory.CreateSymbolicLink(Path.Combine(linked, ".game"), Path.Combine(RootWithGame, ".game"));
     try {
-      BlockIndex index = BlockIndex.Build([GameRoot, linked]);
+      BlockIndex index = BlockIndex.Build([RootWithGame, linked]);
       Assert.NotNull(index.Resolve("game:cobblestone-andesite"));
       Assert.Empty(index.Ambiguities);
 
@@ -199,7 +211,7 @@ public class BlocksTests {
   public void Air_admitting_and_monolithic_multiblock_selectors_are_empty_space() {
     // ppex's boilers fill with "game:air*", smex's blast furnace door names the block the game
     // creates in code for a door's upper cell; neither has a blocktype file to find.
-    BlockIndex index = BlockIndex.Build([GameRoot]);
+    BlockIndex index = BlockIndex.Build([RootWithGame]);
     foreach (string selector in new[] { "game:air*", "game:multiblock-monolithic-0-p1-0", "air" }) {
       Assert.Null(index.Representative(selector));
       Assert.True(index.Optional(selector));
@@ -214,7 +226,7 @@ public class BlocksTests {
 
   [Fact]
   public void An_exact_selector_that_is_not_ambiguous_records_no_warning() {
-    BlockIndex index = BlockIndex.Build([GameRoot]);
+    BlockIndex index = BlockIndex.Build([RootWithGame]);
     index.Resolve("game:cobblestone-andesite");
     Assert.Empty(index.Ambiguities);
   }

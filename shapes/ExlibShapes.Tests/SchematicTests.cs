@@ -9,8 +9,8 @@ using Xunit;
 namespace ExpandedLib.Shapes.Tests;
 
 /// <summary>Covers Schematic's plan SVGs and manifest, compared verbatim against
-/// <c>expected/schematic/</c>, and its iso PNGs within the pixel tolerance
-/// <see cref="RendererTests"/> uses.</summary>
+/// <c>expected/schematic/</c>, and its iso PNGs against zero differing pixels beyond the
+/// per-channel tolerance <see cref="PixelCompare"/> uses.</summary>
 public class SchematicTests {
   private static string Fixture => FixturePath.Of("schematic/kiln.json");
   private static string DemoRoot => FixturePath.Of("schematic");
@@ -21,8 +21,12 @@ public class SchematicTests {
     FixturePath.Workspace("exmods/mods/iiex/tests/goldens/iiex/blocktypes/furnace/blastcore.json");
   private static string? ClientGame {
     get {
-      string candidate = Path.Combine(FixturePath.RepoRoot, ".game", "1.22");
-      return Directory.Exists(candidate) ? candidate : null;
+      foreach (string slug in new[] { "1.22-client", "1.22" }) {
+        string candidate = Path.Combine(FixturePath.RepoRoot, ".game", slug);
+        if (File.Exists(Path.Combine(candidate, "Vintagestory.dll")))
+          return candidate;
+      }
+      return null;
     }
   }
 
@@ -82,10 +86,7 @@ public class SchematicTests {
       [1] = "demo:wall-north",
       [2] = "demo:wall-north",
     };
-    // Layout is immutable by construction (Rotated returns a new instance); its constructor is
-    // internal, reachable here through the assembly's own InternalsVisibleTo, so this test can
-    // build a variant layout without giving Layout a public mutation surface no production code
-    // needs.
+    // Layout's constructor is internal; the test assembly reaches it through InternalsVisibleTo.
     return new Layout(layout.Cells, numbers, layout.Fillers, layout.Facings, layout.Connectors, layout.Roles, layout.Anchor);
   }
 
@@ -223,11 +224,9 @@ public class SchematicTests {
 
   [Fact]
   public void Blastcore_golden_iso_png_matches_the_reference_render_through_a_real_domain_root() {
-    // Unlike DemoLayout's self-contained fixture textures, every cell here resolves through
-    // game:/iiex: domain roots - the exact path the magenta missing-texture regression (a --game
-    // pointed at a dedicated-server archive, which ships almost no assets/survival/textures) needs
-    // exercised. A client install is required explicitly, never left to whatever GameInstall.Resolve
-    // would pick, so this fact is stable regardless of which install VINTAGE_STORY names.
+    // Every cell here resolves through the game:/iiex: domain roots rather than the
+    // self-contained fixture textures. The install is named explicitly, so the fact does not
+    // depend on what VINTAGE_STORY points at.
     if (BlastcoreGolden is not { } golden || ClientGame is not { } game)
       return; // skips when the sibling exmods checkout or a client install with real textures is absent
     IReadOnlyList<string> roots = BlockIndex.DefaultRoots(golden);
@@ -256,25 +255,8 @@ public class SchematicTests {
     AssertMatchesWithinTolerance(expected, actual, "kiln-iso-y0");
   }
 
-  private static void AssertMatchesWithinTolerance(SKBitmap expected, SKBitmap actual, string name) {
-    Assert.Equal(expected.Width, actual.Width);
-    Assert.Equal(expected.Height, actual.Height);
-    int differing = 0;
-    const int tolerance = 2;
-    for (int y = 0; y < expected.Height; y++)
-      for (int x = 0; x < expected.Width; x++) {
-        SKColor e = expected.GetPixel(x, y);
-        SKColor a = actual.GetPixel(x, y);
-        if (
-          Math.Abs(e.Red - a.Red) > tolerance
-          || Math.Abs(e.Green - a.Green) > tolerance
-          || Math.Abs(e.Blue - a.Blue) > tolerance
-        )
-          differing++;
-      }
-    Console.WriteLine($"{name}: {differing} differing pixel(s) beyond tolerance {tolerance}");
-    Assert.Equal(0, differing);
-  }
+  private static void AssertMatchesWithinTolerance(SKBitmap expected, SKBitmap actual, string name) =>
+    PixelCompare.Assert(expected, actual, name);
 
   private static int CountOccurrences(string haystack, string needle) {
     int count = 0, index = 0;
@@ -289,7 +271,6 @@ public class SchematicTests {
     int count = 0;
     void Walk(JArray elements) {
       foreach (JToken el in elements) {
-        JArray? faces = el["faces"] as JArray;
         bool hasFaces = el["faces"] is JObject fo && fo.Properties().Any();
         if (hasFaces)
           count++;

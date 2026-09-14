@@ -73,4 +73,4 @@ declare.
 Exit codes: `0` success, `1` a resolved run-time error (a bad shape, no such clip, no elements),
 `2` a usage error.
 
-Part of [ExpandedLib](https://github.com/ringavirda/modding-vsexmods). MIT licensed.
+Part of [ExpandedLib](https://github.com/ringavirda/modding-vsextools). MIT licensed.

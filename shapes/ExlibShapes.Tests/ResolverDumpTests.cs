@@ -71,8 +71,7 @@ public class ResolverDumpTests {
       }
     }
 
-    // The dump as this run produced it, beside the binary, to diff against the fixture when a
-    // resolver change is meant to move it.
+    // The dump this run produced, beside the binary.
     string actualDir = Path.Combine(System.AppContext.BaseDirectory, "actual");
     Directory.CreateDirectory(actualDir);
     File.WriteAllText(Path.Combine(actualDir, "resolve-dump.txt"), sb.ToString());
@@ -90,8 +89,7 @@ public class ResolverDumpTests {
     return s.Contains('.') || s.Contains('e') || s.Contains('E') ? s : s + ".0";
   }
 
-  // The fixture was generated on a platform whose text mode may add \r\n; only line content and
-  // order matter here.
+  // Line endings are not part of the comparison.
   private static string Normalize(string text) =>
     string.Join('\n', text.Replace("\r\n", "\n").TrimEnd('\n').Split('\n'));
 }

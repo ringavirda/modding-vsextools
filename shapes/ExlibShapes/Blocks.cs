@@ -475,8 +475,10 @@ public sealed class BlockIndex {
   ) {
     JObject raw;
     try {
-      if (JToken.Parse(File.ReadAllText(path)) is not JObject parsed || parsed["code"] == null)
+      if (JToken.Parse(File.ReadAllText(path)) is not JObject parsed || parsed["code"] == null) {
+        warnings.Add($"blocktype file without a code: {path}");
         return [];
+      }
       raw = parsed;
     } catch (Exception e) {
       warnings.Add($"malformed blocktype file: {path}: {e.Message}");
@@ -541,8 +543,10 @@ public sealed class BlockIndex {
     if (p == null)
       return (null, []);
     try {
-      if (JToken.Parse(File.ReadAllText(p)) is not JObject data || data["variants"] is not JArray variants)
+      if (JToken.Parse(File.ReadAllText(p)) is not JObject data || data["variants"] is not JArray variants) {
+        warnings.Add($"worldproperties file without a variants array: {p}");
         return (null, []);
+      }
       List<string> outp = [];
       foreach (JToken v in variants) {
         string? code = (string?)v["Code"] ?? (string?)v["code"];

@@ -28,7 +28,7 @@ the Expanded Library wiki under Getting Started, "exmod in your repo".
 
 ```
 exmod.ps1        the dispatcher: argument helpers, the manifest resolvers, command registration, help
-exmod/           one file per lifecycle stage: provision, new, scaffold, src, run, dist, windows
+exmod/           one file per lifecycle stage: provision, new, scaffold, src, run, shapes, dist, windows
 wrappers/        the two launchers a consuming repository checks in
 scripts/         the launchers again, pointed at this checkout, so extools drives itself
 pack/            the packaging build (Cake Frosting), manifest-driven

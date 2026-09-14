@@ -130,12 +130,8 @@ public class GeometryTests {
     Assert.True(MathF.Abs(lo.Z - 4) < 0.05f);
   }
 
-  // Geometry's public WorldMatrices/FaceQuads (float32, System.Numerics) has no production
-  // caller: the renderer keeps its own double-precision mirror (Renderer.WorldMatricesD /
-  // FaceQuadsD) to survive a strict z-test at exactly coincident faces, and RendererTests' pixel
-  // comparison only exercises that mirror. This cross-checks every leaf and quad of a real,
-  // multi-element fixture between the two chains, so a bug in the public API that a hand-picked
-  // unit fixture would miss cannot pass silently.
+  // Cross-checks Geometry's float32 chain against Renderer's double-precision mirror over every
+  // leaf and quad of a multi-element fixture.
   [Fact]
   public void Public_world_matrices_and_face_quads_agree_with_the_verified_double_chain() {
     LoadedShape shape = ShapeFile.Load(FixturePath.Of("items/machined/item-shaped-gearpinion.json"));

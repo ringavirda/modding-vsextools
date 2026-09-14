@@ -59,12 +59,7 @@ public class RendererTests {
       yield return [view];
   }
 
-  // south, north, east and up match the reference bit-for-bit. iso (the only view combining a
-  // nonzero yaw and pitch) still differs on a small fraction of pixels: for a small number of
-  // exactly-touching gear teeth, a 1-ULP difference in the composed view rotation is enough to
-  // flip which of two coincident faces wins the z-buffer's strict `>` test.
-  // Beside expected/, so a reviewer can look at what this build actually produced without
-  // rebuilding a scratch harness.
+  // The renders this run produced, beside the binary.
   private static string ActualDir {
     get {
       string dir = System.IO.Path.Combine(AppContext.BaseDirectory, "actual");
@@ -73,6 +68,10 @@ public class RendererTests {
     }
   }
 
+  // south, north, east and up match the reference bit-for-bit. iso (the only view combining a
+  // nonzero yaw and pitch) still differs on a small fraction of pixels: for a small number of
+  // exactly-touching gear teeth, a 1-ULP difference in the composed view rotation is enough to
+  // flip which of two coincident faces wins the z-buffer's strict `>` test.
   [Theory]
   [MemberData(nameof(ReferenceViews))]
   public void Matches_the_reference_render(string viewName) {
@@ -93,35 +92,16 @@ public class RendererTests {
     // Two faces that touch exactly tie on depth, and which one the z-test keeps comes down to the
     // last bit of a matrix product, so a few hundred pixels of the iso view show the other face
     // of the same object. Such a flip changes which surface is drawn, never whether one is: a
-    // differing pixel is accepted only when both images hold a surface there, and only up to one
-    // percent of the image.
-    int differing = 0;
-    int backgroundFlips = 0;
-    const int tolerance = 2;
+    // differing pixel is accepted only when both images hold a surface there, and only on the
+    // iso view, up to the measured tie count.
     SKColor background = new(Renderer.Background.Red, Renderer.Background.Green, Renderer.Background.Blue);
-    for (int y = 0; y < expected.Height; y++)
-      for (int x = 0; x < expected.Width; x++) {
-        SKColor e = expected.GetPixel(x, y);
-        SKColor a = actual.GetPixel(x, y);
-        if (
-          Math.Abs(e.Red - a.Red) > tolerance
-          || Math.Abs(e.Green - a.Green) > tolerance
-          || Math.Abs(e.Blue - a.Blue) > tolerance
-        ) {
-          differing++;
-          if (IsBackground(e, background) || IsBackground(a, background))
-            backgroundFlips++;
-        }
-      }
+    int differing = PixelCompare.Differing(expected, actual, background, out int backgroundFlips);
 
-    int allowed = expected.Width * expected.Height / 100;
+    int allowed = viewName == "iso" ? 700 : 0;
     System.Console.WriteLine(
-      $"{viewName}: {differing} differing pixel(s) beyond tolerance {tolerance}, {backgroundFlips} against the background, {allowed} allowed"
+      $"{viewName}: {differing} differing pixel(s) beyond tolerance {PixelCompare.Tolerance}, {backgroundFlips} against the background, {allowed} allowed"
     );
     Assert.Equal(0, backgroundFlips);
     Assert.True(differing <= allowed, $"{differing} differing pixels exceed the tie allowance of {allowed}");
   }
-
-  private static bool IsBackground(SKColor c, SKColor background) =>
-    c.Red == background.Red && c.Green == background.Green && c.Blue == background.Blue;
 }

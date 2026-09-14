@@ -8,7 +8,7 @@ namespace ExpandedLib.Shapes;
 
 /// <summary>
 /// Animation clips and keyframe interpolation, following the game's own <see cref="Animation"/>
-/// semantics (<c>anim.py</c>).
+/// semantics.
 /// <para>
 /// A pose is keyed by element NAME, not path: the game's own keyframes address elements by name,
 /// so the same name repeated in two branches of the tree receives the same pose, and
@@ -18,7 +18,7 @@ namespace ExpandedLib.Shapes;
 /// </summary>
 public static class Poses {
   // (offsetX/Y/Z, rotationX/Y/Z, stretchX/Y/Z selectors) and the fallback used when a keyframe
-  // names the element but leaves this particular channel unset - anim.py's CHANNELS.
+  // names the element but leaves this particular channel unset.
   private static readonly (
     System.Func<AnimationKeyFrameElement, double?> X,
     System.Func<AnimationKeyFrameElement, double?> Y,
@@ -72,9 +72,9 @@ public static class Poses {
     double fallback
   ) => kf.Elements!.TryGetValue(name, out AnimationKeyFrameElement? e) && select(e) is { } v ? v : fallback;
 
-  // anim.py's _earliest_value: the value of one channel axis on the first (file-order) keyframe
-  // naming the element - the close_loop rule for a keyframe whose own value is unset - falling
-  // back to the channel's own default when even that keyframe leaves the field null.
+  // The value of one channel axis on the first (file-order) keyframe naming the element - the
+  // close_loop rule for a keyframe whose own value is unset - falling back to the channel's own
+  // default when even that keyframe leaves the field null.
   private static double EarliestValue(
     IReadOnlyList<AnimationKeyFrame> named,
     string name,

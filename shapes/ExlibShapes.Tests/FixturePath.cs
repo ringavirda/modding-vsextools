@@ -65,8 +65,7 @@ internal static class FixturePath {
   /// against the nearest ancestor of <see cref="RepoRoot"/> that carries its first path segment as
   /// a directory - the sibling family checkout a contributor's own workspace clones next to this
   /// one, whether this repo sits there directly or nested under <c>.worktrees/</c>. Null when no
-  /// such ancestor exists: extools' own CI checks out this repo alone, with no family workspace
-  /// around it, so a test naming a sibling repo's golden must skip rather than fail there.
+  /// such ancestor exists.
   /// </summary>
   public static string? Workspace(string relativePath) {
     string first = relativePath.Split('/')[0];
