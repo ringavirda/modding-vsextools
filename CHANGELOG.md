@@ -12,6 +12,10 @@ either side. On Linux the client runs on X11: GLFW's Wayland backend cannot plac
 mouse look needs, so the launcher and the launch configuration hand GLFW a display name no
 compositor answers to and it falls back to XWayland. `exmod client -Software` runs the game on
 Mesa's software rasterizer for a GPU driver that hangs it.
+On Windows the client installer runs into a local temporary folder as a per-user install, which
+needs no elevation and works for a checkout on a network share (WSL seen from Windows), and the
+tree is copied into the slot; the generated tasks run pwsh with `-ExecutionPolicy Bypass`, so a
+script on a share no longer asks before every step.
 
 `exlib-verify` now catches the client's own "Missing mapping for texture code" defect headlessly: a
 new check reads every shape a blocktype's or itemtype's `shape`/`shapeByType` (alternates included)

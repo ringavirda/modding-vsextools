@@ -289,13 +289,20 @@ function Invoke-ProvisionGame([string[]]$Argv) {
       Write-Host "Silent-installing the client to $dest"
       if (Test-Path $destFull) { Remove-Item -Recurse -Force $destFull }
       New-Item -ItemType Directory -Force -Path $destFull | Out-Null
+      # The installer writes to a local folder: a checkout on a network share (WSL seen from Windows)
+      # is not a path Inno Setup accepts, and a per-user install needs no elevation. The tree is
+      # copied into the slot afterwards.
+      $local = Join-Path ([System.IO.Path]::GetTempPath()) "vs-client-$version-$PID"
+      if (Test-Path $local) { Remove-Item -Recurse -Force $local }
       try {
-        $innoArgs = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOICONS', "/DIR=$destFull")
+        $innoArgs = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOICONS', '/CURRENTUSER', "/DIR=$local")
         $proc = Start-Process -FilePath $exe -ArgumentList $innoArgs -Wait -PassThru
         if ($proc.ExitCode -ne 0) {
           throw "Client install exited with code $($proc.ExitCode). If a UAC prompt appeared, run from an elevated shell."
         }
+        Copy-Item -Path (Join-Path $local '*') -Destination $destFull -Recurse -Force
       } finally {
+        if (Test-Path $local) { Remove-Item -Recurse -Force $local -ErrorAction SilentlyContinue }
         if ($backup -and (Test-Path $backup)) {
           & reg delete $regKey /f *> $null
           & reg import $backup *> $null

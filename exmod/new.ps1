@@ -295,6 +295,8 @@ $(& $lines ($common + ".game/$Slug-macos") '          ')
         "command": "pwsh",
         "args": [
           "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
           "-File",
           "`${workspaceFolder}/scripts/exmod.ps1",
 $(& $lines ($common + ".game/$Slug-windows") '          ')
@@ -322,6 +324,8 @@ $argLines
         "command": "pwsh",
         "args": [
           "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
           "-File",
           "`${workspaceFolder}/scripts/exmod.ps1",
 $winArgLines
