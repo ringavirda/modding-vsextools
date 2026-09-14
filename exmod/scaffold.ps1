@@ -43,7 +43,7 @@ function Install-ScaffoldTemplate([string]$Kind) {
   if (-not (Test-Path $props)) { throw "No Directory.Packages.props under $RepoRoot to read the pinned exlib version from." }
   $m = [regex]::Match((Get-Content $props -Raw), 'PackageVersion Include="ExpandedLib" Version="([^"]+)"')
   if (-not $m.Success) { throw "Directory.Packages.props names no ExpandedLib PackageVersion." }
-  dotnet new install "ExpandedLib.Templates::$($m.Groups[1].Value)" | Out-Null
+  dotnet new install "ExpandedLib.Templates::$($m.Groups[1].Value)" --force | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "dotnet new install ExpandedLib.Templates::$($m.Groups[1].Value) failed." }
 }
 
