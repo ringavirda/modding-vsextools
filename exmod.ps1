@@ -47,6 +47,14 @@ $RepoRoot = Get-ExmodRepoRoot $RepoRoot
 $ToolsRoot = $PSScriptRoot
 $OnWindows = [System.OperatingSystem]::IsWindows()
 $ExeSuffix = if ($OnWindows) { '.exe' } else { '' }
+# The slot suffix of this platform's client and the native library only a package built for it
+# carries. A client built for another OS has Vintagestory.dll but not that library, so it cannot
+# run here.
+$PlatformSlot = if ($OnWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } else { 'linux' }
+function Get-NativeMarker([string]$InstallDir) {
+  $lib = if ($OnWindows) { 'Lib/e_sqlite3.dll' } elseif ($IsMacOS) { 'Lib/libe_sqlite3.dylib' } else { 'Lib/libe_sqlite3.so' }
+  return Join-Path $InstallDir $lib
+}
 
 # MSBuild worker nodes are not kept alive after a build: on this install idle nodes never exit and
 # a day of building left 74 of them holding 11 GB. Directory.Build.rsp says the same for builds
@@ -341,7 +349,7 @@ function Resolve-GameInstall([string]$Version = $CurrentGameVersion, [string]$Ki
   if ($Kind -notin @('server', 'client')) { throw "Kind must be 'server' or 'client'." }
   $slug = ($Version -split '\.')[0..1] -join '.'
   $entry = if ($Kind -eq 'server') { 'VintagestoryServer.dll' } else { 'Vintagestory.dll' }
-  $candidates = @(".game/$slug-$Kind", ".game/$slug")
+  $candidates = @(".game/$slug-$PlatformSlot", ".game/$slug-$Kind", ".game/$slug")
 
   # The entry assembly is in the archive for every platform; the native libraries beside it are not.
   # A package left over from another OS has the dll and none of them, and starts only far enough to
@@ -349,7 +357,7 @@ function Resolve-GameInstall([string]$Version = $CurrentGameVersion, [string]$Ki
   $usable = {
     param([string]$Dir)
     if (-not (Test-Path (Join-Path $Dir $entry))) { return $false }
-    return $OnWindows -or (Test-Path (Join-Path $Dir 'Lib/libe_sqlite3.so'))
+    return Test-Path (Get-NativeMarker $Dir)
   }
   $find = {
     foreach ($c in $candidates) {
@@ -364,12 +372,6 @@ function Resolve-GameInstall([string]$Version = $CurrentGameVersion, [string]$Ki
 
   Write-Host "No usable $Kind install for $Version - provisioning one..."
   $provisionArgs = @('-Version', $Version, '-Kind', $Kind)
-  # provision game redirects a server request away from a foreign client on its own; a client request
-  # would land on top of it, so this one is redirected here instead.
-  $defaultSlot = Join-Path $RepoRoot ".game/$slug"
-  if ($Kind -eq 'client' -and (Test-Path (Join-Path $defaultSlot 'Vintagestory.dll'))) {
-    $provisionArgs += @('-Dest', ".game/$slug-client")
-  }
   Invoke-ProvisionGame $provisionArgs
 
   $hit = & $find

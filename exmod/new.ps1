@@ -269,6 +269,42 @@ function ConvertTo-StarterTestCsproj([string]$Text, [string]$Label) {
 # quoted string, or the raw `{ "kind": ..., "isDefault": ... }` shape "Test: all" needs).
 # A task runs the repository's own launcher, which finds pwsh or installs it into .dotnet/tools:
 # bash scripts/exmod.sh on Linux and macOS, pwsh scripts/exmod.ps1 on Windows.
+# The task that fetches a series' client for the launch configuration. Each platform keeps its own
+# slot, .game/<series>-<platform>, so a checkout shared between Windows and WSL holds both clients.
+function New-VsCodeProvisionTask([string]$Label, [string]$Version, [string]$Slug) {
+  $common = @('provision', 'game', '-Version', $Version, '-Kind', 'client', '-Dest')
+  $lines = { param([string[]]$Items, [string]$Indent) (@($Items) | ForEach-Object { "$Indent`"$_`"" }) -join ",`
+" }
+  return @"
+    {
+      "label": "$Label",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "`${workspaceFolder}/scripts/exmod.sh",
+$(& $lines ($common + ".game/$Slug-linux") '        ')
+      ],
+      "osx": {
+        "command": "bash",
+        "args": [
+          "`${workspaceFolder}/scripts/exmod.sh",
+$(& $lines ($common + ".game/$Slug-macos") '          ')
+        ]
+      },
+      "windows": {
+        "command": "pwsh",
+        "args": [
+          "-NoProfile",
+          "-File",
+          "`${workspaceFolder}/scripts/exmod.ps1",
+$(& $lines ($common + ".game/$Slug-windows") '          ')
+        ]
+      },
+      "problemMatcher": []
+    }
+"@
+}
+
 function New-VsCodeTask([string]$Label, [string[]]$TaskArgs, [string]$Group = $null) {
   $argLines = (@($TaskArgs) | ForEach-Object { "        `"$_`"" }) -join ",`n"
   $winArgLines = (@($TaskArgs) | ForEach-Object { "          `"$_`"" }) -join ",`n"
@@ -339,7 +375,7 @@ function Write-ExmodVsCode([string]$Dest, [string]$RepoName, [string[]]$Series) 
     $tasks.Add((New-VsCodeTask "Test: $s (legacy)" @('test', $s) '"test"'))
   }
   $tasks.Add((New-VsCodeTask 'Test: all versions (parallel)' @('test', 'all') '{ "kind": "test", "isDefault": true }'))
-  $tasks.Add((New-VsCodeTask "provision-game ($latest)" @('provision', 'game', '-Version', $latest, '-Kind', 'client')))
+  $tasks.Add((New-VsCodeProvisionTask "provision-game ($latest)" $latest $latest))
 
   if ($legacy.Count -gt 0) {
     $legacyComment = @'
@@ -350,7 +386,7 @@ function Write-ExmodVsCode([string]$Dest, [string]$RepoName, [string[]]$Series) 
     // ----------------------------------------------------------------------------------------
 '@
     $legacyTasks = [System.Collections.Generic.List[string]]::new()
-    foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeTask "provision-game ($s)" @('provision', 'game', '-Version', "$s.0", '-Kind', 'client'))) }
+    foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeProvisionTask "provision-game ($s)" "$s.0" $s)) }
     foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeTask "provision-dotnet ($s)" @('provision', 'dotnet', '-Version', $s))) }
     foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeDependsTask "launch-prep ($s)" @("provision-dotnet ($s)", "provision-game ($s)", "stage-mods ($s)"))) }
     foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeTask "stage-mods ($s)" @('stage', '-Version', $s))) }
@@ -375,7 +411,7 @@ $($tasks -join ",`n")
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "launch-prep (latest)",
-      "program": "`${workspaceFolder}/.game/$latest/Vintagestory.dll",
+      "program": "`${workspaceFolder}/.game/$latest-linux/Vintagestory.dll",
       "args": [
         "--tracelog",
         "--dataPath",
@@ -384,6 +420,9 @@ $($tasks -join ",`n")
         "`${workspaceFolder}/bin/Mods"
       ],
       "cwd": "`${workspaceFolder}",
+      "linux": { "env": { "WAYLAND_DISPLAY": "none" } },
+      "osx": { "program": "`${workspaceFolder}/.game/$latest-macos/Vintagestory.dll" },
+      "windows": { "program": "`${workspaceFolder}/.game/$latest-windows/Vintagestory.dll" },
       "stopAtEntry": false,
       "console": "internalConsole",
       "requireExactSource": false
@@ -396,7 +435,7 @@ $($tasks -join ",`n")
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "launch-prep ($s)",
-      "program": "`${workspaceFolder}/.game/$s/Vintagestory.dll",
+      "program": "`${workspaceFolder}/.game/$s-linux/Vintagestory.dll",
       "args": [
         "--tracelog",
         "--dataPath",
@@ -406,6 +445,9 @@ $($tasks -join ",`n")
       ],
       "cwd": "`${workspaceFolder}",
       "env": { "DOTNET_ROOT": "`${workspaceFolder}/.dotnet" },
+      "linux": { "env": { "DOTNET_ROOT": "`${workspaceFolder}/.dotnet", "WAYLAND_DISPLAY": "none" } },
+      "osx": { "program": "`${workspaceFolder}/.game/$s-macos/Vintagestory.dll" },
+      "windows": { "program": "`${workspaceFolder}/.game/$s-windows/Vintagestory.dll" },
       "stopAtEntry": false,
       "console": "internalConsole",
       "requireExactSource": false
@@ -676,11 +718,15 @@ from exlib's own templates - `exmod help scaffold` lists every kind.
 ## Running it in VS Code
 
 `.vscode/tasks.json` and `launch.json` carry a build/pack/test task per game series this repo
-supports, launch-prep composites that provision the client build (`.game/<series>/Vintagestory.dll`,
-which plain `setup` does not fetch) and stage the mods first, and one launch configuration per
-series that boots the game with them loaded - opening this repo in VS Code and hitting F5 does the
-same thing `bash scripts/exmod.sh build latest && exmod stage && exmod client` would, with the
-game's own log in the debug console.
+supports, launch-prep composites that provision the client build (`.game/<series>-<platform>/`,
+one slot per platform so a checkout shared between Windows and WSL keeps both clients; plain
+`setup` does not fetch it) and stage the mods first, and one launch configuration per series that
+boots the game with them loaded - opening this repo in VS Code and hitting F5 does the same thing
+`bash scripts/exmod.sh build latest && exmod stage && exmod client` would, with the game's own log
+in the debug console. On Linux the game runs on X11 (GLFW's Wayland backend cannot place the
+cursor); a GPU driver that hangs the game is bypassed with `exmod client -Software`, or the same
+two variables in the launch configuration's `env` (`LIBGL_ALWAYS_SOFTWARE=1`,
+`GALLIUM_DRIVER=llvmpipe`).
 
 ## Licence
 

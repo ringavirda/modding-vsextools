@@ -103,10 +103,10 @@ function Resolve-RunVersion([string]$Spec) {
 function Find-UsableGameInstall([string]$Version, [string]$Kind) {
   $slug = ($Version -split '\.')[0..1] -join '.'
   $entry = if ($Kind -eq 'server') { 'VintagestoryServer.dll' } else { 'Vintagestory.dll' }
-  foreach ($c in @(".game/$slug-$Kind", ".game/$slug")) {
+  foreach ($c in @(".game/$slug-$PlatformSlot", ".game/$slug-$Kind", ".game/$slug")) {
     $full = Join-Path $RepoRoot $c
     if (-not (Test-Path (Join-Path $full $entry))) { continue }
-    if ($OnWindows -or (Test-Path (Join-Path $full 'Lib/libe_sqlite3.so'))) { return $full }
+    if (Test-Path (Get-NativeMarker $full)) { return $full }
   }
   return $null
 }
@@ -126,7 +126,7 @@ function Initialize-ClientSettings([string]$DataPath) {
 }
 
 function Invoke-Client([string[]]$Argv) {
-  $positional = @(Get-Positional $Argv @('-Configuration', '-Mods', '-DataPath') @('-NoBuild', '-Provision'))
+  $positional = @(Get-Positional $Argv @('-Configuration', '-Mods', '-DataPath') @('-NoBuild', '-Provision', '-Software'))
   $versionArg = if ($positional.Count -gt 0) { $positional[0] } else { 'latest' }
   $version = Resolve-RunVersion $versionArg
 
@@ -136,6 +136,7 @@ function Invoke-Client([string[]]$Argv) {
   $dataPath = Get-Opt $Argv '-DataPath' (Join-Path $RepoRoot '.gamedata')
   Initialize-ClientSettings $dataPath
   $provision = Get-Flag $Argv '-Provision'
+  $software = Get-Flag $Argv '-Software'
 
   $install = Find-UsableGameInstall $version 'client'
   if (-not $install) {
@@ -156,6 +157,18 @@ function Invoke-Client([string[]]$Argv) {
   $dotnet = Resolve-DotnetHost @($version)
   if ($dotnet -eq (Join-Path $RepoRoot ".dotnet/dotnet$ExeSuffix")) {
     $env:DOTNET_ROOT = Join-Path $RepoRoot '.dotnet'
+  }
+
+  if (-not $OnWindows -and -not $IsMacOS) {
+    # GLFW's Wayland backend cannot place the cursor, which mouse look needs; a display name no
+    # compositor answers to sends GLFW to X11, which XWayland serves.
+    $env:WAYLAND_DISPLAY = 'none'
+  }
+  if ($software) {
+    # Mesa's software rasterizer, for a GPU driver that hangs the game (WSLg's D3D12 layer in Mesa
+    # 26.2 locks up on the first settings screen).
+    $env:LIBGL_ALWAYS_SOFTWARE = '1'
+    $env:GALLIUM_DRIVER = 'llvmpipe'
   }
 
   Write-Step "Launching the client ($version)"
