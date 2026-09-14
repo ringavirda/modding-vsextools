@@ -74,10 +74,11 @@ public static class Runner {
     try {
       ModSource primary = ModSource.Load(modPath);
       string game = GameInstall.Resolve(gamePath);
-      // The tool ships with VintagestoryAPI/Tavis.JsonPatch/Newtonsoft.Json as compile-only
-      // references (Private=false - a global tool must never bundle a copy of the game's own
-      // assemblies), so they are resolved at runtime from whichever install --game/$VINTAGE_STORY
-      // actually named.
+      // VintagestoryAPI and Tavis.JsonPatch are compile-only (Private=false - a global tool must
+      // never bundle a copy of the game's own assemblies) and resolved at runtime from whichever
+      // install --game/$VINTAGE_STORY actually named; no compatible Tavis.JsonPatch is published
+      // to NuGet (see ExlibVerify.csproj), so it stays this way rather than becoming a package
+      // reference like Newtonsoft.Json.
       string[] probeDirs =
       [
         game,

@@ -13,6 +13,7 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Xunit.SkippableFact" />
   </ItemGroup>
 
   <ItemGroup>
@@ -21,27 +22,16 @@
 
   <ItemGroup>
     <!-- Shape and JsonConvert appear directly in the tests that build synthetic fixtures inline.
-         Private=true here (unlike the tool project): a test run needs the dll beside the test
-         binary, with no global-tool packing concern to keep it compile-only for. -->
+         Newtonsoft.Json, protobuf-net and SkiaSharp come along as ordinary package references, the
+         same as the tool project; only VintagestoryAPI still needs the game's own copy. -->
     <Reference Include="VintagestoryAPI">
       <HintPath>$(GamePath)/VintagestoryAPI.dll</HintPath>
       <Private>true</Private>
     </Reference>
-    <Reference Include="Newtonsoft.Json">
-      <HintPath>$(GamePath)/Lib/Newtonsoft.Json.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
-    <Reference Include="protobuf-net">
-      <HintPath>$(GamePath)/Lib/protobuf-net.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
-    <Reference Include="SkiaSharp">
-      <HintPath>$(GamePath)/Lib/SkiaSharp.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
-    <None Include="$(GamePath)/Lib/libSkiaSharp.so" CopyToOutputDirectory="PreserveNewest" Link="libSkiaSharp.so" Condition="Exists('$(GamePath)/Lib/libSkiaSharp.so')" />
-    <None Include="$(GamePath)/Lib/libSkiaSharp.dll" CopyToOutputDirectory="PreserveNewest" Link="libSkiaSharp.dll" Condition="Exists('$(GamePath)/Lib/libSkiaSharp.dll')" />
-    <None Include="$(GamePath)/Lib/libSkiaSharp.dylib" CopyToOutputDirectory="PreserveNewest" Link="libSkiaSharp.dylib" Condition="Exists('$(GamePath)/Lib/libSkiaSharp.dylib')" />
+    <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="protobuf-net" />
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" />
   </ItemGroup>
 
   <ItemGroup>

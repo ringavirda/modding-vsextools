@@ -15,9 +15,6 @@
       <HintPath>$(GamePath)/VintagestoryAPI.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="Newtonsoft.Json">
-      <HintPath>$(GamePath)/Lib/Newtonsoft.Json.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
+    <PackageReference Include="Newtonsoft.Json" />
   </ItemGroup>
 </Project>
