@@ -1,0 +1,75 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- infra/tools/ sits outside mods/, so it does not inherit ../../mods/Directory.Build.props the
+       way every mod project does automatically - imported explicitly for $(GamePath), the same way
+       samples/HelloExpanded.csproj does. -->
+
+  <PropertyGroup>
+    <!-- Matches the harness's own default TFM ($(CurrentGameTfm) from the import above), stated
+         directly since this tool always targets the current game version only. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>ExpandedLib.Shapes</RootNamespace>
+    <AssemblyName>exlib-shapes</AssemblyName>
+  </PropertyGroup>
+
+  <!-- Packed as a .NET global tool (dotnet tool install ExpandedLib.Shapes): a modder gets the
+       `exlib-shapes` command with no game licence and no built mod dll - see release.yml, which
+       packs and ships this alongside the other tools. -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>exlib-shapes</ToolCommandName>
+    <PackageId>ExpandedLib.Shapes</PackageId>
+    <!-- The tool ships at extools' own version: the "tools" value of this repository's exmod.json,
+         the same number a consuming repository pins. -->
+    <_ToolsJson>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\..\exmod.json'))</_ToolsJson>
+    <PackageVersion>$([System.Text.RegularExpressions.Regex]::Match($(_ToolsJson), '&quot;tools&quot;\s*:\s*&quot;([^&quot;]+)&quot;').Groups[1].Value)</PackageVersion>
+    <Authors>fallenstar</Authors>
+    <Description>Renders Vintage Story shape files to textured views and animation frames, and multiblock layouts to build schematics, without the game running.</Description>
+    <RepositoryUrl>https://github.com/ringavirda/modding-vsexmods</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" Condition="Exists('README.md')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Shape, ShapeElement, ShapeElementFace, Animation, MultiblockStructure - the game's own
+         classes parse the shape and layout JSON exactly the way the client does. -->
+    <Reference Include="VintagestoryAPI">
+      <HintPath>$(GamePath)/VintagestoryAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(GamePath)/Lib/Newtonsoft.Json.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <!-- protobuf-net backs a [ProtoContract] on some of the game's own model types that Newtonsoft's
+         reflection touches while building its contract cache, even though this tool never
+         serialises through it - without the reference, deserialising a Shape throws at runtime. -->
+    <Reference Include="protobuf-net">
+      <HintPath>$(GamePath)/Lib/protobuf-net.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <!-- The software rasteriser's pixel buffer and PNG encoding; the native libSkiaSharp beside it
+         is copied to the output the same way the game itself ships alongside its managed dll. -->
+    <Reference Include="SkiaSharp">
+      <HintPath>$(GamePath)/Lib/SkiaSharp.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <None Include="$(GamePath)/Lib/libSkiaSharp.so" CopyToOutputDirectory="PreserveNewest" Link="libSkiaSharp.so" Condition="Exists('$(GamePath)/Lib/libSkiaSharp.so')" />
+    <None Include="$(GamePath)/Lib/libSkiaSharp.dll" CopyToOutputDirectory="PreserveNewest" Link="libSkiaSharp.dll" Condition="Exists('$(GamePath)/Lib/libSkiaSharp.dll')" />
+    <None Include="$(GamePath)/Lib/libSkiaSharp.dylib" CopyToOutputDirectory="PreserveNewest" Link="libSkiaSharp.dylib" Condition="Exists('$(GamePath)/Lib/libSkiaSharp.dylib')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The lenient asset store, the block/item catalogue, the game install resolver and the mod
+         source, shared with the verify tool. -->
+    <ProjectReference Include="..\..\assets\ExlibAssets\ExlibAssets.csproj" />
+  </ItemGroup>
+</Project>
