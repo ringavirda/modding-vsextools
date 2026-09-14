@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.3] - 2026-09-14
+
+A client built for another platform no longer passes for this one: the launcher looks for the
+native library only this platform's package carries (`Lib/e_sqlite3.dll`, `libe_sqlite3.dylib`,
+`libe_sqlite3.so`) on Windows as on Linux and macOS, and a client request into a slot holding a
+foreign client goes to `<slot>-client` the way a server request already did. The generated launch
+configurations give each platform its own client slot, `.game/<series>-linux`, `-macos` and
+`-windows`, so a checkout shared between Windows and WSL keeps both clients and F5 works from
+either side. On Linux the client runs on X11: GLFW's Wayland backend cannot place the cursor, which
+mouse look needs, so the launcher and the launch configuration hand GLFW a display name no
+compositor answers to and it falls back to XWayland. `exmod client -Software` runs the game on
+Mesa's software rasterizer for a GPU driver that hangs it.
+
 ## [0.3.2] - 2026-09-14
 
 `exlib-shapes item FILE --out DIR [--variant CODE]` renders an itemtype variant: the isometric view

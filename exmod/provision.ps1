@@ -137,7 +137,7 @@ function Publicize-GameApi([string]$ApiDll) {
 # Each platform only ever fetches its own archive, so a Linux checkout never pulls Windows binaries.
 # "Superset" assumes the client at the default slot was built for the platform doing the provisioning;
 # when it was not (e.g. this slug's slot still holds a Windows client after a move to Linux/macOS), a
-# default -Dest is redirected to "<dest>-server" rather than overwriting the client the owner plays from.
+# default -Dest is redirected to "<dest>-<kind>" rather than overwriting the client the owner plays from.
 function Invoke-ProvisionGame([string[]]$Argv) {
   $version = Get-Opt $Argv '-Version'
   $dest = Get-Opt $Argv '-Dest'
@@ -188,28 +188,25 @@ function Invoke-ProvisionGame([string[]]$Argv) {
     # being skipped by a slug folder that already exists.
     $apiMarker = Join-Path $destFull 'VintagestoryAPI.dll'
     $clientMarker = Join-Path $destFull 'Vintagestory.dll'
-    # Present only in a tarball/zip built for this platform - a client left over from another OS (e.g.
-    # a Windows package on a box that has since moved to Linux) has Vintagestory.dll but none of these.
-    $nativeMarker = Join-Path $destFull 'Lib/libe_sqlite3.so'
+    $nativeMarker = Get-NativeMarker $destFull
     $stamp = Join-Path $destFull '.vsversion'
     $installed = if (Test-Path $stamp) { (Get-Content $stamp -Raw).Trim() } else { '' }
     $clientPresent = Test-Path $clientMarker
-    $clientUsableHere = $clientPresent -and ($OnWindows -or (Test-Path $nativeMarker))
+    $clientUsableHere = $clientPresent -and (Test-Path $nativeMarker)
 
-    if (-not $destGiven -and $kind -eq 'server' -and $clientPresent -and -not $clientUsableHere) {
-      # The default slot holds a client for a different platform. It is still the install the owner
-      # plays from (perhaps from before a Linux/macOS migration) and must not be overwritten just
-      # because it cannot serve this platform's dedicated server; provision alongside it instead.
-      Write-Host "Vintage Story client at $dest is not usable as this platform's server (no native Lib/*.so) - provisioning a separate server layout."
-      $dest = "$dest-server"
+    if (-not $destGiven -and $clientPresent -and -not $clientUsableHere) {
+      # The default slot holds a client built for another platform. It is still the install its owner
+      # plays from and must not be overwritten because it cannot run here; provision alongside it.
+      Write-Host "The client at $dest was built for another platform - provisioning this platform's $kind at $dest-$kind instead."
+      $dest = "$dest-$kind"
       $destFull = Join-Path $RepoRoot $dest
       $apiMarker = Join-Path $destFull 'VintagestoryAPI.dll'
       $clientMarker = Join-Path $destFull 'Vintagestory.dll'
-      $nativeMarker = Join-Path $destFull 'Lib/libe_sqlite3.so'
+      $nativeMarker = Get-NativeMarker $destFull
       $stamp = Join-Path $destFull '.vsversion'
       $installed = if (Test-Path $stamp) { (Get-Content $stamp -Raw).Trim() } else { '' }
       $clientPresent = Test-Path $clientMarker
-      $clientUsableHere = $clientPresent -and ($OnWindows -or (Test-Path $nativeMarker))
+      $clientUsableHere = $clientPresent -and (Test-Path $nativeMarker)
     }
 
     if (-not $force) {
