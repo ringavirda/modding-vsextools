@@ -267,20 +267,30 @@ function ConvertTo-StarterTestCsproj([string]$Text, [string]$Label) {
 
 # One process task running `scripts/exmod.ps1 <TaskArgs...>`, optionally carrying a "group" (a bare
 # quoted string, or the raw `{ "kind": ..., "isDefault": ... }` shape "Test: all" needs).
+# A task runs the repository's own launcher, which finds pwsh or installs it into .dotnet/tools:
+# bash scripts/exmod.sh on Linux and macOS, pwsh scripts/exmod.ps1 on Windows.
 function New-VsCodeTask([string]$Label, [string[]]$TaskArgs, [string]$Group = $null) {
   $argLines = (@($TaskArgs) | ForEach-Object { "        `"$_`"" }) -join ",`n"
+  $winArgLines = (@($TaskArgs) | ForEach-Object { "          `"$_`"" }) -join ",`n"
   $groupLine = if ($Group) { "      `"group`": $Group,`n" } else { '' }
   return @"
     {
       "label": "$Label",
       "type": "process",
-      "command": "pwsh",
+      "command": "bash",
       "args": [
-        "-NoProfile",
-        "-File",
-        "`${workspaceFolder}/scripts/exmod.ps1",
+        "`${workspaceFolder}/scripts/exmod.sh",
 $argLines
       ],
+      "windows": {
+        "command": "pwsh",
+        "args": [
+          "-NoProfile",
+          "-File",
+          "`${workspaceFolder}/scripts/exmod.ps1",
+$winArgLines
+        ]
+      },
 $groupLine      "problemMatcher": []
     }
 "@
@@ -341,7 +351,8 @@ function Write-ExmodVsCode([string]$Dest, [string]$RepoName, [string[]]$Series) 
 '@
     $legacyTasks = [System.Collections.Generic.List[string]]::new()
     foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeTask "provision-game ($s)" @('provision', 'game', '-Version', "$s.0", '-Kind', 'client'))) }
-    foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeDependsTask "launch-prep ($s)" @("provision-game ($s)", "stage-mods ($s)"))) }
+    foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeTask "provision-dotnet ($s)" @('provision', 'dotnet', '-Version', $s))) }
+    foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeDependsTask "launch-prep ($s)" @("provision-dotnet ($s)", "provision-game ($s)", "stage-mods ($s)"))) }
     foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeTask "stage-mods ($s)" @('stage', '-Version', $s))) }
     $tasks.Add("`n$legacyComment`n" + ($legacyTasks -join ",`n"))
   }
@@ -373,7 +384,6 @@ $($tasks -join ",`n")
         "`${workspaceFolder}/bin/Mods"
       ],
       "cwd": "`${workspaceFolder}",
-      "env": { "DOTNET_ROOT": "`${workspaceFolder}/.dotnet" },
       "stopAtEntry": false,
       "console": "internalConsole",
       "requireExactSource": false
