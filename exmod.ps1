@@ -194,8 +194,9 @@ function Get-ExmodMods {
 }
 
 # Every sample this repo builds as its own mod, in manifest order, id -> @{ Path; Project; Tests }.
-# A sample's project sits at its own path; its test project, when the manifest names one, is the
-# single .csproj under that named folder.
+# A sample's project is the single .csproj under <path>/src when that folder holds one, or under
+# <path> itself otherwise, the same rule Get-ExmodMods resolves a mod's project by; its test
+# project, when the manifest names one, is the single .csproj under that named folder.
 function Get-ExmodSamples {
   $manifest = Get-ExmodManifest
   $out = [ordered]@{}
@@ -203,7 +204,7 @@ function Get-ExmodSamples {
     $id = $prop.Name
     $entry = $prop.Value
     $path = Resolve-ManifestPath "samples.$id.path" $entry.path
-    $project = Find-SingleCsproj $path "samples.$id"
+    $project = Find-SingleCsproj (Get-ModProjectDir $path) "samples.$id"
     $tests = if ($entry.PSObject.Properties['tests'] -and $entry.tests) {
       Find-SingleCsproj (Resolve-ManifestPath "samples.$id.tests" $entry.tests) "samples.$id.tests"
     } else { $null }
