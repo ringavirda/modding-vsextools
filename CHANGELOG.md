@@ -35,6 +35,8 @@ number; and the edges are labelled for the machine - `front` under the near edge
 far one - instead of the compass letters `x` and `z`. The isometric composite's layer scale reads on
 the corner column nearest the camera, each tick carried across the picture as a faint guide, so a
 layer can be counted where a reader is actually looking.
+Raster labels are set in a Latin subset of Noto Sans carried inside the tool, so a picture is the same
+on every machine whatever fonts it has.
 
 `exlib-shapes block FILE --out DIR [--variant CODE]` renders one blocktype variant the way the game
 draws it - its own shape under the turn its `shape`/`shapeByType` entry carries for that variant,
