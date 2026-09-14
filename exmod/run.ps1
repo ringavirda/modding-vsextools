@@ -193,7 +193,7 @@ prints the exact `exmod provision game` command to run and exits 1.
   -Mods       mod folder(s), or folder(s) of mod folders, instead of every built mod in the checkout
               and its resolved dependencies
   -NoBuild    skip the build step; the mods must already be built
-  -DataPath   client data path (default: .gamedata)
+  -DataPath   client data path (default: .gamedata; on Windows %LOCALAPPDATA%\exmod\data\<repo>)
   -Provision  fetch a client install for this series here, if none is usable yet
 
 Without -Mods, this repo's runtime dependency mods (see `exmod provision mods`) are staged after
@@ -486,7 +486,7 @@ function Invoke-Logs([string[]]$Argv) {
   $kind = Get-Opt $Argv '-Kind' 'main'
   $lines = [int](Get-Opt $Argv '-Lines' 200)
   $follow = Get-Flag $Argv '-Follow'
-  $defaultDataPath = if ($target -eq 'client') { Join-Path $RepoRoot '.gamedata' } else { Join-Path $RepoRoot '.gamedata/server' }
+  $defaultDataPath = if ($target -eq 'client') { Get-ClientDataPath } else { Join-Path $RepoRoot '.gamedata/server' }
   $dataPath = Get-Opt $Argv '-DataPath' $defaultDataPath
   Initialize-ClientSettings $dataPath
 
