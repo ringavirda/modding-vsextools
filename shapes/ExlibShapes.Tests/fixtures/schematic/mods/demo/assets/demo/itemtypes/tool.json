@@ -1,0 +1,11 @@
+{
+  "code": "tool",
+  // An item with a model of its own, painted through the itemtype's texture map.
+  "variantgroups": [
+    { "code": "metal", "states": ["iron", "steel"] }
+  ],
+  "shape": { "base": "demo:block/masonry" },
+  "textures": {
+    "all": { "base": "demo:block/wall" }
+  }
+}

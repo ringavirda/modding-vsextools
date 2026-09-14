@@ -53,6 +53,7 @@ source
 | `render` | render a shape file to textured views or animation frames |
 | `schematic` | render a multiblock/megablock layout to a build schematic |
 | `block` | render one blocktype variant to the views a page shows |
+| `item` | render one itemtype variant to its own picture |
 
 run
 

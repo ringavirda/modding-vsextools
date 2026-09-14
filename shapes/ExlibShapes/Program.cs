@@ -13,11 +13,11 @@ using Vintagestory.API.Common;
 
 namespace ExpandedLib.Shapes;
 
-// exlib-shapes render|schematic|block|tree|measure FILE [options] - renders a shape file to
+// exlib-shapes render|schematic|block|item|tree|measure FILE [options] - renders a shape file to
 // textured views/animation frames, a multiblock/megablock blocktype file to a build schematic, one
-// blocktype variant to the views a wiki page shows, or prints a shape's own element tree or its
-// measured extents; see README.md for the full option list of each. Exit codes: 0 success, 1 a
-// resolved run-time error (a bad shape, no such clip), 2 usage.
+// blocktype variant to the views a wiki page shows, one itemtype variant to its own picture, or
+// prints a shape's own element tree or its measured extents; see README.md for the full option list
+// of each. Exit codes: 0 success, 1 a resolved run-time error (a bad shape, no such clip), 2 usage.
 
 /// <summary>Malformed command-line usage - reported on stderr with exit code 2, not a stack
 /// trace.</summary>
@@ -62,6 +62,7 @@ internal static class Program {
         "render" => RunRender(rest),
         "schematic" => RunSchematic(rest),
         "block" => RunBlock(rest),
+        "item" => RunItem(rest),
         "tree" => RunTree(rest),
         "measure" => RunMeasure(rest),
         _ => Unknown(args[0]),
@@ -78,7 +79,7 @@ internal static class Program {
     }
   }
 
-  private const string Usage = "usage: exlib-shapes {render,schematic,block,tree,measure} FILE [options]";
+  private const string Usage = "usage: exlib-shapes {render,schematic,block,item,tree,measure} FILE [options]";
 
   private static int Unknown(string command) {
     Console.Error.WriteLine($"exlib-shapes: no such command: {command}");
@@ -337,6 +338,43 @@ internal static class Program {
     );
     if ((JArray)manifest["hidden"]! is { Count: > 0 } hidden)
       Console.WriteLine("outside the block, not drawn: " + string.Join(", ", hidden.Select(h => (string)h!)));
+    foreach (JToken warning in (JArray)manifest["warnings"]!)
+      Console.Error.WriteLine($"exlib-shapes: {(string)warning!}");
+    return 0;
+  }
+
+  private static int RunItem(string[] args) {
+    (string file, string[] flags) = FileAndFlags(
+      args,
+      "usage: exlib-shapes item FILE --out DIR [--variant CODE] [--ppu N] [--roots PATH...] [--game PATH]"
+    );
+    string outDir = OptOf(flags, "--out") ?? throw new UsageException("--out is required");
+    string? wanted = OptOf(flags, "--variant");
+    int ppu = int.Parse(OptOf(flags, "--ppu") ?? "24", CultureInfo.InvariantCulture);
+    List<string> extraRoots = OptAllOf(flags, "--roots");
+    string? game = OptOf(flags, "--game");
+
+    List<string> roots = [.. extraRoots, .. BlockIndex.DefaultRoots(file)];
+    BlockIndex index = BlockIndex.Build(roots, game, BlockIndex.UnderLegacyTree(file));
+    IReadOnlyList<Variant> variants = index.ItemVariants(file);
+    if (variants.Count == 0)
+      throw new UsageException($"{file}: no itemtype expanded from it");
+    Variant variant = wanted == null
+      ? variants[0]
+      : variants.FirstOrDefault(v => v.Code == wanted || v.Path == wanted)
+        ?? throw new UsageException(
+          $"no such variant: {wanted} ({string.Join(", ", variants.Select(v => v.Path))})"
+        );
+
+    JObject manifest = ItemViews.Write(file, variant, index, outDir, ppu);
+
+    foreach (JToken written in (JArray)manifest["files"]!)
+      Console.WriteLine((string)written!);
+    Console.WriteLine(Path.Combine(outDir, Path.GetFileNameWithoutExtension(file) + ".json"));
+    Console.WriteLine("variant: " + (string)manifest["variant"]!);
+    Console.WriteLine(
+      "missing textures: [" + string.Join(", ", ((JArray)manifest["missingTextures"]!).Select(t => (string)t!)) + "]"
+    );
     foreach (JToken warning in (JArray)manifest["warnings"]!)
       Console.Error.WriteLine($"exlib-shapes: {(string)warning!}");
     return 0;

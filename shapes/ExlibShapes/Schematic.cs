@@ -418,9 +418,10 @@ public static class Schematic {
     foreach ((string key, TextureRef value) in block.Textures)
       textures[key] = value;
     // A face whose key nothing assigns is painted with the placeholder; it is carried here as an
-    // unassigned entry so the manifest names it instead of the render alone showing it.
+    // unassigned entry so the manifest names it instead of the render alone showing it. `#null` is
+    // Model Creator's own marker for a face with no texture, which no block ever assigns.
     foreach (string key in FaceTextureKeys(elements))
-      if (!textures.ContainsKey(key))
+      if (key != "null" && !textures.ContainsKey(key))
         textures[key] = new TextureRef("");
 
     int ox = offset.X * 16, oy = offset.Y * 16, oz = offset.Z * 16;

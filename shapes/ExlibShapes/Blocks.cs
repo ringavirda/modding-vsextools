@@ -304,6 +304,23 @@ public sealed class BlockIndex {
     return pattern != null && pattern.IsMatch("air");
   }
 
+  /// <summary>
+  /// Every variant an itemtype file expands to, read from the file itself: this index scans
+  /// blocktypes, and items live in a tree of their own. The domain is the folder above
+  /// <c>itemtypes</c>, else <c>game</c>.
+  /// </summary>
+  /// <param name="file">An itemtype JSON path.</param>
+  public IReadOnlyList<Variant> ItemVariants(string file) {
+    string[] parts = Path.GetFullPath(file).Split(Path.DirectorySeparatorChar);
+    int types = Array.LastIndexOf(parts, "itemtypes");
+    string domain = types > 0 ? parts[types - 1] : "game";
+    return Expand(file, domain, _domainRoots, _parseWarnings);
+  }
+
+  /// <summary>The shape, rotation and textures of a variant this index did not scan itself
+  /// (<see cref="ItemVariants"/>), resolved through its own domain roots.</summary>
+  public ResolvedBlock ResolveVariant(Variant variant) => ToBlock(variant);
+
   /// <summary>The selector resolved to a block's shape, rotation and textures, or null when
   /// unresolved.</summary>
   public ResolvedBlock? Resolve(string selector) {
@@ -430,10 +447,10 @@ public sealed class BlockIndex {
     );
   }
 
-  // One entry of a blocktype's textures map: a bare value string, or the object form carrying
+  // One entry of a blocktype's or itemtype's textures map: a bare value string, or the object form carrying
   // `base`/`baseByType` (read through the game's own ByType rule, as vanilla's planks and slabs
   // spell their variants) and the `overlays` painted over it. Null when the entry names no base.
-  private static TextureRef? TextureOf(JToken entry, Variant variant) {
+  internal static TextureRef? TextureOf(JToken entry, Variant variant) {
     if (entry is not JObject obj)
       return (string?)entry is { } plain ? new TextureRef(Substitute(plain, variant.States)) : null;
     if ((string?)ByType(obj, "base", variant.Path) is not { } value)

@@ -2,6 +2,38 @@
 
 ## [0.3.2] - 2026-09-14
 
+`exlib-shapes item FILE --out DIR [--variant CODE]` renders an itemtype variant: the isometric view
+of its own shape, painted with the itemtype's texture map, and its flat inventory texture enlarged
+four times on the renders' own paper. `exmod item` runs it.
+
+A picture shows the front of a machine whatever the files say about facing. A structure or
+megablock is turned so its starter block stands on the camera-facing edge of the footprint it
+reserves - the player works from that side - and every block of it turns with the structure, so the
+blast furnace's door and the cowper stove's intake face the reader instead of a blank wall. A block
+family with no facing variant to choose between is turned by its own art instead, toward whichever
+quarter turn brings the most of its detail to the camera, and `block` takes `--angle` to override
+either. Both manifests name the turn and the side the front then looks toward.
+
+A block's views leave out the parts parked outside its own cells - an animated rabble or damper
+chain drawn in the rest pose its animation moves it from - and `--full` keeps them; the manifest
+says which was used and what it left out.
+
+A blocktype's texture entries resolve the way the game resolves them: `overlays` are composited over
+the base, `baseByType` is read through the ByType rule, and the `all`, `sides`, `horizontals` and
+`verticals` shorthands stand in for the faces a shape names one by one, which is what left the
+slab-lined furnace cores painted magenta. A face no texture is assigned to is named in the manifest
+rather than quietly drawn as the placeholder, and a block's views draw back faces so a hollow model
+reads as hollow.
+
+Plan and footprint SVGs are as wide as their own caption, which used to be clipped at both ends on
+every megablock page; every drawn cell carries its legend number in ink the fill's own luminance
+chooses; an optional cell is outlined and hatched rather than left off the picture the legend
+promises it on; the legend's rows are numbered for display in the manifest beside the mod's own
+number; and the edges are labelled for the machine - `front` under the near edge, `back` over the
+far one - instead of the compass letters `x` and `z`. The isometric composite's layer scale reads on
+the corner column nearest the camera, each tick carried across the picture as a faint guide, so a
+layer can be counted where a reader is actually looking.
+
 `exlib-shapes block FILE --out DIR [--variant CODE]` renders one blocktype variant the way the game
 draws it - its own shape under the turn its `shape`/`shapeByType` entry carries for that variant,
 painted with the blocktype's texture map - one PNG per view, the plan of the footprint it reserves,
