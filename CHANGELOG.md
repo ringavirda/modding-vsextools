@@ -18,6 +18,9 @@ tree is copied into the slot; the generated tasks run pwsh with `-ExecutionPolic
 script on a share no longer asks before every step.
 `stage` and `client` build the mods every time (an incremental build, seconds when nothing
 changed) instead of only when nothing was built yet, so F5 never runs a mod older than its source.
+A project last built on another platform (a checkout shared between Windows and WSL) is built from
+clean, because MSBuild's incremental clean, fed the other platform's file list, deleted the copied
+modinfo.json and modicon.png and `stage` then found no mod to stage.
 
 `exlib-verify` now catches the client's own "Missing mapping for texture code" defect headlessly: a
 new check reads every shape a blocktype's or itemtype's `shape`/`shapeByType` (alternates included)

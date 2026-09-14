@@ -31,6 +31,22 @@ function Get-ExmodSourceRoots {
 # assemblies (exlib -> iiex -> siex, and every test project against its mod), so building two of
 # them at once races on the same obj/ files and fails with CS2012. Warnings are never suppressed -
 # a warning count is the point of this command - so nothing here passes -clp:ErrorsOnly or -v q.
+# A project last built on another platform starts from clean. MSBuild's incremental clean reads
+# the previous build's file list, whose paths from the other platform resolve here to the files
+# this build just copied (modinfo.json, modicon.png), and deletes them; bin and obj go instead.
+function Reset-ForeignBuildState([string]$ProjectDir) {
+  $lists = @(Get-ChildItem -Path (Join-Path $ProjectDir 'obj') -Recurse -Filter '*.FileListAbsolute.txt' -ErrorAction SilentlyContinue)
+  foreach ($list in $lists) {
+    $first = Get-Content $list.FullName -TotalCount 1 -ErrorAction SilentlyContinue
+    if (-not $first) { continue }
+    $foreign = if ($OnWindows) { $first.StartsWith('/') } else { $first -match '^([A-Za-z]:\\|\\\\)' }
+    if (-not $foreign) { continue }
+    Write-Host "$(Split-Path $ProjectDir -Leaf): last built on another platform - starting from clean"
+    Remove-Item -Recurse -Force (Join-Path $ProjectDir 'bin'), (Join-Path $ProjectDir 'obj') -ErrorAction SilentlyContinue
+    return
+  }
+}
+
 function Invoke-Build([string[]]$Argv) {
   $positional = @(Get-Positional $Argv @('-Mod', '-Configuration') @('-Tests'))
   $version = if ($positional.Count -gt 0) { $positional[0] } else { 'latest' }
@@ -52,6 +68,15 @@ function Invoke-Build([string[]]$Argv) {
     $testTargets = if ($testTargets.Contains($key)) { [ordered]@{ $key = $testTargets[$key] } } else { [ordered]@{} }
   }
 
+  foreach ($proj in @($targets.Values) + @($testTargets.Values | ForEach-Object { $_.Proj })) {
+    Reset-ForeignBuildState (Split-Path $proj -Parent)
+  }
+  # A dependency built from a sibling checkout is built by this run too, through its project reference.
+  foreach ($dep in @(Resolve-DependencyMods $configuration)) {
+    if ($dep.Path -match '[\\/]bin[\\/][^\\/]+[\\/]Mods[\\/]mod[\\/]?$') {
+      Reset-ForeignBuildState (Split-Path (Split-Path (Split-Path (Split-Path $dep.Path -Parent) -Parent) -Parent) -Parent)
+    }
+  }
   foreach ($v in $wanted) {
     $tfm = $GameTfms[$v]
     Write-Step "Building $v ($tfm, $configuration)"
