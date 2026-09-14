@@ -29,10 +29,10 @@ function Sync-PinnedTag {
 
 function Resolve-Extools {
   if ($env:EXTOOLS_HOME -and (Test-Path (Join-Path $env:EXTOOLS_HOME 'exmod.ps1'))) {
-    return (Resolve-Path $env:EXTOOLS_HOME).Path
+    return (Resolve-Path $env:EXTOOLS_HOME).ProviderPath
   }
   $sibling = Join-Path $repoRoot '../extools'
-  if (Test-Path (Join-Path $sibling 'exmod.ps1')) { return (Resolve-Path $sibling).Path }
+  if (Test-Path (Join-Path $sibling 'exmod.ps1')) { return (Resolve-Path $sibling).ProviderPath }
 
   $version = Get-ToolsPin
   if (-not $version) {

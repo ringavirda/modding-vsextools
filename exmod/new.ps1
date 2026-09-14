@@ -768,7 +768,7 @@ function Invoke-Starter([string[]]$Argv) {
     }
     $exlibRoot = $sibling
   }
-  $exlibRoot = (Resolve-Path $exlibRoot).Path
+  $exlibRoot = (Resolve-Path $exlibRoot).ProviderPath
 
   Assert-StarterDest $dest $RepoRoot $ToolsRoot $exlibRoot $force
 

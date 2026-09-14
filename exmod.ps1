@@ -29,7 +29,7 @@ $ErrorActionPreference = 'Stop'
 function Get-ExmodRepoRoot([string]$Override) {
   if ($Override) {
     if (-not (Test-Path $Override)) { throw "-RepoRoot path not found: $Override" }
-    return (Resolve-Path $Override).Path
+    return (Resolve-Path $Override).ProviderPath
   }
   $dir = (Get-Location).Path
   while ($true) {
@@ -130,7 +130,7 @@ function Resolve-ManifestPath([string]$Field, [string]$RelPath) {
   if (-not $RelPath) { throw "exmod.json: '$Field' is required." }
   $full = if ([System.IO.Path]::IsPathRooted($RelPath)) { $RelPath } else { Join-Path $RepoRoot $RelPath }
   if (-not (Test-Path $full)) { throw "exmod.json: '$Field' names a path that does not exist: $RelPath" }
-  return (Resolve-Path $full).Path
+  return (Resolve-Path $full).ProviderPath
 }
 
 # The single .csproj directly under $Dir, or a naming error when there is none or more than one -
@@ -292,7 +292,7 @@ function Get-ExmodCoverageFloors {
   }
   foreach ($candidate in @('tests/coverage-floors.json', 'infra/test/coverage-floors.json')) {
     $full = Join-Path $RepoRoot $candidate
-    if (Test-Path $full) { return (Resolve-Path $full).Path }
+    if (Test-Path $full) { return (Resolve-Path $full).ProviderPath }
   }
   return $null
 }

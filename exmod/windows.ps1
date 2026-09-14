@@ -12,7 +12,7 @@ function Invoke-FixRegistry([string[]]$Argv) {
   if (-not $installDir) {
     throw "No -InstallDir given and `$env:VINTAGE_STORY is not set. Pass the path to your Vintage Story install."
   }
-  $installDir = (Resolve-Path $installDir).Path.TrimEnd('\')
+  $installDir = (Resolve-Path $installDir).ProviderPath.TrimEnd('\')
   foreach ($f in 'Vintagestory.exe', 'unins000.exe') {
     if (-not (Test-Path (Join-Path $installDir $f))) {
       throw "'$installDir' does not look like a Vintage Story install (missing $f)."
