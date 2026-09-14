@@ -14,9 +14,6 @@ public class ShapeFileTests {
     Assert.Equal(8, shape.Leaves().Count);
     Assert.Equal("Cylinder/Cube4/Cube2", shape.Find("Cube2")!.Path);
     Assert.Equal("Cube2", shape.Find("Cylinder/Cube4/Cube2")!.Name);
-    Assert.EndsWith(
-      "workbench/textures/materials/cast-iron1",
-      shape.Textures["cast-iron1"].ToString()
-    );
+    Assert.Equal("test:materials/cast-iron1", shape.Textures["cast-iron1"]);
   }
 }

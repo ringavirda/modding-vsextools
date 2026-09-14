@@ -4,13 +4,14 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Vintagestory.API.Common;
 
 namespace ExpandedLib.Shapes;
 
 /// <summary>
 /// One element of a shape's tree, mirroring the game's <see cref="ShapeElement"/> but with its
-/// <c>from</c>/<c>to</c>/<c>rotationOrigin</c> already as <see cref="Vector3"/> and its faces
+/// <c>from</c>/<c>to</c>/<c>rotationOrigin</c> already as <see cref="Vec3d"/> and its faces
 /// filtered to the enabled ones - the JSON's own coordinates, still relative to the parent's
 /// <c>from</c>; <see cref="Geometry"/> is what turns a tree of these into world space.
 /// </summary>
@@ -19,21 +20,21 @@ public sealed class Node {
   public string Name { get; }
 
   /// <summary>Every ancestor's name joined by <c>/</c>, then this element's own name - the same
-  /// address <see cref="LoadedShape.Find"/> and a quad's <see cref="Quad.Path"/> use.</summary>
+  /// address <see cref="LoadedShape.Find"/> and a quad's <see cref="Geometry.Quad.Path"/> use.</summary>
   public string Path { get; }
 
   /// <summary>The element's near corner, in its parent's local space.</summary>
-  public Vector3 From { get; }
+  public Vec3d From { get; }
 
   /// <summary>The element's far corner, in its parent's local space.</summary>
-  public Vector3 To { get; }
+  public Vec3d To { get; }
 
   /// <summary>The pivot faces rotate about; defaults to <see cref="From"/> when the JSON omits
   /// <c>rotationOrigin</c>.</summary>
-  public Vector3 Origin { get; }
+  public Vec3d Origin { get; }
 
   /// <summary>Degrees about x, y, z - <c>rotationX</c>/<c>rotationY</c>/<c>rotationZ</c>.</summary>
-  public Vector3 Rotation { get; }
+  public Vec3d Rotation { get; }
 
   /// <summary>The element's faces with <c>enabled</c> false dropped - Model Creator writes a
   /// disabled face rather than omitting the key, so a caller that only wants what actually draws
@@ -48,10 +49,10 @@ public sealed class Node {
 
   internal Node(
     string name,
-    Vector3 from,
-    Vector3 to,
-    Vector3 origin,
-    Vector3 rotation,
+    Vec3d from,
+    Vec3d to,
+    Vec3d origin,
+    Vec3d rotation,
     IReadOnlyDictionary<string, ShapeElementFace> faces,
     string path,
     Node? parent
@@ -70,18 +71,18 @@ public sealed class Node {
   internal List<Node> ChildrenList { get; } = [];
 
   /// <summary>The element's extent along x, y, z (<see cref="To"/> minus <see cref="From"/>).</summary>
-  public Vector3 Size => To - From;
+  public Vec3d Size => To - From;
 
   /// <summary>Whether this element draws: has at least one enabled face and a non-zero size
   /// (Model Creator writes faces on zero-size groups too, which never render).</summary>
   public bool IsLeaf =>
-    Faces.Count > 0 && (Size.X > 1e-9f || Size.Y > 1e-9f || Size.Z > 1e-9f);
+    Faces.Count > 0 && (Size.X > 1e-9 || Size.Y > 1e-9 || Size.Z > 1e-9);
 
   /// <summary>Whether any rotation axis is non-zero.</summary>
   public bool IsRotated =>
-    MathF.Abs(Rotation.X) > 1e-9f
-    || MathF.Abs(Rotation.Y) > 1e-9f
-    || MathF.Abs(Rotation.Z) > 1e-9f;
+    Math.Abs(Rotation.X) > 1e-9
+    || Math.Abs(Rotation.Y) > 1e-9
+    || Math.Abs(Rotation.Z) > 1e-9;
 }
 
 /// <summary>
@@ -96,8 +97,11 @@ public sealed class LoadedShape {
   public string? Path { get; }
 
   /// <summary>The shape's own <c>textures</c> map, key to the asset it names (a <c>domain:path</c>
-  /// or, for the owner's editables, a raw filesystem path under a <c>#</c>-less key).</summary>
-  public IReadOnlyDictionary<string, AssetLocation> Textures { get; }
+  /// or, for the owner's editables, a raw filesystem path under a <c>#</c>-less key), exactly as
+  /// written in the JSON - read straight from the document rather than through
+  /// <see cref="AssetLocation"/>, whose constructor lower-cases <see cref="AssetLocation.Path"/>
+  /// and would corrupt a case-sensitive filesystem path.</summary>
+  public IReadOnlyDictionary<string, string> Textures { get; }
 
   /// <summary>The shape's root elements, in file order.</summary>
   public IReadOnlyList<Node> Elements { get; }
@@ -107,7 +111,7 @@ public sealed class LoadedShape {
 
   internal LoadedShape(
     string? path,
-    IReadOnlyDictionary<string, AssetLocation> textures,
+    IReadOnlyDictionary<string, string> textures,
     IReadOnlyList<Node> elements,
     IReadOnlyList<Animation> animations
   ) {
@@ -163,30 +167,54 @@ public static class ShapeFile {
     Shape raw =
       JsonConvert.DeserializeObject<Shape>(text)
       ?? throw new JsonException($"{path}: not a shape (empty document)");
-    return FromRaw(raw, path);
+    return FromRaw(raw, path, RawTextures(text));
+  }
+
+  // The document's own "textures" object, string for string - JObject.Parse rather than the
+  // typed Shape so a value's case survives (Shape.Textures is AssetLocation, which lower-cases).
+  private static Dictionary<string, string> RawTextures(string text) {
+    var textures = new Dictionary<string, string>();
+    if (JObject.Parse(text)["textures"] is JObject obj)
+      foreach (JProperty prop in obj.Properties())
+        textures[prop.Name] = (string)prop.Value!;
+    return textures;
   }
 
   /// <summary>Wraps an already-parsed <see cref="Shape"/> (the synthetic shapes a test builds
-  /// in memory, say), attributing it to <paramref name="path"/> for messages only.</summary>
-  public static LoadedShape FromRaw(Shape raw, string? path) {
+  /// in memory, say), attributing it to <paramref name="path"/> for messages only.
+  /// <paramref name="textures"/> is the shape's raw <c>textures</c> map with its original case;
+  /// when omitted it falls back to <paramref name="raw"/>.<see cref="Shape.Textures"/>, which has
+  /// already lost case through <see cref="AssetLocation"/> by the time it reaches here.</summary>
+  public static LoadedShape FromRaw(
+    Shape raw,
+    string? path,
+    IReadOnlyDictionary<string, string>? textures = null
+  ) {
     List<Node> roots = [];
     foreach (ShapeElement el in raw.Elements ?? [])
       roots.Add(Build(el, null, ""));
-    return new LoadedShape(
-      path,
-      raw.Textures ?? new Dictionary<string, AssetLocation>(),
-      roots,
-      raw.Animations ?? []
-    );
+    return new LoadedShape(path, textures ?? StringifyTextures(raw.Textures), roots, raw.Animations ?? []);
+  }
+
+  // A domain-aware AssetLocation back to the "domain:path" (or bare path) spelling a shape's own
+  // textures map uses - the best available when no original JSON text was kept to read from.
+  private static Dictionary<string, string> StringifyTextures(
+    IReadOnlyDictionary<string, AssetLocation>? locations
+  ) {
+    var textures = new Dictionary<string, string>();
+    if (locations != null)
+      foreach ((string key, AssetLocation value) in locations)
+        textures[key] = value.HasDomain() ? $"{value.Domain}:{value.Path}" : value.Path;
+    return textures;
   }
 
   private static Node Build(ShapeElement raw, Node? parent, string prefix) {
     string name = raw.Name ?? "?";
     string path = (prefix.Length > 0 ? prefix + "/" : "") + name;
-    Vector3 from = ToVector3(raw.From, Vector3.Zero);
-    Vector3 to = ToVector3(raw.To, Vector3.Zero);
-    Vector3 origin = raw.RotationOrigin != null ? ToVector3(raw.RotationOrigin, from) : from;
-    Vector3 rotation = new((float)raw.RotationX, (float)raw.RotationY, (float)raw.RotationZ);
+    Vec3d from = ToVec3d(raw.From, Vec3d.Zero);
+    Vec3d to = ToVec3d(raw.To, Vec3d.Zero);
+    Vec3d origin = raw.RotationOrigin != null ? ToVec3d(raw.RotationOrigin, from) : from;
+    Vec3d rotation = new(raw.RotationX, raw.RotationY, raw.RotationZ);
     // ShapeElement.Faces (a face-name-keyed dictionary) is obsolete and left null once the
     // deserialiser's own [OnDeserialized] hook runs: FacesResolved is a fixed 6-slot array in
     // Geometry.Faces order (north, east, south, west, up, down), a disabled or absent face left
@@ -204,6 +232,6 @@ public static class ShapeFile {
     return node;
   }
 
-  private static Vector3 ToVector3(double[]? v, Vector3 fallback) =>
-    v is { Length: >= 3 } ? new Vector3((float)v[0], (float)v[1], (float)v[2]) : fallback;
+  private static Vec3d ToVec3d(double[]? v, Vec3d fallback) =>
+    v is { Length: >= 3 } ? new Vec3d(v[0], v[1], v[2]) : fallback;
 }

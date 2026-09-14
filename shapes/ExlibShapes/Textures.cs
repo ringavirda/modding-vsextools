@@ -12,32 +12,40 @@ namespace ExpandedLib.Shapes;
 /// The game install and mod repository a shape's texture references resolve against.
 /// </summary>
 public sealed class TextureRoots {
-  /// <summary>The game install (holding <c>assets/survival/textures</c>).</summary>
-  public string GamePath { get; }
+  private readonly Lazy<string> _gamePath;
+
+  /// <summary>The game install (holding <c>assets/survival/textures</c>) - resolved on first
+  /// access, not when these roots are built: a shape whose textures are all absolute or WSL
+  /// paths never touches this and so needs no install at all, matching <c>textures.py</c>, which
+  /// only opens <c>.game/</c> when a <c>game:</c> or bare reference actually asks for it.</summary>
+  /// <exception cref="System.IO.DirectoryNotFoundException">No install could be found, and a
+  /// <c>game:</c> or bare-path texture reference asked to resolve against one.</exception>
+  public string GamePath => _gamePath.Value;
 
   /// <summary>The mod repository (holding <c>mods/*</c> and <c>legacy/*</c>), or null when none
   /// could be found - a <c>domain:</c> reference other than <c>game:</c> then never resolves.</summary>
   public string? RepoPath { get; }
 
-  private TextureRoots(string gamePath, string? repoPath) {
-    GamePath = gamePath;
+  private TextureRoots(Lazy<string> gamePath, string? repoPath) {
+    _gamePath = gamePath;
     RepoPath = repoPath;
   }
 
   /// <summary>Builds the roots explicitly - the pair a test or a caller that already knows both
   /// paths passes, bypassing <see cref="GameInstall.Resolve"/> and the ancestor search.</summary>
-  public static TextureRoots From(string gamePath, string? repoPath) => new(gamePath, repoPath);
+  public static TextureRoots From(string gamePath, string? repoPath) =>
+    new(new Lazy<string>(gamePath), repoPath);
 
   /// <summary>
-  /// Resolves <paramref name="game"/> through <see cref="GameInstall.Resolve"/> and
-  /// <paramref name="repo"/> to the nearest ancestor of <paramref name="shapePath"/> holding
-  /// <c>workbench/</c>, <c>mods/</c> or <c>.game/</c> (the current directory when none of those
-  /// exist, or when <paramref name="shapePath"/> is null).
+  /// Resolves <paramref name="repo"/> to the nearest ancestor of <paramref name="shapePath"/>
+  /// holding <c>workbench/</c>, <c>mods/</c> or <c>.game/</c> (the current directory when none of
+  /// those exist, or when <paramref name="shapePath"/> is null); <paramref name="game"/> is
+  /// resolved through <see cref="GameInstall.Resolve"/> lazily, the first time a texture
+  /// reference actually needs <see cref="GamePath"/>.
   /// </summary>
   public static TextureRoots Build(string? game, string? repo, string? shapePath) {
-    string gamePath = GameInstall.Resolve(game);
     string repoPath = repo ?? FindRepoRoot(shapePath);
-    return new TextureRoots(gamePath, repoPath);
+    return new TextureRoots(new Lazy<string>(() => GameInstall.Resolve(game)), repoPath);
   }
 
   private static string FindRepoRoot(string? shapePath) {
@@ -176,12 +184,8 @@ public sealed class TextureSet {
   public static TextureSet ForShape(LoadedShape shape, TextureRoots roots) {
     var arrays = new Dictionary<string, byte[,,]>();
     var missing = new HashSet<string>();
-    foreach ((string key, Vintagestory.API.Common.AssetLocation value) in shape.Textures) {
-      // AssetLocation.ToString() always prints a domain, defaulting an undomained value to
-      // "game:" - the shape's own textures map never had that prefix, so a bare or WSL path is
-      // reconstructed from Path alone rather than losing its shape to a fabricated domain.
-      string raw = value.HasDomain() ? $"{value.Domain}:{value.Path}" : value.Path;
-      string? path = Textures.Resolve(raw, shape.Path, roots);
+    foreach ((string key, string value) in shape.Textures) {
+      string? path = Textures.Resolve(value, shape.Path, roots);
       if (path == null) {
         missing.Add(key);
         arrays[key] = MissingImage;
@@ -197,10 +201,14 @@ public sealed class TextureSet {
   public byte[,,] Get(string key) => _arrays.TryGetValue(key, out byte[,,]? v) ? v : MissingImage;
 
   private static byte[,,] Decode(string path) {
-    using SKBitmap raw =
-      SKBitmap.Decode(path) ?? throw new IOException($"{path}: not a decodable image");
-    using SKBitmap rgba =
-      raw.Copy(SKColorType.Rgba8888) ?? throw new IOException($"{path}: cannot convert to RGBA");
+    using SKCodec codec = SKCodec.Create(path) ?? throw new IOException($"{path}: not a decodable image");
+    // Decoded straight into unpremultiplied RGBA, matching PIL's convert("RGBA"): SKBitmap.Decode
+    // defaults to premultiplied alpha, which darkens every partially transparent texel.
+    var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
+    using SKBitmap rgba = new(info);
+    SKCodecResult result = codec.GetPixels(info, rgba.GetPixels());
+    if (result != SKCodecResult.Success && result != SKCodecResult.IncompleteInput)
+      throw new IOException($"{path}: cannot decode to RGBA ({result})");
     int w = rgba.Width;
     int h = rgba.Height;
     ReadOnlySpan<byte> pixels = rgba.GetPixelSpan();

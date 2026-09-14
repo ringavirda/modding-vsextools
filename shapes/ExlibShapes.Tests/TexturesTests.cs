@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using Newtonsoft.Json;
+using Vintagestory.API.Common;
 using Xunit;
 
 namespace ExpandedLib.Shapes.Tests;
@@ -61,7 +64,11 @@ public class TexturesTests {
   [Fact]
   public void Texture_set_loads_arrays_and_flags_missing() {
     LoadedShape shape = ShapeFile.Load(FixturePath.Of("items/machined/item-lathed-cylinder.json"));
-    TextureSet ts = TextureSet.ForShape(shape, Roots);
+    // cast-iron1 resolves under the "test" domain the fixture shape carries
+    // (fixtures/mods/test/assets/test/textures/materials/cast-iron1.png), not the
+    // textures/repo tree the domain-resolution facts above use.
+    TextureRoots roots = TextureRoots.From(Game, FixturePath.Of(""));
+    TextureSet ts = TextureSet.ForShape(shape, roots);
     Assert.Equal(4, ts.Get("cast-iron1").GetLength(2));
     Assert.False(ts.Missing.Contains("cast-iron1"));
   }
@@ -69,13 +76,19 @@ public class TexturesTests {
   [Fact]
   public void An_unresolved_key_gets_the_magenta_placeholder() {
     LoadedShape shape = ShapeFile.Load(FixturePath.Of("items/machined/item-lathed-cylinder.json"));
+    // The same way the Python test does: inject a key into the shape's own textures map that
+    // names a texture nothing can resolve, rather than querying a key the shape never had (which
+    // only exercises TextureSet.Get's fallback, not ForShape's own Missing bookkeeping).
+    var textures = new Dictionary<string, string>(shape.Textures) { ["ghost"] = "block/no/such/texture" };
+    Shape raw = JsonConvert.DeserializeObject<Shape>(
+      File.ReadAllText(FixturePath.Of("items/machined/item-lathed-cylinder.json"))
+    )!;
+    LoadedShape ghosted = ShapeFile.FromRaw(raw, shape.Path, textures);
     TextureRoots roots = TextureRoots.From(Game, Repo);
-    TextureSet ts = TextureSet.ForShape(shape, roots);
-    // cast-iron1 is a real wsl path in the fixture shape, resolvable against no repo at all here -
-    // force a miss the same way the Python test does, by resolving a key the shape never had.
-    Assert.True(ts.Get("no-such-key").GetLength(0) == 16 && ts.Get("no-such-key").GetLength(1) == 16);
-    Assert.Equal(255, ts.Get("no-such-key")[0, 0, 0]);
-    Assert.Equal(0, ts.Get("no-such-key")[0, 0, 1]);
-    Assert.Equal(255, ts.Get("no-such-key")[0, 0, 2]);
+    TextureSet ts = TextureSet.ForShape(ghosted, roots);
+    Assert.Contains("ghost", ts.Missing);
+    Assert.Equal(255, ts.Get("ghost")[0, 0, 0]);
+    Assert.Equal(0, ts.Get("ghost")[0, 0, 1]);
+    Assert.Equal(255, ts.Get("ghost")[0, 0, 2]);
   }
 }
