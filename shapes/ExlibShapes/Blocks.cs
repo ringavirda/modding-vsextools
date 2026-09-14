@@ -59,23 +59,31 @@ public sealed record ResolvedBlock(
 /// </para>
 /// </summary>
 public sealed class BlockIndex {
-  // Every blocktype file's own convention: the family's per-mod mods/<mod>/, or a single-mod
-  // repo's src/<project>/ (shipped) and tests/<project>/goldens/ (code-first).
+  // Every blocktype file's own convention: the family's per-mod mods/<mod>/ and the published old
+  // mods kept under legacy/<mod>/, or a single-mod repo's src/<project>/ and samples/<project>/
+  // (shipped) and tests/<project>/goldens/ (code-first).
   private static readonly (string WildcardDir, string[] Literal)[] BlocktypeTrees = [
     ("mods", ["assets"]),
     ("mods", ["tests", "goldens"]),
+    ("legacy", ["assets"]),
+    ("legacy", ["tests", "goldens"]),
     ("src", ["assets"]),
+    ("samples", ["assets"]),
+    ("samples", ["tests", "goldens"]),
     ("tests", ["goldens"]),
   ];
 
   // A domain's real assets - shapes, textures, worldproperties - live only under one of these,
   // never under tests/*/goldens/: exlib ships framework-only blocks there with no shipped shapes
   // of their own domain elsewhere, so a blocktype found in goldens still resolves its shape here.
-  private static readonly string[] AssetRootTrees = ["mods", "src"];
+  // A domain can have a root in more than one tree (the old exlib under legacy/ declares the same
+  // domain as the framework's src/), looked up in this order: the current tree answers first and
+  // the old one only for a file it alone holds.
+  private static readonly string[] AssetRootTrees = ["mods", "src", "samples", "legacy"];
 
   private readonly Dictionary<string, List<Variant>> _byCode = new(StringComparer.Ordinal);
   private readonly List<string> _order = [];
-  private readonly Dictionary<string, string> _domainRoots;
+  private readonly Dictionary<string, List<string>> _domainRoots;
   private readonly Dictionary<string, List<string>> _ambiguities = new(StringComparer.Ordinal);
 
   /// <summary>Selector to every distinct source file its match spanned, sorted - populated as
@@ -85,7 +93,7 @@ public sealed class BlockIndex {
   public IReadOnlyDictionary<string, IReadOnlyList<string>> Ambiguities =>
     _ambiguities.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<string>)kv.Value);
 
-  private BlockIndex(List<Variant> variants, Dictionary<string, string> domainRoots) {
+  private BlockIndex(List<Variant> variants, Dictionary<string, List<string>> domainRoots) {
     _domainRoots = domainRoots;
     foreach (Variant v in variants) {
       if (!_byCode.TryGetValue(v.Code, out List<Variant>? list)) {
@@ -99,27 +107,32 @@ public sealed class BlockIndex {
 
   /// <summary>
   /// Builds the index from every blocktype file under <paramref name="roots"/> (each root's
-  /// <c>mods/*/assets/*/blocktypes/**</c>, <c>mods/*/tests/goldens/*/blocktypes/**</c>,
-  /// <c>src/*/assets/*/blocktypes/**</c>, <c>tests/*/goldens/*/blocktypes/**</c>), plus the game
-  /// install's own <c>assets/survival/blocktypes/**</c> under each root's <c>.game/&lt;version&gt;</c>
-  /// (the latest version present).
+  /// <c>mods/*/assets/*/blocktypes/**</c>, <c>mods/*/tests/goldens/*/blocktypes/**</c>, the same
+  /// two under <c>legacy/*</c>, <c>src/*/assets/*/blocktypes/**</c>,
+  /// <c>samples/*/assets/*/blocktypes/**</c>, <c>samples/*/tests/goldens/*/blocktypes/**</c> and
+  /// <c>tests/*/goldens/*/blocktypes/**</c>), plus the game install's own
+  /// <c>assets/survival/blocktypes/**</c> under each root's <c>.game/&lt;version&gt;</c> (the
+  /// latest version present). Symbolic links along a <c>.game</c> path are resolved first, so
+  /// two roots linking the same install contribute its files once.
   /// </summary>
   public static BlockIndex Build(IReadOnlyList<string> roots, string? gamePath = null) {
     // An explicit `--game` (a game install directory, the same one GameInstall.Resolve returns)
     // overrides every root's own `.game/<version>` discovery, for both the domain root and the
     // blocktype files it contributes - a caller pointing this index at a different install than
     // whichever one a root's own checkout carries.
-    string? explicitSurvival = gamePath != null ? Path.Combine(gamePath, "assets", "survival") : null;
+    string? explicitSurvival =
+      gamePath != null ? RealPath(Path.Combine(gamePath, "assets", "survival")) : null;
 
-    var domainRoots = new Dictionary<string, string>(StringComparer.Ordinal);
-    foreach (string root in roots) {
-      foreach (string wildcardDir in AssetRootTrees)
+    var domainRoots = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+    foreach (string wildcardDir in AssetRootTrees)
+      foreach (string root in roots)
         foreach ((string domain, string dir) in GlobAssetRoots(root, wildcardDir))
           if (domain != "game")
-            domainRoots.TryAdd(domain, dir);
+            AddDomainRoot(domainRoots, domain, dir);
+    foreach (string root in roots) {
       string? survivalForRoots = explicitSurvival ?? GameSurvival(root);
       if (survivalForRoots != null)
-        domainRoots.TryAdd("game", survivalForRoots);
+        AddDomainRoot(domainRoots, "game", survivalForRoots);
     }
 
     var variants = new List<Variant>();
@@ -129,7 +142,7 @@ public sealed class BlockIndex {
         foreach ((string domain, string file) in GlobBlocktypes(root, wildcardDir, literal)) {
           if (!seen.Add(file))
             continue;
-          variants.AddRange(Expand(file, domain, domainRoots.GetValueOrDefault(domain)));
+          variants.AddRange(Expand(file, domain, domainRoots.GetValueOrDefault(domain) ?? []));
         }
 
       string? survival = explicitSurvival ?? GameSurvival(root);
@@ -145,11 +158,20 @@ public sealed class BlockIndex {
       ) {
         if (!seen.Add(file))
           continue;
-        variants.AddRange(Expand(file, "game", survival));
+        variants.AddRange(Expand(file, "game", [survival]));
       }
     }
 
     return new BlockIndex(variants, domainRoots);
+  }
+
+  private static void AddDomainRoot(Dictionary<string, List<string>> domainRoots, string domain, string dir) {
+    if (!domainRoots.TryGetValue(domain, out List<string>? dirs)) {
+      dirs = [];
+      domainRoots[domain] = dirs;
+    }
+    if (!dirs.Contains(dir))
+      dirs.Add(dir);
   }
 
   /// <summary>The repository <paramref name="file"/> sits in (the nearest ancestor holding
@@ -213,20 +235,31 @@ public sealed class BlockIndex {
     int colon = value.IndexOf(':');
     string domain = colon >= 0 ? value[..colon] : "game";
     string rel = colon >= 0 ? value[(colon + 1)..] : value;
-    if (!_domainRoots.TryGetValue(domain, out string? root))
+    if (!_domainRoots.TryGetValue(domain, out List<string>? roots))
       return null;
-    string texturesRoot = Path.Combine(root, "textures");
-    return rel.Contains('*') ? GlobOne(texturesRoot, rel + ".png") : ExistingFile(texturesRoot, rel + ".png");
+    foreach (string root in roots) {
+      string texturesRoot = Path.Combine(root, "textures");
+      string? found = rel.Contains('*')
+        ? GlobOne(texturesRoot, rel + ".png")
+        : ExistingFile(texturesRoot, rel + ".png");
+      if (found != null)
+        return found;
+    }
+    return null;
   }
 
   private string? ShapePath(string baseCode) {
     int colon = baseCode.IndexOf(':');
     string domain = colon >= 0 ? baseCode[..colon] : "game";
     string rel = colon >= 0 ? baseCode[(colon + 1)..] : baseCode;
-    if (!_domainRoots.TryGetValue(domain, out string? root))
+    if (!_domainRoots.TryGetValue(domain, out List<string>? roots))
       return null;
-    string p = Path.Combine(root, "shapes", rel + ".json");
-    return File.Exists(p) ? p : null;
+    foreach (string root in roots) {
+      string p = Path.Combine(root, "shapes", rel + ".json");
+      if (File.Exists(p))
+        return p;
+    }
+    return null;
   }
 
   private Variant? Find(string domain, string path, bool isRegex, string selectorText) {
@@ -369,7 +402,7 @@ public sealed class BlockIndex {
   // A selector's `*` wildcard as a fullmatch regex; every other character is literal.
   private static Regex GlobRegex(string text) => new("^" + Regex.Escape(text).Replace(@"\*", ".*") + "$");
 
-  private static List<Variant> Expand(string path, string domain, string? domainRoot) {
+  private static List<Variant> Expand(string path, string domain, IReadOnlyList<string> domainRoots) {
     JObject raw;
     try {
       if (JToken.Parse(File.ReadAllText(path)) is not JObject parsed || parsed["code"] == null)
@@ -389,7 +422,7 @@ public sealed class BlockIndex {
         if (g["states"] is JArray states)
           axes.Add((gcode, [.. states.Select(s => (string)s!)]));
         else if ((string?)g["loadFromProperties"] is { } reference)
-          axes.Add((gcode, PropertyStates(reference, domainRoot)));
+          axes.Add((gcode, PropertyStates(reference, domainRoots)));
       }
 
     List<Dictionary<string, string>> combos = [[]];
@@ -420,13 +453,13 @@ public sealed class BlockIndex {
   }
 
   // The Code of every variant a loadFromProperties group's worldproperties file lists, in file
-  // order; empty when the root is unknown or the file is missing, so that axis drops out of
-  // expansion rather than failing the whole blocktype.
-  private static List<string> PropertyStates(string reference, string? domainRoot) {
-    if (domainRoot == null)
-      return [];
-    string p = Path.Combine(domainRoot, "worldproperties", reference + ".json");
-    if (!File.Exists(p))
+  // order, from the first domain root holding the file; empty when no root does, so that axis
+  // drops out of expansion rather than failing the whole blocktype.
+  private static List<string> PropertyStates(string reference, IReadOnlyList<string> domainRoots) {
+    string? p = domainRoots
+      .Select(root => Path.Combine(root, "worldproperties", reference + ".json"))
+      .FirstOrDefault(File.Exists);
+    if (p == null)
       return [];
     try {
       if (JToken.Parse(File.ReadAllText(p)) is not JObject data || data["variants"] is not JArray variants)
@@ -493,6 +526,7 @@ public sealed class BlockIndex {
     string game = Path.Combine(root, ".game");
     if (!Directory.Exists(game))
       return null;
+    game = RealPath(game);
     List<string> versions = [
       .. Directory
         .EnumerateDirectories(game)
@@ -504,6 +538,23 @@ public sealed class BlockIndex {
         return survival;
     }
     return null;
+  }
+
+  // The path with every symbolic link along it resolved: the family's checkouts each link .game to
+  // one shared install, and only the resolved path lets the same vanilla file reached through two
+  // roots dedupe as one entry instead of resolving a selector ambiguously against itself.
+  private static string RealPath(string path) {
+    string full = Path.GetFullPath(path);
+    string current = Path.GetPathRoot(full) is { Length: > 0 } root ? root : Path.DirectorySeparatorChar.ToString();
+    foreach (
+      string part in full[current.Length..].Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries)
+    ) {
+      current = Path.Combine(current, part);
+      FileSystemInfo info = Directory.Exists(current) ? new DirectoryInfo(current) : new FileInfo(current);
+      if (info.LinkTarget != null && info.ResolveLinkTarget(true) is { } target)
+        current = target.FullName;
+    }
+    return current;
   }
 
   // Splits a version folder name on '.' and compares part by part numerically, a non-numeric part

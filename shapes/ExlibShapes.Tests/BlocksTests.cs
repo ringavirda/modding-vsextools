@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -115,6 +116,47 @@ public class BlocksTests {
     Assert.Equal(2, files!.Count);
     Assert.Contains(files, f => f.EndsWith("cobble-coral.json"));
     Assert.Contains(files, f => f.EndsWith("cobble/cobblestone.json"));
+  }
+
+  [Fact]
+  public void Legacy_and_sample_trees_contribute_blocktypes_and_their_own_assets() {
+    // The published old mods live under legacy/<mod>/assets and a single-mod repo's samples under
+    // samples/<project>/ with their goldens - the trees the wiki's first figures found missing.
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+
+    ResolvedBlock? gate = index.Resolve("old:gate-shut");
+    Assert.NotNull(gate);
+    Assert.EndsWith(
+      Path.Combine("legacy", "old", "assets", "old", "shapes", "block", "gate.json"),
+      gate!.ShapePath
+    );
+
+    ResolvedBlock? post = index.Resolve("sample:post-*");
+    Assert.NotNull(post);
+    Assert.Equal("sample:post-short", post!.Code);
+    Assert.EndsWith(
+      Path.Combine("samples", "Post", "assets", "sample", "shapes", "block", "post.json"),
+      post.ShapePath
+    );
+  }
+
+  [Fact]
+  public void Two_roots_linking_one_install_index_its_files_once() {
+    // exlib and exmods each link .game to the workspace's one install; a selector matching a
+    // vanilla file must not come out ambiguous between that file's two spellings.
+    string linked = Path.Combine(Path.GetTempPath(), "exlib-shapes-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(linked);
+    Directory.CreateSymbolicLink(Path.Combine(linked, ".game"), Path.Combine(GameRoot, ".game"));
+    try {
+      BlockIndex index = BlockIndex.Build([GameRoot, linked]);
+      Assert.NotNull(index.Resolve("game:cobblestone-andesite"));
+      Assert.Empty(index.Ambiguities);
+
+      index.Resolve("game:cobblestone-*");
+      Assert.Equal(2, index.Ambiguities["game:cobblestone-*"].Count);
+    } finally {
+      Directory.Delete(linked, true);
+    }
   }
 
   [Fact]

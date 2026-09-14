@@ -1,0 +1,20 @@
+{
+	"textures": {
+		"gate": "old:block/gate"
+	},
+	"elements": [
+		{
+			"name": "gate",
+			"from": [0, 0, 0],
+			"to": [16, 16, 16],
+			"faces": {
+				"north": { "texture": "#gate", "uv": [0, 0, 16, 16] },
+				"east": { "texture": "#gate", "uv": [0, 0, 16, 16] },
+				"south": { "texture": "#gate", "uv": [0, 0, 16, 16] },
+				"west": { "texture": "#gate", "uv": [0, 0, 16, 16] },
+				"up": { "texture": "#gate", "uv": [0, 0, 16, 16] },
+				"down": { "texture": "#gate", "uv": [0, 0, 16, 16] }
+			}
+		}
+	]
+}

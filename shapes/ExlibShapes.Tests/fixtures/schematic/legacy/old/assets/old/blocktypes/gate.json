@@ -1,0 +1,10 @@
+{
+  "code": "gate",
+  "variantgroups": [
+    { "code": "state", "states": ["shut", "open"] }
+  ],
+  "shape": { "base": "old:block/gate" },
+  "textures": {
+    "gate": { "base": "old:block/gate" }
+  }
+}

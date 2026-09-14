@@ -1,0 +1,10 @@
+{
+  "code": "post",
+  "variantgroups": [
+    { "code": "height", "states": ["short", "tall"] }
+  ],
+  "shape": { "base": "sample:block/post" },
+  "textures": {
+    "post": { "base": "sample:block/post" }
+  }
+}
