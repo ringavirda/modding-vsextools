@@ -36,14 +36,22 @@ resolve_extools() {
     have="$(git -C "$dest" describe --tags --exact-match 2>/dev/null || true)"
     if [[ "$have" != "$tag" ]]; then
       echo "exmod: moving .extools from ${have:-an untagged commit} to $tag" >&2
-      git -C "$dest" fetch --quiet --depth 1 origin "refs/tags/$tag:refs/tags/$tag"
-      git -c advice.detachedHead=false -C "$dest" checkout --quiet "$tag"
+      checkout_pinned_tag "$dest" "$tag"
     fi
   else
     echo "exmod: cloning extools $tag into .extools/" >&2
-    git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$tag" "$url" "$dest"
+    # The clone takes the default branch and leaves the tree empty: --branch naming an annotated
+    # tag makes git warn that the ref is not a commit, and the tag is checked out next anyway.
+    git clone --quiet --depth 1 --no-checkout "$url" "$dest"
+    checkout_pinned_tag "$dest" "$tag"
   fi
   printf '%s' "$dest"
+}
+
+# Fetches tag $2 into the checkout at $1, shallow, and leaves it checked out detached.
+checkout_pinned_tag() {
+  git -C "$1" fetch --quiet --depth 1 origin "refs/tags/$2:refs/tags/$2"
+  git -c advice.detachedHead=false -C "$1" checkout --quiet "$2"
 }
 
 # pwsh: $PWSH, then PATH, then the repo-local tool install, made on first use.

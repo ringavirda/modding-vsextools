@@ -27,6 +27,13 @@ turns that front toward the isometric camera, which stands to the south-east. `-
 `--angle` still override the choice, the plans keep north up, and both manifests name the side the
 front looks toward under `front`.
 
+A first run of a generated repository's launcher no longer prints git's
+`refs/tags/v0.3.1 ... is not a commit!`: the clone of the pinned tools takes the default branch
+with nothing checked out, and the annotated tag is fetched and checked out after it, the way an
+already-cloned `.extools/` moves between pins. The generated README says plain `setup` provisions
+the dedicated server only and names what fetches the client the launch configurations point at,
+`.game/<series>/Vintagestory.dll`.
+
 ## [0.3.1] - 2026-09-14
 
 A fresh clone works: `setup` used to run the API patcher from inside the tools checkout, where

@@ -631,12 +631,14 @@ Needs the .NET 10 SDK on PATH, and network access to cdn.vintagestory.at (setup 
 
 The first `setup` takes a few minutes - it is fetching a game install and a mod release, not just restoring packages - and prints its own progress under `==` headers (`.NET`, `Vintage Story`, `Restore`, `Dependency mods`) before ending on `Ready.` and a short list of what to run next.
 
+Plain `setup` provisions the dedicated server only, which is every assembly the build, the tests and `smoke` need. The client the launch configurations point at (`.game/<series>/Vintagestory.dll`) is a separate, far larger download and no part of it: F5's launch-prep task fetches one, as do `setup <series> -Kind client` and `exmod client -Provision` (plain `exmod client` prints the command rather than downloading a gigabyte unasked).
+
 ## Using it
 
 ```
 git clone <this repo>
 cd {2}
-bash scripts/exmod.sh setup       # .NET, the game, exlib and its mods, restored
+bash scripts/exmod.sh setup       # .NET, the server build, exlib and its mods, restored
 bash scripts/exmod.sh build latest
 bash scripts/exmod.sh test latest
 bash scripts/exmod.sh smoke       # boots a real dedicated server with every mod loaded
@@ -664,10 +666,11 @@ from exlib's own templates - `exmod help scaffold` lists every kind.
 ## Running it in VS Code
 
 `.vscode/tasks.json` and `launch.json` carry a build/pack/test task per game series this repo
-supports, launch-prep composites that provision the game and stage the mods first, and one launch
-configuration per series that boots the game with them loaded - opening this repo in VS Code and
-hitting F5 does the same thing `bash scripts/exmod.sh build latest && exmod stage && exmod client`
-would, with the game's own log in the debug console.
+supports, launch-prep composites that provision the client build (`.game/<series>/Vintagestory.dll`,
+which plain `setup` does not fetch) and stage the mods first, and one launch configuration per
+series that boots the game with them loaded - opening this repo in VS Code and hitting F5 does the
+same thing `bash scripts/exmod.sh build latest && exmod stage && exmod client` would, with the
+game's own log in the debug console.
 
 ## Licence
 
