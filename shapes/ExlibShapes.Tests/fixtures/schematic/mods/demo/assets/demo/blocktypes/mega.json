@@ -1,0 +1,23 @@
+{
+  "code": "mega",
+  // A filler-only megablock, drawn the way the old mods draw theirs: the body is authored along
+  // local -z while the footprint is declared along +z, and the spin lives in rotateYByType.
+  "variantgroups": [
+    { "code": "side", "states": ["north", "east", "south", "west"] }
+  ],
+  "shape": {
+    "base": "demo:block/mega",
+    "rotateYByType": {
+      "*-north": 0,
+      "*-east": 270,
+      "*-south": 180,
+      "*-west": 90
+    }
+  },
+  "textures": {
+    "all": { "base": "demo:block/wall" }
+  },
+  "attributes": {
+    "fillerOffsets": [{ "x": 0, "y": 0, "z": 1 }]
+  }
+}

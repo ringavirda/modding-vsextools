@@ -215,12 +215,12 @@ internal static class Program {
     List<string> extraRoots = OptAllOf(flags, "--roots");
     string? game = OptOf(flags, "--game");
 
-    Layout layout = Layout.Load(file);
+    List<string> roots = [.. extraRoots, .. BlockIndex.DefaultRoots(file)];
+    BlockIndex index = BlockIndex.Build(roots, game, BlockIndex.UnderLegacyTree(file));
+    Layout layout = Footprint.Placed(Layout.Load(file, DrawnVariant(index, file, null)?.Path), index);
     if (angle != 0)
       layout = layout.Rotated(angle);
 
-    List<string> roots = [.. extraRoots, .. BlockIndex.DefaultRoots(file)];
-    BlockIndex index = BlockIndex.Build(roots, game, BlockIndex.UnderLegacyTree(file));
     HashSet<string> viewSet = [.. views.Split(',')];
     Directory.CreateDirectory(outDir);
     string stem = Path.GetFileNameWithoutExtension(file);
@@ -281,6 +281,21 @@ internal static class Program {
     if (warnings.Count > 0)
       Console.WriteLine("warnings: [" + string.Join(", ", warnings.Select(w => (string)w!)) + "]");
     return 0;
+  }
+
+  // The variant a picture of FILE's family is drawn for: the one `wanted` names (a full code or a
+  // bare path), else the family's north-facing variant, else its first. Null when the index holds
+  // no variant from that file; throws when `wanted` names none of them.
+  private static Variant? DrawnVariant(BlockIndex index, string file, string? wanted) {
+    IReadOnlyList<Variant> variants = index.VariantsOf(file);
+    if (wanted == null)
+      return BlockIndex.NorthFacing(variants) ?? variants.FirstOrDefault();
+    foreach (Variant v in variants)
+      if (v.Code == wanted || v.Path == wanted)
+        return v;
+    throw new UsageException(
+      $"no such variant: {wanted} ({(variants.Count == 0 ? "the file expanded to none" : string.Join(", ", variants.Select(v => v.Path)))})"
+    );
   }
 
   private static int RunTree(string[] args) {

@@ -44,6 +44,10 @@ public static class Schematic {
   private const string FillerColor = "#BFBFBF";
   private const string FillerTextureKey = "__filler";
 
+  /// <summary>The element and texture-key prefix <see cref="Compose"/> gives a filler-only
+  /// megablock's own body, which no numbered cell names.</summary>
+  public const string PrincipalPrefix = "principal";
+
   // Vintage Story facing normals in the XZ plane: north -Z, south +Z, east +X, west -X.
   private static readonly Dictionary<string, (int Dx, int Dz)> ArrowDir = new(StringComparer.Ordinal) {
     ["n"] = (0, -1), ["s"] = (0, 1), ["e"] = (1, 0), ["w"] = (-1, 0),
@@ -312,11 +316,17 @@ public static class Schematic {
   }
 
   /// <summary>
-  /// The composite raw shape JSON for <paramref name="layout"/> (every non-optional, resolved
-  /// cell's shape, translated and rotated into place, plus a box per filler cell) and the texture
-  /// values (key to the resolved block's own value string) it references. <paramref name="cutAt"/>
-  /// omits every cell and filler above that Y layer. A cell whose selector is unresolved or
-  /// optional (drawn as air) is omitted.
+  /// The composite raw shape JSON for <paramref name="layout"/> and the texture values (key to the
+  /// resolved block's own value string) it references.
+  /// <para>
+  /// Every non-optional, resolved cell's shape is translated and rotated into place, with a grey box
+  /// per filler cell; a filler-only megablock, which no numbered cell names, draws
+  /// <see cref="Layout.Principal"/>'s own shape at the anchor instead.
+  /// </para>
+  /// <para>
+  /// <paramref name="cutAt"/> omits every cell and filler above that Y layer. A cell whose selector
+  /// is unresolved or optional (drawn as air) is omitted.
+  /// </para>
   /// </summary>
   public static (JObject Raw, Dictionary<string, string> TextureValues) Compose(
     Layout layout,
@@ -335,6 +345,18 @@ public static class Schematic {
       if (block == null)
         continue;
       (JObject group, Dictionary<string, string> values) = WrappedCell(block, new Offset(c.X, c.Y, c.Z), $"c{i}");
+      elements.Add(group);
+      foreach ((string key, string value) in values)
+        textureValues[key] = value;
+    }
+
+    if (
+      layout.Cells.Count == 0
+      && layout.Principal != null
+      && (cutAt == null || layout.Anchor.Y <= cutAt)
+      && index.Resolve(layout.Principal) is { } principal
+    ) {
+      (JObject group, Dictionary<string, string> values) = WrappedCell(principal, layout.Anchor, PrincipalPrefix);
       elements.Add(group);
       foreach ((string key, string value) in values)
         textureValues[key] = value;
@@ -363,11 +385,16 @@ public static class Schematic {
     foreach ((string prefixed, string value) in textureValues) {
       if (index.ResolveTexture(value) != null)
         continue;
-      // Compose keys a cell's textures `c{cell index}_{key}`.
+      // Compose keys a cell's textures `c{cell index}_{key}` and a megablock's own body
+      // `principal_{key}`.
       int underscore = prefixed.IndexOf('_');
-      int cell = int.Parse(prefixed[1..underscore], CultureInfo.InvariantCulture);
+      string owner = prefixed[..underscore];
       string key = prefixed[(underscore + 1)..];
-      string code = index.Resolve(layout.Numbers[layout.Cells[cell].Number])?.Code ?? "?";
+      string? selector =
+        owner == PrincipalPrefix
+          ? layout.Principal
+          : layout.Numbers[layout.Cells[int.Parse(owner[1..], CultureInfo.InvariantCulture)].Number];
+      string code = (selector != null ? index.Resolve(selector)?.Code : null) ?? "?";
       lines.Add($"{code}: texture {key} ({value}) not found");
     }
     return [.. lines];

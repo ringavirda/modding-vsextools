@@ -172,15 +172,7 @@ public sealed class BlockIndex {
         foreach ((string domain, string file) in GlobBlocktypes(root, wildcardDir, literal)) {
           if (!seen.Add(file))
             continue;
-          variants.AddRange(
-            Expand(
-              file,
-              domain,
-              domainRoots.GetValueOrDefault(domain) ?? [],
-              parseWarnings,
-              wildcardDir == "legacy"
-            )
-          );
+          variants.AddRange(Expand(file, domain, domainRoots, parseWarnings, wildcardDir == "legacy"));
         }
 
       IReadOnlyList<string> gameDirs = explicitDirs ?? GameAssetDirsOf(root);
@@ -195,7 +187,7 @@ public sealed class BlockIndex {
         ) {
           if (!seen.Add(file))
             continue;
-          variants.AddRange(Expand(file, "game", gameDirs, parseWarnings));
+          variants.AddRange(Expand(file, "game", domainRoots, parseWarnings));
         }
       }
     }
@@ -250,6 +242,35 @@ public sealed class BlockIndex {
       if (empty)
         return null;
     }
+    return null;
+  }
+
+  /// <summary>
+  /// Every variant <paramref name="sourceFile"/> expanded to, in the order
+  /// <see cref="Build"/> generated them (the file's own <c>variantgroups</c>, first axis slowest).
+  /// Empty when no indexed blocktype came from that file - compare by full path.
+  /// </summary>
+  public IReadOnlyList<Variant> VariantsOf(string sourceFile) {
+    string full = Path.GetFullPath(sourceFile);
+    List<Variant> found = [];
+    foreach (string code in _order)
+      foreach (Variant v in _byCode[code])
+        if (string.Equals(Path.GetFullPath(v.SourceFile), full, StringComparison.Ordinal))
+          found.Add(v);
+    return found;
+  }
+
+  /// <summary>
+  /// The north-facing member of <paramref name="variants"/> - the one whose <c>side</c> or
+  /// <c>orientation</c> axis stands at <c>north</c>/<c>n</c> - or null when the family is not
+  /// horizontally oriented (a flywheel's <c>ns</c>/<c>we</c> axis names no facing). A caller
+  /// drawing one variant of a family falls back to the first.
+  /// </summary>
+  public static Variant? NorthFacing(IReadOnlyList<Variant> variants) {
+    foreach (Variant v in variants)
+      foreach (string axis in new[] { "side", "orientation" })
+        if (v.States.TryGetValue(axis, out string? state) && state is "north" or "n")
+          return v;
     return null;
   }
 
@@ -400,12 +421,21 @@ public sealed class BlockIndex {
     return new ResolvedBlock(
       variant.Code,
       shapePath,
-      (double?)shapeEntry?["rotateX"] ?? 0.0,
-      (double?)shapeEntry?["rotateY"] ?? 0.0,
-      (double?)shapeEntry?["rotateZ"] ?? 0.0,
+      Spin(shapeEntry, "rotateX", variant.Path),
+      Spin(shapeEntry, "rotateY", variant.Path),
+      Spin(shapeEntry, "rotateZ", variant.Path),
       textures
     );
   }
+
+  // A shape entry's own turn about one axis, read through the same ByType rule the entry itself
+  // was picked with: a `rotateYByType` object beside `base` wins with the entry whose wildcard key
+  // matches this variant, else the plain `rotateY`, else no turn. ppex's boilers and engines carry
+  // their spin in the ByType form only, and a block drawn unspun stands in the wrong frame.
+  private static double Spin(JObject? shapeEntry, string key, string path) =>
+    shapeEntry != null && ByType(shapeEntry, key, path) is JValue value && value.Type != JTokenType.Null
+      ? (double)value
+      : 0.0;
 
   // The game's "<key>ByType" convention: the first entry whose wildcard key WildcardUtil.Match
   // accepts for `path` (domain stripped), else the plain raw[baseKey]. Shared by shape/shapeByType,
@@ -469,7 +499,7 @@ public sealed class BlockIndex {
   private static List<Variant> Expand(
     string path,
     string domain,
-    IReadOnlyList<string> domainRoots,
+    IReadOnlyDictionary<string, List<string>> domainRoots,
     List<string> warnings,
     bool legacy = false
   ) {
@@ -530,15 +560,21 @@ public sealed class BlockIndex {
   }
 
   // A loadFromProperties group's worldproperties file: its own code and the Code of every variant
-  // it lists, in file order, from the first domain root holding the file; no code and no states
-  // when no root does, so that axis drops out of expansion rather than failing the whole blocktype.
+  // it lists, in file order, from the first root of the domain the reference names. A bare
+  // reference is the `game` domain, the game's own default for an asset location, which is where
+  // `abstract/horizontalorientation` - every oriented mod block's side axis - actually lives. No
+  // code and no states when no root holds the file, so that axis drops out of expansion rather than
+  // failing the whole blocktype.
   private static (string? Code, List<string> States) PropertyStates(
     string reference,
-    IReadOnlyList<string> domainRoots,
+    IReadOnlyDictionary<string, List<string>> domainRoots,
     List<string> warnings
   ) {
-    string? p = domainRoots
-      .Select(root => Path.Combine(root, "worldproperties", reference + ".json"))
+    int colon = reference.IndexOf(':');
+    string refDomain = colon >= 0 ? reference[..colon] : "game";
+    string rel = colon >= 0 ? reference[(colon + 1)..] : reference;
+    string? p = (domainRoots.GetValueOrDefault(refDomain) ?? [])
+      .Select(root => Path.Combine(root, "worldproperties", rel + ".json"))
       .FirstOrDefault(File.Exists);
     if (p == null)
       return (null, []);
