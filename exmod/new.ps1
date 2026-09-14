@@ -263,6 +263,158 @@ function ConvertTo-StarterTestCsproj([string]$Text, [string]$Label) {
 
 #endregion
 
+#region vscode
+
+# One process task running `scripts/exmod.ps1 <TaskArgs...>`, optionally carrying a "group" (a bare
+# quoted string, or the raw `{ "kind": ..., "isDefault": ... }` shape "Test: all" needs).
+function New-VsCodeTask([string]$Label, [string[]]$TaskArgs, [string]$Group = $null) {
+  $argLines = (@($TaskArgs) | ForEach-Object { "        `"$_`"" }) -join ",`n"
+  $groupLine = if ($Group) { "      `"group`": $Group,`n" } else { '' }
+  return @"
+    {
+      "label": "$Label",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoProfile",
+        "-File",
+        "`${workspaceFolder}/scripts/exmod.ps1",
+$argLines
+      ],
+$groupLine      "problemMatcher": []
+    }
+"@
+}
+
+# One `dependsOn` composite task (the two "launch-prep" shapes), run in sequence.
+function New-VsCodeDependsTask([string]$Label, [string[]]$DependsOn) {
+  $depLines = (@($DependsOn) | ForEach-Object { "        `"$_`"" }) -join ",`n"
+  return @"
+    {
+      "label": "$Label",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+$depLines
+      ],
+      "problemMatcher": []
+    }
+"@
+}
+
+# .vscode/tasks.json and launch.json for a generated repository, in the shape every family repo
+# hand-carries (see exmods/.vscode): a build/pack/test task per game series in $Series, the
+# launch-prep composites (provision-game + stage-mods) each feeds, and one launch configuration per
+# series, named after $RepoName. $Series[0] is the current ("latest") series - the same convention
+# exmod.ps1's own $GameTfms table uses - and every series after it is legacy. Both files are written
+# whole; the caller decides whether that means creating them once or rewriting them on every run.
+function Write-ExmodVsCode([string]$Dest, [string]$RepoName, [string[]]$Series) {
+  $latest = $Series[0]
+  $legacy = @($Series | Select-Object -Skip 1)
+
+  $tasks = [System.Collections.Generic.List[string]]::new()
+  $tasks.Add((New-VsCodeDependsTask "launch-prep (latest)" @("provision-game ($latest)", 'stage-mods (latest)')))
+  $tasks.Add((New-VsCodeTask 'stage-mods (latest)' @('stage')))
+  $tasks.Add((New-VsCodeTask 'Publish mods' @('pack')))
+
+  $testComment = @'
+    // ----------------------------------------------------------------------------------------
+    // Test runners - separate, independently-runnable targets per game version. Each builds the
+    // test projects for that version (auto-provisioning its game binaries on demand) and runs the
+    // suite; projects run in parallel. "Test: all" runs every version concurrently. Pick one from
+    // "Run Test Task", or run any via "Run Task".
+    // ----------------------------------------------------------------------------------------
+'@
+  $tasks.Add("`n$testComment`n" + (New-VsCodeTask "Test: latest ($latest)" @('test', 'latest') '"test"'))
+  foreach ($s in $legacy) {
+    $tasks.Add((New-VsCodeTask "Test: $s (legacy)" @('test', $s) '"test"'))
+  }
+  $tasks.Add((New-VsCodeTask 'Test: all versions (parallel)' @('test', 'all') '{ "kind": "test", "isDefault": true }'))
+  $tasks.Add((New-VsCodeTask "provision-game ($latest)" @('provision', 'game', '-Version', $latest, '-Kind', 'client')))
+
+  if ($legacy.Count -gt 0) {
+    $legacyComment = @'
+    // ----------------------------------------------------------------------------------------
+    // Legacy game versions. `exmod stage -Version <x.y>` builds the mods for that series (opting
+    // into -p:Legacy=true itself) and stages them into bin/Mods-<x.y>, so launch-prep for a legacy
+    // series is provisioning plus that one call.
+    // ----------------------------------------------------------------------------------------
+'@
+    $legacyTasks = [System.Collections.Generic.List[string]]::new()
+    foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeTask "provision-game ($s)" @('provision', 'game', '-Version', "$s.0", '-Kind', 'client'))) }
+    foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeDependsTask "launch-prep ($s)" @("provision-game ($s)", "stage-mods ($s)"))) }
+    foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeTask "stage-mods ($s)" @('stage', '-Version', $s))) }
+    $tasks.Add("`n$legacyComment`n" + ($legacyTasks -join ",`n"))
+  }
+
+  $vscodeDir = Join-Path $Dest '.vscode'
+  New-Item -ItemType Directory -Force -Path $vscodeDir | Out-Null
+  @"
+{
+  "version": "2.0.0",
+  "tasks": [
+$($tasks -join ",`n")
+  ]
+}
+"@ | Set-Content (Join-Path $vscodeDir 'tasks.json') -NoNewline
+
+  $configs = [System.Collections.Generic.List[string]]::new()
+  $configs.Add(@"
+    {
+      "name": "$RepoName (latest)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "launch-prep (latest)",
+      "program": "`${workspaceFolder}/.game/$latest/Vintagestory.dll",
+      "args": [
+        "--tracelog",
+        "--dataPath",
+        "`${workspaceFolder}/.gamedata",
+        "--addModPath",
+        "`${workspaceFolder}/bin/Mods"
+      ],
+      "cwd": "`${workspaceFolder}",
+      "env": { "DOTNET_ROOT": "`${workspaceFolder}/.dotnet" },
+      "stopAtEntry": false,
+      "console": "internalConsole",
+      "requireExactSource": false
+    }
+"@)
+  foreach ($s in $legacy) {
+    $configs.Add(@"
+    {
+      "name": "$RepoName ($s)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "launch-prep ($s)",
+      "program": "`${workspaceFolder}/.game/$s/Vintagestory.dll",
+      "args": [
+        "--tracelog",
+        "--dataPath",
+        "`${workspaceFolder}/.gamedata",
+        "--addModPath",
+        "`${workspaceFolder}/bin/Mods-$s"
+      ],
+      "cwd": "`${workspaceFolder}",
+      "env": { "DOTNET_ROOT": "`${workspaceFolder}/.dotnet" },
+      "stopAtEntry": false,
+      "console": "internalConsole",
+      "requireExactSource": false
+    }
+"@)
+  }
+
+  @"
+{
+  "version": "0.2.0",
+  "configurations": [
+$($configs -join ",`n")
+  ]
+}
+"@ | Set-Content (Join-Path $vscodeDir 'launch.json') -NoNewline
+}
+
+#endregion
+
 #region generate
 
 # Copies $Src into $Dest recursively, skipping bin/ and obj/ - the two folders every sample carries
@@ -503,6 +655,14 @@ before `setup` has produced one. `scaffold` puts a compiling, tested block, item
 multiblock, node, blockbehavior, entitybehavior, config, migration or command into an existing mod
 from exlib's own templates - `exmod help scaffold` lists every kind.
 
+## Running it in VS Code
+
+`.vscode/tasks.json` and `launch.json` carry a build/pack/test task per game series this repo
+supports, launch-prep composites that provision the game and stage the mods first, and one launch
+configuration per series that boots the game with them loaded - opening this repo in VS Code and
+hitting F5 does the same thing `bash scripts/exmod.sh build latest && exmod stage && exmod client`
+would, with the game's own log in the debug console.
+
 ## Licence
 
 MIT licensed; see LICENSE. The copyright line names whoever ran `exmod starter` - update it if
@@ -583,7 +743,7 @@ function Invoke-Starter([string[]]$Argv) {
   # solution further down, not wiped. exmod.json and the solution are rewritten in place, not
   # wiped-then-regenerated blind, for the same reason. .git, and anything else the owner added by
   # hand, is left alone too.
-  foreach ($p in (@($sampleIds | ForEach-Object { "mods/$_" }) + @('scripts', '.github',
+  foreach ($p in (@($sampleIds | ForEach-Object { "mods/$_" }) + @('scripts', '.github', '.vscode',
       'Directory.Packages.props', '.gitignore', '.gitattributes', '.editorconfig', '.csharpierrc',
       'LICENSE', 'README.md'))) {
     $full = Join-Path $dest $p
@@ -621,6 +781,8 @@ function Invoke-Starter([string[]]$Argv) {
     depends  = [pscustomobject]@{ exlib = [pscustomobject]@{ github = 'ringavirda/modding-vsexlib' } }
   }
   Write-ExmodManifest $manifestObj (Join-Path $dest 'exmod.json')
+
+  Write-ExmodVsCode -Dest $dest -RepoName $repoName -Series $manifestObj.series
 
   $scriptsDir = Join-Path $dest 'scripts'
   New-Item -ItemType Directory -Force -Path $scriptsDir | Out-Null
@@ -1148,6 +1310,14 @@ public class ${pascalName}SmokeTests {
   }
 
   Write-ExmodManifest $manifest $manifestPath
+
+  # Bootstraps .vscode/ for a repository that has none yet (a fresh checkout built up by hand with
+  # `new` rather than `exmod starter`) - left alone once it exists, since by then it may carry the
+  # owner's own launch configs or task edits this command has no business overwriting.
+  if (-not (Test-Path (Join-Path $RepoRoot '.vscode/tasks.json'))) {
+    $series = if ($manifest.PSObject.Properties['series'] -and $manifest.series) { @($manifest.series) } else { @(@($GameTfms.Keys)[0]) }
+    Write-ExmodVsCode -Dest $RepoRoot -RepoName (Split-Path $RepoRoot -Leaf) -Series $series
+  }
 
   Write-Host "Scaffolded mods/$modId$(if ($isModule) { ' (module)' }) and added it to exmod.json."
 }
