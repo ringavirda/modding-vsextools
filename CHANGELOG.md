@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.3.1] - 2026-09-14
+## [0.3.2] - 2026-09-14
 
 `exlib-shapes block FILE --out DIR [--variant CODE]` renders one blocktype variant the way the game
 draws it - its own shape under the turn its `shape`/`shapeByType` entry carries for that variant,
@@ -14,10 +14,11 @@ worldproperties file reads it from the domain the reference names - `game` when 
 which is where `abstract/horizontalorientation` actually lives.
 
 A megablock's schematic now stands its declared footprint in the frame its model is drawn in: the
-cells turn onto the body rather than away from it, its own body is drawn over a thin outline of the
-cells it reserves instead of under grey boxes, and a structure's filler cells keep theirs. Every
-plan SVG carries the layer it draws as a caption, the manifest lists each plan with its layer under
-`plans`, and the isometric composite carries a vertical scale, one tick per layer.
+cells turn onto the body rather than away from it at every facing, a megablock that also declares a
+`multiblockStructure` included, its own body is drawn over a thin outline of the cells it reserves
+instead of under grey boxes, and a structure's filler cells keep theirs. Every plan SVG carries the
+layer it draws as a caption, the manifest lists each plan with its layer under `plans`, and the
+isometric composite carries a vertical scale, one tick per layer.
 
 ## [0.3.0] - 2026-09-14
 

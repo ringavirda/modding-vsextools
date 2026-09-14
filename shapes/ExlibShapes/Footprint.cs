@@ -147,12 +147,28 @@ public static class Footprint {
   /// <summary>
   /// The quarter turn a drawing places <paramref name="layout"/>'s declared cells at around its
   /// principal's drawn mesh - the block's own structure angle, the one covering the mesh best
-  /// (<see cref="Frames"/>), taking the smallest of a tie. Zero when the principal resolves to no
-  /// shape file (a synthetic cube fills its own cell whichever way the footprint faces) or its shape
-  /// cannot be read, which leaves the declared frame as authored.
+  /// (<see cref="Frames"/>). Where several cover it equally the principal's own spin is taken, that
+  /// being the angle the block's art is placed at and the structure angle of every family whose C#
+  /// does not offset it; failing that, the smallest of the tie. Zero when the principal resolves to
+  /// no shape file (a synthetic cube fills its own cell whichever way the footprint faces) or its
+  /// shape cannot be read, which leaves the declared frame as authored.
   /// </summary>
-  public static int FrameAngle(Layout layout, BlockIndex index) =>
-    PrincipalMesh(layout, index) is { } mesh ? Frames(mesh, CellBox(Cells(layout)))[0] : 0;
+  public static int FrameAngle(Layout layout, BlockIndex index) {
+    if (PrincipalMesh(layout, index) is not { } mesh)
+      return 0;
+    IReadOnlyList<int> frames = Frames(mesh, CellBox(Cells(layout)));
+    int spin = PrincipalSpin(layout, index);
+    return frames.Contains(spin) ? spin : frames[0];
+  }
+
+  // The quarter turn the principal's own art is drawn at - its shape entry's rotateY, which the
+  // index has already resolved through the game's ByType rule. Zero when nothing resolves.
+  private static int PrincipalSpin(Layout layout, BlockIndex index) {
+    string? selector = layout.Principal ?? AnchorSelector(layout);
+    if (selector == null || index.Resolve(selector) is not { } block)
+      return 0;
+    return (((int)Math.Round(block.RotateY / 90) * 90 % 360) + 360) % 360;
+  }
 
   /// <summary><paramref name="layout"/> with its cells turned into the frame its principal's mesh is
   /// drawn in (<see cref="FrameAngle"/>), which is what every picture of it is laid out in.</summary>

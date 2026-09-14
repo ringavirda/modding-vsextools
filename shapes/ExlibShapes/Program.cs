@@ -296,7 +296,7 @@ internal static class Program {
     );
     string outDir = OptOf(flags, "--out") ?? throw new UsageException("--out is required");
     string? wanted = OptOf(flags, "--variant");
-    string? views = OptOf(flags, "--views");
+    IReadOnlyList<string>? views = NamedViews(OptOf(flags, "--views"));
     int ppu = int.Parse(OptOf(flags, "--ppu") ?? "24", CultureInfo.InvariantCulture);
     List<string> extraRoots = OptAllOf(flags, "--roots");
     string? game = OptOf(flags, "--game");
@@ -311,7 +311,7 @@ internal static class Program {
       variant,
       index,
       outDir,
-      views != null ? [.. views.Split(',')] : null,
+      views,
       ppu
     );
 
@@ -325,6 +325,22 @@ internal static class Program {
     foreach (JToken warning in (JArray)manifest["warnings"]!)
       Console.Error.WriteLine($"exlib-shapes: {(string)warning!}");
     return 0;
+  }
+
+  // The --views list split and checked against the views Renderer names, so a misspelt one is a
+  // usage error rather than a missing-key crash. Null for a null list, which draws the defaults.
+  private static IReadOnlyList<string>? NamedViews(string? views) {
+    if (views == null)
+      return null;
+    string[] names = views.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    foreach (string name in names)
+      if (!Renderer.NamedViews.ContainsKey(name))
+        throw new UsageException(
+          $"no such view: {name} (one of {string.Join(", ", Renderer.NamedViews.Keys)})"
+        );
+    if (names.Length == 0)
+      throw new UsageException($"--views names no view (one of {string.Join(", ", Renderer.NamedViews.Keys)})");
+    return names;
   }
 
   // The variant a picture of FILE's family is drawn for: the one `wanted` names (a full code or a

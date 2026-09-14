@@ -65,10 +65,10 @@ public sealed class Layout {
   public Offset Anchor { get; }
 
   /// <summary>
-  /// The selector of the block the file itself declares, drawn at <see cref="Anchor"/> - a
-  /// filler-only megablock's own body, which no <see cref="Cells"/> entry names. Null when a
-  /// structure table is present (its own cells name the principal) and when <see cref="Load"/> was
-  /// given no variant for a file that has <c>variantgroups</c>.
+  /// The selector of the block the file itself declares, drawn at <see cref="Anchor"/> - the
+  /// megablock's own body, which no <see cref="Cells"/> entry names. Widened to a <c>*</c> wildcard
+  /// when <see cref="Load"/> was given no variant for a file that has <c>variantgroups</c>, and null
+  /// when the path names no domain or the file no code.
   /// </summary>
   public string? Principal { get; }
 
@@ -153,7 +153,7 @@ public sealed class Layout {
       foreach (JProperty prop in rolesJson.Properties())
         roles[prop.Name] = ReadOffsets((JArray)prop.Value!);
 
-    return new Layout(cells, numbers, fillers, facings, connectors, roles);
+    return new Layout(cells, numbers, fillers, facings, connectors, roles, default, PrincipalOf(path, raw, variant));
   }
 
   // The file's own top-level attributesByType entry (a sibling of "attributes", the same

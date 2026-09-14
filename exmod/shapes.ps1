@@ -59,13 +59,13 @@ exmod schematic FILE --out=DIR [--views plan,iso] [--angle N] [--layer N|all] [-
   [--roots PATH...] [--game PATH]
 
 Renders a blocktype file's multiblockStructure or megablock footprint to a plan-grid SVG per Y
-layer, an isometric textured composite, and a manifest.json the wiki's directive reads - see
+layer, an isometric textured composite, and a `<stem>.json` manifest the wiki's directive reads - see
 shapes/ExlibShapes/README.md for the full option list and the standalone `exlib-shapes` tool.
 `--out` needs the `=` form here: PowerShell's own parameter binder treats a bare `--out` token as
 an ambiguous prefix of its common `-OutVariable`/`-OutBuffer` parameters and refuses it outright.
 
   FILE            the blocktype JSON to render
-  --out=DIR       where the SVGs, PNGs and manifest.json are written
+  --out=DIR       where the SVGs, PNGs and <stem>.json are written
   --views a,b     plan, iso, or both (default: plan,iso)
   --angle N       turn the structure before rendering (0, 90, 180 or 270)
   --layer N|all   an iso render cut at Y layer N, or one per layer with "all"
@@ -83,13 +83,13 @@ exmod block FILE --out=DIR [--variant CODE] [--views iso,north,east,south,west,u
 Renders one variant of a blocktype file the way the game draws it in the world - its own shape
 under its shapeByType turn, painted with its texture map, or a unit cube when it ships no shape -
 one PNG per view, plus the plan of the footprint it reserves when it declares one, and a
-manifest.json the wiki's generator reads. See shapes/ExlibShapes/README.md for the full option
+`<stem>.json` manifest the wiki's generator reads. See shapes/ExlibShapes/README.md for the full option
 list and the standalone `exlib-shapes` tool. `--out` needs the `=` form here: PowerShell's own
 parameter binder treats a bare `--out` token as an ambiguous prefix of its common
 `-OutVariable`/`-OutBuffer` parameters and refuses it outright.
 
   FILE            the blocktype JSON to render
-  --out=DIR       where the PNGs, the footprint SVG and manifest.json are written
+  --out=DIR       where the PNGs, the footprint SVG and <stem>.json are written
   --variant CODE  the variant to draw (default: the family's north-facing one, else its first)
   --views a,b     named views (south, north, east, west, up, down, iso); default: all but down
   --ppu N         pixels per shape unit (default: 24)
