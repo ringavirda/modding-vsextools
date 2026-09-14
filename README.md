@@ -24,6 +24,60 @@ lists every command; `exmod help <command>` describes one. The repository's `exm
 mods, samples, test projects, packable projects, game series and dependencies; the field list is in
 the Expanded Library wiki under Getting Started, "exmod in your repo".
 
+## Commands
+
+`bash scripts/exmod.sh` (or `exmod` inside a checkout with `pwsh` on `PATH`) prints this grouped;
+`exmod help <command>` describes one in detail.
+
+first run
+
+| command | what it does |
+|---|---|
+| `provision` | fetch the toolchain, the game or dependency mods |
+| `setup` | provision .NET, the game and dependency mods, then restore |
+| `starter` | generate the standalone starter repository |
+| `new` | scaffold an empty mod into this repository |
+| `scaffold` (`g`) | scaffold a block, item, recipe, megablock, multiblock, node, blockbehavior, entitybehavior, config, migration or command into a mod |
+
+source
+
+| command | what it does |
+|---|---|
+| `build` | compile the mods for one or more game series |
+| `test` | run the test suites, one lane per game version |
+| `format` | rewrite with CSharpier, then dotnet format |
+| `verify` | headless-check shipped assets, no game running |
+| `codes` | regenerate a mod's block-code table |
+| `check` | the gate: format, build, verify, test |
+| `clean` | delete build output (bin/obj, TestResults) |
+| `render` | render a shape file to textured views or animation frames |
+| `schematic` | render a multiblock/megablock layout to a build schematic |
+
+run
+
+| command | what it does |
+|---|---|
+| `client` | build, stage and launch the client |
+| `server` | build, stage and run a dedicated server |
+| `smoke` | boot a server, verify it, stop it |
+| `stage` | copy built mods into a Mods folder |
+| `logs` | tail a client or server log |
+
+package
+
+| command | what it does |
+|---|---|
+| `pack` | zip every mod for every game version |
+| `bundle` | the developer bundle: harness and generators |
+| `nuget` | the NuGet packages |
+| `release` | check that a version is ready to tag |
+
+machine
+
+| command | what it does |
+|---|---|
+| `fix-registry` | repoint Windows' Vintage Story file association |
+
 ## Layout
 
 ```
