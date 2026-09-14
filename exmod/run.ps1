@@ -44,7 +44,8 @@ function Get-RunModDirs([string]$Version, [string]$Configuration, [switch]$NoBui
       throw "Not built for $Version ($Configuration): $($missing -join ', '). Drop -NoBuild, or run 'exmod build $Version' first."
     }
     Write-Host "Building $Version (not yet built) ..."
-    Invoke-Build @($Version, '-Configuration', $Configuration)
+    # The build's console lines go to the host; only the directories below are this function's output.
+    Invoke-Build @($Version, '-Configuration', $Configuration) | Out-Host
   }
 
   $ownDirs = @($mods | ForEach-Object { & $outputDir $_ })
