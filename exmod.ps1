@@ -136,9 +136,8 @@ function Find-SingleCsproj([string]$Dir, [string]$Field) {
 }
 
 # The directory a mod's project resolves under: <path>/src when that folder holds exactly one
-# .csproj (the layout every real mod uses), otherwise <path> itself - including when src/ exists
-# but holds none, the flat layout the samples and a generated starter use (csproj beside a src/ of
-# .cs files, no csproj of its own).
+# .csproj (the layout every real mod, sample and generated starter uses), otherwise <path> itself -
+# a mod with no src/ split at all.
 function Get-ModProjectDir([string]$Path) {
   $srcDir = Join-Path $Path 'src'
   if ((Test-Path $srcDir) -and @(Get-ChildItem $srcDir -Filter '*.csproj' -File).Count -eq 1) { return $srcDir }
@@ -175,9 +174,9 @@ function Get-ExmodManifest {
 # Every mod this repo builds as its own, in manifest order (the build order: exlib before iiex
 # before siex is a real ProjectReference chain, not a discovery accident), id -> @{ Path; Project;
 # Tests; Overlays } (all absolute except Overlays). A mod's project is the single .csproj under
-# <path>/src when that folder holds one, or under <path> itself otherwise (including a src/ that
-# holds only sources - the flat layout the samples and a generated starter use); its test project
-# is the single .csproj under <path>/tests when that folder exists.
+# <path>/src when that folder holds one, or under <path> itself otherwise - every real mod, sample
+# and generated starter mod carries the split; its test project is the single .csproj under
+# <path>/tests when that folder exists.
 function Get-ExmodMods {
   $manifest = Get-ExmodManifest
   $out = [ordered]@{}

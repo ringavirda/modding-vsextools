@@ -41,9 +41,7 @@ function Write-ExmodManifest([pscustomobject]$Manifest, [string]$Path) {
         "  `"series`": [$items]"
       }
       'depends' {
-        $rows = @($prop.Value.PSObject.Properties | ForEach-Object {
-          "    `"$($_.Name)`": $($_.Value | ConvertTo-Json -Depth 10 -Compress)"
-        })
+        $rows = @($prop.Value.PSObject.Properties | ForEach-Object { '    ' + (ConvertTo-CompactModRow $_.Name $_.Value) })
         "  `"depends`": {`n" + ($rows -join ",`n") + "`n  }"
       }
       default {
@@ -116,7 +114,7 @@ function ConvertTo-StarterModCsproj([string]$Text, [string]$Label) {
          manifest and test-only settings this project has no use for.
          -p:ExlibRoot= (a global property) wins over this default and forces package mode. -->
     <ExlibRoot Condition="'$(ExlibRoot)' == ''"
-      >$(MSBuildThisFileDirectory)../../</ExlibRoot>
+      >$(MSBuildThisFileDirectory)../../../</ExlibRoot>
     <!-- Restore needs $(TargetFramework) (below, reading $(CurrentGameTfm)) before any package is
          present, so in package mode it can't come through ExpandedLib.props - the same reason the
          target framework list always stays in the consumer, never the package. Source mode's
@@ -126,7 +124,7 @@ function ConvertTo-StarterModCsproj([string]$Text, [string]$Label) {
       >net10.0</CurrentGameTfm>
   </PropertyGroup>
   <Import
-    Project="../../build/ExpandedLib.props"
+    Project="../../../build/ExpandedLib.props"
     Condition="'$(ExlibRoot)' != ''"
   />
 '@ @'
@@ -159,7 +157,7 @@ function ConvertTo-StarterModCsproj([string]$Text, [string]$Label) {
        the assets/ content glob and the AdditionalFiles feed for ExLangKeyGenerator). Source mode
        only, same reason as the .props import above. -->
   <Import
-    Project="../../build/ExpandedLib.targets"
+    Project="../../../build/ExpandedLib.targets"
     Condition="'$(ExlibRoot)' != ''"
   />
 
@@ -188,14 +186,14 @@ function ConvertTo-StarterModCsproj([string]$Text, [string]$Label) {
   return $Text
 }
 
-# The sample test csproj (HelloExpanded.Tests.csproj or HelloModule.Tests.csproj) with its
-# source-mode half removed, the same way ConvertTo-StarterModCsproj does for the mod project: the
-# Sdk.props/Sdk.targets split collapses, the repo-root Directory.Build.props import (which carried
-# $(CurrentGameTfm) here) is replaced with the project's own default, and the dual-mode ItemGroup
-# unwraps to its package-mode half. $OldModRef/$NewModRef rewrite the ProjectReference to the mod
-# project: the starter's tests sit one level deeper than the sample's own (mods/<id>/tests vs
-# samples/<Name>.Tests), so the relative path shortens by one segment.
-function ConvertTo-StarterTestCsproj([string]$Text, [string]$OldModRef, [string]$NewModRef, [string]$Label) {
+# The sample test csproj with its source-mode half removed, the same way ConvertTo-StarterModCsproj
+# does for the mod project: the Sdk.props/Sdk.targets split collapses, the repo-root
+# Directory.Build.props import (which carried $(CurrentGameTfm) here) is replaced with the
+# project's own default, and the dual-mode ItemGroup unwraps to its package-mode half. The
+# ProjectReference to the mod project ("..\src\<Name>.csproj") needs no rewrite: the sample and the
+# starter both nest a mod's tests under its own folder, one level above src/, so the reference reads
+# the same in both trees.
+function ConvertTo-StarterTestCsproj([string]$Text, [string]$Label) {
   $Text = Set-CsprojText $Text @'
 <Project>
   <!-- samples/ sits directly under this repo's root, so it would otherwise auto-inherit
@@ -208,7 +206,7 @@ function ConvertTo-StarterTestCsproj([string]$Text, [string]$OldModRef, [string]
     <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
   </PropertyGroup>
   <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
-  <Import Project="../../Directory.Build.props" />
+  <Import Project="../../../Directory.Build.props" />
 
   <PropertyGroup>
     <TargetFramework>$(CurrentGameTfm)</TargetFramework>
@@ -237,8 +235,6 @@ function ConvertTo-StarterTestCsproj([string]$Text, [string]$OldModRef, [string]
   <!-- Dual mode, same switch as
 '@ '  <ItemGroup Condition="''$(ExlibRoot)'' == ''''">' '  <ItemGroup>' "$Label dual-mode harness reference"
 
-  $Text = Set-CsprojText $Text $OldModRef $NewModRef "$Label mod project reference"
-
   $Text = Set-CsprojText $Text @'
   <!-- Explicit import: GamePath (used above via HintPath) lives in ExpandedLib.targets,
        imported after the project body - the Directory.Build.props import above only carries
@@ -247,7 +243,7 @@ function ConvertTo-StarterTestCsproj([string]$Text, [string]$OldModRef, [string]
        ($(ExlibRoot) != ''): in package mode the ExpandedLib PackageReference above pulls the same
        file in automatically, and importing both ways would double it up. -->
   <Import
-    Project="../../build/ExpandedLib.targets"
+    Project="../../../build/ExpandedLib.targets"
     Condition="'$(ExlibRoot)' != ''"
   />
 
@@ -279,14 +275,39 @@ function Copy-SourceTree([string]$Src, [string]$Dest) {
   }
 }
 
-# One starter mod: copies the sample's src/, assets/ and modicon.png (if any) verbatim, pins the
-# modinfo.json's exlib dependency floor to $Version (the starter's whole point - a guard other than
-# this generator would otherwise have to keep in step by hand), transforms the mod csproj and, when
-# the sample carries one, the tests project.
+# Rewrites one cross-sample <ProjectReference Include="..\..\<Folder>\src\<Folder>.csproj"> (the
+# family layout's own shape for a sample that depends on another) to the other sample's mod id -
+# "..\..\<Folder>\src\<Folder>.csproj" becomes "..\..\<id>\src\<Folder>.csproj", the csproj file
+# name itself untouched - and rewords the accompanying comment generically, the same wording the
+# old hellomodule-specific transform hand-wrote. $SampleFolderToId names every OTHER sample this
+# starter also generates; a sample naming none of them is a no-op.
+function Set-CrossSampleReferences([string]$Text, [hashtable]$SampleFolderToId, [string]$Label) {
+  foreach ($folder in $SampleFolderToId.Keys) {
+    $id = $SampleFolderToId[$folder]
+    $oldRef = "..\..\$folder\src\$folder.csproj"
+    if (-not $Text.Contains($oldRef)) { continue }
+    $Text = $Text.Replace($oldRef, "..\..\$id\src\$folder.csproj")
+    $Text = Set-CsprojText $Text @"
+  <!-- $id is a sample dependency inside this repo, not a package - referenced by project in
+       both modes. Copy-local off for the same reason as exlib above: the player installs
+       $id as its own mod. -->
+"@ @"
+  <!-- $id is this starter's own mod, referenced by project rather than package the same
+       way exlib is above. Copy-local off for the same reason: the player installs $id as
+       its own mod. -->
+"@ "$Label $id cross-sample comment"
+  }
+  return $Text
+}
+
+# One starter mod: copies the sample's src/, assets/ and tests/ verbatim (the family layout - see
+# Global constraints), pins src/modinfo.json's exlib dependency floor to $Version (the starter's
+# whole point - a guard other than this generator would otherwise have to keep in step by hand),
+# transforms the mod csproj and, when the sample carries one, the tests project.
 function New-StarterMod {
   param(
     [string]$ExlibRoot, [string]$Dest, [string]$SampleName, [string]$ModId, [string]$Version,
-    [string]$ModuleRefOld, [string]$ModuleRefNew
+    [hashtable]$SampleFolderToId = @{}
   )
   $samplePath = Join-Path $ExlibRoot "samples/$SampleName"
   if (-not (Test-Path $samplePath)) { throw "exlib checkout at $ExlibRoot has no samples/$SampleName." }
@@ -295,62 +316,38 @@ function New-StarterMod {
 
   Copy-SourceTree (Join-Path $samplePath 'src') (Join-Path $modDest 'src')
   Copy-SourceTree (Join-Path $samplePath 'assets') (Join-Path $modDest 'assets')
-  $icon = Join-Path $samplePath 'modicon.png'
-  if (Test-Path $icon) { Copy-Item $icon (Join-Path $modDest 'modicon.png') -Force }
+  $testsSrc = Join-Path $samplePath 'tests'
+  if (Test-Path $testsSrc) { Copy-SourceTree $testsSrc (Join-Path $modDest 'tests') }
 
   # Parsed rather than matched by a regex that would no-op silently if the shape ever changed: a
   # sample's modinfo.json missing an exlib dependency is a transform bug, not something to ship
   # half-pinned. The replace itself still runs on the raw text (not a re-serialization, which would
   # reflow the whole file), through the literal old "exlib": "<floor>" line, checked to occur
   # exactly once.
-  $modinfoText = Get-Content (Join-Path $samplePath 'modinfo.json') -Raw
+  $modinfoPath = Join-Path $modDest 'src/modinfo.json'
+  $modinfoText = Get-Content $modinfoPath -Raw
   $modinfoJson = $modinfoText | ConvertFrom-Json
   if (-not $modinfoJson.dependencies -or -not $modinfoJson.dependencies.PSObject.Properties['exlib']) {
-    throw "starter transform: samples/$SampleName/modinfo.json names no exlib dependency."
+    throw "starter transform: samples/$SampleName/src/modinfo.json names no exlib dependency."
   }
   $oldExlibLine = "`"exlib`": `"$($modinfoJson.dependencies.exlib)`""
   $matchCount = ([regex]::Matches($modinfoText, [regex]::Escape($oldExlibLine))).Count
   if ($matchCount -ne 1) {
-    throw "starter transform: samples/$SampleName/modinfo.json's exlib dependency line occurs $matchCount times (want exactly 1)."
+    throw "starter transform: samples/$SampleName/src/modinfo.json's exlib dependency line occurs $matchCount times (want exactly 1)."
   }
   $modinfoText = $modinfoText.Replace($oldExlibLine, "`"exlib`": `"$Version`"")
-  Set-Content (Join-Path $modDest 'modinfo.json') $modinfoText -NoNewline
+  Set-Content $modinfoPath $modinfoText -NoNewline
 
-  $csprojSrc = Find-SingleCsproj $samplePath "samples/$SampleName"
-  $csprojName = Split-Path $csprojSrc -Leaf
-  $csprojText = ConvertTo-StarterModCsproj (Get-Content $csprojSrc -Raw) $SampleName
-  if ($ModuleRefOld) {
-    $csprojText = Set-CsprojText $csprojText $ModuleRefOld $ModuleRefNew "$SampleName module reference"
-    $csprojText = Set-CsprojText $csprojText @'
-  <!-- hellomodule is a sample dependency inside this repo, not a package - referenced by project in
-       both modes. Copy-local off for the same reason as exlib above: the player installs
-       hellomodule as its own mod. -->
-'@ @'
-  <!-- hellomodule is this starter's own mod, referenced by project rather than package the same
-       way exlib is above. Copy-local off for the same reason: the player installs hellomodule as
-       its own mod. -->
-'@ "$SampleName module reference comment"
-  }
-  Set-Content (Join-Path $modDest $csprojName) $csprojText -NoNewline
+  $csprojDest = Find-SingleCsproj (Join-Path $modDest 'src') "mods.$ModId"
+  $csprojText = ConvertTo-StarterModCsproj (Get-Content $csprojDest -Raw) $SampleName
+  $csprojText = Set-CrossSampleReferences $csprojText $SampleFolderToId $SampleName
+  Set-Content $csprojDest $csprojText -NoNewline
 
-  $testsSrc = Join-Path $ExlibRoot "samples/$SampleName.Tests"
-  if (-not (Test-Path $testsSrc)) { return }
   $testsDest = Join-Path $modDest 'tests'
-  New-Item -ItemType Directory -Force -Path $testsDest | Out-Null
-  Get-ChildItem $testsSrc -Force | Where-Object { $_.Name -notin @('bin', 'obj') } | ForEach-Object {
-    if ($_.Extension -eq '.csproj') { return }
-    if ($_.PSIsContainer) { Copy-SourceTree $_.FullName (Join-Path $testsDest $_.Name) }
-    else { Copy-Item $_.FullName (Join-Path $testsDest $_.Name) -Force }
-  }
-  $testCsprojSrc = Find-SingleCsproj $testsSrc "samples/$SampleName.Tests"
-  $testCsprojName = Split-Path $testCsprojSrc -Leaf
-  # samples/<Name>.Tests sits beside samples/<Name>, so the sample's own reference reads
-  # "..\<Name>\<Name>.csproj"; a starter's tests live one level DEEPER, inside the mod's own folder
-  # (mods/<id>/tests), so the equivalent reference is "..\<Name>.csproj" - one level up only.
-  $oldModRef = "<ProjectReference Include=`"..\$SampleName\$csprojName`" />"
-  $newModRef = "<ProjectReference Include=`"..\$csprojName`" />"
-  $testCsprojText = ConvertTo-StarterTestCsproj (Get-Content $testCsprojSrc -Raw) $oldModRef $newModRef $SampleName
-  Set-Content (Join-Path $testsDest $testCsprojName) $testCsprojText -NoNewline
+  if (-not (Test-Path $testsDest)) { return }
+  $testCsprojDest = Find-SingleCsproj $testsDest "mods.$ModId.tests"
+  $testCsprojText = ConvertTo-StarterTestCsproj (Get-Content $testCsprojDest -Raw) $SampleName
+  Set-Content $testCsprojDest $testCsprojText -NoNewline
 }
 
 # One PackageVersion's pinned version, read from exlib's own Directory.Packages.props by a literal
@@ -462,21 +459,19 @@ SOFTWARE.
 $StarterReadmeTemplate = @'
 # {0}
 
-A starter monorepo for [Expanded Library](https://github.com/ringavirda/modding-vsexlib) mods, generated by
-`exmod starter` from exlib
-{1}. It carries two mods: `mods/hellomodule`, a framework module shipped as its own mod, and
-`mods/helloexpanded`, a mod that depends on it - the same pair exlib's own Getting-Started guide and
-Modules wiki page walk through, here as a working repository instead of a read-along.
+A starter monorepo for [Expanded Library](https://github.com/ringavirda/modding-vsexlib) mods, generated by `exmod starter` from exlib {1}. It carries one mod per sample exlib's own manifest names, in the family layout (`mods/<id>/{{src,assets,tests}}`):
+
+{3}
 
 ## Using it
 
 ```
 git clone <this repo>
 cd {2}
-bash scripts/exmod.sh setup       # .NET, the game, exlib and its two mods, restored
+bash scripts/exmod.sh setup       # .NET, the game, exlib and its mods, restored
 bash scripts/exmod.sh build latest
 bash scripts/exmod.sh test latest
-bash scripts/exmod.sh smoke       # boots a real dedicated server with both mods loaded
+bash scripts/exmod.sh smoke       # boots a real dedicated server with every mod loaded
 ```
 
 Windows runs the same commands through `scripts\exmod.ps1`; `bash scripts/exmod.sh` with no command
@@ -486,16 +481,17 @@ lists everything else `exmod` can do (run a client, package a release, and so on
 ## Adding a mod
 
 ```
-bash scripts/exmod.sh new <id>              # a mod
-bash scripts/exmod.sh new <id> --module     # a framework module, the shape hellomodule is
+bash scripts/exmod.sh new <id>                       # a mod
+bash scripts/exmod.sh new <id> --module              # a framework module
+bash scripts/exmod.sh scaffold <kind> <Name> -Mod <id>   # a block, item, recipe... into an existing mod
 ```
 
-scaffolds `mods/<id>` (csproj, modinfo.json, an asset skeleton, a test project wired to the
-harness), adds it to `exmod.json` and, when this repo names a solution, to it too. A scaffolded
-mod's csproj sits under `mods/<id>/src/`, unlike the two generated mods above (csproj beside
-modinfo.json, no src/ split) - both shapes resolve the same way, but only the flat one matches the
-sample this repo was generated from. `new` needs Directory.Packages.props' own `ExpandedLib`
-PackageVersion to pin against; it never runs before `setup` has produced one.
+`new` scaffolds `mods/<id>` (csproj under `src/`, modinfo.json, an asset skeleton, a test project
+wired to the harness), adds it to `exmod.json` and, when this repo names a solution, to it too; it
+needs Directory.Packages.props' own `ExpandedLib` PackageVersion to pin against, so it never runs
+before `setup` has produced one. `scaffold` puts a compiling, tested block, item, recipe, megablock,
+multiblock, node, blockbehavior, entitybehavior, config, migration or command into an existing mod
+from exlib's own templates - `exmod help scaffold` lists every kind.
 
 ## Licence
 
@@ -543,6 +539,19 @@ function Invoke-Starter([string[]]$Argv) {
   New-Item -ItemType Directory -Force -Path $dest | Out-Null
   $repoName = Split-Path $dest -Leaf
 
+  # Every sample exlib's own exmod.json names, in manifest order - dependency order (grains before
+  # handmill: handmill's csproj references grains by project, so it has to exist, and build, first).
+  # $sampleFolderToId maps each sample's folder name (its samples/<Folder> path) to the mod id this
+  # starter gives it, for Set-CrossSampleReferences to rewrite a same-repo ProjectReference by.
+  $exlibManifest = Get-Content (Join-Path $exlibRoot 'exmod.json') -Raw | ConvertFrom-Json
+  if (-not $exlibManifest.PSObject.Properties['samples'] -or -not @($exlibManifest.samples.PSObject.Properties)) {
+    throw "exlib checkout at $exlibRoot names no samples."
+  }
+  $sampleEntries = @($exlibManifest.samples.PSObject.Properties)
+  $sampleIds = @($sampleEntries | ForEach-Object { $_.Name })
+  $sampleFolderToId = @{}
+  foreach ($p in $sampleEntries) { $sampleFolderToId[(Split-Path $p.Value.path -Leaf)] = $p.Name }
+
   # Every mod `exmod new` added since the last run, read before anything below touches exmod.json,
   # so a re-run carries them forward into the fresh manifest and solution instead of dropping them.
   $existingManifestPath = Join-Path $dest 'exmod.json'
@@ -551,36 +560,36 @@ function Invoke-Starter([string[]]$Argv) {
     $existingManifest = Get-Content $existingManifestPath -Raw | ConvertFrom-Json
     if ($existingManifest.PSObject.Properties['mods']) {
       foreach ($p in $existingManifest.mods.PSObject.Properties) {
-        if ($p.Name -in @('hellomodule', 'helloexpanded')) { continue }
+        if ($p.Name -in $sampleIds) { continue }
         $carriedMods[$p.Name] = $p.Value
       }
     }
   }
 
   # Every path this command owns; wiped and rewritten below so a re-run overwrites rather than
-  # accumulates. Only the two sample mods, not all of mods/ - `exmod new` may have added others
-  # since the last run, and those entries were read above and are merged back into the manifest and
+  # accumulates. Only the sample mods, not all of mods/ - `exmod new` may have added others since
+  # the last run, and those entries were read above and are merged back into the manifest and
   # solution further down, not wiped. exmod.json and the solution are rewritten in place, not
   # wiped-then-regenerated blind, for the same reason. .git, and anything else the owner added by
   # hand, is left alone too.
-  foreach ($p in @('mods/hellomodule', 'mods/helloexpanded', 'scripts', '.github',
+  foreach ($p in (@($sampleIds | ForEach-Object { "mods/$_" }) + @('scripts', '.github',
       'Directory.Packages.props', '.gitignore', '.gitattributes', '.editorconfig', '.csharpierrc',
-      'LICENSE', 'README.md')) {
+      'LICENSE', 'README.md'))) {
     $full = Join-Path $dest $p
     if (Test-Path $full) { Remove-Item -Recurse -Force $full }
   }
 
-  # hellomodule first: helloexpanded's csproj references it by project, so it has to exist (and,
-  # for the build order Get-ExmodMods/Get-ExmodBuildTargets read off exmod.json's own order, build
-  # first) before helloexpanded does.
-  New-StarterMod -ExlibRoot $exlibRoot -Dest $dest -SampleName 'HelloModule' -ModId 'hellomodule' -Version $version
-  New-StarterMod -ExlibRoot $exlibRoot -Dest $dest -SampleName 'HelloExpanded' -ModId 'helloexpanded' -Version $version `
-    -ModuleRefOld '<ProjectReference Include="..\HelloModule\HelloModule.csproj">' `
-    -ModuleRefNew '<ProjectReference Include="..\hellomodule\HelloModule.csproj">'
+  $modInfos = [ordered]@{}
+  foreach ($p in $sampleEntries) {
+    $id = $p.Name
+    $folder = Split-Path $p.Value.path -Leaf
+    New-StarterMod -ExlibRoot $exlibRoot -Dest $dest -SampleName $folder -ModId $id -Version $version `
+      -SampleFolderToId $sampleFolderToId
+    $modInfos[$id] = Get-Content (Join-Path $dest "mods/$id/src/modinfo.json") -Raw | ConvertFrom-Json
+  }
 
   $allMods = [ordered]@{}
-  $allMods['hellomodule'] = [pscustomobject]@{ path = 'mods/hellomodule' }
-  $allMods['helloexpanded'] = [pscustomobject]@{ path = 'mods/helloexpanded' }
+  foreach ($id in $sampleIds) { $allMods[$id] = [pscustomobject]@{ path = "mods/$id" } }
   foreach ($k in $carriedMods.Keys) { $allMods[$k] = $carriedMods[$k] }
 
   $slnProjects = @()
@@ -742,7 +751,17 @@ jobs:
   Copy-Item (Join-Path $exlibRoot '.csharpierrc') (Join-Path $dest '.csharpierrc') -Force
   Set-Content (Join-Path $dest 'LICENSE') $StarterLicense
   Set-Content (Join-Path $dest '.gitignore') $StarterGitignore
-  ($StarterReadmeTemplate -f $repoName, $version, $repoName) | Set-Content (Join-Path $dest 'README.md')
+
+  # One markdown table row per sample mod, read from each mod's own (already version-pinned)
+  # modinfo.json, in manifest order.
+  $modsTable = @('| mod | name | description |', '|---|---|---|') + @(
+    $sampleIds | ForEach-Object {
+      $info = $modInfos[$_]
+      "| ``mods/$_`` | $($info.name) | $($info.description) |"
+    }
+  )
+  ($StarterReadmeTemplate -f $repoName, $version, $repoName, ($modsTable -join "`n")) |
+    Set-Content (Join-Path $dest 'README.md')
 
   # The same two passes as `exmod format`: CSharpier wraps to the print width and emits Allman
   # braces, then dotnet format applies the copied .editorconfig, which puts the braces back.
@@ -780,12 +799,12 @@ Add-ExmodCommand -Group start -Name starter -Summary 'generate the standalone st
 } -Detail @'
 exmod starter <dest> [-ExlibRoot <path>] [-Version <exlib version>] [-Force]
 
-Generates a standalone starter monorepo at <dest>: exlib's HelloModule and HelloExpanded samples
-as two mods (mods/hellomodule, mods/helloexpanded), a solution, the launcher scripts, an
+Generates a standalone starter monorepo at <dest>: one mod per sample exlib's own exmod.json
+names, in the family layout (mods/<id>/{src,assets,tests}), a solution, the launcher scripts, an
 exmod.json naming them, a Directory.Packages.props pinned to -Version, CI and the repo dotfiles -
 a repository that clones, restores from NuGet, builds, tests and smokes with nothing hand-edited.
-The four mod/test csprojs and each mod's modinfo.json are generated from the samples' own files by
-a text transform (never a hand-maintained template), so they cannot drift from what exlib's own
+Every mod/test csproj and each mod's modinfo.json are generated from the samples' own files by a
+text transform (never a hand-maintained template), so they cannot drift from what exlib's own
 gate already proves; the solution, Directory.Packages.props, CI, the dotfiles and the README are
 written by this command itself.
 
