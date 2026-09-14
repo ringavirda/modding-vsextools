@@ -23,6 +23,7 @@
       "optional": false
     }
   ],
+  "unpaintedFaces": [],
   "warnings": [
     "game:claybricks-fire-*",
     "game:brickslabs-fire-south-free"

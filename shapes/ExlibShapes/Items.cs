@@ -28,8 +28,8 @@ public static class ItemViews {
   /// <summary>
   /// Writes <paramref name="variant"/>'s pictures into <paramref name="outDir"/> and the
   /// <c>&lt;stem&gt;.json</c> manifest beside them, which it returns: <c>files</c>, the
-  /// <c>variant</c> drawn, the <c>missingTextures</c> a render painted magenta, and
-  /// <c>warnings</c>.
+  /// <c>variant</c> drawn, the <c>missingTextures</c> whose value names a file that is not there,
+  /// the <c>unpaintedFaces</c> the itemtype assigns no texture at all, and <c>warnings</c>.
   /// <para>
   /// <c>&lt;stem&gt;-iso.png</c> is written when the itemtype declares a shape and
   /// <c>&lt;stem&gt;-icon.png</c> when it declares a flat <c>texture</c>; an itemtype declaring
@@ -48,6 +48,7 @@ public static class ItemViews {
     var files = new List<string>();
     var warnings = new List<string>();
     var missing = new SortedSet<string>(StringComparer.Ordinal);
+    var unpainted = new SortedSet<string>(StringComparer.Ordinal);
 
     if (item.ShapePath != null) {
       (JObject raw, Dictionary<string, TextureRef> values) = BlockViews.Compose(item);
@@ -68,8 +69,13 @@ public static class ItemViews {
       )
         Save(image, path);
       files.Add(path);
-      foreach (string key in textures.Missing)
-        missing.Add($"{item.Code}: texture {key[(key.IndexOf('_') + 1)..]} ({values[key]}) not found");
+      foreach (string key in textures.Missing) {
+        string name = key[(key.IndexOf('_') + 1)..];
+        if (values[key].Unassigned)
+          unpainted.Add($"{item.Code}: face texture {name} is assigned nothing");
+        else
+          missing.Add($"{item.Code}: texture {name} ({values[key]}) not found");
+      }
     }
 
     if (IconOf(variant) is { } icon) {
@@ -95,6 +101,7 @@ public static class ItemViews {
       ["files"] = new JArray(files),
       ["variant"] = item.Code,
       ["missingTextures"] = new JArray(missing),
+      ["unpaintedFaces"] = new JArray(unpainted),
       ["warnings"] = new JArray(warnings),
     };
     File.WriteAllText(Path.Combine(outDir, $"{stem}.json"), manifest.ToString(Formatting.Indented));

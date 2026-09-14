@@ -279,7 +279,8 @@ internal static class Program {
       Schematic.MissingTextures(layout, index),
       index.ParseWarnings,
       plans,
-      front
+      front,
+      Schematic.UnpaintedFaces(layout, index)
     );
     string manifestPath = Path.Combine(outDir, $"{stem}.json");
     File.WriteAllText(manifestPath, manifest.ToString(Formatting.Indented));

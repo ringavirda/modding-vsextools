@@ -80,10 +80,12 @@ A `<stem>.json` manifest is always written alongside the pictures: `files` (ever
 looks toward, turned with `--angle`, `null` for a structure that faces no way), `legend` (one row
 per declared number - the mod's own `number`, the `display` number the plans draw, its selector,
 resolved representative code, palette colour, and whether it is optional, drawn as air in the iso
-and hatched in the plans), and `warnings` (a selector that resolved to
-neither a block nor `air`; a selector whose match spanned more than one source blocktype file,
-named in the warning together, since only one of them is drawn; or a blocktype or worldproperties
-file that failed to parse, named by path - also printed to stderr as the run happens).
+and hatched in the plans), `unpaintedFaces` (one line per face key a drawn block assigns nothing,
+painted with the magenta placeholder wherever the iso shows it), and `warnings` (a selector that
+resolved to neither a block nor `air`; a texture value naming a file that is not there; a selector
+whose match spanned more than one source blocktype file, named in the warning together, since only
+one of them is drawn; or a blocktype or worldproperties file that failed to parse, named by path -
+also printed to stderr as the run happens).
 
 ## block
 
@@ -106,15 +108,18 @@ The machine is turned so its front meets the camera: the quarter turn that stand
 the camera-facing edge of the footprint it reserves, or, for a family with no facing variant to
 choose between (the blast furnace door, whose facing lives in its C#), the turn that brings the most
 of its detail - every face painted with a texture other than the model's most-used one - toward the
-camera. `--angle` overrides the choice. Parts parked outside the block's own cells, an animated
-rabble or damper chain in its rest pose, are left out unless `--full` says otherwise.
+camera. `--angle` overrides the choice. A part an animation of the model's own shape parks outside
+the block's own cells - the puddling door's rabble, the chimney cap's control rod - is left out
+unless `--full` says otherwise; static art is drawn however far it reaches.
 
 The `<stem>.json` manifest carries `files` (every path written), `variant` (the code drawn),
 `angle` (the quarter turn it is drawn at), `front` (the world side that variant's front then looks
 toward, `null` for a block that faces no way), `clipped` and `hidden` (whether parts were left out
-and which), `missingTextures` (one line per key drawn as the magenta placeholder) and `warnings` (a
-block with no shape of its own, a selector whose match spanned more than one source file, a
-blocktype or worldproperties file that failed to parse).
+and which), `missingTextures` (one line per value naming a file that is not there),
+`unpaintedFaces` (one line per face key the blocktype assigns nothing, drawn as the magenta
+placeholder wherever a picture shows it) and `warnings` (a block with no shape of its own, a
+selector whose match spanned more than one source file, a blocktype or worldproperties file that
+failed to parse).
 
 ## item
 
@@ -130,7 +135,8 @@ declaring both gets both, and one declaring neither is a warning and no picture.
 the variant by full code or bare path, defaulting to the family's first; `--ppu` is pixels per shape
 unit for the isometric render (default 24).
 
-The `<stem>.json` manifest carries `files`, `variant`, `missingTextures` and `warnings`.
+The `<stem>.json` manifest carries `files`, `variant`, `missingTextures`, `unpaintedFaces` and
+`warnings`.
 
 ## tree / measure
 

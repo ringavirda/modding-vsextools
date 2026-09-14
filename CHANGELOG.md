@@ -14,16 +14,18 @@ family with no facing variant to choose between is turned by its own art instead
 quarter turn brings the most of its detail to the camera, and `block` takes `--angle` to override
 either. Both manifests name the turn and the side the front then looks toward.
 
-A block's views leave out the parts parked outside its own cells - an animated rabble or damper
-chain drawn in the rest pose its animation moves it from - and `--full` keeps them; the manifest
-says which was used and what it left out.
+A block's views leave out a part its own shape animates away from where the rest pose parks it - the
+puddling door's rabble and paddle, the chimney cap's control rod - and `--full` keeps them; the
+manifest says which was used and what it left out. Static art keeps its place however far past the
+block's own cells it reaches.
 
 A blocktype's texture entries resolve the way the game resolves them: `overlays` are composited over
 the base, `baseByType` is read through the ByType rule, and the `all`, `sides`, `horizontals` and
 `verticals` shorthands stand in for the faces a shape names one by one, which is what left the
 slab-lined furnace cores painted magenta. A face no texture is assigned to is named in the manifest
-rather than quietly drawn as the placeholder, and a block's views draw back faces so a hollow model
-reads as hollow.
+under `unpaintedFaces`, apart from the `missingTextures` whose value names a file that is not there;
+and a hollow model reads as hollow - back faces are drawn, and an opening a view looks straight
+through is closed behind with a neutral interior shade instead of showing the paper.
 
 Plan and footprint SVGs are as wide as their own caption, which used to be clipped at both ends on
 every megablock page; every drawn cell carries its legend number in ink the fill's own luminance

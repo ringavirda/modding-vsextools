@@ -417,9 +417,10 @@ public static class Schematic {
           textures[key] = stands;
     foreach ((string key, TextureRef value) in block.Textures)
       textures[key] = value;
-    // A face whose key nothing assigns is painted with the placeholder; it is carried here as an
-    // unassigned entry so the manifest names it instead of the render alone showing it. `#null` is
-    // Model Creator's own marker for a face with no texture, which no block ever assigns.
+    // A face whose key nothing assigns is painted with the placeholder wherever a picture shows it;
+    // it is carried here as an unassigned entry, which the manifest reports apart from a value that
+    // names a file and misses. `#null` is Model Creator's own marker for a face with no texture,
+    // which no block ever assigns.
     foreach (string key in FaceTextureKeys(elements))
       if (key != "null" && !textures.ContainsKey(key))
         textures[key] = new TextureRef("");
@@ -610,16 +611,28 @@ public static class Schematic {
     && cell.Z >= box.Lo.Z && cell.Z <= box.Hi.Z;
 
   /// <summary>
-  /// One line per texture value of <paramref name="layout"/>'s composite that
+  /// One line per texture value of <paramref name="layout"/>'s composite whose file
   /// <see cref="BlockIndex.ResolveTexture"/> cannot find - <c>{block code}: texture {key}
-  /// ({value}) not found</c>, sorted, each block and key once - the faces the iso render paints
-  /// with the magenta placeholder. Empty when every value resolves.
+  /// ({value}) not found</c>, sorted, each block and key once. Empty when every value a block
+  /// assigns resolves; a face assigned nothing at all is <see cref="UnpaintedFaces"/>.
   /// </summary>
-  public static IReadOnlyList<string> MissingTextures(Layout layout, BlockIndex index) {
+  public static IReadOnlyList<string> MissingTextures(Layout layout, BlockIndex index) =>
+    TextureLines(layout, index, unassigned: false);
+
+  /// <summary>
+  /// One line per face key of <paramref name="layout"/>'s composite that its own block assigns no
+  /// texture - <c>{block code}: face texture {key} is assigned nothing</c>, sorted, each block and
+  /// key once. Such a face is drawn with the magenta placeholder wherever the picture shows it,
+  /// which for an interior face of a structure is nowhere.
+  /// </summary>
+  public static IReadOnlyList<string> UnpaintedFaces(Layout layout, BlockIndex index) =>
+    TextureLines(layout, index, unassigned: true);
+
+  private static IReadOnlyList<string> TextureLines(Layout layout, BlockIndex index, bool unassigned) {
     (_, Dictionary<string, TextureRef> textureValues) = Compose(layout, index);
     var lines = new SortedSet<string>(StringComparer.Ordinal);
     foreach ((string prefixed, TextureRef value) in textureValues) {
-      if (Resolves(value, index))
+      if (Resolves(value, index) || value.Unassigned != unassigned)
         continue;
       // Compose keys a cell's textures `c{cell index}_{key}` and a megablock's own body
       // `principal_{key}`.
@@ -631,7 +644,9 @@ public static class Schematic {
           ? layout.Principal
           : layout.Numbers[layout.Cells[int.Parse(owner[1..], CultureInfo.InvariantCulture)].Number];
       string code = (selector != null ? index.Resolve(selector)?.Code : null) ?? "?";
-      lines.Add($"{code}: texture {key} ({value}) not found");
+      lines.Add(
+        unassigned ? $"{code}: face texture {key} is assigned nothing" : $"{code}: texture {key} ({value}) not found"
+      );
     }
     return [.. lines];
   }
@@ -748,7 +763,10 @@ public static class Schematic {
   /// the Y layer it draws, as <c>{"file", "layer"}</c> rows under <c>plans</c>; the same paths stay
   /// in <c>files</c>, which lists everything written. <paramref name="front"/> is the world side the
   /// drawn machine's front looks toward (<see cref="Presentation.FrontOf"/>, turned with the
-  /// layout), under <c>front</c>, and is JSON null for a structure that faces no way.</summary>
+  /// layout), under <c>front</c>, and is JSON null for a structure that faces no way.
+  /// <paramref name="unpaintedFaces"/> is <see cref="UnpaintedFaces"/>'s lines, under
+  /// <c>unpaintedFaces</c> rather than among the warnings: a face a block assigns nothing is only
+  /// drawn where a picture shows it.</summary>
   public static JObject Manifest(
     Layout layout,
     IReadOnlyDictionary<int, LegendEntry> legend,
@@ -757,7 +775,8 @@ public static class Schematic {
     IReadOnlyList<string>? missingTextures = null,
     IReadOnlyList<string>? parseWarnings = null,
     IReadOnlyList<(string File, int Layer)>? plans = null,
-    string? front = null
+    string? front = null,
+    IReadOnlyList<string>? unpaintedFaces = null
   ) {
     var rows = new JArray();
     var warnings = new JArray();
@@ -796,6 +815,7 @@ public static class Schematic {
       ["plans"] = planRows,
       ["front"] = front == null ? JValue.CreateNull() : front,
       ["legend"] = rows,
+      ["unpaintedFaces"] = new JArray(unpaintedFaces ?? []),
       ["warnings"] = warnings,
     };
   }

@@ -95,7 +95,7 @@ parameter binder treats a bare `--out` token as an ambiguous prefix of its commo
   --variant CODE  the variant to draw (default: the presentation facing, else the family's first)
   --views a,b     named views (south, north, east, west, up, down, iso); default: all but down
   --angle N       turn the machine before rendering (0, 90, 180 or 270)
-  --full          draw the whole model, parts parked outside the block's own cells included
+  --full          draw the whole model, the parts an animation parks outside the block included
   --ppu N         pixels per shape unit (default: 24)
   --roots PATH    extra mod repository roots to resolve textures against (repeatable)
   --game PATH     a specific game install (default: this repository's own provisioned one)
