@@ -54,6 +54,13 @@ $PlatformSlot = if ($OnWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } else
 # Where this platform's client for a series lives. On Windows it is a local folder outside the
 # checkout: a native library does not load from a network share, and a checkout under
 # \\wsl.localhost is one. Elsewhere it is a slot beside the shared default one.
+# Where the client keeps its data (settings, saves, logs). On Windows a local folder outside the
+# checkout, named for the repository: SQLite cannot lock a save file over a network share.
+function Get-ClientDataPath {
+  if ($OnWindows) { return Join-Path $env:LOCALAPPDATA "exmod/data/$(Split-Path $RepoRoot -Leaf)" }
+  return Join-Path $RepoRoot '.gamedata'
+}
+
 function Get-ClientSlot([string]$Slug) {
   if ($OnWindows) { return Join-Path $env:LOCALAPPDATA "exmod/game/$Slug" }
   return ".game/$Slug-$PlatformSlot"

@@ -135,7 +135,7 @@ function Invoke-Client([string[]]$Argv) {
   $configuration = Get-Opt $Argv '-Configuration' 'Debug'
   $modsOpt = Get-Opt $Argv '-Mods' $null
   $noBuild = Get-Flag $Argv '-NoBuild'
-  $dataPath = Get-Opt $Argv '-DataPath' (Join-Path $RepoRoot '.gamedata')
+  $dataPath = Get-Opt $Argv '-DataPath' (Get-ClientDataPath)
   Initialize-ClientSettings $dataPath
   $provision = Get-Flag $Argv '-Provision'
   $software = Get-Flag $Argv '-Software'

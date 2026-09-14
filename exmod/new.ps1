@@ -428,7 +428,16 @@ $($tasks -join ",`n")
       "cwd": "`${workspaceFolder}",
       "linux": { "env": { "WAYLAND_DISPLAY": "none" } },
       "osx": { "program": "`${workspaceFolder}/.game/$latest-macos/Vintagestory.dll" },
-      "windows": { "program": "`${env:LOCALAPPDATA}/exmod/game/$latest/Vintagestory.dll" },
+      "windows": {
+        "program": "`${env:LOCALAPPDATA}/exmod/game/$latest/Vintagestory.dll",
+        "args": [
+          "--tracelog",
+          "--dataPath",
+          "`${env:LOCALAPPDATA}/exmod/data/$RepoName",
+          "--addModPath",
+          "`${workspaceFolder}/bin/Mods"
+        ]
+      },
       "stopAtEntry": false,
       "console": "internalConsole",
       "requireExactSource": false
@@ -453,7 +462,16 @@ $($tasks -join ",`n")
       "env": { "DOTNET_ROOT": "`${workspaceFolder}/.dotnet" },
       "linux": { "env": { "DOTNET_ROOT": "`${workspaceFolder}/.dotnet", "WAYLAND_DISPLAY": "none" } },
       "osx": { "program": "`${workspaceFolder}/.game/$s-macos/Vintagestory.dll" },
-      "windows": { "program": "`${env:LOCALAPPDATA}/exmod/game/$s/Vintagestory.dll" },
+      "windows": {
+        "program": "`${env:LOCALAPPDATA}/exmod/game/$s/Vintagestory.dll",
+        "args": [
+          "--tracelog",
+          "--dataPath",
+          "`${env:LOCALAPPDATA}/exmod/data/$RepoName",
+          "--addModPath",
+          "`${workspaceFolder}/bin/Mods-$s"
+        ]
+      },
       "stopAtEntry": false,
       "console": "internalConsole",
       "requireExactSource": false
@@ -726,7 +744,9 @@ from exlib's own templates - `exmod help scaffold` lists every kind.
 `.vscode/tasks.json` and `launch.json` carry a build/pack/test task per game series this repo
 supports, launch-prep composites that provision the client build (`.game/<series>-<platform>/`
 on Linux and macOS, `%LOCALAPPDATA%\exmod\game\<series>` on Windows, where a client on a network
-share such as a WSL checkout cannot load its native libraries; plain `setup` does not fetch it) and stage the mods first, and one launch configuration per series that
+share such as a WSL checkout cannot load its native libraries, with its data beside it under
+`%LOCALAPPDATA%\exmod\data\<repo>` because SQLite cannot lock a save over a share; plain `setup`
+does not fetch it) and stage the mods first, and one launch configuration per series that
 boots the game with them loaded - opening this repo in VS Code and hitting F5 does the same thing
 `bash scripts/exmod.sh build latest && exmod stage && exmod client` would, with the game's own log
 in the debug console. On Linux the game runs on X11 (GLFW's Wayland backend cannot place the
