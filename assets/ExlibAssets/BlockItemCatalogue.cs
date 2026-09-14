@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json.Linq;
+using Vintagestory.API.Common;
+using Vintagestory.API.Util;
 
 namespace ExpandedLib.Assets;
 
@@ -69,10 +71,12 @@ public sealed class BlockItemCatalogue {
   /// <summary>
   /// Expands a definition's own <c>variantgroups</c> into every concrete variant, the same
   /// combinatorial rule <c>RegistryObjectTypeLoader</c> uses for a group carrying its states
-  /// inline, filtered by <c>skipVariants</c>/<c>allowedVariants</c>. Returns null when a group
-  /// names <c>loadFromProperties</c> instead of inline <c>states</c> - that axis needs the
-  /// loader's own world-property resolution this tool does not have, so the type is left
-  /// unexpanded rather than guessed at.
+  /// inline, filtered by <c>skipVariants</c>/<c>allowedVariants</c> (matched as wildcards, the
+  /// same rule the loader applies). Returns null when a group names <c>loadFromProperties</c> -
+  /// that axis needs the loader's own world-property resolution this tool does not have, so the
+  /// type is left unexpanded rather than guessed at. A group can carry both <c>states</c> and
+  /// <c>loadFromProperties</c>; the loader merges them, so this tool bails out on the
+  /// unresolvable axis rather than expanding only the inline half.
   /// </summary>
   public static List<Variant>? TryExpand(JObject type, string code) {
     List<(string Code, Dictionary<string, string> States)> combos = [(code, [])];
@@ -80,6 +84,8 @@ public sealed class BlockItemCatalogue {
       foreach (JToken groupToken in groups) {
         if (groupToken is not JObject group)
           continue;
+        if (group["loadFromProperties"] != null)
+          return null;
         if (group["states"] is not JArray states)
           return null;
         string? axisCode = (string?)group["code"];
@@ -96,10 +102,9 @@ public sealed class BlockItemCatalogue {
         ];
       }
 
-    var skip = new HashSet<string>(
-      ((JArray?)type["skipVariants"])?.Select(v => (string?)v).OfType<string>() ?? [],
-      StringComparer.Ordinal
-    );
+    List<string> skip = [
+      .. ((JArray?)type["skipVariants"])?.Select(v => (string?)v).OfType<string>() ?? [],
+    ];
     List<string>? allow = ((JArray?)type["allowedVariants"])
       ?.Select(v => (string?)v)
       .OfType<string>()
@@ -107,10 +112,19 @@ public sealed class BlockItemCatalogue {
 
     return [
       .. combos
-        .Where(c => !skip.Contains(c.Code) && (allow is not { Count: > 0 } || allow.Contains(c.Code)))
+        .Where(c =>
+          !skip.Any(s => WildcardMatch(s, c.Code))
+          && (allow is not { Count: > 0 } || allow.Any(a => WildcardMatch(a, c.Code)))
+        )
         .Select(c => new Variant(c.Code, c.States)),
     ];
   }
+
+  /// <summary>Matches a <c>skipVariants</c>/<c>allowedVariants</c> entry (which may carry a
+  /// <c>*</c> wildcard, as vanilla's own itemtypes do) against a concrete expanded code, the same
+  /// rule <c>RegistryObjectTypeLoader</c> applies.</summary>
+  private static bool WildcardMatch(string pattern, string code) =>
+    WildcardUtil.Match(new AssetLocation("game", pattern), new AssetLocation("game", code));
 }
 
 /// <summary>One concrete <c>code-state-state</c> a definition's own <c>variantgroups</c> expand
