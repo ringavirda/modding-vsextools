@@ -26,7 +26,10 @@ What it checks:
 - **Shape texture codes**: every `#code` a blocktype's or itemtype's shape faces use resolves in
   the shape's own texture map or the definition's own `textures`/`texturesByType` for that variant
   (`all`/`sides`/`horizontals`/`verticals` shorthands included) - a block finding is an error, an
-  item finding informational, matching how silently the client leaves an item face untextured.
+  item finding informational: the client logs this for an item exactly as for a block, but vanilla
+  itself ships this defect (its own metalbit mapping only `#ore` against `game:item/nugget`'s
+  `#granite`), so an item finding stays a note rather than failing a mod's run for a defect the mod
+  inherited from the game.
 
 Exit codes: `0` clean, `1` findings, `2` a usage or load failure. `--strict` makes informational
 findings count; `--json` prints the findings as JSON for a CI step to read.

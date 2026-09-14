@@ -1,0 +1,13 @@
+{
+  "elements": [
+    {
+      "name": "Cube",
+      "from": [0, 0, 0],
+      "to": [16, 16, 16],
+      "faces": {
+        "north": { "texture": "#north" },
+        "east": { "texture": "#missing" }
+      }
+    }
+  ]
+}

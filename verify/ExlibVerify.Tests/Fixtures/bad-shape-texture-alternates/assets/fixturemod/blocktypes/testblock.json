@@ -1,0 +1,10 @@
+{
+  "code": "testblock",
+  "shape": {
+    "base": "fixturemod:testblock",
+    "alternates": [{ "base": "fixturemod:testblock-alt" }]
+  },
+  "textures": {
+    "covered": { "base": "fixturemod:block/covered" }
+  }
+}

@@ -104,6 +104,27 @@ public class RunnerTests {
   }
 
   [Fact]
+  public void Bad_shape_texture_sides_does_not_cover_a_non_directional_code() {
+    (int exit, List<Finding> findings) = Verify("bad-shape-texture-sides");
+    Finding finding = Assert.Single(findings);
+    Assert.Equal(FindingLevel.Error, finding.Level);
+    Assert.Equal("ShapeTexture", finding.Check);
+    Assert.Contains("#missing", finding.Message);
+    Assert.Equal(1, exit);
+  }
+
+  [Fact]
+  public void Bad_shape_texture_alternates_reports_a_code_missing_only_in_the_alternate() {
+    (int exit, List<Finding> findings) = Verify("bad-shape-texture-alternates");
+    Finding finding = Assert.Single(findings);
+    Assert.Equal(FindingLevel.Error, finding.Level);
+    Assert.Equal("ShapeTexture", finding.Check);
+    Assert.Contains("#missing", finding.Message);
+    Assert.Contains("testblock-alt", finding.Message);
+    Assert.Equal(1, exit);
+  }
+
+  [Fact]
   public void Soft_depends_is_informational_only_and_exits_zero() {
     (int exit, List<Finding> findings) = Verify("soft-depends");
     Finding finding = Assert.Single(findings);

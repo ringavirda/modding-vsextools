@@ -1,0 +1,14 @@
+{
+  "textures": { "ownkey": "fixturemod:block/own" },
+  "elements": [
+    {
+      "name": "Cube",
+      "from": [0, 0, 0],
+      "to": [16, 16, 16],
+      "faces": {
+        "up": { "texture": "#ownkey" },
+        "down": { "texture": "#bytypeb" }
+      }
+    }
+  ]
+}

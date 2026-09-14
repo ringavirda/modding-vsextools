@@ -1,0 +1,7 @@
+{
+  "code": "sidesblock",
+  "shape": { "base": "fixturemod:sidesblock" },
+  "textures": {
+    "sides": { "base": "fixturemod:block/sides" }
+  }
+}

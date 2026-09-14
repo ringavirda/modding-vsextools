@@ -1,5 +1,4 @@
 {
-  "textures": { "up": "fixturemod:block/up" },
   "elements": [
     {
       "name": "Cube",
@@ -11,7 +10,7 @@
         "south": { "texture": "#south" },
         "west": { "texture": "#west" },
         "up": { "texture": "#up" },
-        "down": { "texture": "#null" }
+        "down": { "texture": "#down" }
       }
     }
   ]

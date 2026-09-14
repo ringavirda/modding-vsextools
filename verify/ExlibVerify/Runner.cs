@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using ExpandedLib.Assets;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using ExpandedLib.Assets;
 
 namespace ExpandedLib.Verify;
 
@@ -167,11 +167,20 @@ public static class Runner {
     // A mod that ships an assembly can register assets that never exist on disk (exlib's code-first
     // definitions inject one per definition), so patches aimed into its domain cannot be resolved
     // here. Naming those domains is what keeps that an informational note rather than a false error.
+    // A domain's own tests/goldens tree - the same fixtures its assembly's definitions are built
+    // from - is what the game actually sees there, so it is merged into the store as that domain's
+    // own content, the tree ExpandedLib.Shapes.BlockIndex already resolves a golden's shape
+    // through.
     var codeDomains = new HashSet<string>(StringComparer.Ordinal);
     foreach (ModSource mod in extras.Prepend(primary))
-      if (mod.ShipsCode)
-        foreach (string domain in AssetDomains(mod))
+      if (mod.ShipsCode) {
+        string? goldens = GoldensDir(mod.RootDir);
+        foreach (string domain in AssetDomains(mod)) {
           codeDomains.Add(domain);
+          if (goldens != null)
+            store.AddDomainRoot(domain, Path.Combine(goldens, domain));
+        }
+      }
 
     findings.AddRange(
       PatchChecker.Run(store, patchDomains, loadedModIds, codeDomains)
@@ -258,25 +267,53 @@ public static class Runner {
     string domain,
     string prefix
   ) {
-    string domainDir = Path.Combine(mod.RootDir, "assets", domain);
-    if (!Directory.Exists(domainDir))
-      yield break;
-    foreach (
-      string file in Directory.EnumerateFiles(
-        domainDir,
-        "*.json",
-        SearchOption.AllDirectories
-      )
-    ) {
-      string relPath = Path.GetRelativePath(domainDir, file)
-        .Replace(Path.DirectorySeparatorChar, '/')
-        .ToLowerInvariant();
-      if (!relPath.StartsWith(prefix, StringComparison.Ordinal))
-        continue;
-      JToken? json = store.TryGet(domain, relPath);
-      if (json != null)
-        yield return (relPath, json);
+    foreach (string domainDir in OwnDomainDirs(mod, domain))
+      foreach (
+        string file in Directory.EnumerateFiles(
+          domainDir,
+          "*.json",
+          SearchOption.AllDirectories
+        )
+      ) {
+        string relPath = Path.GetRelativePath(domainDir, file)
+          .Replace(Path.DirectorySeparatorChar, '/')
+          .ToLowerInvariant();
+        if (!relPath.StartsWith(prefix, StringComparison.Ordinal))
+          continue;
+        JToken? json = store.TryGet(domain, relPath);
+        if (json != null)
+          yield return (relPath, json);
+      }
+  }
+
+  // The directories a domain's own files are read from: assets/<domain>, plus - for a mod that
+  // ships an assembly - a sibling tests/goldens/<domain>, since a code-first mod's definitions can
+  // live only there. Either can be absent alone: a code-first domain often carries shapes/lang/
+  // config under assets/ but no blocktypes/itemtypes JSON at all.
+  private static IEnumerable<string> OwnDomainDirs(ModSource mod, string domain) {
+    string assetsDir = Path.Combine(mod.RootDir, "assets", domain);
+    if (Directory.Exists(assetsDir))
+      yield return assetsDir;
+    if (mod.ShipsCode && GoldensDir(mod.RootDir) is { } goldens) {
+      string goldensDir = Path.Combine(goldens, domain);
+      if (Directory.Exists(goldensDir))
+        yield return goldensDir;
     }
+  }
+
+  // A ShipsCode mod's own tests/goldens: the folder passed in may be the source project directly
+  // (modinfo.json beside tests/) or a built copy several levels below it
+  // (bin/<config>/Mods/mod, this repository's own convention) - every ancestor up to six levels is
+  // tried, the first carrying a tests/goldens folder wins. Null when neither is a code-first mod's
+  // own layout, e.g. an ordinary --mods dependency with no source tree beside it.
+  private static string? GoldensDir(string rootDir) {
+    DirectoryInfo? dir = new DirectoryInfo(rootDir);
+    for (int i = 0; i < 6 && dir != null; i++, dir = dir.Parent) {
+      string candidate = Path.Combine(dir.FullName, "tests", "goldens");
+      if (Directory.Exists(candidate))
+        return candidate;
+    }
+    return null;
   }
 
   private static void Report(

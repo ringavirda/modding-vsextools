@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Newtonsoft.Json.Linq;
 using ExpandedLib.Assets;
+using Newtonsoft.Json.Linq;
 
 namespace ExpandedLib.Verify;
 
@@ -14,9 +14,11 @@ namespace ExpandedLib.Verify;
 /// <c>verticals</c> shorthands included (see <c>ExpandedLib.Shapes.Schematic.Shorthands</c>, whose
 /// same table fixed the slab-lined furnace cores rendering magenta). A code neither covers logs
 /// "Missing mapping for texture code #code during shape tesselation of block ..." and draws the
-/// face untextured; a block finding is an error (the client always logs it), an item finding is a
-/// warning (the client is silent there - vanilla's own metalbit/nugget pair leaves <c>#granite</c>
-/// unmapped this way).
+/// face untextured; a block finding is an error and an item finding is informational - the owner's
+/// ruling, not a difference in the client's own logging (it logs for an item exactly as for a
+/// block): vanilla itself ships this defect, its own metalbit mapping only <c>#ore</c> against
+/// <c>game:item/nugget</c>'s <c>#granite</c>, so an item finding stays a note rather than failing a
+/// mod's run for a defect the mod inherited from the game.
 /// </summary>
 public static class ShapeTextureChecker {
   /// <summary>Every missing-mapping finding among <paramref name="definitionFiles"/> - the mod's
@@ -39,7 +41,13 @@ public static class ShapeTextureChecker {
       if (string.IsNullOrEmpty(code) || (bool?)raw["enabled"] == false)
         continue;
 
-      foreach (string variant in ExpandVariants(raw, code!))
+      // A group naming loadFromProperties cannot be expanded headlessly; the type is skipped here
+      // rather than guessed at, the same way BlockItemCatalogue.UnresolvedPrefixes already reports
+      // it to the user once, in Runner.
+      List<Variant>? variants = BlockItemCatalogue.TryExpand(raw, code!);
+      if (variants == null)
+        continue;
+      foreach (Variant variant in variants)
         CheckVariant(store, domain, path, raw, variant, isBlock, findings);
     }
     return findings;
@@ -50,19 +58,22 @@ public static class ShapeTextureChecker {
     string domain,
     string path,
     JObject raw,
-    string variant,
+    Variant variant,
     bool isBlock,
     List<Finding> findings
   ) {
     JObject? declaredTextures =
-      BlockTypeResolution.ByType(raw, "textures", variant) as JObject;
+      BlockTypeResolution.ByType(raw, "textures", variant.Code) as JObject;
     var declaredCodes = new HashSet<string>(
       declaredTextures?.Properties().Select(p => p.Name) ?? [],
       StringComparer.Ordinal
     );
 
     foreach ((string shapeDomain, string shapePath) in ShapeRefs(raw, variant)) {
-      if (store.TryGet(shapeDomain, $"shapes/{shapePath}.json") is not JObject shape)
+      if (
+        store.TryGet(shapeDomain, $"shapes/{shapePath}.json")
+        is not JObject shape
+      )
         continue; // A dangling shape reference is not this check's business to report.
       if (shape["elements"] is not JArray elements)
         continue;
@@ -72,7 +83,9 @@ public static class ShapeTextureChecker {
         StringComparer.Ordinal
       );
 
-      foreach (string faceCode in FaceCodes(elements).Distinct(StringComparer.Ordinal)) {
+      foreach (
+        string faceCode in FaceCodes(elements).Distinct(StringComparer.Ordinal)
+      ) {
         if (
           shapeCodes.Contains(faceCode)
           || declaredCodes.Contains(faceCode)
@@ -87,51 +100,89 @@ public static class ShapeTextureChecker {
             $"{domain}:{path}",
             null,
             $"Missing mapping for texture code #{faceCode} in shape {shapeDomain}:{shapePath} "
-              + $"for {domain}:{variant}"
+              + $"for {domain}:{variant.Code}"
           )
         );
       }
     }
   }
 
-  private static readonly string[] Horizontals = ["north", "east", "south", "west"];
+  private static readonly string[] Horizontals =
+  [
+    "north",
+    "east",
+    "south",
+    "west",
+  ];
   private static readonly string[] Verticals = ["up", "down"];
+  private static readonly string[] Sides =
+  [
+    "north",
+    "east",
+    "south",
+    "west",
+    "up",
+    "down",
+  ];
+  private static readonly string[] WestEast = ["west", "east"];
+  private static readonly string[] NorthSouth = ["north", "south"];
 
-  // "all" and "sides" stand in for any face code at all; "horizontals"/"verticals" for the four
-  // side faces and the two vertical ones - the game's own convention, matching
+  // "all" stands in for any face code at all; "sides" for the six cardinal directions (west, east,
+  // north, south, up, down - not "any code", TextureAtlasManager.ResolveTextureDict's own rule);
+  // "horizontals"/"verticals" for the four side faces and the two vertical ones; "westeast"/
+  // "northsouth" for their own opposing pair - the game's own convention, matching
   // ExpandedLib.Shapes.Schematic.Shorthands.
-  private static bool CoveredByShorthand(string faceCode, HashSet<string> codes) =>
+  private static bool CoveredByShorthand(
+    string faceCode,
+    HashSet<string> codes
+  ) =>
     codes.Contains("all")
-    || codes.Contains("sides")
+    || (Sides.Contains(faceCode) && codes.Contains("sides"))
     || (Horizontals.Contains(faceCode) && codes.Contains("horizontals"))
-    || (Verticals.Contains(faceCode) && codes.Contains("verticals"));
+    || (Verticals.Contains(faceCode) && codes.Contains("verticals"))
+    || (WestEast.Contains(faceCode) && codes.Contains("westeast"))
+    || (NorthSouth.Contains(faceCode) && codes.Contains("northsouth"));
 
   // Every shape a variant can draw: its own shape/shapeByType base, plus every alternates[].base
-  // beside it - each is a distinct shape file the client can tesselate for that block.
-  private static IEnumerable<(string Domain, string Path)> ShapeRefs(JObject raw, string variant) {
-    JToken? entry = BlockTypeResolution.ByType(raw, "shape", variant);
-    if (SplitShapeRef(entry) is { } baseRef)
+  // beside it - each is a distinct shape file the client can tesselate for that block. A base
+  // path's own {group} tokens are substituted from the variant's states first, the same rule
+  // ExpandedLib.Shapes.BlockIndex resolves a shape file with.
+  private static IEnumerable<(string Domain, string Path)> ShapeRefs(
+    JObject raw,
+    Variant variant
+  ) {
+    JToken? entry = BlockTypeResolution.ByType(raw, "shape", variant.Code);
+    if (SplitShapeRef(entry, variant.States) is { } baseRef)
       yield return baseRef;
     if (entry is JObject obj && obj["alternates"] is JArray alternates)
       foreach (JToken alt in alternates)
-        if (SplitShapeRef(alt) is { } altRef)
+        if (SplitShapeRef(alt, variant.States) is { } altRef)
           yield return altRef;
   }
 
   // A shape entry's own "base" (or the entry itself when it is a bare string) split into its
   // domain and path - a bare path defaults to "game", the same default AssetLocation gives one.
-  private static (string Domain, string Path)? SplitShapeRef(JToken? entry) {
-    string? value = entry is JObject obj ? (string?)obj["base"] : (string?)entry;
+  // The variant's own states substitute the base's {group} tokens first (a slab's own
+  // "block/basic/slab/slab-{rot}", say), the same rule ExpandedLib.Shapes.BlockIndex resolves a
+  // shape file with, or a shape reached only through such a token is never looked up.
+  private static (string Domain, string Path)? SplitShapeRef(
+    JToken? entry,
+    IReadOnlyDictionary<string, string> states
+  ) {
+    string? value = entry is JObject obj
+      ? (string?)obj["base"]
+      : (string?)entry;
     if (string.IsNullOrEmpty(value))
       return null;
+    value = BlockTypeResolution.Substitute(value, states);
     int colon = value.IndexOf(':');
-    return colon < 0
-      ? ("game", value)
-      : (value[..colon], value[(colon + 1)..]);
+    return colon < 0 ? ("game", value) : (value[..colon], value[(colon + 1)..]);
   }
 
-  // Every `#code` a shape's elements (children included) name on a face - `#null` excepted,
-  // Model Creator's own marker for a face with no texture at all, which no block ever assigns.
+  // Every `#code` a shape's elements (children included) name on a face still resolved for
+  // tesselation - `#null` excepted, Model Creator's own marker for a face with no texture at all,
+  // and a face carrying `"enabled": false` excepted too, ShapeElement.TrimTextureNamesAndResolveFaces'
+  // own rule: a disabled face never enters FacesResolved, so the tesselator never requests its code.
   private static IEnumerable<string> FaceCodes(JArray elements) {
     foreach (JToken el in elements) {
       if (el["faces"] is JObject faces)
@@ -140,41 +191,12 @@ public static class ShapeTextureChecker {
             (string?)face.Value["texture"] is { } tex
             && tex.StartsWith('#')
             && tex != "#null"
+            && (bool?)face.Value["enabled"] != false
           )
             yield return tex[1..];
       if (el["children"] is JArray children)
         foreach (string code in FaceCodes(children))
           yield return code;
     }
-  }
-
-  // Every concrete "code-state-state" a definition's inline variantgroups expand to, the same
-  // combinatorial rule BlockItemCatalogue.Expand uses; a group naming loadFromProperties instead of
-  // inline states cannot be resolved here and is dropped from expansion rather than guessed at, so
-  // its axis never appears in the returned paths.
-  private static List<string> ExpandVariants(JObject raw, string code) {
-    List<string> combos = [code];
-    if (raw["variantgroups"] is JArray groups)
-      foreach (JToken group in groups) {
-        if (group["states"] is not JArray states)
-          continue;
-        string[] values = [.. states.Select(s => (string?)s).OfType<string>()];
-        combos = [.. combos.SelectMany(c => values.Select(v => $"{c}-{v}"))];
-      }
-
-    var skip = new HashSet<string>(
-      ((JArray?)raw["skipVariants"])?.Select(v => (string?)v).OfType<string>() ?? [],
-      StringComparer.Ordinal
-    );
-    List<string>? allow = ((JArray?)raw["allowedVariants"])
-      ?.Select(v => (string?)v)
-      .OfType<string>()
-      .ToList();
-
-    return [
-      .. combos.Where(c =>
-        !skip.Contains(c) && (allow is not { Count: > 0 } || allow.Contains(c))
-      ),
-    ];
   }
 }

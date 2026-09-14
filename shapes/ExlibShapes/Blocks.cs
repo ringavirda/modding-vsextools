@@ -429,7 +429,7 @@ public sealed class BlockIndex {
   private ResolvedBlock ToBlock(Variant variant) {
     JObject? shapeEntry = BlockTypeResolution.ByType(variant.Raw, "shape", variant.Path) as JObject;
     string? shapeBase = (string?)shapeEntry?["base"];
-    string? shapePath = shapeBase != null ? ShapePath(Substitute(shapeBase, variant.States)) : null;
+    string? shapePath = shapeBase != null ? ShapePath(BlockTypeResolution.Substitute(shapeBase, variant.States)) : null;
 
     var textures = new Dictionary<string, TextureRef>();
     if (BlockTypeResolution.ByType(variant.Raw, "textures", variant.Path) is JObject texturesJson)
@@ -452,13 +452,13 @@ public sealed class BlockIndex {
   // spell their variants) and the `overlays` painted over it. Null when the entry names no base.
   internal static TextureRef? TextureOf(JToken entry, Variant variant) {
     if (entry is not JObject obj)
-      return (string?)entry is { } plain ? new TextureRef(Substitute(plain, variant.States)) : null;
+      return (string?)entry is { } plain ? new TextureRef(BlockTypeResolution.Substitute(plain, variant.States)) : null;
     if ((string?)BlockTypeResolution.ByType(obj, "base", variant.Path) is not { } value)
       return null;
     List<string> overlays = [
-      .. ((JArray?)obj["overlays"])?.Select(o => Substitute((string)o!, variant.States)) ?? [],
+      .. ((JArray?)obj["overlays"])?.Select(o => BlockTypeResolution.Substitute((string)o!, variant.States)) ?? [],
     ];
-    return new TextureRef(Substitute(value, variant.States), overlays);
+    return new TextureRef(BlockTypeResolution.Substitute(value, variant.States), overlays);
   }
 
   // A shape entry's own turn about one axis, read through the same ByType rule the entry itself
@@ -469,12 +469,6 @@ public sealed class BlockIndex {
     shapeEntry != null && BlockTypeResolution.ByType(shapeEntry, key, path) is JValue value && value.Type != JTokenType.Null
       ? (double)value
       : 0.0;
-
-  private static string Substitute(string text, IReadOnlyDictionary<string, string> states) {
-    foreach ((string code, string state) in states)
-      text = text.Replace("{" + code + "}", state);
-    return text;
-  }
 
   private static readonly Regex AltRe = new(@"@\(([^)]*)\)");
 

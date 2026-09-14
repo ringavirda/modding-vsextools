@@ -2,6 +2,6 @@
   "code": "cubeblock",
   "shape": { "base": "fixturemod:cubeblock" },
   "textures": {
-    "north": { "base": "fixturemod:block/north" }
+    "all": { "base": "fixturemod:block/all" }
   }
 }

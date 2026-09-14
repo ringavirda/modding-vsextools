@@ -54,42 +54,66 @@ public sealed class BlockItemCatalogue {
     if (string.IsNullOrEmpty(code) || (bool?)type["enabled"] == false)
       return;
 
-    if (type["variantgroups"] is not JArray groups || groups.Count == 0) {
-      into.Add(code!);
+    List<Variant>? variants = TryExpand(type, code!);
+    if (variants == null) {
+      // loadFromProperties or some other group shape this tool cannot resolve headlessly -
+      // treat the whole type as an unresolved prefix rather than guess at its states.
+      UnresolvedPrefixes[domain].Add(code!);
       return;
     }
 
-    List<string> combos = [code!];
-    foreach (JToken groupToken in groups) {
-      if (groupToken is not JObject group)
-        continue;
-      if (group["states"] is JArray states) {
+    foreach (Variant variant in variants)
+      into.Add(variant.Code);
+  }
+
+  /// <summary>
+  /// Expands a definition's own <c>variantgroups</c> into every concrete variant, the same
+  /// combinatorial rule <c>RegistryObjectTypeLoader</c> uses for a group carrying its states
+  /// inline, filtered by <c>skipVariants</c>/<c>allowedVariants</c>. Returns null when a group
+  /// names <c>loadFromProperties</c> instead of inline <c>states</c> - that axis needs the
+  /// loader's own world-property resolution this tool does not have, so the type is left
+  /// unexpanded rather than guessed at.
+  /// </summary>
+  public static List<Variant>? TryExpand(JObject type, string code) {
+    List<(string Code, Dictionary<string, string> States)> combos = [(code, [])];
+    if (type["variantgroups"] is JArray groups)
+      foreach (JToken groupToken in groups) {
+        if (groupToken is not JObject group)
+          continue;
+        if (group["states"] is not JArray states)
+          return null;
+        string? axisCode = (string?)group["code"];
         string[] values = [.. states.Select(s => (string?)s).OfType<string>()];
-        combos = [.. combos.SelectMany(c => values.Select(v => $"{c}-{v}"))];
-      } else {
-        // loadFromProperties or some other group shape this tool cannot resolve headlessly -
-        // treat the whole type as an unresolved prefix rather than guess at its states.
-        UnresolvedPrefixes[domain].Add(code!);
-        return;
+        combos = [
+          .. combos.SelectMany(c =>
+            values.Select(v => {
+              var next = new Dictionary<string, string>(c.States, StringComparer.Ordinal);
+              if (axisCode != null)
+                next[axisCode] = v;
+              return ($"{c.Code}-{v}", next);
+            })
+          ),
+        ];
       }
-    }
 
     var skip = new HashSet<string>(
-      ((JArray?)type["skipVariants"])?.Select(v => (string?)v).OfType<string>()
-        ?? [],
+      ((JArray?)type["skipVariants"])?.Select(v => (string?)v).OfType<string>() ?? [],
       StringComparer.Ordinal
     );
-    var allow = ((JArray?)type["allowedVariants"])
+    List<string>? allow = ((JArray?)type["allowedVariants"])
       ?.Select(v => (string?)v)
       .OfType<string>()
       .ToList();
 
-    foreach (string combo in combos) {
-      if (skip.Contains(combo))
-        continue;
-      if (allow is { Count: > 0 } && !allow.Contains(combo))
-        continue;
-      into.Add(combo);
-    }
+    return [
+      .. combos
+        .Where(c => !skip.Contains(c.Code) && (allow is not { Count: > 0 } || allow.Contains(c.Code)))
+        .Select(c => new Variant(c.Code, c.States)),
+    ];
   }
 }
+
+/// <summary>One concrete <c>code-state-state</c> a definition's own <c>variantgroups</c> expand
+/// to, and the axis code -> chosen state map that produced it - a caller substituting a
+/// <c>shapeByType</c> entry's own <c>{group}</c> tokens needs the map, not just the code.</summary>
+public sealed record Variant(string Code, IReadOnlyDictionary<string, string> States);

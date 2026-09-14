@@ -55,38 +55,57 @@ public sealed class AssetStore {
         remapDomain?.Invoke(Path.GetFileName(domainDir))
         ?? Path.GetFileName(domainDir)
       ).ToLowerInvariant();
-      Dictionary<string, JToken> files = _byDomain.TryGetValue(
-        domain,
-        out var existing
-      )
-        ? existing
-        : _byDomain[domain] = new Dictionary<string, JToken>(
-          StringComparer.Ordinal
-        );
+      LoadDomainDir(domain, domainDir, onParseError);
+    }
+  }
 
-      foreach (
-        string file in Directory.EnumerateFiles(
-          domainDir,
-          "*.json",
-          SearchOption.AllDirectories
-        )
-      ) {
-        string relPath = Path.GetRelativePath(domainDir, file)
-          .Replace(Path.DirectorySeparatorChar, '/')
-          .ToLowerInvariant();
-        string text = File.ReadAllText(file);
-        try {
-          files[relPath] = JToken.Parse(text);
-        } catch (JsonReaderException reader) {
-          onParseError?.Invoke(
-            file,
-            reader.Message,
-            reader.LineNumber,
-            reader.LinePosition
-          );
-        } catch (JsonException e) {
-          onParseError?.Invoke(file, e.Message, 0, 0);
-        }
+  /// <summary>Loads every <c>*.json</c> file under <paramref name="domainDir"/> straight into
+  /// <paramref name="domain"/> - no <c>assets/</c> wrapper, the shape a code-first mod's
+  /// <c>tests/goldens/&lt;domain&gt;</c> tree already has (see
+  /// <c>ExpandedLib.Shapes.BlockIndex</c>'s own <c>tests/goldens</c> trees): that tree is what the
+  /// game actually sees for a definition its assembly injects rather than ships as a file, so a
+  /// patch or a catalogue lookup against the domain resolves it the same way.</summary>
+  public void AddDomainRoot(string domain, string domainDir) =>
+    LoadDomainDir(domain.ToLowerInvariant(), domainDir, onParseError: null);
+
+  private void LoadDomainDir(
+    string domain,
+    string domainDir,
+    Action<string, string, int, int>? onParseError
+  ) {
+    if (!Directory.Exists(domainDir))
+      return;
+    Dictionary<string, JToken> files = _byDomain.TryGetValue(
+      domain,
+      out var existing
+    )
+      ? existing
+      : _byDomain[domain] = new Dictionary<string, JToken>(
+        StringComparer.Ordinal
+      );
+
+    foreach (
+      string file in Directory.EnumerateFiles(
+        domainDir,
+        "*.json",
+        SearchOption.AllDirectories
+      )
+    ) {
+      string relPath = Path.GetRelativePath(domainDir, file)
+        .Replace(Path.DirectorySeparatorChar, '/')
+        .ToLowerInvariant();
+      string text = File.ReadAllText(file);
+      try {
+        files[relPath] = JToken.Parse(text);
+      } catch (JsonReaderException reader) {
+        onParseError?.Invoke(
+          file,
+          reader.Message,
+          reader.LineNumber,
+          reader.LinePosition
+        );
+      } catch (JsonException e) {
+        onParseError?.Invoke(file, e.Message, 0, 0);
       }
     }
   }

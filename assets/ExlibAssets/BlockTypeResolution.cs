@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 using Vintagestory.API.Util;
 
@@ -33,5 +34,16 @@ public static class BlockTypeResolution {
       if (prop.Name.ToLowerInvariant() == lowered)
         return prop.Value;
     return null;
+  }
+
+  /// <summary>Replaces every <c>{code}</c> token in <paramref name="text"/> with
+  /// <paramref name="states"/>[<c>code</c>] - a variant's own <c>{group}</c> substitution into a
+  /// <c>shapeByType</c>/<c>texturesByType</c> entry's base path, shared by
+  /// <c>ExpandedLib.Shapes.BlockIndex</c> and <c>ExpandedLib.Verify.ShapeTextureChecker</c>. A
+  /// token naming an axis <paramref name="states"/> does not carry is left untouched.</summary>
+  public static string Substitute(string text, IReadOnlyDictionary<string, string> states) {
+    foreach ((string code, string state) in states)
+      text = text.Replace("{" + code + "}", state);
+    return text;
   }
 }
