@@ -1,0 +1,29 @@
+{
+	"textures": {
+		"a": "test:materials/cast-iron1"
+	},
+	"elements": [
+		{
+			"name": "C",
+			"from": [0, 0, 0],
+			"to": [16, 16, 16],
+			"faces": {
+				"north": { "texture": "#a", "uv": [0, 0, 16, 16] },
+				"south": { "texture": "#a", "uv": [0, 0, 16, 16] },
+				"up": { "texture": "#a", "uv": [0, 0, 16, 16] }
+			}
+		}
+	],
+	"animations": [
+		{
+			"code": "bob",
+			"name": "bob",
+			"quantityframes": 30,
+			"onAnimationEnd": "Repeat",
+			"keyframes": [
+				{ "frame": 0, "elements": { "C": { "offsetY": 0.0 } } },
+				{ "frame": 15, "elements": { "C": { "offsetY": 8.0 } } }
+			]
+		}
+	]
+}
