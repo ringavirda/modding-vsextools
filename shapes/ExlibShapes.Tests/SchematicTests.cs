@@ -273,6 +273,35 @@ public class SchematicTests {
   }
 
   [Fact]
+  public void The_layer_scale_reads_true_on_the_column_nearest_the_camera() {
+    Layout layout = DemoLayout();
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+    (JObject raw, _) = Schematic.Compose(layout, index);
+    Shape shape = Newtonsoft.Json.JsonConvert.DeserializeObject<Shape>(raw.ToString())!;
+    Renderer.Projection projection = Renderer.Project(
+      ShapeFile.FromRaw(shape, null, new Dictionary<string, string>()),
+      Renderer.NamedViews["iso"],
+      8
+    );
+
+    // The corner column the camera stands nearest: the greatest X and Z the layout reserves.
+    IReadOnlyList<Offset> cells = Footprint.Reserved(layout);
+    int x = (cells.Max(c => c.X) + 1) * 16;
+    int z = (cells.Max(c => c.Z) + 1) * 16;
+    IReadOnlyList<(int Layer, double Row)> ticks = Schematic.ScaleRows(projection, layout);
+    Assert.Equal(layout.Layers(), ticks.Select(t => t.Layer));
+    foreach ((int layer, double row) in ticks)
+      Assert.Equal(projection.Screen(x, layer * 16 + 8, z).Row, row, 6);
+
+    // Each tick carries a guide across the picture, so the row is readable where the model is.
+    using SKBitmap drawn = Schematic.IsoPng(layout, index, ppu: 8);
+    foreach ((int layer, double row) in ticks) {
+      SKColor pixel = drawn.GetPixel(drawn.Width - 1, (int)Math.Round(row));
+      Assert.True(pixel != Renderer.Background, $"layer {layer}: no guide reaches the near edge");
+    }
+  }
+
+  [Fact]
   public void A_blocktypes_all_texture_stands_in_for_every_key_of_its_shape() {
     // demo:masonry's shape declares and uses `brick`, naming a texture that does not exist; the
     // blocktype's `all` is what the game paints every face with. demo:rusty declares no textures

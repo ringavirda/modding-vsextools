@@ -615,8 +615,9 @@ public static class Schematic {
   /// The isometric textured composite of <paramref name="layout"/>: every resolved, non-optional
   /// cell's shape plus a grey box per filler cell, or, for a filler-only megablock, its own body
   /// over its footprint outline. <paramref name="cutAt"/> omits layers above it. A vertical scale
-  /// runs down the left edge, one tick per drawn Y layer labelled with the layer number, so height
-  /// is counted off the picture. <paramref name="spin"/> turns every drawn mesh, as
+  /// runs down the left edge, one labelled tick per drawn Y layer carried across the picture as a
+  /// faint guide (<see cref="ScaleRows"/>), so height is counted off the face a reader is looking
+  /// at. <paramref name="spin"/> turns every drawn mesh, as
   /// <see cref="Compose"/> means it.
   /// </summary>
   public static SKBitmap IsoPng(Layout layout, BlockIndex index, int ppu = 8, int? cutAt = null, int spin = 0) {
@@ -654,29 +655,55 @@ public static class Schematic {
   // the spine the ticks cross.
   private const int ScalePad = 40;
 
-  // The drawing moved right by ScalePad, with a tick per drawn Y layer at the height that layer's
-  // cells are drawn at. The tick row comes from the layout's own south-west column, whose vertical
-  // edge the iso view lays nearest the left margin.
+  /// <summary>
+  /// The screen row each drawn Y layer of <paramref name="layout"/> reads at, ascending by layer:
+  /// the height of that layer's own middle on the corner column nearest the camera, which is the
+  /// plane a reader counts height against. A projection is true in one vertical plane only, and on
+  /// any other the layers of the picture stand above or below their own ticks.
+  /// </summary>
+  /// <param name="projection">The mapping the drawing was laid out with
+  /// (<see cref="Renderer.Project"/>).</param>
+  /// <param name="layout">The layout drawn, whose reserved cells give the corner column.</param>
+  /// <param name="cutAt">Omits every layer above it; null keeps all.</param>
+  public static IReadOnlyList<(int Layer, double Row)> ScaleRows(
+    Renderer.Projection projection,
+    Layout layout,
+    int? cutAt = null
+  ) {
+    IReadOnlyList<Offset> cells = Footprint.Reserved(layout);
+    int x = (cells.Max(c => c.X) + 1) * 16;
+    int z = (cells.Max(c => c.Z) + 1) * 16;
+    return [
+      .. layout
+        .Layers()
+        .Where(y => cutAt == null || y <= cutAt)
+        .Select(y => (y, projection.Screen(x, y * 16 + 8, z).Row)),
+    ];
+  }
+
+  // The drawing moved right by ScalePad, with a tick and a faint guide across the picture per drawn
+  // Y layer, at the row that layer reads at on the plane nearest the camera (ScaleRows).
   private static SKBitmap WithLayerScale(SKBitmap drawing, Renderer.Projection projection, Layout layout, int? cutAt) {
-    List<int> layers = [.. layout.Layers().Where(y => cutAt == null || y <= cutAt)];
-    if (layers.Count == 0)
+    IReadOnlyList<(int Layer, double Row)> ticks = ScaleRows(projection, layout, cutAt);
+    if (ticks.Count == 0)
       return drawing.Copy();
 
-    (Offset lo, Offset hi) = layout.Bounds();
     var scaled = new SKBitmap(drawing.Width + ScalePad, drawing.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
     using var canvas = new SKCanvas(scaled);
     canvas.Clear(Renderer.Background);
     canvas.DrawBitmap(drawing, ScalePad, 0);
 
     using var paint = new SKPaint { Color = SKColors.Black, IsAntialias = false, StrokeWidth = 1 };
+    using var guide = new SKPaint { Color = new SKColor(0, 0, 0, 40), IsAntialias = false, StrokeWidth = 1 };
     using var font = new SKFont { Size = 10 };
     var rows = new List<float>();
-    foreach (int y in layers) {
-      (_, double row) = projection.Screen(lo.X * 16, y * 16 + 8, (hi.Z + 1) * 16);
-      rows.Add((float)row);
-      canvas.DrawLine(ScalePad - 9, (float)row, ScalePad - 1, (float)row, paint);
+    foreach ((int y, double value) in ticks) {
+      var row = (float)value;
+      rows.Add(row);
+      canvas.DrawLine(ScalePad, row, scaled.Width, row, guide);
+      canvas.DrawLine(ScalePad - 9, row, ScalePad - 1, row, paint);
       string label = y == 0 ? "0" : y > 0 ? $"+{y}" : y.ToString(CultureInfo.InvariantCulture);
-      canvas.DrawText(label, ScalePad - 12 - font.MeasureText(label), (float)row + 3.5f, font, paint);
+      canvas.DrawText(label, ScalePad - 12 - font.MeasureText(label), row + 3.5f, font, paint);
     }
     canvas.DrawLine(ScalePad - 5, rows.Min(), ScalePad - 5, rows.Max(), paint);
     return scaled;
