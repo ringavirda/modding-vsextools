@@ -362,6 +362,16 @@ function Get-ExlibPackageVersion([string]$ExlibRoot, [string]$Id) {
   return $m.Groups[1].Value
 }
 
+# exlib's own "Copyright (c) <year> <holder>" line, so a generated starter's LICENSE carries a real
+# holder rather than the template placeholder a modder would otherwise have to remember to edit.
+function Get-ExlibCopyright([string]$ExlibRoot) {
+  $licensePath = Join-Path $ExlibRoot 'LICENSE'
+  $text = Get-Content $licensePath -Raw
+  $m = [regex]::Match($text, 'Copyright \(c\) (\d{4}) (.+)')
+  if (-not $m.Success) { throw "exlib checkout's LICENSE names no 'Copyright (c) <year> <holder>' line." }
+  return [pscustomobject]@{ Year = $m.Groups[1].Value; Holder = $m.Groups[2].Value.Trim() }
+}
+
 # Refuses a $Dest that would make `starter` wipe tooling out from under a live checkout (it is,
 # contains, or is contained by the repo running the command, the tools checkout, or the exlib
 # checkout it reads from), or drop generated files into a directory that holds something else
@@ -749,7 +759,8 @@ jobs:
   Copy-Item (Join-Path $exlibRoot '.gitattributes') (Join-Path $dest '.gitattributes') -Force
   Copy-Item (Join-Path $exlibRoot '.editorconfig') (Join-Path $dest '.editorconfig') -Force
   Copy-Item (Join-Path $exlibRoot '.csharpierrc') (Join-Path $dest '.csharpierrc') -Force
-  Set-Content (Join-Path $dest 'LICENSE') $StarterLicense
+  $copyright = Get-ExlibCopyright $exlibRoot
+  Set-Content (Join-Path $dest 'LICENSE') ($StarterLicense.Replace('<year> <your name>', "$($copyright.Year) $($copyright.Holder)"))
   Set-Content (Join-Path $dest '.gitignore') $StarterGitignore
 
   # One markdown table row per sample mod, read from each mod's own (already version-pinned)
