@@ -13,10 +13,11 @@ using Vintagestory.API.Common;
 
 namespace ExpandedLib.Shapes;
 
-// exlib-shapes render|schematic|tree|measure FILE [options] - renders a shape file to textured
-// views/animation frames, a multiblock/megablock blocktype file to a build schematic, or prints a
-// shape's own element tree or its measured extents; see README.md for the full option list of
-// each. Exit codes: 0 success, 1 a resolved run-time error (a bad shape, no such clip), 2 usage.
+// exlib-shapes render|schematic|block|tree|measure FILE [options] - renders a shape file to
+// textured views/animation frames, a multiblock/megablock blocktype file to a build schematic, one
+// blocktype variant to the views a wiki page shows, or prints a shape's own element tree or its
+// measured extents; see README.md for the full option list of each. Exit codes: 0 success, 1 a
+// resolved run-time error (a bad shape, no such clip), 2 usage.
 
 /// <summary>Malformed command-line usage - reported on stderr with exit code 2, not a stack
 /// trace.</summary>
@@ -60,6 +61,7 @@ internal static class Program {
       return args[0] switch {
         "render" => RunRender(rest),
         "schematic" => RunSchematic(rest),
+        "block" => RunBlock(rest),
         "tree" => RunTree(rest),
         "measure" => RunMeasure(rest),
         _ => Unknown(args[0]),
@@ -76,7 +78,7 @@ internal static class Program {
     }
   }
 
-  private const string Usage = "usage: exlib-shapes {render,schematic,tree,measure} FILE [options]";
+  private const string Usage = "usage: exlib-shapes {render,schematic,block,tree,measure} FILE [options]";
 
   private static int Unknown(string command) {
     Console.Error.WriteLine($"exlib-shapes: no such command: {command}");
@@ -215,12 +217,12 @@ internal static class Program {
     List<string> extraRoots = OptAllOf(flags, "--roots");
     string? game = OptOf(flags, "--game");
 
-    Layout layout = Layout.Load(file);
+    List<string> roots = [.. extraRoots, .. BlockIndex.DefaultRoots(file)];
+    BlockIndex index = BlockIndex.Build(roots, game, BlockIndex.UnderLegacyTree(file));
+    Layout layout = Footprint.Placed(Layout.Load(file, DrawnVariant(index, file, null)?.Path), index);
     if (angle != 0)
       layout = layout.Rotated(angle);
 
-    List<string> roots = [.. extraRoots, .. BlockIndex.DefaultRoots(file)];
-    BlockIndex index = BlockIndex.Build(roots, game, BlockIndex.UnderLegacyTree(file));
     HashSet<string> viewSet = [.. views.Split(',')];
     Directory.CreateDirectory(outDir);
     string stem = Path.GetFileNameWithoutExtension(file);
@@ -233,11 +235,13 @@ internal static class Program {
     }
 
     var files = new List<string>();
+    var plans = new List<(string File, int Layer)>();
     if (viewSet.Contains("plan"))
       foreach (int y in layout.Layers()) {
         string path = Path.Combine(outDir, $"{stem}-plan-y{y}.svg");
         File.WriteAllText(path, Schematic.PlanSvg(layout, y, legend));
         files.Add(path);
+        plans.Add((path, y));
       }
 
     if (viewSet.Contains("iso")) {
@@ -265,7 +269,8 @@ internal static class Program {
       files,
       index.Ambiguities,
       Schematic.MissingTextures(layout, index),
-      index.ParseWarnings
+      index.ParseWarnings,
+      plans
     );
     string manifestPath = Path.Combine(outDir, $"{stem}.json");
     File.WriteAllText(manifestPath, manifest.ToString(Formatting.Indented));
@@ -281,6 +286,76 @@ internal static class Program {
     if (warnings.Count > 0)
       Console.WriteLine("warnings: [" + string.Join(", ", warnings.Select(w => (string)w!)) + "]");
     return 0;
+  }
+
+  private static int RunBlock(string[] args) {
+    (string file, string[] flags) = FileAndFlags(
+      args,
+      "usage: exlib-shapes block FILE --out DIR [--variant CODE] "
+        + "[--views iso,north,east,south,west,up] [--ppu N] [--roots PATH...] [--game PATH]"
+    );
+    string outDir = OptOf(flags, "--out") ?? throw new UsageException("--out is required");
+    string? wanted = OptOf(flags, "--variant");
+    IReadOnlyList<string>? views = NamedViews(OptOf(flags, "--views"));
+    int ppu = int.Parse(OptOf(flags, "--ppu") ?? "24", CultureInfo.InvariantCulture);
+    List<string> extraRoots = OptAllOf(flags, "--roots");
+    string? game = OptOf(flags, "--game");
+
+    List<string> roots = [.. extraRoots, .. BlockIndex.DefaultRoots(file)];
+    BlockIndex index = BlockIndex.Build(roots, game, BlockIndex.UnderLegacyTree(file));
+    Variant variant =
+      DrawnVariant(index, file, wanted) ?? throw new UsageException($"{file}: no blocktype in the index came from it");
+
+    JObject manifest = BlockViews.Write(
+      file,
+      variant,
+      index,
+      outDir,
+      views,
+      ppu
+    );
+
+    foreach (JToken written in (JArray)manifest["files"]!)
+      Console.WriteLine((string)written!);
+    Console.WriteLine(Path.Combine(outDir, Path.GetFileNameWithoutExtension(file) + ".json"));
+    Console.WriteLine("variant: " + (string)manifest["variant"]!);
+    Console.WriteLine(
+      "missing textures: [" + string.Join(", ", ((JArray)manifest["missingTextures"]!).Select(t => (string)t!)) + "]"
+    );
+    foreach (JToken warning in (JArray)manifest["warnings"]!)
+      Console.Error.WriteLine($"exlib-shapes: {(string)warning!}");
+    return 0;
+  }
+
+  // The --views list split and checked against the views Renderer names, so a misspelt one is a
+  // usage error rather than a missing-key crash. Null for a null list, which draws the defaults.
+  private static IReadOnlyList<string>? NamedViews(string? views) {
+    if (views == null)
+      return null;
+    string[] names = views.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    foreach (string name in names)
+      if (!Renderer.NamedViews.ContainsKey(name))
+        throw new UsageException(
+          $"no such view: {name} (one of {string.Join(", ", Renderer.NamedViews.Keys)})"
+        );
+    if (names.Length == 0)
+      throw new UsageException($"--views names no view (one of {string.Join(", ", Renderer.NamedViews.Keys)})");
+    return names;
+  }
+
+  // The variant a picture of FILE's family is drawn for: the one `wanted` names (a full code or a
+  // bare path), else the family's north-facing variant, else its first. Null when the index holds
+  // no variant from that file; throws when `wanted` names none of them.
+  private static Variant? DrawnVariant(BlockIndex index, string file, string? wanted) {
+    IReadOnlyList<Variant> variants = index.VariantsOf(file);
+    if (wanted == null)
+      return BlockIndex.NorthFacing(variants) ?? variants.FirstOrDefault();
+    foreach (Variant v in variants)
+      if (v.Code == wanted || v.Path == wanted)
+        return v;
+    throw new UsageException(
+      $"no such variant: {wanted} ({(variants.Count == 0 ? "the file expanded to none" : string.Join(", ", variants.Select(v => v.Path)))})"
+    );
   }
 
   private static int RunTree(string[] args) {

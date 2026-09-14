@@ -52,6 +52,7 @@ source
 | `clean` | delete build output (bin/obj, TestResults) |
 | `render` | render a shape file to textured views or animation frames |
 | `schematic` | render a multiblock/megablock layout to a build schematic |
+| `block` | render one blocktype variant to the views a page shows |
 
 run
 
@@ -87,7 +88,7 @@ wrappers/        the two launchers a consuming repository checks in
 scripts/         the launchers again, pointed at this checkout, so extools drives itself
 pack/            the packaging build (Cake Frosting), manifest-driven
 verify/          exlib-verify, a .NET tool that checks a mod's shipped assets with no game running
-shapes/          exlib-shapes, a .NET tool that renders shapes and multiblock/megablock schematics
+shapes/          exlib-shapes, a .NET tool that renders shapes, blocks and multiblock schematics
 assets/          the lenient asset store and block/item catalogue shared by verify and shapes
 tools/           the API publicizer provisioning applies, the coverage gate, the released-codes derivation
 templates/ci/    GitHub Actions templates for a consuming repository

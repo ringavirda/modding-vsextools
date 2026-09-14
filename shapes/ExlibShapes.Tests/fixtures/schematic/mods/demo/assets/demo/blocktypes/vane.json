@@ -1,0 +1,12 @@
+{
+  "code": "vane",
+  // Its side axis is named the way every oriented mod block names it: a bare reference, which
+  // is the game's own domain and not the mod's.
+  "variantgroups": [
+    { "code": "side", "loadFromProperties": "abstract/horizontalorientation" }
+  ],
+  "shape": { "base": "demo:block/wall" },
+  "textures": {
+    "wall": { "base": "demo:block/wall" }
+  }
+}

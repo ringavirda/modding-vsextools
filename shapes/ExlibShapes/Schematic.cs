@@ -43,6 +43,11 @@ public static class Schematic {
   ];
   private const string FillerColor = "#BFBFBF";
   private const string FillerTextureKey = "__filler";
+  private const string OutlineTextureKey = "__outline";
+
+  /// <summary>The element and texture-key prefix <see cref="Compose"/> gives a filler-only
+  /// megablock's own body, which no numbered cell names.</summary>
+  public const string PrincipalPrefix = "principal";
 
   // Vintage Story facing normals in the XZ plane: north -Z, south +Z, east +X, west -X.
   private static readonly Dictionary<string, (int Dx, int Dz)> ArrowDir = new(StringComparer.Ordinal) {
@@ -120,10 +125,11 @@ public static class Schematic {
     int Pz(int z) => (z - z0) * cell;
 
     const int margin = 24;
+    const int caption = 18;
     var sb = new StringBuilder();
     sb.Append(
       $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width + 2 * margin}\" "
-        + $"height=\"{height + 2 * margin}\" font-family=\"sans-serif\" font-size=\"10\">"
+        + $"height=\"{height + 2 * margin + caption}\" font-family=\"sans-serif\" font-size=\"10\">"
     );
     sb.Append(
       "<defs><marker id=\"arrow\" markerWidth=\"6\" markerHeight=\"6\" refX=\"3\" refY=\"3\" "
@@ -179,6 +185,60 @@ public static class Schematic {
     sb.Append($"<text x=\"{Svg(width / 2.0)}\" y=\"-10\" text-anchor=\"middle\">north</text>");
     sb.Append($"<text x=\"{width + 4}\" y=\"{Svg(height / 2.0)}\">x</text>");
     sb.Append($"<text x=\"-14\" y=\"{Svg(height / 2.0)}\">z</text>");
+    sb.Append(
+      $"<text class=\"caption\" x=\"{Svg(width / 2.0)}\" y=\"{height + caption}\" text-anchor=\"middle\">"
+        + $"{LayerCaption(y)}</text>"
+    );
+    sb.Append("</g></svg>");
+    return sb.ToString();
+  }
+
+  /// <summary>The caption a plan of Y layer <paramref name="y"/> carries: the starter block stands
+  /// on layer 0, and every other layer is named by its signed distance from it.</summary>
+  public static string LayerCaption(int y) =>
+    y switch {
+      0 => "Layer 0, the starter block's row",
+      > 0 => $"Layer +{y}",
+      _ => $"Layer {y}",
+    };
+
+  /// <summary>
+  /// A megablock's reserved footprint as one plan: a <paramref name="cell"/>-px square per (x, z)
+  /// column its body occupies (<see cref="Footprint.Cells"/> with every Y layer projected onto one),
+  /// the principal's own column filled in the first legend colour and outlined thicker
+  /// (<c>class="anchor"</c>). North is up (smaller Z is nearer the top).
+  /// </summary>
+  public static string FootprintSvg(Layout layout, int cell = 32) {
+    IReadOnlyList<Offset> cells = Footprint.Cells(layout);
+    List<(int X, int Z)> columns = [.. cells.Select(c => (c.X, c.Z)).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X)];
+    int x0 = columns.Min(c => c.X), x1 = columns.Max(c => c.X);
+    int z0 = columns.Min(c => c.Z), z1 = columns.Max(c => c.Z);
+    int width = (x1 - x0 + 1) * cell;
+    int height = (z1 - z0 + 1) * cell;
+
+    const int margin = 24;
+    const int caption = 18;
+    var sb = new StringBuilder();
+    sb.Append(
+      $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width + 2 * margin}\" "
+        + $"height=\"{height + 2 * margin + caption}\" font-family=\"sans-serif\" font-size=\"10\">"
+    );
+    sb.Append($"<g transform=\"translate({margin},{margin})\">");
+    foreach ((int x, int z) in columns) {
+      bool isAnchor = x == layout.Anchor.X && z == layout.Anchor.Z;
+      sb.Append(
+        $"<rect class=\"{(isAnchor ? "cell anchor" : "cell")}\" x=\"{(x - x0) * cell}\" y=\"{(z - z0) * cell}\" "
+          + $"width=\"{cell}\" height=\"{cell}\" fill=\"{(isAnchor ? Palette[0] : FillerColor)}\" "
+          + $"stroke=\"black\" stroke-width=\"{(isAnchor ? 3 : 1)}\" />"
+      );
+    }
+    sb.Append($"<text x=\"{Svg(width / 2.0)}\" y=\"-10\" text-anchor=\"middle\">north</text>");
+    sb.Append($"<text x=\"{width + 4}\" y=\"{Svg(height / 2.0)}\">x</text>");
+    sb.Append($"<text x=\"-14\" y=\"{Svg(height / 2.0)}\">z</text>");
+    sb.Append(
+      $"<text class=\"caption\" x=\"{Svg(width / 2.0)}\" y=\"{height + caption}\" text-anchor=\"middle\">"
+        + "Footprint, the block's own cell marked</text>"
+    );
     sb.Append("</g></svg>");
     return sb.ToString();
   }
@@ -257,7 +317,7 @@ public static class Schematic {
   // blocktype's, keyed with the same prefix). The blocktype's `all` entry is the game's own
   // catch-all: it stands in for every key the shape declares or its faces use that the blocktype
   // does not name itself.
-  private static (JObject Group, Dictionary<string, string> Textures) WrappedCell(
+  internal static (JObject Group, Dictionary<string, string> Textures) WrappedCell(
     ResolvedBlock block,
     Offset offset,
     string prefix
@@ -311,12 +371,43 @@ public static class Schematic {
     };
   }
 
+  // One footprint column's ground outline: four bars a unit thick around the cell's edges, laid in
+  // the unit of floor just below the lowest layer the footprint reaches, so a megablock's own body
+  // is drawn over its reserved cells instead of inside a stack of grey boxes.
+  private static IEnumerable<JObject> OutlineRing(int x, int z, int y, string name) {
+    int ox = x * 16, oy = y * 16 - 1, oz = z * 16;
+    (int X0, int Z0, int X1, int Z1)[] bars = [
+      (0, 0, 16, 1),
+      (0, 15, 16, 16),
+      (0, 0, 1, 16),
+      (15, 0, 16, 16),
+    ];
+    for (int i = 0; i < bars.Length; i++) {
+      var faces = new JObject();
+      foreach (string face in Geometry.Faces)
+        faces[face] = new JObject { ["texture"] = $"#{OutlineTextureKey}" };
+      yield return new JObject {
+        ["name"] = $"{name}-{i}",
+        ["from"] = new JArray(ox + bars[i].X0, oy, oz + bars[i].Z0),
+        ["to"] = new JArray(ox + bars[i].X1, oy + 1, oz + bars[i].Z1),
+        ["faces"] = faces,
+      };
+    }
+  }
+
   /// <summary>
-  /// The composite raw shape JSON for <paramref name="layout"/> (every non-optional, resolved
-  /// cell's shape, translated and rotated into place, plus a box per filler cell) and the texture
-  /// values (key to the resolved block's own value string) it references. <paramref name="cutAt"/>
-  /// omits every cell and filler above that Y layer. A cell whose selector is unresolved or
-  /// optional (drawn as air) is omitted.
+  /// The composite raw shape JSON for <paramref name="layout"/> and the texture values (key to the
+  /// resolved block's own value string) it references.
+  /// <para>
+  /// A structure draws every non-optional, resolved cell's shape, translated and rotated into place,
+  /// plus a grey box per filler cell - those are cells the player leaves clear. A filler-only
+  /// megablock draws <see cref="Layout.Principal"/>'s own shape at the anchor and its footprint as a
+  /// thin outline on the ground plane, since there the filler cells are the drawn body itself.
+  /// </para>
+  /// <para>
+  /// <paramref name="cutAt"/> omits every cell and filler above that Y layer. A cell whose selector
+  /// is unresolved or optional (drawn as air) is omitted.
+  /// </para>
   /// </summary>
   public static (JObject Raw, Dictionary<string, string> TextureValues) Compose(
     Layout layout,
@@ -340,16 +431,52 @@ public static class Schematic {
         textureValues[key] = value;
     }
 
+    if (
+      layout.Cells.Count == 0
+      && layout.Principal != null
+      && (cutAt == null || layout.Anchor.Y <= cutAt)
+      && index.Resolve(layout.Principal) is { } principal
+    ) {
+      (JObject group, Dictionary<string, string> values) = WrappedCell(principal, layout.Anchor, PrincipalPrefix);
+      elements.Add(group);
+      foreach ((string key, string value) in values)
+        textureValues[key] = value;
+    }
+
+    // A filler cell the principal's own body stands in is its volume, not a cell to fill: it draws
+    // as a ground outline under the model rather than as a box over it. A megablock with no
+    // structure table is all body, whatever shape it ships; elsewhere the mesh's own box decides,
+    // and a cell the model does not reach keeps its box.
+    Footprint.Box? body = layout.Cells.Count == 0 ? null : Footprint.PrincipalMesh(layout, index);
+    var outlined = new List<Offset> { layout.Anchor };
     for (int i = 0; i < layout.Fillers.Count; i++) {
       Offset offset = layout.Fillers[i];
       if (cutAt != null && offset.Y > cutAt)
         continue;
-      elements.Add(FillerBox(offset, $"filler{i}"));
+      if (layout.Cells.Count == 0 || (body is { } box && Inside(box, offset)))
+        outlined.Add(offset);
+      else
+        elements.Add(FillerBox(offset, $"filler{i}"));
+    }
+
+    if (outlined.Count > 1) {
+      int floor = outlined.Min(c => c.Y);
+      int column = 0;
+      foreach ((int x, int z) in outlined.Select(c => (c.X, c.Z)).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X))
+        foreach (JObject bar in OutlineRing(x, z, floor, $"footprint{column++}"))
+          elements.Add(bar);
     }
 
     var raw = new JObject { ["textures"] = new JObject(), ["elements"] = elements };
     return (raw, textureValues);
   }
+
+  // A cell's own centre (in blocks from the principal's centre, the frame Footprint measures in)
+  // within a mesh box.
+  private static bool Inside(Footprint.Box box, Offset cell) =>
+    cell.X >= box.Lo.X && cell.X <= box.Hi.X
+    && cell.Y >= box.Lo.Y && cell.Y <= box.Hi.Y
+    && cell.Z >= box.Lo.Z && cell.Z <= box.Hi.Z;
 
   /// <summary>
   /// One line per texture value of <paramref name="layout"/>'s composite that
@@ -363,19 +490,28 @@ public static class Schematic {
     foreach ((string prefixed, string value) in textureValues) {
       if (index.ResolveTexture(value) != null)
         continue;
-      // Compose keys a cell's textures `c{cell index}_{key}`.
+      // Compose keys a cell's textures `c{cell index}_{key}` and a megablock's own body
+      // `principal_{key}`.
       int underscore = prefixed.IndexOf('_');
-      int cell = int.Parse(prefixed[1..underscore], CultureInfo.InvariantCulture);
+      string owner = prefixed[..underscore];
       string key = prefixed[(underscore + 1)..];
-      string code = index.Resolve(layout.Numbers[layout.Cells[cell].Number])?.Code ?? "?";
+      string? selector =
+        owner == PrincipalPrefix
+          ? layout.Principal
+          : layout.Numbers[layout.Cells[int.Parse(owner[1..], CultureInfo.InvariantCulture)].Number];
+      string code = (selector != null ? index.Resolve(selector)?.Code : null) ?? "?";
       lines.Add($"{code}: texture {key} ({value}) not found");
     }
     return [.. lines];
   }
 
-  /// <summary>The isometric textured composite of <paramref name="layout"/> - every resolved,
-  /// non-optional cell's shape plus a translucent grey box per filler cell, <paramref name="cutAt"/>
-  /// omitting layers above it.</summary>
+  /// <summary>
+  /// The isometric textured composite of <paramref name="layout"/>: every resolved, non-optional
+  /// cell's shape plus a grey box per filler cell, or, for a filler-only megablock, its own body
+  /// over its footprint outline. <paramref name="cutAt"/> omits layers above it. A vertical scale
+  /// runs down the left edge, one tick per drawn Y layer labelled with the layer number, so height
+  /// is counted off the picture.
+  /// </summary>
   public static SKBitmap IsoPng(Layout layout, BlockIndex index, int ppu = 8, int? cutAt = null) {
     (JObject raw, Dictionary<string, string> textureValues) = Compose(layout, index, cutAt);
     Shape shape =
@@ -384,21 +520,59 @@ public static class Schematic {
     LoadedShape loaded = ShapeFile.FromRaw(shape, null, new Dictionary<string, string>());
 
     var extra = new Dictionary<string, byte[,,]>();
-    bool anyFiller = raw["elements"]!.Any(el => ((string?)el["name"])?.StartsWith("filler", StringComparison.Ordinal) == true);
-    if (anyFiller) {
+    foreach ((string prefix, string key, byte level) in new[] {
+      ("filler", FillerTextureKey, (byte)190),
+      ("footprint", OutlineTextureKey, (byte)130),
+    }) {
+      if (!raw["elements"]!.Any(el => ((string?)el["name"])?.StartsWith(prefix, StringComparison.Ordinal) == true))
+        continue;
       var grey = new byte[16, 16, 4];
       for (int y = 0; y < 16; y++)
         for (int x = 0; x < 16; x++) {
-          grey[y, x, 0] = 190;
-          grey[y, x, 1] = 190;
-          grey[y, x, 2] = 190;
+          grey[y, x, 0] = level;
+          grey[y, x, 1] = level;
+          grey[y, x, 2] = level;
           grey[y, x, 3] = 255;
         }
-      extra[FillerTextureKey] = grey;
+      extra[key] = grey;
     }
 
     TextureSet textures = TextureSet.FromResolved(textureValues, index.ResolveTexture, extra);
-    return Renderer.Render(loaded, Renderer.NamedViews["iso"], ppu: ppu, textures: textures);
+    View iso = Renderer.NamedViews["iso"];
+    using SKBitmap drawing = Renderer.Render(loaded, iso, ppu: ppu, textures: textures);
+    return WithLayerScale(drawing, Renderer.Project(loaded, iso, ppu), layout, cutAt);
+  }
+
+  // Pixels reserved left of the drawing for the layer scale: a two-character label, its tick and
+  // the spine the ticks cross.
+  private const int ScalePad = 40;
+
+  // The drawing moved right by ScalePad, with a tick per drawn Y layer at the height that layer's
+  // cells are drawn at. The tick row comes from the layout's own south-west column, whose vertical
+  // edge the iso view lays nearest the left margin.
+  private static SKBitmap WithLayerScale(SKBitmap drawing, Renderer.Projection projection, Layout layout, int? cutAt) {
+    List<int> layers = [.. layout.Layers().Where(y => cutAt == null || y <= cutAt)];
+    if (layers.Count == 0)
+      return drawing.Copy();
+
+    (Offset lo, Offset hi) = layout.Bounds();
+    var scaled = new SKBitmap(drawing.Width + ScalePad, drawing.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
+    using var canvas = new SKCanvas(scaled);
+    canvas.Clear(Renderer.Background);
+    canvas.DrawBitmap(drawing, ScalePad, 0);
+
+    using var paint = new SKPaint { Color = SKColors.Black, IsAntialias = false, StrokeWidth = 1 };
+    using var font = new SKFont { Size = 10 };
+    var rows = new List<float>();
+    foreach (int y in layers) {
+      (_, double row) = projection.Screen(lo.X * 16, y * 16 + 8, (hi.Z + 1) * 16);
+      rows.Add((float)row);
+      canvas.DrawLine(ScalePad - 9, (float)row, ScalePad - 1, (float)row, paint);
+      string label = y == 0 ? "0" : y > 0 ? $"+{y}" : y.ToString(CultureInfo.InvariantCulture);
+      canvas.DrawText(label, ScalePad - 12 - font.MeasureText(label), (float)row + 3.5f, font, paint);
+    }
+    canvas.DrawLine(ScalePad - 5, rows.Min(), ScalePad - 5, rows.Max(), paint);
+    return scaled;
   }
 
   /// <summary><c>{"files": [...], "legend": [rows...], "warnings": [...]}</c>; a row's
@@ -411,14 +585,17 @@ public static class Schematic {
   /// match spanned, since only one of them was drawn. <paramref name="missingTextures"/> is
   /// <see cref="MissingTextures"/>'s lines, appended after those. <paramref name="parseWarnings"/>
   /// is <see cref="BlockIndex.ParseWarnings"/>, appended last, one line per blocktype or
-  /// worldproperties file that failed to parse.</summary>
+  /// worldproperties file that failed to parse. <paramref name="plans"/> names each plan SVG with
+  /// the Y layer it draws, as <c>{"file", "layer"}</c> rows under <c>plans</c>; the same paths stay
+  /// in <c>files</c>, which lists everything written.</summary>
   public static JObject Manifest(
     Layout layout,
     IReadOnlyDictionary<int, LegendEntry> legend,
     IReadOnlyList<string> files,
     IReadOnlyDictionary<string, IReadOnlyList<string>>? ambiguities = null,
     IReadOnlyList<string>? missingTextures = null,
-    IReadOnlyList<string>? parseWarnings = null
+    IReadOnlyList<string>? parseWarnings = null,
+    IReadOnlyList<(string File, int Layer)>? plans = null
   ) {
     var rows = new JArray();
     var warnings = new JArray();
@@ -447,8 +624,13 @@ public static class Schematic {
       warnings.Add(line);
     foreach (string line in parseWarnings ?? [])
       warnings.Add(line);
+    var planRows = new JArray();
+    foreach ((string file, int layer) in plans ?? [])
+      planRows.Add(new JObject { ["file"] = file, ["layer"] = layer });
+
     return new JObject {
       ["files"] = new JArray(files),
+      ["plans"] = planRows,
       ["legend"] = rows,
       ["warnings"] = warnings,
     };

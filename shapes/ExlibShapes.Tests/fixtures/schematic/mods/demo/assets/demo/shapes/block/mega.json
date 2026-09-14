@@ -1,0 +1,20 @@
+{
+	"textures": {
+		"mega": "demo:block/wall"
+	},
+	"elements": [
+		{
+			"name": "body",
+			"from": [0, 0, -16],
+			"to": [16, 16, 16],
+			"faces": {
+				"north": { "texture": "#mega", "uv": [0, 0, 16, 16] },
+				"east": { "texture": "#mega", "uv": [0, 0, 16, 32] },
+				"south": { "texture": "#mega", "uv": [0, 0, 16, 16] },
+				"west": { "texture": "#mega", "uv": [0, 0, 16, 32] },
+				"up": { "texture": "#mega", "uv": [0, 0, 16, 32] },
+				"down": { "texture": "#mega", "uv": [0, 0, 16, 32] }
+			}
+		}
+	]
+}

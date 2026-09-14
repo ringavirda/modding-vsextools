@@ -41,6 +41,37 @@ public class BlocksTests {
   }
 
   [Fact]
+  public void A_rotate_y_by_type_entry_spins_the_variant_it_names() {
+    // The old mods carry their spin under `shape`, not as a `shapeByType` entry per variant.
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+    Assert.Equal(0, index.Resolve("demo:mega-north")!.RotateY);
+    Assert.Equal(270, index.Resolve("demo:mega-east")!.RotateY);
+    Assert.Equal(180, index.Resolve("demo:mega-south")!.RotateY);
+    Assert.Equal(90, index.Resolve("demo:mega-west")!.RotateY);
+  }
+
+  [Fact]
+  public void A_variant_group_naming_only_a_worldproperties_file_reads_it_from_the_game_domain() {
+    // A bare `abstract/horizontalorientation` is the game's file, not one of the mod's own; read
+    // against the mod's domain instead, the side axis drops and the block has one variant.
+    BlockIndex index = BlockIndex.Build([DemoRoot], FixturePath.Of("schematic/game"));
+    string file = FixturePath.Of("schematic/mods/demo/assets/demo/blocktypes/vane.json");
+    Assert.Equal(
+      ["demo:vane-north", "demo:vane-east", "demo:vane-south", "demo:vane-west"],
+      index.VariantsOf(file).Select(v => v.Code)
+    );
+    Assert.Equal("demo:vane-north", BlockIndex.NorthFacing(index.VariantsOf(file))!.Code);
+  }
+
+  [Fact]
+  public void A_family_with_no_facing_has_no_north_variant() {
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+    string post = FixturePath.Of("schematic/samples/Post/tests/goldens/sample/blocktypes/post.json");
+    Assert.Equal(["sample:post-short", "sample:post-tall"], index.VariantsOf(post).Select(v => v.Code));
+    Assert.Null(BlockIndex.NorthFacing(index.VariantsOf(post)));
+  }
+
+  [Fact]
   public void Wildcard_resolves_to_the_first_declared_variant() {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     ResolvedBlock? block = index.Resolve("demo:wall-*");

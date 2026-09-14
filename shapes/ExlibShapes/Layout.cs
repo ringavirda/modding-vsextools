@@ -64,6 +64,14 @@ public sealed class Layout {
   /// different one.</summary>
   public Offset Anchor { get; }
 
+  /// <summary>
+  /// The selector of the block the file itself declares, drawn at <see cref="Anchor"/> - the
+  /// megablock's own body, which no <see cref="Cells"/> entry names. Widened to a <c>*</c> wildcard
+  /// when <see cref="Load"/> was given no variant for a file that has <c>variantgroups</c>, and null
+  /// when the path names no domain or the file no code.
+  /// </summary>
+  public string? Principal { get; }
+
   internal Layout(
     IReadOnlyList<Cell> cells,
     IReadOnlyDictionary<int, string> numbers,
@@ -71,7 +79,8 @@ public sealed class Layout {
     IReadOnlyDictionary<string, IReadOnlyList<int>> facings,
     IReadOnlyDictionary<string, IReadOnlyList<Offset>> connectors,
     IReadOnlyDictionary<string, IReadOnlyList<Offset>> roles,
-    Offset anchor = default
+    Offset anchor = default,
+    string? principal = null
   ) {
     Cells = cells;
     Numbers = numbers;
@@ -80,6 +89,7 @@ public sealed class Layout {
     Connectors = connectors;
     Roles = roles;
     Anchor = anchor;
+    Principal = principal;
   }
 
   /// <summary>
@@ -109,7 +119,9 @@ public sealed class Layout {
         fillers,
         new Dictionary<string, IReadOnlyList<int>>(),
         new Dictionary<string, IReadOnlyList<Offset>>(),
-        new Dictionary<string, IReadOnlyList<Offset>>()
+        new Dictionary<string, IReadOnlyList<Offset>>(),
+        default,
+        PrincipalOf(path, raw, variant)
       );
     }
 
@@ -141,7 +153,7 @@ public sealed class Layout {
       foreach (JProperty prop in rolesJson.Properties())
         roles[prop.Name] = ReadOffsets((JArray)prop.Value!);
 
-    return new Layout(cells, numbers, fillers, facings, connectors, roles);
+    return new Layout(cells, numbers, fillers, facings, connectors, roles, default, PrincipalOf(path, raw, variant));
   }
 
   // The file's own top-level attributesByType entry (a sibling of "attributes", the same
@@ -173,6 +185,29 @@ public sealed class Layout {
     return [];
   }
 
+  // The megablock's own selector: its file's domain (the folder above `blocktypes`) and either the
+  // variant the caller named or, with none, the file's `code` - widened with a `*` when the file
+  // expands to variants at all, since no one of them is the block. Null when the path names no
+  // domain or the file no code.
+  private static string? PrincipalOf(string path, JObject raw, string? variant) {
+    string? domain = DomainOf(path);
+    string? code = (string?)raw["code"];
+    if (domain == null || code == null)
+      return null;
+    if (variant != null)
+      return $"{domain}:{variant}";
+    return raw["variantgroups"] is JArray ? $"{domain}:{code}*" : $"{domain}:{code}";
+  }
+
+  // <...>/<domain>/blocktypes/**/<file>.json - the asset domain every code in that file carries.
+  private static string? DomainOf(string path) {
+    string[] parts = Path.GetFullPath(path).Split(Path.DirectorySeparatorChar);
+    for (int i = parts.Length - 1; i > 0; i--)
+      if (parts[i] == "blocktypes")
+        return parts[i - 1];
+    return null;
+  }
+
   private static List<Offset> ReadOffsets(JArray array) =>
     [.. array.Select(o => new Offset((int)o["x"]!, (int)o["y"]!, (int)o["z"]!))];
 
@@ -183,6 +218,10 @@ public sealed class Layout {
   /// <see cref="Facings"/> marks as oriented rewritten through its facing segments
   /// (<c>MultiblockFacings.RotateSegments</c>) - re-keyed into the returned layout's own
   /// <see cref="Facings"/> so a further rotation still finds them.
+  /// <para>
+  /// <see cref="Principal"/> passes through untouched: it names the one variant a drawing uses, and
+  /// the turn places that variant's footprint around it rather than choosing another variant.
+  /// </para>
   /// </summary>
   public Layout Rotated(int angle) {
     List<Cell> cells = [.. Cells.Select(c => {
@@ -208,7 +247,7 @@ public sealed class Layout {
       facings[newSelector] = segments;
     }
 
-    return new Layout(cells, numbers, fillers, facings, connectors, roles, Anchor);
+    return new Layout(cells, numbers, fillers, facings, connectors, roles, Anchor, Principal);
   }
 
   /// <summary>(lo, hi), inclusive, over every cell and filler offset - a filler-only megablock has
