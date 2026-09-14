@@ -40,6 +40,10 @@ public static class Renderer {
   /// <summary>The canvas colour behind everything drawn.</summary>
   public static readonly SKColor Background = new(240, 240, 236);
 
+  /// <summary>The shade filling a hole the view looks straight through - a boiler's flue, a
+  /// hopper's mouth - so an opening reads as an opening rather than as paper.</summary>
+  public static readonly SKColor Interior = new(96, 96, 94);
+
   /// <summary>The grid line colour on a non-multiple-of-16 line.</summary>
   public static readonly SKColor GridLight = new(215, 215, 215);
 
@@ -490,6 +494,8 @@ public static class Renderer {
   /// <paramref name="cull"/> is false, a floor grid unless <paramref name="grid"/> is false, face
   /// outlines unless <paramref name="edges"/> is false, and every path in
   /// <paramref name="highlight"/> outlined in <see cref="HighlightColor"/> regardless of depth.
+  /// A pixel the model encloses that no face covers is filled with <see cref="Interior"/>, so a
+  /// hole the view looks straight through does not show the paper behind it.
   /// </summary>
   public static SKBitmap Render(
     LoadedShape shape,
@@ -576,6 +582,8 @@ public static class Renderer {
         );
     }
 
+    FillHoles(colorBuf, zBuf, width, height);
+
     if (edges)
       // Face outlines darken the surface they lie on, so two parts of one texture keep their
       // silhouettes; the small depth bias keeps an edge on its own face instead of losing to it.
@@ -629,6 +637,46 @@ public static class Renderer {
           )
         );
     return bmp;
+  }
+
+  // Every pixel the model encloses but no face covers painted `Interior` and given the nearest
+  // depth, so nothing is drawn behind it: an opening a view looks straight through - a flue, a
+  // hopper's mouth - otherwise shows the paper and reads as a gap in the model rather than a hole
+  // in it. Enclosed means not reachable from the canvas edge across uncovered pixels, four ways.
+  private static void FillHoles(double[,,] colorBuf, double[,] zBuf, int width, int height) {
+    var open = new bool[height, width];
+    var queue = new Queue<(int Y, int X)>();
+    void Reach(int y, int x) {
+      if (y < 0 || y >= height || x < 0 || x >= width || open[y, x] || !double.IsNegativeInfinity(zBuf[y, x]))
+        return;
+      open[y, x] = true;
+      queue.Enqueue((y, x));
+    }
+    for (int x = 0; x < width; x++) {
+      Reach(0, x);
+      Reach(height - 1, x);
+    }
+    for (int y = 0; y < height; y++) {
+      Reach(y, 0);
+      Reach(y, width - 1);
+    }
+    while (queue.Count > 0) {
+      (int y, int x) = queue.Dequeue();
+      Reach(y - 1, x);
+      Reach(y + 1, x);
+      Reach(y, x - 1);
+      Reach(y, x + 1);
+    }
+
+    for (int y = 0; y < height; y++)
+      for (int x = 0; x < width; x++) {
+        if (open[y, x] || !double.IsNegativeInfinity(zBuf[y, x]))
+          continue;
+        colorBuf[y, x, 0] = Interior.Red;
+        colorBuf[y, x, 1] = Interior.Green;
+        colorBuf[y, x, 2] = Interior.Blue;
+        zBuf[y, x] = double.PositiveInfinity;
+      }
   }
 
   // World AABB per leaf element path, double precision.
