@@ -1,0 +1,10 @@
+{
+  "code": "wall",
+  "variantgroups": [
+    { "code": "side", "states": ["north", "east", "south", "west"] }
+  ],
+  "shape": { "base": "old:block/gate" },
+  "textures": {
+    "wall": { "base": "old:block/gate" }
+  }
+}

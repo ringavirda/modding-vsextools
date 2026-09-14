@@ -220,7 +220,7 @@ internal static class Program {
       layout = layout.Rotated(angle);
 
     List<string> roots = [.. extraRoots, .. BlockIndex.DefaultRoots(file)];
-    BlockIndex index = BlockIndex.Build(roots, game);
+    BlockIndex index = BlockIndex.Build(roots, game, BlockIndex.UnderLegacyTree(file));
     HashSet<string> viewSet = [.. views.Split(',')];
     Directory.CreateDirectory(outDir);
     string stem = Path.GetFileNameWithoutExtension(file);

@@ -160,6 +160,43 @@ public class BlocksTests {
   }
 
   [Fact]
+  public void A_code_declared_on_both_sides_of_legacy_follows_the_side_the_index_serves() {
+    // legacy/old/assets/demo/blocktypes/wall.json declares the same "wall" as the current
+    // mods/demo tree with another shape: two versions of one mod, not an ambiguity to warn about.
+    BlockIndex current = BlockIndex.Build([DemoRoot]);
+    ResolvedBlock? wall = current.Resolve("demo:wall-north");
+    Assert.NotNull(wall);
+    Assert.EndsWith(Path.Combine("demo", "shapes", "block", "wall.json"), wall!.ShapePath);
+    Assert.Empty(current.Ambiguities);
+
+    BlockIndex legacy = BlockIndex.Build([DemoRoot], legacyFirst: true);
+    ResolvedBlock? old = legacy.Resolve("demo:wall-north");
+    Assert.NotNull(old);
+    Assert.EndsWith(Path.Combine("old", "shapes", "block", "gate.json"), old!.ShapePath);
+    Assert.Empty(legacy.Ambiguities);
+
+    Assert.True(BlockIndex.UnderLegacyTree(Path.Combine(DemoRoot, "legacy", "old", "assets", "demo", "blocktypes", "wall.json")));
+    Assert.False(BlockIndex.UnderLegacyTree(Path.Combine(DemoRoot, "mods", "demo", "assets", "demo", "blocktypes", "wall.json")));
+  }
+
+  [Fact]
+  public void Air_admitting_and_monolithic_multiblock_selectors_are_empty_space() {
+    // ppex's boilers fill with "game:air*", smex's blast furnace door names the block the game
+    // creates in code for a door's upper cell; neither has a blocktype file to find.
+    BlockIndex index = BlockIndex.Build([GameRoot]);
+    foreach (string selector in new[] { "game:air*", "game:multiblock-monolithic-0-p1-0", "air" }) {
+      Assert.Null(index.Representative(selector));
+      Assert.True(index.Optional(selector));
+    }
+    // Vanilla's stone coffin names the door first: the resolving alternative is a real block,
+    // whose orientation axis comes from a variant group naming only its worldproperties file.
+    string coffinDoor = "game:@(irondoor-.*-up-.*|multiblock-monolithic-0-p1-0)";
+    Assert.Equal("game:irondoor-north-up-closed-left", index.Representative(coffinDoor)!.Code);
+    Assert.False(index.Optional(coffinDoor));
+    Assert.Empty(index.Ambiguities);
+  }
+
+  [Fact]
   public void An_exact_selector_that_is_not_ambiguous_records_no_warning() {
     BlockIndex index = BlockIndex.Build([GameRoot]);
     index.Resolve("game:cobblestone-andesite");

@@ -19,7 +19,8 @@ public sealed record Variant(
   string Domain,
   JObject Raw,
   IReadOnlyDictionary<string, string> States,
-  string SourceFile
+  string SourceFile,
+  bool Legacy = false
 ) {
   /// <summary>The code without its domain prefix.</summary>
   public string Path => Code[(Code.IndexOf(':') + 1)..];
@@ -55,7 +56,15 @@ public sealed record ResolvedBlock(
 /// own name (without <c>.json</c>) equals the selector's text before the first <c>*</c> with a
 /// trailing dash trimmed; else the file that sorts first by path. Either way the ambiguity is
 /// recorded in <see cref="Ambiguities"/> for a caller (the schematic manifest) to warn about,
-/// naming every file involved.
+/// naming every file involved. A match spanning a <c>legacy/</c> file and a current one is not an
+/// ambiguity but two versions of one mod, settled by the side the index was built for (see
+/// <see cref="Build"/>) and never recorded.
+/// </para>
+/// <para>
+/// Two kinds of cell have no blocktype file to resolve to and are empty space in a schematic,
+/// never warned about: <c>air</c> (block id 0), also when a wildcard or regex alternative admits
+/// it (<c>air*</c>), and <c>multiblock-monolithic-&lt;dx&gt;-&lt;dy&gt;-&lt;dz&gt;</c>, the blocks the
+/// game creates in code for the cells a door or a coffin section occupies beside its own.
 /// </para>
 /// </summary>
 public sealed class BlockIndex {
@@ -80,10 +89,12 @@ public sealed class BlockIndex {
   // domain as the framework's src/), looked up in this order: the current tree answers first and
   // the old one only for a file it alone holds.
   private static readonly string[] AssetRootTrees = ["mods", "src", "samples", "legacy"];
+  private static readonly string[] LegacyFirstAssetRootTrees = ["legacy", "mods", "src", "samples"];
 
   private readonly Dictionary<string, List<Variant>> _byCode = new(StringComparer.Ordinal);
   private readonly List<string> _order = [];
   private readonly Dictionary<string, List<string>> _domainRoots;
+  private readonly bool _legacyFirst;
   private readonly Dictionary<string, List<string>> _ambiguities = new(StringComparer.Ordinal);
 
   /// <summary>Selector to every distinct source file its match spanned, sorted - populated as
@@ -93,8 +104,9 @@ public sealed class BlockIndex {
   public IReadOnlyDictionary<string, IReadOnlyList<string>> Ambiguities =>
     _ambiguities.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<string>)kv.Value);
 
-  private BlockIndex(List<Variant> variants, Dictionary<string, List<string>> domainRoots) {
+  private BlockIndex(List<Variant> variants, Dictionary<string, List<string>> domainRoots, bool legacyFirst) {
     _domainRoots = domainRoots;
+    _legacyFirst = legacyFirst;
     foreach (Variant v in variants) {
       if (!_byCode.TryGetValue(v.Code, out List<Variant>? list)) {
         list = [];
@@ -115,7 +127,14 @@ public sealed class BlockIndex {
   /// latest version present). Symbolic links along a <c>.game</c> path are resolved first, so
   /// two roots linking the same install contribute its files once.
   /// </summary>
-  public static BlockIndex Build(IReadOnlyList<string> roots, string? gamePath = null) {
+  /// <param name="roots">Repository checkouts to scan; see <see cref="DefaultRoots"/>.</param>
+  /// <param name="gamePath">A game install directory that replaces every root's own
+  /// <c>.game/&lt;version&gt;</c>, or null to discover one per root.</param>
+  /// <param name="legacyFirst">True when the index serves a block under a <c>legacy/</c> tree
+  /// (<see cref="UnderLegacyTree"/>): a code declared both there and in a current tree then
+  /// resolves to the legacy file, and a domain's assets are looked up in the legacy tree first.
+  /// False resolves both toward the current trees.</param>
+  public static BlockIndex Build(IReadOnlyList<string> roots, string? gamePath = null, bool legacyFirst = false) {
     // An explicit `--game` (a game install directory, the same one GameInstall.Resolve returns)
     // overrides every root's own `.game/<version>` discovery, for both the domain root and the
     // blocktype files it contributes - a caller pointing this index at a different install than
@@ -124,7 +143,7 @@ public sealed class BlockIndex {
       gamePath != null ? RealPath(Path.Combine(gamePath, "assets", "survival")) : null;
 
     var domainRoots = new Dictionary<string, List<string>>(StringComparer.Ordinal);
-    foreach (string wildcardDir in AssetRootTrees)
+    foreach (string wildcardDir in legacyFirst ? LegacyFirstAssetRootTrees : AssetRootTrees)
       foreach (string root in roots)
         foreach ((string domain, string dir) in GlobAssetRoots(root, wildcardDir))
           if (domain != "game")
@@ -142,7 +161,9 @@ public sealed class BlockIndex {
         foreach ((string domain, string file) in GlobBlocktypes(root, wildcardDir, literal)) {
           if (!seen.Add(file))
             continue;
-          variants.AddRange(Expand(file, domain, domainRoots.GetValueOrDefault(domain) ?? []));
+          variants.AddRange(
+            Expand(file, domain, domainRoots.GetValueOrDefault(domain) ?? [], wildcardDir == "legacy")
+          );
         }
 
       string? survival = explicitSurvival ?? GameSurvival(root);
@@ -162,8 +183,14 @@ public sealed class BlockIndex {
       }
     }
 
-    return new BlockIndex(variants, domainRoots);
+    return new BlockIndex(variants, domainRoots, legacyFirst);
   }
+
+  /// <summary>True when <paramref name="file"/> sits under a <c>legacy/</c> directory - the
+  /// published old mods' tree, whose blocks resolve their ties toward that tree (the
+  /// <c>legacyFirst</c> argument of <see cref="Build"/>).</summary>
+  public static bool UnderLegacyTree(string file) =>
+    Path.GetFullPath(file).Split(Path.DirectorySeparatorChar).Contains("legacy");
 
   private static void AddDomainRoot(Dictionary<string, List<string>> domainRoots, string domain, string dir) {
     if (!domainRoots.TryGetValue(domain, out List<string>? dirs)) {
@@ -192,30 +219,47 @@ public sealed class BlockIndex {
 
   /// <summary>
   /// The variant a selector resolves to, or null when it is unresolved or its first-resolving
-  /// alternative is <c>air</c> (drawn as empty space by a caller, not this method's concern -
-  /// see <see cref="Optional"/>).
+  /// alternative is empty space (drawn as such by a caller, not this method's concern - see
+  /// <see cref="Optional"/>).
   /// </summary>
   public Variant? Representative(string selector) {
     foreach ((string domain, string path, bool isRegex) in Alternatives(selector)) {
-      if (path == "air")
+      bool empty = EmptySpace(domain, path, isRegex);
+      if (empty && !isRegex && !path.Contains('*'))
         return null;
       Variant? v = Find(domain, path, isRegex, selector);
       if (v != null)
         return v;
+      if (empty)
+        return null;
     }
     return null;
   }
 
-  /// <summary>True when the selector's first-resolving alternative is <c>air</c> - drawn as empty
-  /// space, not warned about when nothing else matches.</summary>
+  /// <summary>True when the selector's first-resolving alternative is empty space - drawn as
+  /// such, not warned about when nothing else matches.</summary>
   public bool Optional(string selector) {
     foreach ((string domain, string path, bool isRegex) in Alternatives(selector)) {
-      if (path == "air")
+      bool empty = EmptySpace(domain, path, isRegex);
+      if (empty && !isRegex && !path.Contains('*'))
         return true;
       if (Find(domain, path, isRegex, selector) != null)
         return false;
+      if (empty)
+        return true;
     }
     return false;
+  }
+
+  // The two cells the game fills without a blocktype file (the class remarks): a plain `air`
+  // or `multiblock-monolithic-*` path, or a wildcard or regex path that admits `air`.
+  private static bool EmptySpace(string domain, string path, bool isRegex) {
+    if (domain != "*" && domain != "game")
+      return false;
+    if (path == "air" || path.StartsWith("multiblock-monolithic-", StringComparison.Ordinal))
+      return true;
+    Regex? pattern = isRegex ? new Regex("^(?:" + path + ")$") : path.Contains('*') ? GlobRegex(path) : null;
+    return pattern != null && pattern.IsMatch("air");
   }
 
   /// <summary>The selector resolved to a block's shape, rotation and textures, or null when
@@ -278,14 +322,17 @@ public sealed class BlockIndex {
     return matches.Count == 0 ? null : Disambiguate(matches, selectorText);
   }
 
-  // More than one source file among `matches`: deterministic tie-break (a file with an expanded
-  // code exactly equal to the selector text; else, for a wildcard selector, the file whose own
-  // name equals the selector's text before the first `*` with a trailing dash trimmed; else the
-  // file that sorts first by path), and the ambiguity is recorded once per selector for the caller
-  // to warn about.
+  // More than one source file among `matches`: a match spanning the legacy and the current trees
+  // keeps only the side the index was built for; then a deterministic tie-break (a file with an
+  // expanded code exactly equal to the selector text; else, for a wildcard selector, the file
+  // whose own name equals the selector's text before the first `*` with a trailing dash trimmed;
+  // else the file that sorts first by path), and the ambiguity is recorded once per selector for
+  // the caller to warn about.
   private Variant Disambiguate(List<Variant> matches, string selectorText) {
     if (matches.Count == 1)
       return matches[0];
+    if (matches.Any(v => v.Legacy) && matches.Any(v => !v.Legacy))
+      matches = [.. matches.Where(v => v.Legacy == _legacyFirst)];
     List<string> files = [
       .. matches.Select(v => v.SourceFile).Distinct().OrderBy(f => f, StringComparer.Ordinal),
     ];
@@ -402,7 +449,12 @@ public sealed class BlockIndex {
   // A selector's `*` wildcard as a fullmatch regex; every other character is literal.
   private static Regex GlobRegex(string text) => new("^" + Regex.Escape(text).Replace(@"\*", ".*") + "$");
 
-  private static List<Variant> Expand(string path, string domain, IReadOnlyList<string> domainRoots) {
+  private static List<Variant> Expand(
+    string path,
+    string domain,
+    IReadOnlyList<string> domainRoots,
+    bool legacy = false
+  ) {
     JObject raw;
     try {
       if (JToken.Parse(File.ReadAllText(path)) is not JObject parsed || parsed["code"] == null)
@@ -417,12 +469,16 @@ public sealed class BlockIndex {
     if (raw["variantgroups"] is JArray groups)
       foreach (JToken g in groups) {
         string? gcode = (string?)g["code"];
-        if (gcode == null)
-          continue;
-        if (g["states"] is JArray states)
-          axes.Add((gcode, [.. states.Select(s => (string)s!)]));
-        else if ((string?)g["loadFromProperties"] is { } reference)
-          axes.Add((gcode, PropertyStates(reference, domainRoots)));
+        if (g["states"] is JArray states) {
+          if (gcode != null)
+            axes.Add((gcode, [.. states.Select(s => (string)s!)]));
+        } else if ((string?)g["loadFromProperties"] is { } reference) {
+          // A group naming only a worldproperties file takes that file's own code as its axis,
+          // the way the game does for `{ loadFromProperties: "abstract/horizontalorientation" }`.
+          (string? fileCode, List<string> fileStates) = PropertyStates(reference, domainRoots);
+          if ((gcode ?? fileCode) is { } axisCode)
+            axes.Add((axisCode, fileStates));
+        }
       }
 
     List<Dictionary<string, string>> combos = [[]];
@@ -447,32 +503,35 @@ public sealed class BlockIndex {
         continue;
       if (allowed.Count > 0 && !allowed.Any(p => p.IsMatch(fullPath)))
         continue;
-      variants.Add(new Variant($"{domain}:{fullPath}", domain, raw, combo, path));
+      variants.Add(new Variant($"{domain}:{fullPath}", domain, raw, combo, path, legacy));
     }
     return variants;
   }
 
-  // The Code of every variant a loadFromProperties group's worldproperties file lists, in file
-  // order, from the first domain root holding the file; empty when no root does, so that axis
-  // drops out of expansion rather than failing the whole blocktype.
-  private static List<string> PropertyStates(string reference, IReadOnlyList<string> domainRoots) {
+  // A loadFromProperties group's worldproperties file: its own code and the Code of every variant
+  // it lists, in file order, from the first domain root holding the file; no code and no states
+  // when no root does, so that axis drops out of expansion rather than failing the whole blocktype.
+  private static (string? Code, List<string> States) PropertyStates(
+    string reference,
+    IReadOnlyList<string> domainRoots
+  ) {
     string? p = domainRoots
       .Select(root => Path.Combine(root, "worldproperties", reference + ".json"))
       .FirstOrDefault(File.Exists);
     if (p == null)
-      return [];
+      return (null, []);
     try {
       if (JToken.Parse(File.ReadAllText(p)) is not JObject data || data["variants"] is not JArray variants)
-        return [];
+        return (null, []);
       List<string> outp = [];
       foreach (JToken v in variants) {
         string? code = (string?)v["Code"] ?? (string?)v["code"];
         if (code != null)
           outp.Add(code);
       }
-      return outp;
+      return ((string?)GetCi(data, "code"), outp);
     } catch {
-      return [];
+      return (null, []);
     }
   }
 
