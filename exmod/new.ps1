@@ -732,6 +732,16 @@ cursor); a GPU driver that hangs the game is bypassed with `exmod client -Softwa
 two variables in the launch configuration's `env` (`LIBGL_ALWAYS_SOFTWARE=1`,
 `GALLIUM_DRIVER=llvmpipe`).
 
+## Playing the samples
+
+The hand mill is a line of mechanical power: a crank, a run of drive shafts, a flywheel and the
+mill core on its quern stand. Right-click the crank to wind it and the line spins up, then coasts
+down as the wind runs out; the flywheel keeps it turning between winds and reserves the eight
+cells around its hub (sneak-click any of them to brake it). The mill is complete once the core
+stands on its quern stand; Ctrl + Shift + right-click either of them to see what is still missing.
+Right-click the core with a sack of grain to load it, and at speed it grinds the grain to flour.
+The grains mod supplies the grain and the sacks.
+
 ## Licence
 
 MIT licensed; see LICENSE. The copyright line names whoever ran `exmod starter` - update it if
