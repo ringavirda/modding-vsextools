@@ -51,6 +51,13 @@ $ExeSuffix = if ($OnWindows) { '.exe' } else { '' }
 # carries. A client built for another OS has Vintagestory.dll but not that library, so it cannot
 # run here.
 $PlatformSlot = if ($OnWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } else { 'linux' }
+# Where this platform's client for a series lives. On Windows it is a local folder outside the
+# checkout: a native library does not load from a network share, and a checkout under
+# \\wsl.localhost is one. Elsewhere it is a slot beside the shared default one.
+function Get-ClientSlot([string]$Slug) {
+  if ($OnWindows) { return Join-Path $env:LOCALAPPDATA "exmod/game/$Slug" }
+  return ".game/$Slug-$PlatformSlot"
+}
 function Get-NativeMarker([string]$InstallDir) {
   $lib = if ($OnWindows) { 'Lib/e_sqlite3.dll' } elseif ($IsMacOS) { 'Lib/libe_sqlite3.dylib' } else { 'Lib/libe_sqlite3.so' }
   return Join-Path $InstallDir $lib
@@ -349,7 +356,7 @@ function Resolve-GameInstall([string]$Version = $CurrentGameVersion, [string]$Ki
   if ($Kind -notin @('server', 'client')) { throw "Kind must be 'server' or 'client'." }
   $slug = ($Version -split '\.')[0..1] -join '.'
   $entry = if ($Kind -eq 'server') { 'VintagestoryServer.dll' } else { 'Vintagestory.dll' }
-  $candidates = @(".game/$slug-$PlatformSlot", ".game/$slug-$Kind", ".game/$slug")
+  $candidates = @((Get-ClientSlot $slug), ".game/$slug-$Kind", ".game/$slug")
 
   # The entry assembly is in the archive for every platform; the native libraries beside it are not.
   # A package left over from another OS has the dll and none of them, and starts only far enough to
@@ -361,7 +368,7 @@ function Resolve-GameInstall([string]$Version = $CurrentGameVersion, [string]$Ki
   }
   $find = {
     foreach ($c in $candidates) {
-      $full = Join-Path $RepoRoot $c
+      $full = if ([System.IO.Path]::IsPathRooted($c)) { $c } else { Join-Path $RepoRoot $c }
       if (& $usable $full) { return $full }
     }
     return $null

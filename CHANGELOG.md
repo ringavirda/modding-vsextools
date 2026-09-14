@@ -6,9 +6,10 @@ A client built for another platform no longer passes for this one: the launcher 
 native library only this platform's package carries (`Lib/e_sqlite3.dll`, `libe_sqlite3.dylib`,
 `libe_sqlite3.so`) on Windows as on Linux and macOS, and a client request into a slot holding a
 foreign client goes to `<slot>-client` the way a server request already did. The generated launch
-configurations give each platform its own client slot, `.game/<series>-linux`, `-macos` and
-`-windows`, so a checkout shared between Windows and WSL keeps both clients and F5 works from
-either side. On Linux the client runs on X11: GLFW's Wayland backend cannot place the cursor, which
+configurations give each platform its own client slot, `.game/<series>-linux` and `-macos` in the
+checkout and `%LOCALAPPDATA%\exmod\game\<series>` on Windows, where a client on a network share
+(a checkout under `\\wsl.localhost`) cannot load its native libraries, so a checkout shared
+between Windows and WSL keeps both clients and F5 works from either side. On Linux the client runs on X11: GLFW's Wayland backend cannot place the cursor, which
 mouse look needs, so the launcher and the launch configuration hand GLFW a display name no
 compositor answers to and it falls back to XWayland. `exmod client -Software` runs the game on
 Mesa's software rasterizer for a GPU driver that hangs it.

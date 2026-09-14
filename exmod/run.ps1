@@ -105,8 +105,8 @@ function Resolve-RunVersion([string]$Spec) {
 function Find-UsableGameInstall([string]$Version, [string]$Kind) {
   $slug = ($Version -split '\.')[0..1] -join '.'
   $entry = if ($Kind -eq 'server') { 'VintagestoryServer.dll' } else { 'Vintagestory.dll' }
-  foreach ($c in @(".game/$slug-$PlatformSlot", ".game/$slug-$Kind", ".game/$slug")) {
-    $full = Join-Path $RepoRoot $c
+  foreach ($c in @((Get-ClientSlot $slug), ".game/$slug-$Kind", ".game/$slug")) {
+    $full = if ([System.IO.Path]::IsPathRooted($c)) { $c } else { Join-Path $RepoRoot $c }
     if (-not (Test-Path (Join-Path $full $entry))) { continue }
     if (Test-Path (Get-NativeMarker $full)) { return $full }
   }

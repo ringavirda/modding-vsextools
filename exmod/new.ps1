@@ -270,7 +270,9 @@ function ConvertTo-StarterTestCsproj([string]$Text, [string]$Label) {
 # A task runs the repository's own launcher, which finds pwsh or installs it into .dotnet/tools:
 # bash scripts/exmod.sh on Linux and macOS, pwsh scripts/exmod.ps1 on Windows.
 # The task that fetches a series' client for the launch configuration. Each platform keeps its own
-# slot, .game/<series>-<platform>, so a checkout shared between Windows and WSL holds both clients.
+# slot, .game/<series>-<platform> on Linux and macOS and %LOCALAPPDATA%\exmod\game\<series> on
+# Windows (a native library does not load from a network share, and a checkout under
+# \\wsl.localhost is one), so a checkout shared between Windows and WSL holds both clients.
 function New-VsCodeProvisionTask([string]$Label, [string]$Version, [string]$Slug) {
   $common = @('provision', 'game', '-Version', $Version, '-Kind', 'client', '-Dest')
   $lines = { param([string[]]$Items, [string]$Indent) (@($Items) | ForEach-Object { "$Indent`"$_`"" }) -join ",`
@@ -299,7 +301,7 @@ $(& $lines ($common + ".game/$Slug-macos") '          ')
           "Bypass",
           "-File",
           "`${workspaceFolder}/scripts/exmod.ps1",
-$(& $lines ($common + ".game/$Slug-windows") '          ')
+$(& $lines ($common + "`${env:LOCALAPPDATA}/exmod/game/$Slug") '          ')
         ]
       },
       "problemMatcher": []
@@ -426,7 +428,7 @@ $($tasks -join ",`n")
       "cwd": "`${workspaceFolder}",
       "linux": { "env": { "WAYLAND_DISPLAY": "none" } },
       "osx": { "program": "`${workspaceFolder}/.game/$latest-macos/Vintagestory.dll" },
-      "windows": { "program": "`${workspaceFolder}/.game/$latest-windows/Vintagestory.dll" },
+      "windows": { "program": "`${env:LOCALAPPDATA}/exmod/game/$latest/Vintagestory.dll" },
       "stopAtEntry": false,
       "console": "internalConsole",
       "requireExactSource": false
@@ -451,7 +453,7 @@ $($tasks -join ",`n")
       "env": { "DOTNET_ROOT": "`${workspaceFolder}/.dotnet" },
       "linux": { "env": { "DOTNET_ROOT": "`${workspaceFolder}/.dotnet", "WAYLAND_DISPLAY": "none" } },
       "osx": { "program": "`${workspaceFolder}/.game/$s-macos/Vintagestory.dll" },
-      "windows": { "program": "`${workspaceFolder}/.game/$s-windows/Vintagestory.dll" },
+      "windows": { "program": "`${env:LOCALAPPDATA}/exmod/game/$s/Vintagestory.dll" },
       "stopAtEntry": false,
       "console": "internalConsole",
       "requireExactSource": false
@@ -722,9 +724,9 @@ from exlib's own templates - `exmod help scaffold` lists every kind.
 ## Running it in VS Code
 
 `.vscode/tasks.json` and `launch.json` carry a build/pack/test task per game series this repo
-supports, launch-prep composites that provision the client build (`.game/<series>-<platform>/`,
-one slot per platform so a checkout shared between Windows and WSL keeps both clients; plain
-`setup` does not fetch it) and stage the mods first, and one launch configuration per series that
+supports, launch-prep composites that provision the client build (`.game/<series>-<platform>/`
+on Linux and macOS, `%LOCALAPPDATA%\exmod\game\<series>` on Windows, where a client on a network
+share such as a WSL checkout cannot load its native libraries; plain `setup` does not fetch it) and stage the mods first, and one launch configuration per series that
 boots the game with them loaded - opening this repo in VS Code and hitting F5 does the same thing
 `bash scripts/exmod.sh build latest && exmod stage && exmod client` would, with the game's own log
 in the debug console. On Linux the game runs on X11 (GLFW's Wayland backend cannot place the
