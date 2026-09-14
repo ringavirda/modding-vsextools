@@ -27,7 +27,7 @@ the Expanded Library wiki under Getting Started, "exmod in your repo".
 
 ```
 exmod.ps1        the dispatcher: argument helpers, the manifest resolvers, command registration, help
-exmod/           one file per lifecycle stage: provision, new, src, run, dist, windows
+exmod/           one file per lifecycle stage: provision, new, scaffold, src, run, dist, windows
 wrappers/        the two launchers a consuming repository checks in
 scripts/         the launchers again, pointed at this checkout, so extools drives itself
 pack/            the packaging build (Cake Frosting), manifest-driven
@@ -64,6 +64,13 @@ package-mode `PackageReference` - the shape `exmod setup` produces, never a work
 `ProjectReference`. A generated starter's own two mods sit flat (`mods/<id>/<Name>.csproj`,
 `modinfo.json` beside it, no `src/` split) rather than in this shape, since they are generated from
 the samples directly; both shapes resolve the same way.
+
+`exmod scaffold <kind> <Name> [-Mod <id>]` (alias `g`) puts a compiling, tested `<kind>` - a block,
+item, recipe, megablock, multiblock, node, blockbehavior, entitybehavior, config, migration or
+command - into an existing mod, from the `dotnet new` templates exlib ships as
+`ExpandedLib.Templates`: the sibling exlib checkout's own `templates/content/` in source mode, else
+the version `Directory.Packages.props` pins. Lang keys the generated code reads are merged into
+`assets/<id>/lang/en.json`.
 
 ## Branches
 
