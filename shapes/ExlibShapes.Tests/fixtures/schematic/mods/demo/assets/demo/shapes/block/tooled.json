@@ -17,6 +17,19 @@
 			}
 		},
 		{
+			"name": "vice",
+			"from": [16, 4, 4],
+			"to": [26, 12, 12],
+			"faces": {
+				"north": { "texture": "#tooled", "uv": [0, 0, 10, 8] },
+				"east": { "texture": "#tooled", "uv": [0, 0, 8, 8] },
+				"south": { "texture": "#tooled", "uv": [0, 0, 10, 8] },
+				"west": { "texture": "#tooled", "uv": [0, 0, 8, 8] },
+				"up": { "texture": "#tooled", "uv": [0, 0, 10, 8] },
+				"down": { "texture": "#tooled", "uv": [0, 0, 10, 8] }
+			}
+		},
+		{
 			"name": "rabble",
 			"from": [4, 40, 4],
 			"to": [12, 56, 12],
@@ -28,6 +41,20 @@
 				"up": { "texture": "#tooled", "uv": [0, 0, 8, 8] },
 				"down": { "texture": "#tooled", "uv": [0, 0, 8, 8] }
 			}
+		}
+	],
+	"animations": [
+		{
+			"name": "rabbling",
+			"code": "rabbling",
+			"quantityframes": 30,
+			"onActivityStopped": "EaseOut",
+			"onAnimationEnd": "Repeat",
+			"keyframes": [
+				{ "frame": 0, "elements": { "rabble": { "offsetY": 0.0, "rotationY": 0.0 } } },
+				{ "frame": 15, "elements": { "rabble": { "offsetY": 0.0, "rotationY": 20.0 } } },
+				{ "frame": 29, "elements": { "rabble": { "offsetY": 0.0, "rotationY": 0.0 } } }
+			]
 		}
 	]
 }

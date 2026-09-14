@@ -88,18 +88,24 @@ public class BlockViewsTests {
   }
 
   [Fact]
-  public void A_texture_that_resolves_to_nothing_is_named_in_the_manifest() {
+  public void A_texture_that_resolves_to_nothing_is_named_apart_from_a_face_assigned_none() {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     string file = Blocktype("rusty");
     JObject manifest = BlockViews.Write(file, Drawn(index, file), index, OutDir("rusty"), views: ["iso"], ppu: 4);
+    // The shape names `rust` a file that is not there and leaves its underside's own key
+    // unassigned: one is a broken value, the other a face the block paints with nothing.
     Assert.Equal(
       ["demo:rusty: texture rust (demo:block/nonexistent) not found"],
       manifest["missingTextures"]!.Select(t => (string)t!)
     );
+    Assert.Equal(
+      ["demo:rusty: face texture underside is assigned nothing"],
+      manifest["unpaintedFaces"]!.Select(t => (string)t!)
+    );
   }
 
   [Fact]
-  public void A_part_parked_outside_the_block_is_not_drawn() {
+  public void An_animated_part_parked_outside_the_block_is_not_drawn() {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     string file = Blocktype("tooled");
     string clippedDir = OutDir("tooled");
@@ -118,6 +124,64 @@ public class BlockViewsTests {
     Assert.True(all.Height > block.Height, "the parked part is drawn either way");
   }
 
+  [Fact]
+  public void A_static_part_reaching_past_the_block_is_still_drawn() {
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+    string file = Blocktype("tooled");
+    // The vice stands mostly outside the block's own cell, as the rabble does, and no animation
+    // moves it: it is where a placed block shows it.
+    BlockViews.Drawing drawn = BlockViews.Draw(file, Drawn(index, file), index);
+    Assert.Equal(["rabble"], drawn.Hidden);
+    Assert.Contains("vice", drawn.Shape.Leaves().Select(el => el.Name));
+  }
+
+  // The blocktype trees of the four mods, and whether each is read with the legacy resolution
+  // order. Every megablock and structure block of the family lives under one of them.
+  private static readonly (string Tree, bool Legacy)[] FamilyTrees = [
+    ("exmods/legacy/smex/assets", true),
+    ("exmods/legacy/ppex/assets", true),
+    ("exmods/mods/iiex/tests/goldens", false),
+    ("exmods/mods/siex/tests/goldens", false),
+  ];
+
+  // The only two blocks of the family whose art is parked outside the block it belongs to: the
+  // puddling door's two tools and the chimney cap's control rod, each moved by an animation of its
+  // own shape. Every other block keeps every part, however far it reaches.
+  private static readonly string[] Clipped = [
+    "iiex:furnace-puddlingchargedoor-n: Rabble, Paddle",
+    "iiex:furnace-puddlingchimneycap-n: Cube34",
+  ];
+
+  [SkippableFact]
+  public void Only_the_two_blocks_with_a_parked_tool_lose_any_art() {
+    string? exmods = FixturePath.Workspace("exmods");
+    Skip.If(exmods is null, "the sibling exmods checkout is absent");
+    var cut = new List<string>();
+    int checkedCount = 0;
+    foreach ((string tree, bool legacy) in FamilyTrees) {
+      string root = Path.Combine(Path.GetDirectoryName(exmods!)!, tree.Replace('/', Path.DirectorySeparatorChar));
+      Skip.If(!Directory.Exists(root), $"{tree} is absent");
+      BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(root), null, legacy);
+      foreach (
+        string file in Directory
+          .EnumerateFiles(root, "*.json", SearchOption.AllDirectories)
+          .Where(f => f.Split(Path.DirectorySeparatorChar).Contains("blocktypes"))
+          .OrderBy(f => f, StringComparer.Ordinal)
+      ) {
+        IReadOnlyList<Variant> variants = index.VariantsOf(file);
+        Variant? drawn = BlockIndex.Facing(variants, Presentation.Facing) ?? variants.FirstOrDefault();
+        if (drawn == null)
+          continue;
+        checkedCount++;
+        BlockViews.Drawing drawing = BlockViews.Draw(file, drawn, index);
+        if (drawing.Hidden.Count > 0)
+          cut.Add($"{drawn.Code}: {string.Join(", ", drawing.Hidden)}");
+      }
+    }
+    Assert.True(checkedCount >= 150, $"only {checkedCount} blocktypes were reached");
+    Assert.Equal<IEnumerable<string>>(Clipped, [.. cut.OrderBy(c => c, StringComparer.Ordinal)]);
+  }
+
   [SkippableFact]
   public void The_blast_furnace_door_is_drawn_iron_side_out() {
     string? file = FixturePath.Workspace("exmods/legacy/smex/assets/smex/blocktypes/blastfurnace/door.json");
@@ -130,15 +194,17 @@ public class BlockViewsTests {
 
     JObject manifest = BlockViews.Write(file!, variants[0], index, OutDir("door"), views: ["iso"], ppu: 4);
     Assert.Equal("south", (string?)manifest["front"]);
+    // The door animates its origin alone, which stands inside the block: a picture of it is the
+    // whole door, both rows of brick and both straps.
+    Assert.Empty((JArray)manifest["hidden"]!);
 
     // The brick boxes are the block's own body and everything else is the iron door, its straps and
-    // its handle; the turn stands that furniture between the brick and the camera.
-    ResolvedBlock block = index.Resolve((string)manifest["variant"]!)!;
-    Vector3 toward = Turn(
-      Middle(ShapeFile.Load(block.ShapePath!), name => !name.StartsWith("brick", StringComparison.Ordinal))
-        - Middle(ShapeFile.Load(block.ShapePath!), name => name.StartsWith("brick", StringComparison.Ordinal)),
-      (int)manifest["angle"]!
-    );
+    // its handle; the turn stands that furniture between the brick and the camera. Measured on the
+    // model the render draws, already turned, so a part cut out of it counts against the picture.
+    LoadedShape drawn = BlockViews.Draw(file!, variants[0], index).Shape;
+    Vector3 toward =
+      Middle(drawn, name => !name.StartsWith("brick", StringComparison.Ordinal))
+      - Middle(drawn, name => name.StartsWith("brick", StringComparison.Ordinal));
     Vector3 eye = Renderer.Eye(Renderer.NamedViews[Presentation.ViewName]);
     Assert.True(
       toward.X * eye.X + toward.Z * eye.Z > 0,
@@ -162,16 +228,6 @@ public class BlockViewsTests {
     return centres.Aggregate(Vector3.Zero, (a, b) => a + b) / centres.Count;
   }
 
-  // A direction turned about the y axis by a quarter turn, stated here rather than read from the
-  // tool: Vintage Story turns 90 degrees by (x, z) -> (z, -x).
-  private static Vector3 Turn(Vector3 v, int angle) =>
-    (((angle % 360) + 360) % 360) switch {
-      90 => new Vector3(v.Z, v.Y, -v.X),
-      180 => new Vector3(-v.X, v.Y, -v.Z),
-      270 => new Vector3(-v.Z, v.Y, v.X),
-      _ => v,
-    };
-
   [SkippableFact]
   public void A_hollow_boiler_tells_its_firebox_end_from_its_flue_end() {
     string? file = FixturePath.Workspace("exmods/mods/siex/tests/goldens/siex/blocktypes/boiler/lancashire.json");
@@ -180,12 +236,58 @@ public class BlockViewsTests {
     string outDir = OutDir("lancashire");
     BlockViews.Write(file!, Drawn(index, file!), index, outDir, views: ["north", "south"], ppu: 4);
 
-    // Culled, the flue openings showed the paper through both ends and the two views came out
-    // pixel for pixel the same; with the back faces drawn the ends read apart.
+    // The flue openings are tubes with nothing behind them: drawn as holes they show the paper
+    // through to the far end and the two ends read as one picture.
+    foreach (string view in new[] { "north", "south" }) {
+      using SKBitmap image = SKBitmap.Decode(Path.Combine(outDir, $"lancashire-{view}.png"));
+      Assert.Equal(0, EnclosedPaper(image));
+    }
+
     byte[] north = File.ReadAllBytes(Path.Combine(outDir, "lancashire-north.png"));
     byte[] south = File.ReadAllBytes(Path.Combine(outDir, "lancashire-south.png"));
     Assert.False(north.AsSpan().SequenceEqual(south), "the boiler's two ends are drawn identically");
   }
+
+  // Pixels of the render's own paper that the model encloses - paper the canvas edge cannot be
+  // reached from across paper and floor grid, the eight ways a background pixel connects. Every one
+  // of them is a hole in the model the reader sees the paper through; a single pixel of paper left
+  // along a diagonal outline touches the paper outside it and is not one.
+  private static int EnclosedPaper(SKBitmap image) {
+    bool IsPaper(int x, int y) => image.GetPixel(x, y) == Renderer.Background;
+    bool IsBehind(int x, int y) {
+      SKColor pixel = image.GetPixel(x, y);
+      return pixel == Renderer.Background || pixel == Renderer.GridLight || pixel == Renderer.GridDark;
+    }
+    var reached = new bool[image.Height, image.Width];
+    var queue = new Queue<(int X, int Y)>();
+    void Reach(int x, int y) {
+      if (x < 0 || x >= image.Width || y < 0 || y >= image.Height || reached[y, x] || !IsBehind(x, y))
+        return;
+      reached[y, x] = true;
+      queue.Enqueue((x, y));
+    }
+    for (int x = 0; x < image.Width; x++) {
+      Reach(x, 0);
+      Reach(x, image.Height - 1);
+    }
+    for (int y = 0; y < image.Height; y++) {
+      Reach(0, y);
+      Reach(image.Width - 1, y);
+    }
+    while (queue.Count > 0) {
+      (int x, int y) = queue.Dequeue();
+      for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++)
+          Reach(x + dx, y + dy);
+    }
+    int enclosed = 0;
+    for (int y = 0; y < image.Height; y++)
+      for (int x = 0; x < image.Width; x++)
+        if (!reached[y, x] && IsPaper(x, y))
+          enclosed++;
+    return enclosed;
+  }
+
 
   [SkippableFact]
   public void A_ppex_engine_draws_its_north_variant_over_its_own_footprint() {

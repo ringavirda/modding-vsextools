@@ -62,6 +62,19 @@ public static class Poses {
     return names;
   }
 
+  /// <summary>Element names at least one keyframe of any clip <paramref name="shape"/> declares
+  /// names - every part an animation moves. Empty for a shape with no animations; a moved part's
+  /// own children are not listed, since a keyframed parent carries its subtree with it.</summary>
+  public static HashSet<string> AnimatedNames(LoadedShape shape) {
+    var names = new HashSet<string>(StringComparer.Ordinal);
+    foreach (Animation animation in shape.Animations)
+      foreach (AnimationKeyFrame kf in animation.KeyFrames ?? [])
+        if (kf.Elements != null)
+          foreach (string name in kf.Elements.Keys)
+            names.Add(name);
+    return names;
+  }
+
   // The value of one channel axis on the keyframe that actually names the element (elements[name]
   // is present by construction: every keyframe passed here comes from a name-filtered list), or
   // fallback when that keyframe leaves the specific field null.
