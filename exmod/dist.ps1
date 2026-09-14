@@ -146,11 +146,12 @@ push step, which is gated on the NUGET_USER repository variable rather than comm
 #region release
 
 # Reads the newest released heading of a keep-a-changelog file: the first "## [x.y.z]" after
-# "## [Unreleased]". Returns $null when the file has no released entry at all.
+# "## [Unreleased]", a released heading's version allowed a SemVer prerelease suffix
+# (e.g. "## [0.8.0-preview.3]"). Returns $null when the file has no released entry at all.
 function Get-ChangelogVersion([string]$Path) {
   if (-not (Test-Path $Path)) { return $null }
   foreach ($line in Get-Content $Path) {
-    $m = [regex]::Match($line, '^##\s*\[(\d+\.\d+\.\d+)\]')
+    $m = [regex]::Match($line, '^##\s*\[(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\]')
     if ($m.Success) { return $m.Groups[1].Value }
   }
   return $null
@@ -163,12 +164,16 @@ function Get-ModManifests() {
     $modinfoPath = Join-Path (Split-Path $mod.Value.Project -Parent) 'modinfo.json'
     if (-not (Test-Path $modinfoPath)) { continue }
     $modinfo = Get-Content $modinfoPath -Raw | ConvertFrom-Json
+    # The changelog lives beside the mod folder for most mods, but exlib carries a
+    # single repo-root CHANGELOG.md instead of one under src/ExpandedLib.
+    $ownChangelog = Join-Path $mod.Value.Path 'CHANGELOG.md'
+    $changelog = if (Test-Path $ownChangelog) { $ownChangelog } else { Join-Path $RepoRoot 'CHANGELOG.md' }
     $out += [pscustomobject]@{
       Folder    = $mod.Key
       ModId     = $modinfo.modid
       Version   = $modinfo.version
       Depends   = $modinfo.dependencies
-      Changelog = Join-Path $mod.Value.Path 'CHANGELOG.md'
+      Changelog = $changelog
     }
   }
   return $out
