@@ -37,6 +37,13 @@
       <HintPath>$(GamePath)/Lib/protobuf-net.dll</HintPath>
       <Private>true</Private>
     </Reference>
+    <Reference Include="SkiaSharp">
+      <HintPath>$(GamePath)/Lib/SkiaSharp.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <None Include="$(GamePath)/Lib/libSkiaSharp.so" CopyToOutputDirectory="PreserveNewest" Link="libSkiaSharp.so" Condition="Exists('$(GamePath)/Lib/libSkiaSharp.so')" />
+    <None Include="$(GamePath)/Lib/libSkiaSharp.dll" CopyToOutputDirectory="PreserveNewest" Link="libSkiaSharp.dll" Condition="Exists('$(GamePath)/Lib/libSkiaSharp.dll')" />
+    <None Include="$(GamePath)/Lib/libSkiaSharp.dylib" CopyToOutputDirectory="PreserveNewest" Link="libSkiaSharp.dylib" Condition="Exists('$(GamePath)/Lib/libSkiaSharp.dylib')" />
   </ItemGroup>
 
   <ItemGroup>

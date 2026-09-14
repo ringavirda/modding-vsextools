@@ -122,13 +122,16 @@ public static class Geometry {
   /// applies a keyframe.
   /// </summary>
   public static Matrix4x4 LocalMatrix(Node el, Pose? pose = null) {
-    Vector3 rot = pose == null ? el.Rotation : el.Rotation + pose.Rotation;
+    Vector3 elRotation = (Vector3)el.Rotation;
+    Vector3 elFrom = (Vector3)el.From;
+    Vector3 elOrigin = (Vector3)el.Origin;
+    Vector3 rot = pose == null ? elRotation : elRotation + pose.Rotation;
     Vector3 offset = pose?.Offset ?? Vector3.Zero;
     Vector3 stretch = pose?.Stretch ?? Vector3.One;
-    return Translate(el.From + offset - el.Origin)
+    return Translate(elFrom + offset - elOrigin)
       * Scale(stretch)
       * RotateByXyz(rot.X, rot.Y, rot.Z)
-      * Translate(el.Origin);
+      * Translate(elOrigin);
   }
 
   /// <summary>
@@ -212,7 +215,7 @@ public static class Geometry {
   /// <summary>The enabled faces of an element as world-space quads.</summary>
   public static List<Quad> FaceQuads(Node el, Matrix4x4 m) {
     var outp = new List<Quad>();
-    Vector3 size = el.Size;
+    Vector3 size = (Vector3)el.Size;
     foreach ((string face, ShapeElementFace spec) in el.Faces) {
       if (!FaceCorners.TryGetValue(face, out (int X, int Y, int Z)[]? corners))
         continue;

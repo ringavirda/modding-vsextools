@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using Newtonsoft.Json;
 using Vintagestory.API.Common;
@@ -62,7 +63,7 @@ public class GeometryTests {
     LoadedShape shape = ShapeFromJson(json);
     var mats = Geometry.WorldMatrices(shape);
     Node cube53 = shape.Find("Lid/Cube53")!;
-    var (lo, hi) = Geometry.Aabb(Geometry.Corners(mats[cube53.Path], cube53.Size));
+    var (lo, hi) = Geometry.Aabb(Geometry.Corners(mats[cube53.Path], (Vector3)cube53.Size));
     Assert.Equal(17, MathF.Round(lo.X));
     Assert.Equal(28, MathF.Round(hi.X));
     Assert.Equal(17, MathF.Round(lo.Y));
@@ -78,7 +79,7 @@ public class GeometryTests {
       """;
     LoadedShape shape = ShapeFromJson(json);
     Matrix4x4 m = Geometry.WorldMatrices(shape)["P"];
-    Vector3[] c = Geometry.Corners(m, shape.Elements[0].Size);
+    Vector3[] c = Geometry.Corners(m, (Vector3)shape.Elements[0].Size);
     Vector3 far = c[4]; // x=size, y=0, z=0 corner
     AssertClose(new Vector3(4 + 1.4f * 0.7071f, 0, 5 - 1.4f * 0.7071f), far, 1e-3f);
   }
@@ -123,9 +124,42 @@ public class GeometryTests {
     LoadedShape shape = ShapeFile.Load(FixturePath.Of("items/machined/item-lathed-cylinder.json"));
     var mats = Geometry.WorldMatrices(shape);
     Node target = shape.Find("Cylinder/Cube4/Cube2")!;
-    var (lo, _) = Geometry.Aabb(Geometry.Corners(mats[target.Path], target.Size));
+    var (lo, _) = Geometry.Aabb(Geometry.Corners(mats[target.Path], (Vector3)target.Size));
     // the north-west chord spans from the west flat (x 4) to the north flat (z 4)
     Assert.True(MathF.Abs(lo.X - 4) < 0.05f);
     Assert.True(MathF.Abs(lo.Z - 4) < 0.05f);
+  }
+
+  // Geometry's public WorldMatrices/FaceQuads (float32, System.Numerics) has no production caller
+  // today - the renderer keeps its own double-precision mirror (Renderer.WorldMatricesD /
+  // FaceQuadsD) to survive a strict z-test at exactly coincident faces, and RendererTests' pixel
+  // comparison only exercises that mirror. This cross-checks every leaf and quad of a real,
+  // multi-element fixture between the two chains, so a bug in the public API that a hand-picked
+  // unit fixture would miss cannot pass silently until T6/T7 build atop it.
+  [Fact]
+  public void Public_world_matrices_and_face_quads_agree_with_the_verified_double_chain() {
+    LoadedShape shape = ShapeFile.Load(FixturePath.Of("items/machined/item-shaped-gearpinion.json"));
+    Dictionary<string, Matrix4x4> floatMats = Geometry.WorldMatrices(shape);
+    Dictionary<string, Renderer.Mat4d> doubleMats = Renderer.WorldMatricesD(shape, null);
+
+    foreach (Node leaf in shape.Leaves()) {
+      Matrix4x4 fm = floatMats[leaf.Path];
+      List<Geometry.Quad> floatQuads = Geometry.FaceQuads(leaf, fm);
+      List<Renderer.QuadD> doubleQuads = Renderer.FaceQuadsD(leaf, doubleMats[leaf.Path]);
+      Assert.Equal(doubleQuads.Count, floatQuads.Count);
+
+      for (int i = 0; i < floatQuads.Count; i++) {
+        Geometry.Quad fq = floatQuads[i];
+        Renderer.QuadD dq = doubleQuads[i];
+        Assert.Equal(dq.Texture, fq.Texture);
+        for (int p = 0; p < 4; p++)
+          AssertClose(
+            new Vector3((float)dq.Points[p].X, (float)dq.Points[p].Y, (float)dq.Points[p].Z),
+            fq.Points[p],
+            1e-3f
+          );
+        AssertClose(new Vector3((float)dq.Normal.X, (float)dq.Normal.Y, (float)dq.Normal.Z), fq.Normal, 1e-4f);
+      }
+    }
   }
 }
