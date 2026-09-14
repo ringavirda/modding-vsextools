@@ -98,8 +98,8 @@ templates/ci/    GitHub Actions templates for a consuming repository
 ## Starter
 
 `exmod starter <dest>` generates a standalone starter monorepo at `<dest>`: every sample exlib's own
-`exmod.json` names, in manifest order, as its own mod (`mods/grains`, `mods/handmill`, and whatever
-else exlib ships samples for), their tests, a solution, the launcher scripts, an `exmod.json` naming
+`exmod.json` names, in manifest order, as its own mod (`mods/twintubblower`, `mods/burdenmaker`, and
+whatever else exlib ships samples for), their tests, a solution, the launcher scripts, an `exmod.json` naming
 them, a `Directory.Packages.props` pinned to the exlib version it was generated from, CI and the
 repo dotfiles - a repository that clones, restores from NuGet, builds, tests and smokes with nothing
 hand-edited. `-ExlibRoot` points it at an exlib checkout other than the workspace sibling `../exlib`;
@@ -115,9 +115,9 @@ in `<dest>` afterward reports what changed, including any of the owner's own unr
 `exmod new <modid>` scaffolds an empty mod into the current repository (the one its own `exmod.json`
 names) - a package-mode csproj under `mods/<modid>/src`, `modinfo.json`, an asset skeleton and a
 test project wired to the harness - and adds it to `exmod.json` and, when the repository names a
-solution, to it too. `--module` scaffolds a framework module instead, the shape `samples/Grains` and
-the starter both carry: `[assembly: ExModule]`, an `IExModule` entry point and the empty `ModSystem`
-the engine's Code-mod loader requires. It needs a root `Directory.Packages.props` carrying an
+solution, to it too. `--module` scaffolds a framework module instead, the third-party shape the
+wiki's Modules page documents: `[assembly: ExModule]`, an `IExModule` entry point and the empty
+`ModSystem` the engine's Code-mod loader requires. It needs a root `Directory.Packages.props` carrying an
 `ExpandedLib` `PackageVersion` to pin against, and always scaffolds a versionless, package-mode
 `PackageReference` - the shape `exmod setup` produces, never a workspace `ProjectReference`. A
 generated starter's own mods sit in the same family layout (`mods/<id>/src/<Name>.csproj`,

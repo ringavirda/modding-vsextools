@@ -77,7 +77,7 @@ function Set-CsprojSpan([string]$Text, [string]$Begin, [string]$End, [string]$Ne
   return $Text.Substring(0, $start) + $New + $Text.Substring($stop)
 }
 
-# The sample mod csproj (Grains.csproj or HandMill.csproj) with its source-mode half
+# The sample mod csproj (TwinTubBlower.csproj or BurdenMaker.csproj) with its source-mode half
 # removed: the explicit Sdk.props/Sdk.targets split collapses to the ordinary Sdk attribute, the
 # $(ExlibRoot) default and the two conditioned build/ExpandedLib.props|targets imports go, and the
 # dual-mode ItemGroup unwraps to its package-mode half unconditioned. $(CurrentGameTfm)'s own
@@ -756,13 +756,17 @@ two variables in the launch configuration's `env` (`LIBGL_ALWAYS_SOFTWARE=1`,
 
 ## Playing the samples
 
-The hand mill is a line of mechanical power: a crank, a run of drive shafts, a flywheel and the
-mill core on its quern stand. Right-click the crank to wind it and the line spins up, then coasts
-down as the wind runs out; the flywheel keeps it turning between winds and reserves the eight
-cells around its hub (sneak-click any of them to brake it). The mill is complete once the core
-stands on its quern stand; Ctrl + Shift + right-click either of them to see what is still missing.
-Right-click the core with a sack of grain to load it, and at speed it grinds the grain to flour.
-The grains mod supplies the grain and the sacks.
+The twin-tub blower is a mechanically driven pair of bellows: place one, then mount an axle against
+its upper rear cell (the face turned away from where the blower opens onto its pipe run) and turn
+it - the bellows spin up and start pushing cold air into the pipe network the blower stands in,
+scaling with how fast the axle turns. Look at the blower to read its current output.
+
+The burden maker is a designed multiblock stock house: place it, then walk it through its five
+construction stages (the bare base, the base extension, the hopper masonry, the ironwork hoppers,
+then the gate lids), each needing its own fired brick or iron. Once built, right-click the wide
+upper cells to load crushed iron ore, the narrow upper cell to load lime, and the centre cell at
+its base to pull the gate - both hoppers drop together into the shared basin as one batch, which
+you then take back out from any open basin cell.
 
 ## Licence
 
@@ -811,10 +815,9 @@ function Invoke-Starter([string[]]$Argv) {
   New-Item -ItemType Directory -Force -Path $dest | Out-Null
   $repoName = Split-Path $dest -Leaf
 
-  # Every sample exlib's own exmod.json names, in manifest order - dependency order (grains before
-  # handmill: handmill's csproj references grains by project, so it has to exist, and build, first).
-  # $sampleFolderToId maps each sample's folder name (its samples/<Folder> path) to the mod id this
-  # starter gives it, for Set-CrossSampleReferences to rewrite a same-repo ProjectReference by.
+  # Every sample exlib's own exmod.json names, in manifest order. $sampleFolderToId maps each
+  # sample's folder name (its samples/<Folder> path) to the mod id this starter gives it, for
+  # Set-CrossSampleReferences to rewrite a same-repo ProjectReference by.
   $exlibManifest = Get-Content (Join-Path $exlibRoot 'exmod.json') -Raw | ConvertFrom-Json
   if (-not $exlibManifest.PSObject.Properties['samples'] -or -not @($exlibManifest.samples.PSObject.Properties)) {
     throw "exlib checkout at $exlibRoot names no samples."
@@ -1200,8 +1203,7 @@ function Expand-NewTemplate([string]$Template, [string]$ModId, [string]$PascalNa
 # Scaffolds mods/<modid> into the current repository (the one this checkout's exmod.json names)
 # and adds it to that manifest: a package-mode csproj, modinfo.json, a lang skeleton and a test
 # project wired to the harness with one smoke test. --module scaffolds a framework module instead -
-# the [assembly: ExModule] + IExModule + empty ModSystem shape samples/Grains proves (see the
-# wiki's Modules page).
+# the [assembly: ExModule] + IExModule + empty ModSystem shape (see the wiki's Modules page).
 function Invoke-New([string[]]$Argv) {
   $positional = @(Get-Positional $Argv @('-Name') @('--module'))
   if ($positional.Count -lt 1) { throw "exmod new needs a mod id." }
@@ -1442,7 +1444,7 @@ PackageReference is versionless, package mode only, the shape `exmod setup` prod
              <modid>
   --module   scaffold a framework module instead: [assembly: ExModule("<modid>")], an IExModule
              entry point and the empty ModSystem the engine's Code-mod loader requires (see the
-             wiki's Modules page and samples/Grains)
+             wiki's Modules page)
 
 <modid> must start with a lower-case letter, hold only lower-case letters and digits after that,
 and not already name a mod in exmod.json.
