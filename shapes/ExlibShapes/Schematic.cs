@@ -587,7 +587,9 @@ public static class Schematic {
   /// is <see cref="BlockIndex.ParseWarnings"/>, appended last, one line per blocktype or
   /// worldproperties file that failed to parse. <paramref name="plans"/> names each plan SVG with
   /// the Y layer it draws, as <c>{"file", "layer"}</c> rows under <c>plans</c>; the same paths stay
-  /// in <c>files</c>, which lists everything written.</summary>
+  /// in <c>files</c>, which lists everything written. <paramref name="front"/> is the world side the
+  /// drawn machine's front looks toward (<see cref="Presentation.FrontOf"/>, turned with the
+  /// layout), under <c>front</c>, and is JSON null for a structure that faces no way.</summary>
   public static JObject Manifest(
     Layout layout,
     IReadOnlyDictionary<int, LegendEntry> legend,
@@ -595,7 +597,8 @@ public static class Schematic {
     IReadOnlyDictionary<string, IReadOnlyList<string>>? ambiguities = null,
     IReadOnlyList<string>? missingTextures = null,
     IReadOnlyList<string>? parseWarnings = null,
-    IReadOnlyList<(string File, int Layer)>? plans = null
+    IReadOnlyList<(string File, int Layer)>? plans = null,
+    string? front = null
   ) {
     var rows = new JArray();
     var warnings = new JArray();
@@ -631,6 +634,7 @@ public static class Schematic {
     return new JObject {
       ["files"] = new JArray(files),
       ["plans"] = planRows,
+      ["front"] = front == null ? JValue.CreateNull() : front,
       ["legend"] = rows,
       ["warnings"] = warnings,
     };

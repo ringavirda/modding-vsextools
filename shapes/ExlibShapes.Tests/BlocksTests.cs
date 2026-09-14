@@ -60,15 +60,15 @@ public class BlocksTests {
       ["demo:vane-north", "demo:vane-east", "demo:vane-south", "demo:vane-west"],
       index.VariantsOf(file).Select(v => v.Code)
     );
-    Assert.Equal("demo:vane-north", BlockIndex.NorthFacing(index.VariantsOf(file))!.Code);
+    Assert.Equal("demo:vane-north", BlockIndex.Facing(index.VariantsOf(file), "north")!.Code);
   }
 
   [Fact]
-  public void A_family_with_no_facing_has_no_north_variant() {
+  public void A_family_with_no_facing_has_no_variant_at_a_side() {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     string post = FixturePath.Of("schematic/samples/Post/tests/goldens/sample/blocktypes/post.json");
     Assert.Equal(["sample:post-short", "sample:post-tall"], index.VariantsOf(post).Select(v => v.Code));
-    Assert.Null(BlockIndex.NorthFacing(index.VariantsOf(post)));
+    Assert.Null(BlockIndex.Facing(index.VariantsOf(post), "north"));
   }
 
   [Fact]

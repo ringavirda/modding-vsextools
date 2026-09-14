@@ -24,7 +24,7 @@ public class BlockViewsTests {
   private static Variant Drawn(BlockIndex index, string file, string? wanted = null) {
     var variants = index.VariantsOf(file);
     return wanted == null
-      ? BlockIndex.NorthFacing(variants) ?? variants[0]
+      ? BlockIndex.Facing(variants, Presentation.Facing) ?? variants[0]
       : variants.Single(v => v.Code == wanted);
   }
 

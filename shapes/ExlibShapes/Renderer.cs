@@ -69,6 +69,21 @@ public static class Renderer {
     ["iso"] = new(-45, 30),
   };
 
+  /// <summary>
+  /// The unit world direction <paramref name="view"/>'s camera stands in, looking back at the
+  /// subject, on the game's own axes: x east, y up, z south. A step along it moves nothing on the
+  /// canvas, the projection being orthographic. The isometric view stands south-east and above, so
+  /// an isometric picture shows a block's south face on the left and its east face on the right.
+  /// </summary>
+  public static Vector3 Eye(View view) {
+    double yaw = view.Yaw * Math.PI / 180, pitch = view.Pitch * Math.PI / 180;
+    return new Vector3(
+      (float)(-Math.Sin(yaw) * Math.Cos(pitch)),
+      (float)Math.Sin(pitch),
+      (float)(Math.Cos(yaw) * Math.Cos(pitch))
+    );
+  }
+
   // A plain 3x3, column-vector rotation matrix (m @ v), kept separate from Geometry's transposed
   // System.Numerics matrices: the view transform never needs a translation row, so there is
   // nothing to gain from Geometry's row-vector convention here.

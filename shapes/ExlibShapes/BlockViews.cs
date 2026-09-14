@@ -35,7 +35,8 @@ public static class BlockViews {
   /// Writes <paramref name="variant"/>'s pictures into <paramref name="outDir"/> - one
   /// <c>&lt;stem&gt;-&lt;view&gt;.png</c> per view, plus <c>&lt;stem&gt;-footprint.svg</c> when
   /// <paramref name="file"/> declares a footprint - and the <c>&lt;stem&gt;.json</c> manifest
-  /// beside them, which it returns: <c>files</c>, the <c>variant</c> drawn, the
+  /// beside them, which it returns: <c>files</c>, the <c>variant</c> drawn, the world side its
+  /// <c>front</c> looks toward (JSON null for a block that faces no way), the
   /// <c>missingTextures</c> the render painted magenta, and <c>warnings</c>.
   /// </summary>
   /// <param name="file">The blocktype file, whose own name is the stem of everything written.</param>
@@ -91,6 +92,7 @@ public static class BlockViews {
     var manifest = new JObject {
       ["files"] = new JArray(files),
       ["variant"] = block.Code,
+      ["front"] = Presentation.FrontOf(variant) is { } front ? front : JValue.CreateNull(),
       ["missingTextures"] = new JArray(MissingTextures(block, textureValues, textures)),
       ["warnings"] = new JArray(warnings),
     };

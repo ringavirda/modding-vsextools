@@ -63,9 +63,18 @@ wherever the footprint tells the quarter turns apart. A megablock's own body is 
 outline of the cells it reserves rather than under grey boxes; a structure's filler cells, which
 the player leaves clear, keep theirs.
 
+Both `schematic` and `block` draw a family at its presentation facing. A machine is placed facing
+away from the player, so its front - the side the player stands at, the boiler's firebox, the
+furnace's door - is the side opposite the variant's facing, and the drawing takes the facing that
+turns that front toward the isometric camera, which stands to the south-east and above. The plans
+keep north up and the manifest's `front` names the side the front looks toward; `--variant` and
+`--angle` override the choice.
+
 A `<stem>.json` manifest is always written alongside the pictures: `files` (every path written),
-`plans` (one `{file, layer}` row per plan SVG), `legend` (one row per declared number - its selector, resolved representative code, palette
-colour, and whether it is optional, drawn as air), and `warnings` (a selector that resolved to
+`plans` (one `{file, layer}` row per plan SVG), `front` (the world side the drawn machine's front
+looks toward, turned with `--angle`, `null` for a structure that faces no way), `legend` (one row
+per declared number - its selector, resolved representative code, palette colour, and whether it is
+optional, drawn as air), and `warnings` (a selector that resolved to
 neither a block nor `air`; a selector whose match spanned more than one source blocktype file,
 named in the warning together, since only one of them is drawn; or a blocktype or worldproperties
 file that failed to parse, named by path - also printed to stderr as the run happens).
@@ -80,14 +89,15 @@ exlib-shapes block FILE --out DIR [--variant CODE] [--views iso,north,east,south
 Renders one variant of `FILE` the way the game draws it in the world: its own shape file under the
 turn its `shape`/`shapeByType` entry carries for that variant, painted with the blocktype's texture
 map (the `all` entry standing in for every key it does not name), or a unit cube when it ships no
-shape at all. `--variant` names the variant by full code or bare path; with none, the family's
-north-facing variant is drawn, or its first when the family has no facing. `--views` defaults to
-`iso,north,east,south,west,up`, one `<stem>-<view>.png` each; `--ppu` is pixels per shape unit
-(default 24). A family declaring a footprint (`fillerOffsets`) also gets `<stem>-footprint.svg`,
-the plan of the principal and the cells it reserves, the principal marked, drawn in the same frame
-as the pictures.
+shape at all. `--variant` names the variant by full code or bare path; with none, the family is
+drawn at its presentation facing, or as its first variant when the family has no facing.
+`--views` defaults to `iso,north,east,south,west,up`, one `<stem>-<view>.png` each; `--ppu` is
+pixels per shape unit (default 24). A family declaring a footprint (`fillerOffsets`) also gets
+`<stem>-footprint.svg`, the plan of the principal and the cells it reserves, the principal marked,
+drawn in the same frame as the pictures.
 
 The `<stem>.json` manifest carries `files` (every path written), `variant` (the code drawn),
+`front` (the world side that variant's front looks toward, `null` for a block that faces no way),
 `missingTextures` (one line per key drawn as the magenta placeholder) and `warnings` (a block with
 no shape of its own, a selector whose match spanned more than one source file, a blocktype or
 worldproperties file that failed to parse).

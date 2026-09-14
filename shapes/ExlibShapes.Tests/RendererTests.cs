@@ -34,6 +34,30 @@ public class RendererTests {
   }
 
   [Fact]
+  public void Eye_names_the_direction_the_camera_of_every_named_view_stands_in() {
+    foreach (View view in Renderer.NamedViews.Values) {
+      System.Numerics.Vector3 eye = Renderer.Eye(view);
+      var projection = new Renderer.Projection(0, 0, 8, view);
+      (double col, double row) = projection.Screen(0, 0, 0);
+      // A step straight at an orthographic camera lands on the same pixel.
+      (double stepCol, double stepRow) = projection.Screen(eye.X * 40, eye.Y * 40, eye.Z * 40);
+      Assert.Equal(col, stepCol, 5);
+      Assert.Equal(row, stepRow, 5);
+      Assert.Equal(1.0, eye.Length(), 5);
+    }
+  }
+
+  [Fact]
+  public void The_isometric_camera_stands_south_east_of_the_subject_and_above_it() {
+    System.Numerics.Vector3 eye = Renderer.Eye(Renderer.NamedViews["iso"]);
+    Assert.True(eye.X > 0, $"east is +x, and the camera is at x={eye.X}");
+    Assert.True(eye.Z > 0, $"south is +z, and the camera is at z={eye.Z}");
+    Assert.True(eye.Y > 0, $"the camera looks down, and it is at y={eye.Y}");
+    // Square between the two, which is why a facing's own tie-break decides the drawn variant.
+    Assert.Equal((double)eye.X, eye.Z, 5);
+  }
+
+  [Fact]
   public void Cube_up_face_visible_from_up_and_culled_from_down() {
     LoadedShape shape = UnitCubeShape("up");
     using SKBitmap upImg = Renderer.Render(shape, Renderer.NamedViews["up"], ppu: 8, grid: false);

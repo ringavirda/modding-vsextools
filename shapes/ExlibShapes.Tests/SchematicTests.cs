@@ -283,7 +283,8 @@ public class SchematicTests {
       legend[n].Representative = block?.Code;
       legend[n].Optional = index.Optional(selector);
     }
-    JObject m = Schematic.Manifest(layout, legend, ["a.svg", "b.png"]);
+    Variant drawn = BlockIndex.Facing(index.VariantsOf(golden), Presentation.Facing)!;
+    JObject m = Schematic.Manifest(layout, legend, ["a.svg", "b.png"], front: Presentation.FrontOf(drawn));
     JObject expected = (JObject)JToken.Parse(File.ReadAllText(FixturePath.Expected("schematic/blastcore-manifest.json")));
     Assert.True(JToken.DeepEquals(expected, m), $"expected:\n{expected}\n\nactual:\n{m}");
   }

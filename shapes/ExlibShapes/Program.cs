@@ -219,9 +219,13 @@ internal static class Program {
 
     List<string> roots = [.. extraRoots, .. BlockIndex.DefaultRoots(file)];
     BlockIndex index = BlockIndex.Build(roots, game, BlockIndex.UnderLegacyTree(file));
-    Layout layout = Footprint.Placed(Layout.Load(file, DrawnVariant(index, file, null)?.Path), index);
-    if (angle != 0)
+    Variant? drawn = DrawnVariant(index, file, null);
+    Layout layout = Footprint.Placed(Layout.Load(file, drawn?.Path), index);
+    string? front = drawn == null ? null : Presentation.FrontOf(drawn);
+    if (angle != 0) {
       layout = layout.Rotated(angle);
+      front = front == null ? null : Layout.RotateSideWord(front, angle);
+    }
 
     HashSet<string> viewSet = [.. views.Split(',')];
     Directory.CreateDirectory(outDir);
@@ -270,7 +274,8 @@ internal static class Program {
       index.Ambiguities,
       Schematic.MissingTextures(layout, index),
       index.ParseWarnings,
-      plans
+      plans,
+      front
     );
     string manifestPath = Path.Combine(outDir, $"{stem}.json");
     File.WriteAllText(manifestPath, manifest.ToString(Formatting.Indented));
@@ -344,12 +349,12 @@ internal static class Program {
   }
 
   // The variant a picture of FILE's family is drawn for: the one `wanted` names (a full code or a
-  // bare path), else the family's north-facing variant, else its first. Null when the index holds
-  // no variant from that file; throws when `wanted` names none of them.
+  // bare path), else the variant facing Presentation.Facing, else its first. Null when the index
+  // holds no variant from that file; throws when `wanted` names none of them.
   private static Variant? DrawnVariant(BlockIndex index, string file, string? wanted) {
     IReadOnlyList<Variant> variants = index.VariantsOf(file);
     if (wanted == null)
-      return BlockIndex.NorthFacing(variants) ?? variants.FirstOrDefault();
+      return BlockIndex.Facing(variants, Presentation.Facing) ?? variants.FirstOrDefault();
     foreach (Variant v in variants)
       if (v.Code == wanted || v.Path == wanted)
         return v;

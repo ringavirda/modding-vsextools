@@ -261,15 +261,18 @@ public sealed class BlockIndex {
   }
 
   /// <summary>
-  /// The north-facing member of <paramref name="variants"/> - the one whose <c>side</c> or
-  /// <c>orientation</c> axis stands at <c>north</c>/<c>n</c> - or null when the family is not
-  /// horizontally oriented (a flywheel's <c>ns</c>/<c>we</c> axis names no facing). A caller
-  /// drawing one variant of a family falls back to the first.
+  /// The member of <paramref name="variants"/> that faces <paramref name="side"/> - the one whose
+  /// <c>side</c> or <c>orientation</c> axis stands at that word or at its single letter - or null
+  /// when the family is not horizontally oriented (a flywheel's <c>ns</c>/<c>we</c> axis names no
+  /// facing). A caller drawing one variant of a family falls back to the first.
   /// </summary>
-  public static Variant? NorthFacing(IReadOnlyList<Variant> variants) {
+  /// <param name="variants">A family's variants, as <see cref="VariantsOf"/> returns them.</param>
+  /// <param name="side">A side word; <see cref="Presentation.Facing"/> for a default drawing.</param>
+  public static Variant? Facing(IReadOnlyList<Variant> variants, string side) {
+    string letter = side[..1];
     foreach (Variant v in variants)
       foreach (string axis in new[] { "side", "orientation" })
-        if (v.States.TryGetValue(axis, out string? state) && state is "north" or "n")
+        if (v.States.TryGetValue(axis, out string? state) && (state == side || state == letter))
           return v;
     return null;
   }

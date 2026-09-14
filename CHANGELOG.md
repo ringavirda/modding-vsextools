@@ -19,6 +19,14 @@ cells turn onto the body rather than away from it at every facing, a megablock t
 instead of under grey boxes, and a structure's filler cells keep theirs. Every plan SVG carries the
 layer it draws as a caption, the manifest lists each plan with its layer under `plans`, and the
 isometric composite carries a vertical scale, one tick per layer.
+
+`schematic` and `block` draw an oriented family at its presentation facing. A machine is placed
+facing away from the player, so its front - the boiler's firebox, the engine's cylinder end, the
+furnace's door - is the side opposite the variant's facing, and the drawing takes the facing that
+turns that front toward the isometric camera, which stands to the south-east. `--variant` and
+`--angle` still override the choice, the plans keep north up, and both manifests name the side the
+front looks toward under `front`.
+
 ## [0.3.1] - 2026-09-14
 
 A fresh clone works: `setup` used to run the API patcher from inside the tools checkout, where
