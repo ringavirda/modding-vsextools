@@ -90,7 +90,7 @@ parameter binder treats a bare `--out` token as an ambiguous prefix of its commo
 
   FILE            the blocktype JSON to render
   --out=DIR       where the PNGs, the footprint SVG and <stem>.json are written
-  --variant CODE  the variant to draw (default: the family's north-facing one, else its first)
+  --variant CODE  the variant to draw (default: the presentation facing, else the family's first)
   --views a,b     named views (south, north, east, west, up, down, iso); default: all but down
   --ppu N         pixels per shape unit (default: 24)
   --roots PATH    extra mod repository roots to resolve textures against (repeatable)
