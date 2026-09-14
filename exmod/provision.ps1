@@ -105,9 +105,22 @@ function Invoke-ProvisionDotnet([string[]]$Argv) {
 function Publicize-GameApi([string]$ApiDll) {
   $patcher = Join-Path $ToolsRoot 'tools/patch-api.cs'
   if (-not (Test-Path $patcher) -or -not (Test-Path $ApiDll)) { return }
-  & dotnet run $patcher -- $ApiDll | Out-Host
-  if ($LASTEXITCODE -ne 0) {
-    Write-Host "patch-api failed ($LASTEXITCODE); IPlayer cannot be mocked on this install." -ForegroundColor Yellow
+  # Run from a scratch copy, never from tools/ in place: a file-based `dotnet run` searches upward
+  # for Directory.Build.props from the .cs file's own directory, and this checkout's own props (the
+  # one every other tool project here builds against) demands a game install under ITS OWN .game/ -
+  # something a consumer clone of extools never has. The patcher needs no such install; it only
+  # touches the dll path it is given, so running it clear of that props file is enough.
+  $scratch = Join-Path ([System.IO.Path]::GetTempPath()) "patch-api-$([guid]::NewGuid().ToString('N'))"
+  New-Item -ItemType Directory -Force -Path $scratch | Out-Null
+  try {
+    $scratchPatcher = Join-Path $scratch 'patch-api.cs'
+    Copy-Item $patcher $scratchPatcher
+    & dotnet run $scratchPatcher -- $ApiDll | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+      Write-Warning "patch-api failed ($LASTEXITCODE) on $ApiDll - IPlayer cannot be mocked on this install, and any test that substitutes it will fail with a TypeLoadException."
+    }
+  } finally {
+    Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
   }
 }
 
