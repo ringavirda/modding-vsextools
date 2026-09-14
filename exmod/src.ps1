@@ -218,7 +218,26 @@ function Invoke-Test([string[]]$Argv) {
       }
     }
 
-    [pscustomobject]@{ Name = "$($item.Version)/$($item.Project)"; Ok = $ok; Line = $line }
+    # Pulled from the console logger's own failure block, so the summary can name what failed
+    # without anyone re-running dotnet test by hand: "  Failed <FQ test name> [duration]" followed,
+    # a line or two later, by "  Error Message:" and the message itself on the next line.
+    $failures = @()
+    for ($i = 0; $i -lt $out.Count; $i++) {
+      if ($out[$i] -match '^\s*Failed\s+(\S+)\s+\[') {
+        $name = $Matches[1]
+        $message = ''
+        for ($j = $i + 1; $j -lt $out.Count; $j++) {
+          if ($out[$j] -match '^\s*Failed\s+\S+\s+\[') { break }
+          if ($out[$j] -match '^\s*Error Message:\s*$') {
+            if ($j + 1 -lt $out.Count) { $message = $out[$j + 1].Trim() }
+            break
+          }
+        }
+        $failures += [pscustomobject]@{ Name = $name; Message = $message }
+      }
+    }
+
+    [pscustomobject]@{ Name = "$($item.Version)/$($item.Project)"; Ok = $ok; Line = $line; Failures = $failures }
   }
 
   Write-Host ""
@@ -226,6 +245,9 @@ function Invoke-Test([string[]]$Argv) {
   foreach ($r in $results | Sort-Object Name) {
     $tag = if ($r.Ok) { 'PASS' } else { 'FAIL' }
     Write-Host ("{0}  {1,-40} {2}" -f $tag, $r.Name, ($r.Line -replace '\s+', ' ').Trim())
+    foreach ($f in $r.Failures) {
+      Write-Host ("         {0}: {1}" -f $f.Name, $f.Message)
+    }
   }
 
   $failed = @($results | Where-Object { -not $_.Ok })
