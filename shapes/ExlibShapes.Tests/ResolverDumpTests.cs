@@ -34,7 +34,7 @@ public class ResolverDumpTests {
   ];
 
   [Fact]
-  public void Resolve_matches_the_python_representative_for_every_selector_of_every_family_golden() {
+  public void Resolve_matches_the_reference_representative_for_every_selector_of_every_family_golden() {
     string? exmods = FixturePath.Workspace("exmods");
     if (exmods is not { } repo)
       return; // skips when the sibling exmods (and exlib) checkout is absent
@@ -59,12 +59,12 @@ public class ResolverDumpTests {
           bool optional = index.Optional(selector);
           ResolvedBlock? block = index.Resolve(selector);
           if (block == null) {
-            sb.AppendLine($"{n} {selector} None optional={Py(optional)}");
+            sb.AppendLine($"{n} {selector} None optional={FixtureText(optional)}");
           } else {
             string? shape = block.ShapePath != null ? Path.GetFileName(block.ShapePath) : null;
             sb.AppendLine(
               $"{n} {selector} {block.Code} shape={shape ?? "None"} "
-                + $"rot=({Py(block.RotateX)},{Py(block.RotateY)},{Py(block.RotateZ)}) optional={Py(optional)}"
+                + $"rot=({FixtureText(block.RotateX)},{FixtureText(block.RotateY)},{FixtureText(block.RotateZ)}) optional={FixtureText(optional)}"
             );
           }
         }
@@ -83,9 +83,9 @@ public class ResolverDumpTests {
 
   // The fixture's own number format: True/False, and a whole number always shown with a
   // decimal point (90.0, not 90).
-  private static string Py(bool v) => v ? "True" : "False";
+  private static string FixtureText(bool v) => v ? "True" : "False";
 
-  private static string Py(double v) {
+  private static string FixtureText(double v) {
     string s = v.ToString("R", CultureInfo.InvariantCulture);
     return s.Contains('.') || s.Contains('e') || s.Contains('E') ? s : s + ".0";
   }
