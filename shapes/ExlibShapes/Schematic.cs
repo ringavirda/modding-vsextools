@@ -128,8 +128,10 @@ public static class Schematic {
     const int caption = 18;
     var sb = new StringBuilder();
     sb.Append(
+      // The iso render's paper colour behind the grid, so the labels read on a dark page too.
       $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width + 2 * margin}\" "
-        + $"height=\"{height + 2 * margin + caption}\" font-family=\"sans-serif\" font-size=\"10\">"
+        + $"height=\"{height + 2 * margin + caption}\" font-family=\"sans-serif\" font-size=\"10\" "
+        + "style=\"background-color:#f0f0ec\">"
     );
     sb.Append(
       "<defs><marker id=\"arrow\" markerWidth=\"6\" markerHeight=\"6\" refX=\"3\" refY=\"3\" "
@@ -220,8 +222,10 @@ public static class Schematic {
     const int caption = 18;
     var sb = new StringBuilder();
     sb.Append(
+      // The iso render's paper colour behind the grid, so the labels read on a dark page too.
       $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width + 2 * margin}\" "
-        + $"height=\"{height + 2 * margin + caption}\" font-family=\"sans-serif\" font-size=\"10\">"
+        + $"height=\"{height + 2 * margin + caption}\" font-family=\"sans-serif\" font-size=\"10\" "
+        + "style=\"background-color:#f0f0ec\">"
     );
     sb.Append($"<g transform=\"translate({margin},{margin})\">");
     foreach ((int x, int z) in columns) {
