@@ -11,8 +11,7 @@ namespace ExpandedLib.Shapes.Tests;
 /// reference images. A posed render is covered separately, in PosesTests.</summary>
 public class RendererTests {
   private static LoadedShape UnitCubeShape(string face) {
-    string texturePath =
-      "//wsl.localhost/archlinux" + FixturePath.Of("textures/repo/workbench/shapes/wsl-target");
+    string texturePath = FixturePath.Of("textures/repo/workbench/shapes/wsl-target");
     string json =
       "{\"textures\": {\"a\": \""
       + texturePath
