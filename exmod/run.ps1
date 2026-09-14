@@ -115,6 +115,16 @@ function Find-UsableGameInstall([string]$Version, [string]$Kind) {
 # code straight through. Builds and stages first unless -NoBuild. Never provisions a client on its
 # own - the archive is about a gigabyte - unless -Provision is given; otherwise it prints the exact
 # command to fetch one and exits 1.
+# A data folder the game has never written starts fullscreen, and on WSLg's Wayland a fullscreen
+# window freezes the moment a dialog opens. A fresh folder gets a windowed, vsync-off settings
+# file; the game fills in every other setting itself and an existing file is never touched.
+function Initialize-ClientSettings([string]$DataPath) {
+  $settings = Join-Path $DataPath 'clientsettings.json'
+  if (Test-Path $settings) { return }
+  New-Item -ItemType Directory -Force -Path $DataPath | Out-Null
+  Set-Content -Path $settings -Value '{ "intSettings": { "gameWindowMode": 0, "vsyncMode": 0 } }'
+}
+
 function Invoke-Client([string[]]$Argv) {
   $positional = @(Get-Positional $Argv @('-Configuration', '-Mods', '-DataPath') @('-NoBuild', '-Provision'))
   $versionArg = if ($positional.Count -gt 0) { $positional[0] } else { 'latest' }
@@ -124,6 +134,7 @@ function Invoke-Client([string[]]$Argv) {
   $modsOpt = Get-Opt $Argv '-Mods' $null
   $noBuild = Get-Flag $Argv '-NoBuild'
   $dataPath = Get-Opt $Argv '-DataPath' (Join-Path $RepoRoot '.gamedata')
+  Initialize-ClientSettings $dataPath
   $provision = Get-Flag $Argv '-Provision'
 
   $install = Find-UsableGameInstall $version 'client'
@@ -462,6 +473,7 @@ function Invoke-Logs([string[]]$Argv) {
   $follow = Get-Flag $Argv '-Follow'
   $defaultDataPath = if ($target -eq 'client') { Join-Path $RepoRoot '.gamedata' } else { Join-Path $RepoRoot '.gamedata/server' }
   $dataPath = Get-Opt $Argv '-DataPath' $defaultDataPath
+  Initialize-ClientSettings $dataPath
 
   $logsDir = Join-Path $dataPath 'Logs'
   $logPath = Join-Path $logsDir "$target-$kind.log"
