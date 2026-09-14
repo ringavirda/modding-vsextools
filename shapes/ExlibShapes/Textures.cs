@@ -196,6 +196,40 @@ public sealed class TextureSet {
     return new TextureSet(arrays, missing);
   }
 
+  /// <summary>
+  /// Builds a set from already-resolved values rather than a shape's own <c>textures</c> map: a
+  /// schematic's composite shape resolves its texture values through a <see cref="BlockIndex"/>'s
+  /// own domain roots, not a shape file's ancestry, so it calls this directly with
+  /// <see cref="BlockIndex.ResolveTexture"/> as <paramref name="resolvePath"/>.
+  /// </summary>
+  /// <param name="values">Texture key to the raw value string (bare or <c>domain:path</c>) it
+  /// names.</param>
+  /// <param name="resolvePath">Resolves one raw value string to a PNG path, or null when it cannot
+  /// be found.</param>
+  /// <param name="extra">Additional key to already-decoded array entries merged in as is (a
+  /// schematic's synthetic filler texture, which names no real file at all).</param>
+  public static TextureSet FromResolved(
+    IReadOnlyDictionary<string, string> values,
+    Func<string, string?> resolvePath,
+    IReadOnlyDictionary<string, byte[,,]>? extra = null
+  ) {
+    var arrays = new Dictionary<string, byte[,,]>();
+    var missing = new HashSet<string>();
+    foreach ((string key, string value) in values) {
+      string? path = resolvePath(value);
+      if (path == null) {
+        missing.Add(key);
+        arrays[key] = MissingImage;
+      } else {
+        arrays[key] = Decode(path);
+      }
+    }
+    if (extra != null)
+      foreach ((string key, byte[,,] array) in extra)
+        arrays[key] = array;
+    return new TextureSet(arrays, missing);
+  }
+
   /// <summary>The decoded <c>[height, width, 4]</c> RGBA array for <paramref name="key"/>, or
   /// <see cref="MissingImage"/> when the key is not in this set at all.</summary>
   public byte[,,] Get(string key) => _arrays.TryGetValue(key, out byte[,,]? v) ? v : MissingImage;
