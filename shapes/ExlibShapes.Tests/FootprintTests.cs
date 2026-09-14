@@ -34,13 +34,17 @@ public class FootprintTests {
     "ppex:boilerlancashire",
     "ppex:enginecornish",
     "ppex:enginewatt",
+    "siex:boilerlancashire",
+    "siex:converterbessemer",
+    "siex:enginecornish",
   ];
 
-  // The two trees the family's megablocks live in: ppex's published assets and iiex's code-first
-  // goldens (several of them shapeless, drawn as a unit cube).
+  // The trees the family's megablocks live in: ppex's published assets and the code-first goldens of
+  // iiex and siex (several of them shapeless, drawn as a unit cube).
   private static readonly (string Tree, bool Legacy)[] Trees = [
     ("exmods/legacy/ppex/assets", true),
     ("exmods/mods/iiex/tests/goldens", false),
+    ("exmods/mods/siex/tests/goldens", false),
   ];
 
   [Fact]
@@ -181,6 +185,8 @@ public class FootprintTests {
         or "ppex.BlockMpFluidPump"
         or "iiex.BlockBoilerCornish"
         or "iiex.BlockEngineWatt"
+        or "siex.BlockBoilerLancashire"
+        or "siex.BlockEngineCornish"
         or "iiex.BlockSandCastingBed"
         or "iiex.BlockSandCastingLongCell"
         or "iiex.BlockWorkbench" => AngleFromSide(side) + 180,
