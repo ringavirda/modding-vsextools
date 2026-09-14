@@ -118,12 +118,11 @@ public static class Renderer {
 
   // A double-precision mirror of Geometry's world-matrix and face-quad chain, used only for the
   // pixel data this renderer produces. Model Creator shapes routinely abut two elements at an
-  // exact shared face; the Python reference computes every transform in float64, and
-  // System.Numerics' float32 diverges from it by enough, after several composed local matrices,
-  // to flip which of two coincident faces wins the z-buffer's strict `>` test at a seam pixel -
-  // a difference in which face is drawn, not a rounding difference in one face's own colour, so it
-  // is not something the pixel tolerance could absorb. Geometry's own float32 API is unaffected and
-  // stays as specified for every other consumer (T6/T7's schematic drawings tolerate it).
+  // exact shared face; System.Numerics' float32 can, after several composed local matrices,
+  // flip which of two coincident faces wins the z-buffer's strict `>` test at a seam pixel -
+  // a difference in which face is drawn, not a rounding difference in one face's own colour, so
+  // the pixel tolerance cannot absorb it. Geometry's own float32 API is unaffected and stays as
+  // specified for every other consumer, which tolerates the schematic drawings' own rounding.
   internal readonly struct Mat4d {
     private readonly double[] _m; // row-major 4x4, m[r*4+c], column-vector convention (m @ v)
 
@@ -267,7 +266,7 @@ public static class Renderer {
 
   /// <summary>Face shading factor from the dominant axis of a world-space normal (up 1.0, down
   /// 0.45, x-facing 0.75, z-facing 0.6). Ties (equal magnitude on two axes) keep x, then y, then
-  /// z's factor, matching <c>numpy.argmax</c>'s first-index tie-break.</summary>
+  /// z's factor.</summary>
   private static double Shading((double X, double Y, double Z) normal) {
     double ax = Math.Abs(normal.X), ay = Math.Abs(normal.Y), az = Math.Abs(normal.Z);
     int axis = 0;
@@ -391,7 +390,7 @@ public static class Renderer {
       double x = p0.Col + (p1.Col - p0.Col) * t;
       double y = p0.Row + (p1.Row - p0.Row) * t;
       double z = p0.Z + (p1.Z - p0.Z) * t;
-      // Math.Round defaults to round-half-to-even, matching numpy.round's own default.
+      // Math.Round defaults to round-half-to-even.
       int col = (int)Math.Round(x);
       int row = (int)Math.Round(y);
       if (col < 0 || col >= width || row < 0 || row >= height)

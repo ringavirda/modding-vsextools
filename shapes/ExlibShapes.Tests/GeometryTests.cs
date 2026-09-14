@@ -7,7 +7,7 @@ using Xunit;
 
 namespace ExpandedLib.Shapes.Tests;
 
-/// <summary>Ported from <c>vsshape/tests/test_geom.py</c>, same fixtures and expected numbers.</summary>
+/// <summary>Covers Geometry's rotation convention and composition order.</summary>
 public class GeometryTests {
   private static Vector3 RotVec(float rx, float ry, float rz, Vector3 v) =>
     Vector3.Transform(v, Geometry.RotateByXyz(rx, ry, rz));
@@ -28,7 +28,7 @@ public class GeometryTests {
   [Fact]
   public void Rotate_by_xyz_composes_x_after_y_after_z() {
     // "after" in the column-vector sense the docstring states: Rx . Ry . Rz applied to a point
-    // applies Rz first. float32 gives ~1e-6 of slack over the 1e-9 the Python (float64) test uses.
+    // applies Rz first. float32 gives ~1e-6 of slack.
     Matrix4x4 m = Geometry.RotateByXyz(30, 40, 50);
     // The game's Rx@Ry@Rz@v applies Rz first, then Ry, then Rx; System.Numerics' row-vector
     // A*B applies A first, so the matching composition order here is reversed: z, y, x.
@@ -130,12 +130,12 @@ public class GeometryTests {
     Assert.True(MathF.Abs(lo.Z - 4) < 0.05f);
   }
 
-  // Geometry's public WorldMatrices/FaceQuads (float32, System.Numerics) has no production caller
-  // today - the renderer keeps its own double-precision mirror (Renderer.WorldMatricesD /
+  // Geometry's public WorldMatrices/FaceQuads (float32, System.Numerics) has no production
+  // caller: the renderer keeps its own double-precision mirror (Renderer.WorldMatricesD /
   // FaceQuadsD) to survive a strict z-test at exactly coincident faces, and RendererTests' pixel
   // comparison only exercises that mirror. This cross-checks every leaf and quad of a real,
   // multi-element fixture between the two chains, so a bug in the public API that a hand-picked
-  // unit fixture would miss cannot pass silently until T6/T7 build atop it.
+  // unit fixture would miss cannot pass silently.
   [Fact]
   public void Public_world_matrices_and_face_quads_agree_with_the_verified_double_chain() {
     LoadedShape shape = ShapeFile.Load(FixturePath.Of("items/machined/item-shaped-gearpinion.json"));

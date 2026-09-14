@@ -183,10 +183,8 @@ public static class Schematic {
     return sb.ToString();
   }
 
-  // Python's f-string of a float always shows a decimal point (16.0, not 16); .NET's default
-  // double.ToString() omits it for a whole number - appended back so the SVG text matches the
-  // Python renderer's byte for byte, the two languages already agreeing digit for digit on the
-  // shortest round-trip representation itself.
+  // .NET's default double.ToString() omits the decimal point for a whole number (16, not
+  // 16.0); appended back so every coordinate in the SVG text shows one.
   private static string Py(double v) {
     string s = v.ToString("R", CultureInfo.InvariantCulture);
     return s.Contains('.') || s.Contains('e') || s.Contains('E') ? s : s + ".0";
@@ -434,8 +432,8 @@ public static class Schematic {
         new JObject {
           ["number"] = n,
           ["selector"] = selector,
-          // A null string assigns as JTokenType.String with a null value, not JTokenType.Null -
-          // JValue.CreateNull() is needed for this to compare equal to Python's json.dumps(None).
+          // A null string assigns as JTokenType.String with a null value, not JTokenType.Null;
+          // JValue.CreateNull() is needed for the field to serialize as JSON null.
           ["representative"] = representative == null ? JValue.CreateNull() : representative,
           ["color"] = row?.Color == null ? JValue.CreateNull() : row.Color,
           ["optional"] = optional,

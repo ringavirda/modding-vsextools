@@ -619,7 +619,7 @@ public sealed class BlockIndex {
   }
 
   // Splits a version folder name on '.' and compares part by part numerically, a non-numeric part
-  // (the "-server" suffix) sorting as 0 - the same key Python's `int(x) if x.isdigit() else 0` gives.
+  // (the "-server" suffix) sorting as 0.
   private static int CompareVersions(string a, string b) {
     string[] pa = a.Split('.');
     string[] pb = b.Split('.');

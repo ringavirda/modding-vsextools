@@ -2,11 +2,9 @@ using Xunit;
 
 namespace ExpandedLib.Shapes.Tests;
 
-/// <summary>
-/// Ported from <c>vsshape/tests/test_shape.py</c>'s loading facts; <c>edit_number</c> and
-/// <c>save</c> are Model Creator editing aids the shapes tool has no interface for, so they are
-/// not ported.
-/// </summary>
+/// <summary>Covers ShapeFile's loading of a Model Creator tree: leaves, path lookup by name and
+/// texture resolution. Editing and saving are Model Creator aids the shapes tool has no
+/// interface for and are out of scope.</summary>
 public class ShapeFileTests {
   [Fact]
   public void Load_owner_cylinder_tree() {

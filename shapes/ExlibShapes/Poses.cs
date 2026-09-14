@@ -87,8 +87,8 @@ public static class Poses {
     return fallback;
   }
 
-  // Python's floor-mod (a % m in Python is always non-negative for a positive m); C#'s % keeps
-  // the dividend's sign, which the wrap-around span below relies on not doing.
+  // Floor-mod: the result is always non-negative for a positive m. C#'s % keeps the
+  // dividend's sign instead, which the wrap-around span below cannot use.
   private static double Mod(double a, double m) => ((a % m) + m) % m;
 
   /// <summary>

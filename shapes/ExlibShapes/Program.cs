@@ -137,8 +137,8 @@ internal static class Program {
     data.SaveTo(file);
   }
 
-  // Python's f"{frame:g}" - an integral frame prints without a decimal point, a fractional one
-  // with the fewest digits that round-trip.
+  // An integral frame prints without a decimal point; a fractional one prints with the
+  // fewest digits that round-trip.
   private static string FormatFrame(double frame) =>
     frame == Math.Floor(frame)
       ? ((long)frame).ToString(CultureInfo.InvariantCulture)

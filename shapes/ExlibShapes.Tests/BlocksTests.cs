@@ -6,16 +6,16 @@ using Xunit;
 
 namespace ExpandedLib.Shapes.Tests;
 
-/// <summary>Ported from <c>vsshape/tests/test_blocks.py</c>, plus the two rulings the Python leaves
-/// open (T6): the flywheel's per-variant fillerOffsets and the deterministic, warned resolution of
-/// a selector matching more than one source file.</summary>
+/// <summary>Covers BlockIndex's resolution of a selector to its blocktype file, including the
+/// flywheel's per-variant fillerOffsets and the deterministic, warned resolution of a selector
+/// matching more than one source file.</summary>
 public class BlocksTests {
   private static string DemoRoot => FixturePath.Of("schematic");
 
   // The family workspace's own sibling checkouts - present only on a contributor's machine that
-  // has cloned exlib/exmods next to this repo, never in extools' own CI (a bare checkout of this
-  // repo alone). A test naming one of these skips (an early return, xunit 2 having no built-in
-  // skip-with-reason) rather than failing, the same as the Python's own pytest.skip guard.
+  // has cloned exlib/exmods next to this repo, absent from a bare checkout of this repo alone.
+  // A test naming one of these skips (an early return, xunit 2 having no built-in
+  // skip-with-reason) rather than failing.
   private static string? ExlibRoot => FixturePath.Workspace("exlib");
   private static string? BlastcoreGolden =>
     FixturePath.Workspace("exmods/mods/iiex/tests/goldens/iiex/blocktypes/furnace/blastcore.json");
@@ -67,7 +67,7 @@ public class BlocksTests {
   [Fact]
   public void Structurefiller_resolves_through_the_exlib_checkout() {
     if (ExlibRoot is not { } exlibRoot)
-      return; // needs the family workspace's own exlib checkout, dev machine only
+      return; // skips when the sibling exlib checkout is absent
     BlockIndex index = BlockIndex.Build([exlibRoot]);
     ResolvedBlock? block = index.Resolve("exlib:structurefiller");
     Assert.NotNull(block);
@@ -98,10 +98,10 @@ public class BlocksTests {
   [Fact]
   public void Wildcard_selector_spanning_two_files_is_deterministic_and_warns() {
     // aquatic/cobble-coral.json and stone/cobble/cobblestone.json both declare code "cobblestone";
-    // "game:cobblestone-*" matches variants from both. Resolve must pick the same file every run,
-    // pick stone/cobble/cobblestone.json (the file whose own base code equals the selector's text
-    // before the "*" - the tie-break T6 adds, not the coral variant a first-match rule would give),
-    // and record the ambiguity naming both files.
+    // "game:cobblestone-*" matches variants from both. Resolve must pick the same file every run:
+    // stone/cobble/cobblestone.json, the file whose own base code equals the selector's text
+    // before the "*", not the coral variant a first-match rule would give; and record the
+    // ambiguity naming both files.
     BlockIndex index = BlockIndex.Build([GameRoot]);
     ResolvedBlock? first = index.Resolve("game:cobblestone-*");
     Assert.NotNull(first);
@@ -206,7 +206,7 @@ public class BlocksTests {
   [Fact]
   public void Resolve_agrees_with_every_selector_of_the_blastcore_golden() {
     if (BlastcoreGolden is not { } golden)
-      return; // needs the family workspace's own exmods checkout, dev machine only
+      return; // skips when the sibling exmods checkout is absent
     // The blastcore golden's own blockNumbers cover a full code, a `*` wildcard, and the
     // `@(air|...)` regex form - every selector shape BlockIndex.Resolve supports.
     IReadOnlyList<string> roots = BlockIndex.DefaultRoots(golden);

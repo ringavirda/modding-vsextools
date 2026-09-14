@@ -5,13 +5,13 @@ using Xunit;
 
 namespace ExpandedLib.Shapes.Tests;
 
-/// <summary>Ported from <c>vsshape/tests/test_layout.py</c>, same fixture and expected numbers,
-/// plus the megablock filler-by-type case the Python leaves open (T6).</summary>
+/// <summary>Covers Layout's parsing of a schematic fixture, including the megablock
+/// filler-by-type case.</summary>
 public class LayoutTests {
   private static string Fixture => FixturePath.Of("schematic/kiln.json");
 
-  // The family workspace's own exmods checkout - dev machine only, same as BlocksTests' own
-  // workspace-dependent facts; the two facts naming it skip (an early return) when it is absent.
+  // The family workspace's own exmods checkout; the two facts naming it skip (an early return)
+  // when it is absent.
   private static string? Flywheel =>
     FixturePath.Workspace("exmods/mods/iiex/tests/goldens/iiex/blocktypes/mpenergy/flywheel.json");
 
@@ -114,7 +114,7 @@ public class LayoutTests {
   [Fact]
   public void Load_of_a_megablock_with_no_structure_table_uses_the_first_attributesByType_filler() {
     if (Flywheel is not { } flywheel)
-      return; // needs the family workspace's own exmods checkout, dev machine only
+      return; // skips when the sibling exmods checkout is absent
     // flywheel.json carries no multiblockStructure at all - just an attributesByType fillerOffsets
     // per size variant (IFillerHost) - so the default (no variant named) picks the first declared
     // entry, "*-normal-*", whose footprint is 8 cells.
@@ -127,7 +127,7 @@ public class LayoutTests {
   [Fact]
   public void Load_of_a_megablock_picks_the_attributesByType_entry_the_named_variant_matches() {
     if (Flywheel is not { } flywheel)
-      return; // needs the family workspace's own exmods checkout, dev machine only
+      return; // skips when the sibling exmods checkout is absent
     Layout normal = Layout.Load(flywheel, "mpenergy-flywheel-normal-ns");
     Layout large = Layout.Load(flywheel, "mpenergy-flywheel-large-we");
     Assert.Equal(8, normal.Fillers.Count);
@@ -137,7 +137,7 @@ public class LayoutTests {
   [Fact]
   public void Load_of_a_megablock_derives_layers_and_bounds_from_fillers_alone() {
     if (Flywheel is not { } flywheel)
-      return; // needs the family workspace's own exmods checkout, dev machine only
+      return; // skips when the sibling exmods checkout is absent
     // Layers()/Bounds() must not depend on Cells: a filler-only megablock has none at all, and the
     // schematic CLI's plan/cut loops iterate Layers() to decide what to write.
     Layout layout = Layout.Load(flywheel);

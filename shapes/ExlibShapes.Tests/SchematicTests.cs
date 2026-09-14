@@ -8,15 +8,15 @@ using Xunit;
 
 namespace ExpandedLib.Shapes.Tests;
 
-/// <summary>Ported from <c>vsshape/tests/test_schematic.py</c>; the plan SVGs and the manifest are
-/// compared verbatim against the Python's own output (<c>expected/schematic/</c>), the iso PNGs
-/// within the pixel tolerance <see cref="RendererTests"/> uses.</summary>
+/// <summary>Covers Schematic's plan SVGs and manifest, compared verbatim against
+/// <c>expected/schematic/</c>, and its iso PNGs within the pixel tolerance
+/// <see cref="RendererTests"/> uses.</summary>
 public class SchematicTests {
   private static string Fixture => FixturePath.Of("schematic/kiln.json");
   private static string DemoRoot => FixturePath.Of("schematic");
 
-  // The family workspace's own exmods checkout and this checkout's own client game install - dev
-  // machine only; the facts naming them skip (an early return) when either is absent.
+  // The family workspace's own exmods checkout and this checkout's own client game install; the
+  // facts naming them skip (an early return) when either is absent.
   private static string? BlastcoreGolden =>
     FixturePath.Workspace("exmods/mods/iiex/tests/goldens/iiex/blocktypes/furnace/blastcore.json");
   private static string? ClientGame {
@@ -83,9 +83,9 @@ public class SchematicTests {
       [2] = "demo:wall-north",
     };
     // Layout is immutable by construction (Rotated returns a new instance); its constructor is
-    // internal, reachable here through the assembly's own InternalsVisibleTo, the same way the
-    // Python test mutates layout.numbers in place, without giving Layout a public mutation surface
-    // no production code needs.
+    // internal, reachable here through the assembly's own InternalsVisibleTo, so this test can
+    // build a variant layout without giving Layout a public mutation surface no production code
+    // needs.
     return new Layout(layout.Cells, numbers, layout.Fillers, layout.Facings, layout.Connectors, layout.Roles, layout.Anchor);
   }
 
@@ -196,7 +196,7 @@ public class SchematicTests {
   [Fact]
   public void Blastcore_golden_manifest_matches_the_reference_json_field_for_field() {
     if (BlastcoreGolden is not { } golden)
-      return; // needs the family workspace's own exmods checkout, dev machine only
+      return; // skips when the sibling exmods checkout is absent
     IReadOnlyList<string> roots = BlockIndex.DefaultRoots(golden);
     BlockIndex index = BlockIndex.Build(roots);
     Layout layout = Layout.Load(golden);
@@ -214,7 +214,7 @@ public class SchematicTests {
   [Fact]
   public void Blastcore_golden_plan_svg_layer_zero_matches_the_reference_text_exactly() {
     if (BlastcoreGolden is not { } golden)
-      return; // needs the family workspace's own exmods checkout, dev machine only
+      return; // skips when the sibling exmods checkout is absent
     Layout layout = Layout.Load(golden);
     string svg = Schematic.PlanSvg(layout, 0, Schematic.LegendColors(layout));
     string expected = File.ReadAllText(FixturePath.Expected("schematic/blastcore-plan-y0.svg"));
@@ -229,7 +229,7 @@ public class SchematicTests {
     // exercised. A client install is required explicitly, never left to whatever GameInstall.Resolve
     // would pick, so this fact is stable regardless of which install VINTAGE_STORY names.
     if (BlastcoreGolden is not { } golden || ClientGame is not { } game)
-      return; // needs the family workspace and a client install with real textures, dev machine only
+      return; // skips when the sibling exmods checkout or a client install with real textures is absent
     IReadOnlyList<string> roots = BlockIndex.DefaultRoots(golden);
     BlockIndex index = BlockIndex.Build(roots, game);
     Layout layout = Layout.Load(golden);

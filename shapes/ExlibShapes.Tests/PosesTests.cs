@@ -7,7 +7,7 @@ using Xunit;
 
 namespace ExpandedLib.Shapes.Tests;
 
-/// <summary>Ported from <c>vsshape/tests/test_anim.py</c>.</summary>
+/// <summary>Covers Poses' keyframe lookup and interpolation, including a posed render.</summary>
 public class PosesTests {
   private static LoadedShape WattImproved =>
     ShapeFile.Load(FixturePath.Of("machines/steam/machine-pipe-megablock-engine-watt-improved.json"));
@@ -68,9 +68,8 @@ public class PosesTests {
     Assert.Equal(5.0, pose.Offset.Y, 5);
   }
 
-  // Ported per T5's step 1: the tool's own posed render at a fractional frame, against the
-  // Python toolkit's `vsshape render --anim bob --frames 7.5 --views south` for the same
-  // self-contained fixture (its texture resolves the same way for both, under fixtures/mods/).
+  // A posed render at a fractional frame, against a self-contained fixture whose texture
+  // resolves without an install (under fixtures/mods/).
   [Fact]
   public void Posed_render_matches_the_reference_frame() {
     LoadedShape shape = ShapeFile.Load(FixturePath.Of("anim/simple-clip.json"));

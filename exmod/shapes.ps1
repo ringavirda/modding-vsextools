@@ -1,6 +1,5 @@
 # exlib-shapes: renders a shape file to textured views or animation frames, or a multiblock/
-# megablock blocktype file to a build schematic - the same commands the wiki's own figures and the
-# Python vsshape toolkit's look step call.
+# megablock blocktype file to a build schematic - the same commands the wiki's own figures call.
 #
 #   exmod render      shape file -> textured view or animation-frame PNGs
 #   exmod schematic   multiblock/megablock blocktype file -> plan SVGs, an iso PNG, a manifest

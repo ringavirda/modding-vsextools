@@ -83,7 +83,7 @@ function Set-CsprojSpan([string]$Text, [string]$Begin, [string]$End, [string]$Ne
 # dual-mode ItemGroup unwraps to its package-mode half unconditioned. $(CurrentGameTfm)'s own
 # default survives - restore needs $(TargetFramework) before any package is present, so it can't
 # come from the package's own props, standalone or not. Fails loudly the moment the sample this
-# reads from no longer matches the blocks below, rather than silently shipping half a transform.
+# reads from stops matching the blocks below, rather than silently shipping half a transform.
 function ConvertTo-StarterModCsproj([string]$Text, [string]$Label) {
   $Text = Set-CsprojText $Text @'
 <Project>

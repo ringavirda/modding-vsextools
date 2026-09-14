@@ -8,7 +8,7 @@ using Xunit;
 namespace ExpandedLib.Shapes.Tests;
 
 /// <summary>
-/// Ported from <c>vsshape/tests/test_textures.py</c>, against a tiny self-contained fixture tree
+/// Covers texture resolution against a tiny self-contained fixture tree
 /// (<c>fixtures/textures/repo/</c>) rather than the real workspace: a real game install's server
 /// build ships no <c>assets/survival/textures</c> at all, so the "game:" and bare-path cases need
 /// their own fixture "game" directory regardless.
@@ -76,9 +76,9 @@ public class TexturesTests {
   [Fact]
   public void An_unresolved_key_gets_the_magenta_placeholder() {
     LoadedShape shape = ShapeFile.Load(FixturePath.Of("items/machined/item-lathed-cylinder.json"));
-    // The same way the Python test does: inject a key into the shape's own textures map that
-    // names a texture nothing can resolve, rather than querying a key the shape never had (which
-    // only exercises TextureSet.Get's fallback, not ForShape's own Missing bookkeeping).
+    // Injects a key into the shape's own textures map that names a texture nothing can resolve,
+    // rather than querying a key the shape never had (which only exercises TextureSet.Get's
+    // fallback, not ForShape's own Missing bookkeeping).
     var textures = new Dictionary<string, string>(shape.Textures) { ["ghost"] = "block/no/such/texture" };
     Shape raw = JsonConvert.DeserializeObject<Shape>(
       File.ReadAllText(FixturePath.Of("items/machined/item-lathed-cylinder.json"))

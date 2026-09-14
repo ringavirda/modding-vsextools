@@ -8,22 +8,18 @@ using Xunit;
 namespace ExpandedLib.Shapes.Tests;
 
 /// <summary>
-/// The one gate <c>BlocksTests.Resolve_agrees_with_every_selector_of_the_blastcore_golden</c>
-/// cannot give: that <see cref="BlockIndex.Resolve"/> picks the SAME representative the Python
-/// picks, not merely a resolved-or-optional one. Dumps (selector, representative code, shape file
+/// Checks that <see cref="BlockIndex.Resolve"/> picks the same representative as the fixture,
+/// not merely a resolved-or-optional one. Dumps (selector, representative code, shape file
 /// name, shapeByType rotation, optional flag) for every selector of all ten of the family's real
-/// multiblock goldens, at angles 0/90/180/270 (none of them exercises the wildcard tie-break or
-/// the filler-by-type override T6 adds - those are <see cref="BlocksTests"/> and
-/// <see cref="LayoutTests"/>'s own facts - so this is a straight parity check), and compares the
-/// text against <c>expected/schematic/resolve-dump.txt</c>, produced once by the same walk over
-/// <c>vsshape.blocks</c>/<c>vsshape.layout</c> (the script is not committed; the fixture is what
-/// matters), with one deliberate departure: a block drawing the engine's <c>block/basic/cube</c>
-/// names that shape file here (found under the install's <c>assets/game</c>, which the Python
-/// never looked in) where the Python drew its synthetic cube.
+/// multiblock goldens, at angles 0/90/180/270, and compares the text against
+/// <c>expected/schematic/resolve-dump.txt</c>. None of these selectors exercises the wildcard
+/// tie-break or the filler-by-type override; those are <see cref="BlocksTests"/> and
+/// <see cref="LayoutTests"/>'s own facts, so this is a straight parity check. One deliberate
+/// departure from the fixture: a block drawing the engine's <c>block/basic/cube</c> names that
+/// shape file here, found under the install's <c>assets/game</c>, in place of a synthetic cube.
 /// </summary>
 public class ResolverDumpTests {
-  // Relative to the family workspace's own exmods checkout - dev machine only, same as
-  // BlocksTests' own workspace-dependent facts.
+  // Relative to the family workspace's own exmods checkout.
   private static readonly string[] Goldens = [
     "mods/iiex/tests/goldens/iiex/blocktypes/furnace/blastcore.json",
     "mods/iiex/tests/goldens/iiex/blocktypes/furnace/puddlingcore.json",
@@ -41,7 +37,7 @@ public class ResolverDumpTests {
   public void Resolve_matches_the_python_representative_for_every_selector_of_every_family_golden() {
     string? exmods = FixturePath.Workspace("exmods");
     if (exmods is not { } repo)
-      return; // needs the family workspace's own exmods (and exlib) checkout, dev machine only
+      return; // skips when the sibling exmods (and exlib) checkout is absent
 
     var sb = new StringBuilder();
     foreach (string rel in Goldens) {
@@ -85,7 +81,7 @@ public class ResolverDumpTests {
     Assert.Equal(Normalize(expected), Normalize(sb.ToString()));
   }
 
-  // Python's bool str() and float repr(): True/False, and a whole number always shown with a
+  // The fixture's own number format: True/False, and a whole number always shown with a
   // decimal point (90.0, not 90).
   private static string Py(bool v) => v ? "True" : "False";
 
