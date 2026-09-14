@@ -29,7 +29,7 @@ $ErrorActionPreference = 'Stop'
 function Get-ExmodRepoRoot([string]$Override) {
   if ($Override) {
     if (-not (Test-Path $Override)) { throw "-RepoRoot path not found: $Override" }
-    return (Resolve-Path $Override).ProviderPath
+    return [System.IO.Path]::GetFullPath((Resolve-Path $Override).ProviderPath)
   }
   $dir = (Get-Location).Path
   while ($true) {
@@ -38,7 +38,7 @@ function Get-ExmodRepoRoot([string]$Override) {
     if (-not $parent -or $parent -eq $dir) { break }
     $dir = $parent
   }
-  return (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+  return [System.IO.Path]::GetFullPath((Resolve-Path (Join-Path $PSScriptRoot '..')).ProviderPath)
 }
 
 $RepoRoot = Get-ExmodRepoRoot $RepoRoot
