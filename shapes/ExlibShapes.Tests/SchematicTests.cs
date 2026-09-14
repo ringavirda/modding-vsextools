@@ -74,6 +74,62 @@ public class SchematicTests {
   }
 
   [Fact]
+  public void Every_caption_of_the_demo_plans_and_footprints_fits_its_own_viewport() {
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+    Layout kiln = Layout.Load(Fixture);
+    Dictionary<int, LegendEntry> legend = Schematic.LegendColors(kiln);
+    foreach (int y in kiln.Layers())
+      AssertCaptionFits(Schematic.PlanSvg(kiln, y, legend), $"kiln layer {y}");
+    AssertCaptionFits(Schematic.FootprintSvg(kiln), "kiln footprint");
+
+    foreach (string name in new[] { "furnace", "mega" }) {
+      Layout layout = Layout.Load(FixturePath.Of($"schematic/mods/demo/assets/demo/blocktypes/{name}.json"));
+      foreach (int y in layout.Layers())
+        AssertCaptionFits(Schematic.PlanSvg(layout, y, Schematic.LegendColors(layout)), $"{name} layer {y}");
+      AssertCaptionFits(Schematic.FootprintSvg(layout), $"{name} footprint");
+    }
+  }
+
+  [SkippableFact]
+  public void Every_caption_of_the_ppex_engines_fits_its_own_viewport() {
+    string? engines = FixturePath.Workspace("exmods/legacy/ppex/assets/ppex/blocktypes/engine");
+    Skip.If(engines is null, "the sibling exmods checkout is absent");
+    foreach (string file in Directory.EnumerateFiles(engines!, "*.json").OrderBy(f => f, StringComparer.Ordinal)) {
+      Layout layout;
+      try {
+        layout = Layout.Load(file);
+      } catch (LayoutError) {
+        continue; // an engine part with no footprint of its own
+      }
+      string name = Path.GetFileNameWithoutExtension(file);
+      foreach (int y in layout.Layers())
+        AssertCaptionFits(Schematic.PlanSvg(layout, y, Schematic.LegendColors(layout)), $"{name} layer {y}");
+      AssertCaptionFits(Schematic.FootprintSvg(layout), $"{name} footprint");
+    }
+  }
+
+  // The caption of an SVG, at the width Schematic estimates for it, against the viewport it is
+  // drawn on: both ends inside, or the page shows it clipped.
+  private static void AssertCaptionFits(string svg, string what) {
+    int viewport = int.Parse(
+      System.Text.RegularExpressions.Regex.Match(svg, "<svg[^>]*width=\"(\\d+)\"").Groups[1].Value
+    );
+    double left = double.Parse(
+      System.Text.RegularExpressions.Regex.Match(svg, @"translate\((-?[0-9.]+),").Groups[1].Value,
+      System.Globalization.CultureInfo.InvariantCulture
+    );
+    var caption = System.Text.RegularExpressions.Regex.Match(
+      svg,
+      "<text class=\"caption\" x=\"([-0-9.]+)\"[^>]*>([^<]*)</text>"
+    );
+    Assert.True(caption.Success, $"{what}: no caption at all");
+    double centre = left + double.Parse(caption.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+    double half = Schematic.CaptionWidth(caption.Groups[2].Value) / 2.0;
+    Assert.True(centre - half >= 0, $"{what}: the caption starts at {centre - half}, left of the viewport");
+    Assert.True(centre + half <= viewport, $"{what}: the caption ends at {centre + half}, past {viewport}");
+  }
+
+  [Fact]
   public void Plan_svg_matches_the_reference_text_exactly() {
     Layout layout = Layout.Load(Fixture);
     string svg = Schematic.PlanSvg(layout, 0, Schematic.LegendColors(layout));

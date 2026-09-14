@@ -41,6 +41,16 @@ public static class Schematic {
     "#4C72B0", "#DD8452", "#55A868", "#C44E52", "#8172B2",
     "#937860", "#DA8BC3", "#8C8C8C", "#CCB974", "#64B5CD",
   ];
+  /// <summary>The point size every label in a plan or footprint SVG is drawn at.</summary>
+  public const int FontSize = 10;
+
+  /// <summary>
+  /// The width a caption of <paramref name="text"/> takes, in pixels: a sans-serif glyph at
+  /// <see cref="FontSize"/> averages a little over half the point size, and a canvas sized to the
+  /// grid alone clips the caption at both ends.
+  /// </summary>
+  public static int CaptionWidth(string text) => (int)Math.Ceiling(0.55 * FontSize * text.Length);
+
   private const string FillerColor = "#BFBFBF";
   private const string FillerTextureKey = "__filler";
   private const string OutlineTextureKey = "__outline";
@@ -126,18 +136,20 @@ public static class Schematic {
 
     const int margin = 24;
     const int caption = 18;
+    int canvas = Math.Max(width, CaptionWidth(LayerCaption(y))) + 2 * margin;
+    int left = (canvas - width) / 2;
     var sb = new StringBuilder();
     sb.Append(
       // The iso render's paper colour behind the grid, so the labels read on a dark page too.
-      $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width + 2 * margin}\" "
-        + $"height=\"{height + 2 * margin + caption}\" font-family=\"sans-serif\" font-size=\"10\" "
+      $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{canvas}\" "
+        + $"height=\"{height + 2 * margin + caption}\" font-family=\"sans-serif\" font-size=\"{FontSize}\" "
         + "style=\"background-color:#f0f0ec\">"
     );
     sb.Append(
       "<defs><marker id=\"arrow\" markerWidth=\"6\" markerHeight=\"6\" refX=\"3\" refY=\"3\" "
         + "orient=\"auto\"><path d=\"M0,0 L6,3 L0,6 z\" fill=\"red\" /></marker></defs>"
     );
-    sb.Append($"<g transform=\"translate({margin},{margin})\">");
+    sb.Append($"<g transform=\"translate({left},{margin})\">");
 
     foreach (Cell c in layout.Cells) {
       if (c.Y != y)
@@ -195,6 +207,9 @@ public static class Schematic {
     return sb.ToString();
   }
 
+  /// <summary>The caption every footprint plan carries under its grid.</summary>
+  public const string FootprintCaption = "Footprint, the block's own cell marked";
+
   /// <summary>The caption a plan of Y layer <paramref name="y"/> carries: the starter block stands
   /// on layer 0, and every other layer is named by its signed distance from it.</summary>
   public static string LayerCaption(int y) =>
@@ -220,14 +235,16 @@ public static class Schematic {
 
     const int margin = 24;
     const int caption = 18;
+    int canvas = Math.Max(width, CaptionWidth(FootprintCaption)) + 2 * margin;
+    int left = (canvas - width) / 2;
     var sb = new StringBuilder();
     sb.Append(
       // The iso render's paper colour behind the grid, so the labels read on a dark page too.
-      $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width + 2 * margin}\" "
-        + $"height=\"{height + 2 * margin + caption}\" font-family=\"sans-serif\" font-size=\"10\" "
+      $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{canvas}\" "
+        + $"height=\"{height + 2 * margin + caption}\" font-family=\"sans-serif\" font-size=\"{FontSize}\" "
         + "style=\"background-color:#f0f0ec\">"
     );
-    sb.Append($"<g transform=\"translate({margin},{margin})\">");
+    sb.Append($"<g transform=\"translate({left},{margin})\">");
     foreach ((int x, int z) in columns) {
       bool isAnchor = x == layout.Anchor.X && z == layout.Anchor.Z;
       sb.Append(
@@ -241,7 +258,7 @@ public static class Schematic {
     sb.Append($"<text x=\"-14\" y=\"{Svg(height / 2.0)}\">z</text>");
     sb.Append(
       $"<text class=\"caption\" x=\"{Svg(width / 2.0)}\" y=\"{height + caption}\" text-anchor=\"middle\">"
-        + "Footprint, the block's own cell marked</text>"
+        + $"{FootprintCaption}</text>"
     );
     sb.Append("</g></svg>");
     return sb.ToString();
