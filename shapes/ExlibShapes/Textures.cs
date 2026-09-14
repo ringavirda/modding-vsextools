@@ -36,17 +36,20 @@ public sealed class TextureRoots {
     new(new Lazy<string>(gamePath), repoPath);
 
   /// <summary>
-  /// Resolves <paramref name="repo"/> to the nearest ancestor of <paramref name="shapePath"/>
-  /// holding <c>workbench/</c>, <c>mods/</c> or <c>.game/</c> (the current directory when none of
-  /// those exist, or when <paramref name="shapePath"/> is null); <paramref name="game"/> is
-  /// resolved through <see cref="GameInstall.Resolve"/> lazily, the first time a texture
-  /// reference actually needs <see cref="GamePath"/>.
+  /// Resolves <paramref name="repo"/> to the repository <paramref name="shapePath"/> sits in: the
+  /// nearest ancestor holding <c>workbench/</c>, <c>mods/</c> or <c>.git</c>, else the nearest
+  /// holding <c>.game/</c> (the current directory when none of those exist, or when
+  /// <paramref name="shapePath"/> is null); <paramref name="game"/> is resolved through
+  /// <see cref="GameInstall.Resolve"/> lazily, the first time a texture reference actually needs
+  /// <see cref="GamePath"/>.
   /// </summary>
   public static TextureRoots Build(string? game, string? repo, string? shapePath) {
     string repoPath = repo ?? FindRepoRoot(shapePath);
     return new TextureRoots(new Lazy<string>(() => GameInstall.Resolve(game)), repoPath);
   }
 
+  // A subtree can carry a .game of its own (the old mods' test scripts provision one under
+  // legacy/), so .game alone marks a root only when no ancestor holds workbench/, mods/ or .git.
   private static string FindRepoRoot(string? shapePath) {
     string start =
       shapePath != null
@@ -56,8 +59,11 @@ public sealed class TextureRoots {
       if (
         Directory.Exists(Path.Combine(dir.FullName, "workbench"))
         || Directory.Exists(Path.Combine(dir.FullName, "mods"))
-        || Directory.Exists(Path.Combine(dir.FullName, ".game"))
+        || Path.Exists(Path.Combine(dir.FullName, ".git"))
       )
+        return dir.FullName;
+    for (DirectoryInfo? dir = new(start); dir != null; dir = dir.Parent)
+      if (Directory.Exists(Path.Combine(dir.FullName, ".game")))
         return dir.FullName;
     return Directory.GetCurrentDirectory();
   }

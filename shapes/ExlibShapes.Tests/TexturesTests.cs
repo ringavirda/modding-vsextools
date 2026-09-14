@@ -91,4 +91,19 @@ public class TexturesTests {
     Assert.Equal(0, ts.Get("ghost")[0, 0, 1]);
     Assert.Equal(255, ts.Get("ghost")[0, 0, 2]);
   }
+  [Fact]
+  public void The_repository_root_outranks_a_nested_game_install() {
+    string root = Path.Combine(Path.GetTempPath(), "exlib-shapes-" + Guid.NewGuid().ToString("N"));
+    string shapeDir = Path.Combine(root, "legacy", "old", "assets", "old", "shapes");
+    Directory.CreateDirectory(shapeDir);
+    Directory.CreateDirectory(Path.Combine(root, "legacy", ".game", ".cache"));
+    Directory.CreateDirectory(Path.Combine(root, "mods"));
+    File.WriteAllText(Path.Combine(root, ".git"), "gitdir: elsewhere");
+    try {
+      TextureRoots roots = TextureRoots.Build(null, null, Path.Combine(shapeDir, "thing.json"));
+      Assert.Equal(root, roots.RepoPath);
+    } finally {
+      Directory.Delete(root, true);
+    }
+  }
 }
