@@ -5,6 +5,10 @@
 
 $ScaffoldKinds = @('block', 'item', 'recipe', 'megablock', 'multiblock', 'node', 'blockbehavior', 'entitybehavior', 'config', 'migration', 'command')
 
+# The kinds whose template writes a definition (a JSON asset GoldenTests golden-checks), as
+# opposed to one that only writes code.
+$ScaffoldDefinitionKinds = @('block', 'item', 'recipe', 'megablock', 'multiblock', 'node')
+
 # The lang keys each kind's generated code reads, with the text a fresh mod ships. Merged into the
 # mod's en.json so LangParityTests is green the moment the files land.
 function Get-ScaffoldLangKeys([string]$Kind, [string]$Domain, [string]$Slug) {
@@ -82,9 +86,12 @@ function Invoke-Scaffold([string[]]$Argv) {
   Write-Host "Scaffolded $kind $name into mods/${modId}:"
   $planned | ForEach-Object { Write-Host "  $_" }
   if ($keys.Count -gt 0) { Write-Host "  lang keys merged: $($keys.Keys -join ', ')" }
+  if ($kind -in $ScaffoldDefinitionKinds -and (Test-Path (Join-Path $modDir 'tests/goldens'))) {
+    Write-Host "Bless the new definition's golden once: EXLIB_WRITE_GOLDENS=1 bash scripts/exmod.sh test latest"
+  }
 }
 
-Add-ExmodCommand -Group start -Name scaffold -Alias @('g') -Summary 'scaffold a block, item, recipe, behaviour, config, migration or command into a mod' -Action {
+Add-ExmodCommand -Group start -Name scaffold -Alias @('g') -Summary 'scaffold a block, item, recipe, megablock, multiblock, node, blockbehavior, entitybehavior, config, migration or command into a mod' -Action {
   param([string[]]$Argv) Invoke-Scaffold $Argv
 } -Detail @'
 exmod scaffold <kind> <Name> [-Mod <id>]
@@ -105,4 +112,8 @@ assets/<id>/lang/en.json.
   -Mod     the target mod; needed when exmod.json names more than one
 
 <Name> is PascalCase. Read the wiki's First-Machine page for what each kind shows.
+
+block, item, recipe, megablock, multiblock and node write a definition GoldenTests
+golden-checks; when the target mod has one, scaffolding one of them leaves its test suite red
+until its golden is blessed once: EXLIB_WRITE_GOLDENS=1 bash scripts/exmod.sh test latest
 '@
