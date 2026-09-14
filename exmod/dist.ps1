@@ -132,13 +132,12 @@ Add-ExmodCommand -Group package -Name nuget -Summary 'the NuGet packages' -Actio
 } -Detail @'
 exmod nuget [-Configuration Release|Debug] [-Out <path>]
 
-Packs the four projects that ship on NuGet into dist/nuget (or -Out): ExpandedLib, its family
-domain layer ExpandedLib.Industry, its test harness ExpandedLib.Testing, and ExpandedLib.Verify -
-the last as a .NET tool, so a consumer gets `exlib-verify` with no game licence, no built mod and
-no test runner.
+Packs the two projects that ship on NuGet into dist/nuget (or -Out): ExpandedLib.Verify and
+ExpandedLib.Shapes, both as .NET tools, so a consumer gets `exlib-verify`/`exlib-shapes` with no
+game licence, no built mod and no test runner.
 
-Each packable project reads its own version (exlib's three from exlib's modinfo.json), so a
-release bumps one number per repository.
+Each packable project reads its own version from exmod.json, so a release bumps one number for
+both tools together.
 Nothing here pushes to NuGet.org: that is a separate decision, and the step in release.yml that
 would do it is present and commented out.
 '@

@@ -1,0 +1,46 @@
+{
+	code: "kiln",
+	// A hand-written fixture, not a shipped blocktype: a 3x3x2 multiblockStructure with one
+	// oriented selector, one connector face and two filler cells.
+	attributes: {
+		multiblockStructure: {
+			blockNumbers: {
+				"game:claybricks-fire-*": 1,
+				"game:brickslabs-fire-south-free": 2,
+			},
+			offsets: [
+				{ x: -1, y: 0, z: -1, w: 1 },
+				{ x: 0, y: 0, z: -1, w: 1 },
+				{ x: 1, y: 0, z: -1, w: 1 },
+				{ x: -1, y: 0, z: 0, w: 1 },
+				{ x: 0, y: 0, z: 0, w: 2 },
+				{ x: 1, y: 0, z: 0, w: 1 },
+				{ x: -1, y: 0, z: 1, w: 1 },
+				{ x: 0, y: 0, z: 1, w: 1 },
+				{ x: 1, y: 0, z: 1, w: 1 },
+				{ x: -1, y: 1, z: -1, w: 1 },
+				{ x: 0, y: 1, z: -1, w: 1 },
+				{ x: 1, y: 1, z: -1, w: 1 },
+				{ x: -1, y: 1, z: 0, w: 1 },
+				{ x: 0, y: 1, z: 0, w: 1 },
+				{ x: 1, y: 1, z: 0, w: 1 },
+				{ x: -1, y: 1, z: 1, w: 1 },
+				{ x: 0, y: 1, z: 1, w: 1 },
+				{ x: 1, y: 1, z: 1, w: 1 },
+			],
+		},
+		multiblockFacings: {
+			"game:brickslabs-fire-south-free": [2],
+		},
+		multiblockConnectors: {
+			n: [{ x: 0, y: 0, z: -2 }],
+		},
+		multiblockRoles: {
+			chamber: [{ x: 0, y: 1, z: 1 }],
+		},
+		fillerOffsets: [
+			{ x: 2, y: 0, z: 0 },
+			{ x: -2, y: 0, z: 0 },
+		],
+	},
+}

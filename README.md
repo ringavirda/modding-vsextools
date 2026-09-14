@@ -2,8 +2,9 @@
 
 The build and release tooling for Vintage Story mods built on Expanded Library: `exmod`, one
 CLI for the whole lifecycle of a repository (provision the toolchain and the game, build, test,
-format, verify shipped assets, run a client or a server, smoke-boot, package, release), the
-packaging build it drives, the `exlib-verify` tool, and the helper scripts behind them.
+format, verify shipped assets, render shapes and schematics, run a client or a server, smoke-boot,
+package, release), the packaging build it drives, the `exlib-verify` and `exlib-shapes` tools, and
+the helper scripts behind them.
 
 ## Using it from a repository
 
@@ -32,6 +33,8 @@ wrappers/        the two launchers a consuming repository checks in
 scripts/         the launchers again, pointed at this checkout, so extools drives itself
 pack/            the packaging build (Cake Frosting), manifest-driven
 verify/          exlib-verify, a .NET tool that checks a mod's shipped assets with no game running
+shapes/          exlib-shapes, a .NET tool that renders shapes and multiblock/megablock schematics
+assets/          the lenient asset store and block/item catalogue shared by verify and shapes
 tools/           the API publicizer provisioning applies, the coverage gate, the released-codes derivation
 templates/ci/    GitHub Actions templates for a consuming repository
 ```
@@ -78,15 +81,15 @@ that push is what runs CI; tags are cut from `main`. Push `dev` freely, it runs 
 
 ## Releasing
 
-Bump `"tools"` in `exmod.json` (it is also `exlib-verify`'s package version), note the change in
-`CHANGELOG.md`, tag `v<version>`, push the tag. A consuming repository moves by editing its own
-`"tools"` pin.
+Bump `"tools"` in `exmod.json` (it is also `exlib-verify`'s and `exlib-shapes`'s package version),
+note the change in `CHANGELOG.md`, tag `v<version>`, push the tag. A consuming repository moves by
+editing its own `"tools"` pin.
 
 ## Developing
 
-`bash scripts/exmod.sh test latest` builds and tests the verify tool against a provisioned game
-install (`bash scripts/exmod.sh provision game -Kind server` fetches the dedicated-server archive,
-which needs no licence). The scripts are PowerShell 7; `exmod.sh` installs `pwsh` into
-`.dotnet/tools` when the machine has none.
+`bash scripts/exmod.sh test latest` builds and tests the verify and shapes tools against a
+provisioned game install (`bash scripts/exmod.sh provision game -Kind server` fetches the
+dedicated-server archive, which needs no licence). The scripts are PowerShell 7; `exmod.sh`
+installs `pwsh` into `.dotnet/tools` when the machine has none.
 
 MIT licensed.

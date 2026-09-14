@@ -29,7 +29,7 @@ jobs:
       - name: Every command is listed
         run: bash scripts/exmod.sh help
 
-  verify:
+  tools:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,5 +42,5 @@ jobs:
           key: vs-game-${{ env.VS_VERSION }}
       - name: Provision Vintage Story (server assemblies)
         run: bash scripts/exmod.sh provision game -Version "$VS_VERSION" -Kind server
-      - name: Test the verify tool
+      - name: Test the verify and shapes tools
         run: bash scripts/exmod.sh test latest

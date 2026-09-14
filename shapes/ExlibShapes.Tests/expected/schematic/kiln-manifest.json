@@ -1,0 +1,26 @@
+{
+  "files": [
+    "a.svg",
+    "b.png"
+  ],
+  "legend": [
+    {
+      "number": 1,
+      "selector": "game:claybricks-fire-*",
+      "representative": null,
+      "color": "#4C72B0",
+      "optional": false
+    },
+    {
+      "number": 2,
+      "selector": "game:brickslabs-fire-south-free",
+      "representative": null,
+      "color": "#DD8452",
+      "optional": false
+    }
+  ],
+  "warnings": [
+    "game:claybricks-fire-*",
+    "game:brickslabs-fire-south-free"
+  ]
+}

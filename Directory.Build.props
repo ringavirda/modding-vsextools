@@ -1,5 +1,21 @@
 <Project>
-  <!-- Ends the upward search for Directory.Build.props here. A consumer clones this repository into
-       its own tree (.extools/), and without this file every project and file-based tool under it
-       would take that repository's build logic, including its auto-provisioning targets. -->
+  <!-- Ends the upward search for Directory.Build.props here (a consumer clones this repository
+       into its own tree, .extools/, and without this file every project and file-based tool under
+       it would take that repository's build logic, including its auto-provisioning targets), and
+       resolves the game install every tool project here builds against: the VINTAGE_STORY
+       environment variable, else the checkout's own .game/<slug>-server or .game/<slug>. Kept here
+       rather than taken from the ExpandedLib package: these tools depend on nothing of exlib's.
+       Read as the $(VINTAGE_STORY) property, not GetEnvironmentVariable, so a caller that passes
+       it as an MSBuild global property (dist.ps1's -p:VINTAGE_STORY=...) resolves the same as one
+       that sets it in the environment; MSBuild imports an unset environment variable as a property
+       of the same name, so both paths land on this one condition. -->
+  <PropertyGroup>
+    <GameSlug Condition="'$(GameSlug)' == ''">1.22</GameSlug>
+    <GamePath Condition="'$(GamePath)' == '' and '$(VINTAGE_STORY)' != ''">$(VINTAGE_STORY)</GamePath>
+    <GamePath Condition="'$(GamePath)' == '' and Exists('$(MSBuildThisFileDirectory).game\$(GameSlug)-server\VintagestoryAPI.dll')">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory).game\$(GameSlug)-server'))</GamePath>
+    <GamePath Condition="'$(GamePath)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory).game\$(GameSlug)'))</GamePath>
+  </PropertyGroup>
+  <Target Name="_CheckGamePath" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(GamePath)\VintagestoryAPI.dll')" Text="No Vintage Story install at GamePath='$(GamePath)'. Run 'scripts/exmod.sh provision game -Kind server' or set VINTAGE_STORY." />
+  </Target>
 </Project>

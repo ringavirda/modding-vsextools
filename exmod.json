@@ -1,5 +1,6 @@
 {
   "tools": "0.3.0",
   "series": ["1.22"],
-  "tests": ["verify/ExlibVerify.Tests"]
+  "tests": ["verify/ExlibVerify.Tests", "shapes/ExlibShapes.Tests"],
+  "packages": ["verify/ExlibVerify/ExlibVerify.csproj", "shapes/ExlibShapes/ExlibShapes.csproj"]
 }

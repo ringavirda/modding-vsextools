@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- infra/tools/ sits outside mods/, so it does not inherit ../../mods/Directory.Build.props the
+       way every mod test project does automatically - imported explicitly for $(GamePath), the
+       same way samples/HelloExpanded.csproj does. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ExlibShapes\ExlibShapes.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Shape and JsonConvert appear directly in the tests that build synthetic fixtures inline.
+         Private=true here (unlike the tool project): a test run needs the dll beside the test
+         binary, with no global-tool packing concern to keep it compile-only for. -->
+    <Reference Include="VintagestoryAPI">
+      <HintPath>$(GamePath)/VintagestoryAPI.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(GamePath)/Lib/Newtonsoft.Json.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="protobuf-net">
+      <HintPath>$(GamePath)/Lib/protobuf-net.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="SkiaSharp">
+      <HintPath>$(GamePath)/Lib/SkiaSharp.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <None Include="$(GamePath)/Lib/libSkiaSharp.so" CopyToOutputDirectory="PreserveNewest" Link="libSkiaSharp.so" Condition="Exists('$(GamePath)/Lib/libSkiaSharp.so')" />
+    <None Include="$(GamePath)/Lib/libSkiaSharp.dll" CopyToOutputDirectory="PreserveNewest" Link="libSkiaSharp.dll" Condition="Exists('$(GamePath)/Lib/libSkiaSharp.dll')" />
+    <None Include="$(GamePath)/Lib/libSkiaSharp.dylib" CopyToOutputDirectory="PreserveNewest" Link="libSkiaSharp.dylib" Condition="Exists('$(GamePath)/Lib/libSkiaSharp.dylib')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Read straight off disk at test run time, the same way ExlibVerify.Tests keeps its Fixtures. -->
+    <None Include="fixtures\**\*" CopyToOutputDirectory="Never" />
+    <None Include="expected\**\*" CopyToOutputDirectory="Never" />
+  </ItemGroup>
+</Project>

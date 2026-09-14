@@ -1,4 +1,5 @@
 using System;
+using ExpandedLib.Assets;
 using ExpandedLib.Verify;
 
 // exlib-verify <modpath> [--game <install>] [--mods <dir>...] [--json] [--strict]

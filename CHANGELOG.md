@@ -12,6 +12,20 @@ README's mods paragraph is a table read from each sample's own `modinfo.json`, a
 `ProjectReference` (e.g. a mill depending on a grain catalogue) is rewritten generically instead of
 by name.
 
+A second .NET tool, `exlib-shapes` (`ExpandedLib.Shapes`, packed alongside `ExpandedLib.Verify`):
+renders a shape file to textured views and animation frames, and a multiblock or megablock
+blocktype file to a build schematic (a plan-grid SVG per Y layer, an isometric textured composite,
+a manifest), matching the Python `vsshape` toolkit's own renderer to within a small pixel
+tolerance on every fixture but the `iso` view, where a handful of exactly-touching faces flip a
+strict z-test on a BLAS-rounding difference from the Python's numpy matmul (documented on
+`RendererTests.Matches_the_reference_render`). `exmod render`
+and `exmod schematic` run it through `dotnet run --project` the way `exmod verify` runs
+`exlib-verify`; `--out` needs the `=` form there (`--out=DIR`), since PowerShell's own parameter
+binder treats a bare `--out` as an ambiguous prefix of its common `-OutVariable`/`-OutBuffer`
+parameters. A shared `assets/ExlibAssets` library (the lenient asset store, the block/item
+catalogue, the game install resolver, the mod source) now backs both tools; `verify/ExlibVerify`
+carries no copies of its own.
+
 ## [0.2.4] - 2026-09-07
 
 The coverage gate finds the floors file where the manifest names it, else at `tests/` or
