@@ -16,6 +16,8 @@ On Windows the client installer runs into a local temporary folder as a per-user
 needs no elevation and works for a checkout on a network share (WSL seen from Windows), and the
 tree is copied into the slot; the generated tasks run pwsh with `-ExecutionPolicy Bypass`, so a
 script on a share no longer asks before every step.
+`stage` and `client` build the mods every time (an incremental build, seconds when nothing
+changed) instead of only when nothing was built yet, so F5 never runs a mod older than its source.
 
 `exlib-verify` now catches the client's own "Missing mapping for texture code" defect headlessly: a
 new check reads every shape a blocktype's or itemtype's `shape`/`shapeByType` (alternates included)

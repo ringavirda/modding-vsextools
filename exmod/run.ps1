@@ -39,12 +39,14 @@ function Get-RunModDirs([string]$Version, [string]$Configuration, [switch]$NoBui
   }
 
   $missing = @($mods | Where-Object { -not (Test-Path (Join-Path (& $outputDir $_) 'modinfo.json')) })
-  if ($missing) {
-    if ($NoBuild) {
+  if ($NoBuild) {
+    if ($missing) {
       throw "Not built for $Version ($Configuration): $($missing -join ', '). Drop -NoBuild, or run 'exmod build $Version' first."
     }
-    Write-Host "Building $Version (not yet built) ..."
-    # The build's console lines go to the host; only the directories below are this function's output.
+  } else {
+    # An incremental build every time, so a staged mod is never older than its source; the build's
+    # console lines go to the host and only the directories below are this function's output.
+    Write-Host "Building $Version ..."
     Invoke-Build @($Version, '-Configuration', $Configuration) | Out-Host
   }
 
