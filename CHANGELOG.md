@@ -43,6 +43,13 @@ checked, since the client never tesselates one. A code-first mod's own `tests/go
 tree is read the same way its shipped assets would be, so `exlib-verify` (and `exmod verify`) now
 covers a domain whose blocktypes/itemtypes exist only there.
 
+`exlib-verify` resolves a recipe ingredient the way the game's loader does: a variant group loaded
+from properties is left to the game whatever sits beside it, and `allowedVariants` and
+`skipVariants` match as wildcards, so a vanilla item such as `game:leather-normal-plain` no longer
+reads as unresolved. ExlibVerify also reports a texture code a shape names that no map covers, an
+error on a blocktype (the client logs it) and an information line on an itemtype (the client is
+silent there); the ByType resolver it shares with the shapes tool lives in ExlibAssets.
+
 ## [0.3.2] - 2026-09-14
 
 `exlib-shapes item FILE --out DIR [--variant CODE]` renders an itemtype variant: the isometric view
