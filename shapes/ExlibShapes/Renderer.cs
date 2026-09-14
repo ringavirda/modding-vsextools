@@ -413,6 +413,61 @@ public static class Renderer {
   }
 
   /// <summary>
+  /// Where <see cref="Render"/> lays a world point on the canvas it produces: the view-space
+  /// extents it fitted the shape into, at <see cref="Ppu"/> pixels per world unit.
+  /// </summary>
+  public readonly record struct Projection(double XMin, double YMax, int Ppu, View View) {
+    /// <summary>The (column, row) a world point falls on, in pixels from the canvas's top left.
+    /// Points outside the rendered shape project outside the canvas.</summary>
+    public (double Col, double Row) Screen(double x, double y, double z) {
+      (double vx, double vy, double _) = (Mat3.RotateX(View.Pitch) * Mat3.RotateY(View.Yaw)).Mul(x, y, z);
+      return ((vx - XMin) * Ppu, (YMax - vy) * Ppu);
+    }
+  }
+
+  /// <summary>
+  /// The mapping <see cref="Render"/> draws <paramref name="shape"/> with for the same arguments -
+  /// for a caller annotating the canvas afterwards. A shape with no drawable face projects about
+  /// the origin.
+  /// </summary>
+  public static Projection Project(
+    LoadedShape shape,
+    View view,
+    int ppu = 24,
+    int margin = 2,
+    IReadOnlySet<string>? only = null,
+    IReadOnlyDictionary<string, Pose>? poses = null
+  ) {
+    Mat3 viewRot = Mat3.RotateX(view.Pitch) * Mat3.RotateY(view.Yaw);
+    double xmin = double.PositiveInfinity, ymax = double.NegativeInfinity;
+    foreach ((double X, double Y, double Z) p in ViewPoints(shape, viewRot, only, poses)) {
+      xmin = Math.Min(xmin, p.X);
+      ymax = Math.Max(ymax, p.Y);
+    }
+    if (double.IsInfinity(xmin))
+      return new Projection(0, 0, ppu, view);
+    return new Projection(xmin - margin, ymax + margin, ppu, view);
+  }
+
+  // Every face corner of every drawn leaf, in view space - the points both the canvas extents and
+  // the rasterizer's own screen positions come from.
+  private static IEnumerable<(double X, double Y, double Z)> ViewPoints(
+    LoadedShape shape,
+    Mat3 viewRot,
+    IReadOnlySet<string>? only,
+    IReadOnlyDictionary<string, Pose>? poses
+  ) {
+    Dictionary<string, Mat4d> mats = WorldMatricesD(shape, poses);
+    foreach (Node el in shape.Leaves()) {
+      if (only != null && !only.Any(p => el.Path.StartsWith(p, StringComparison.Ordinal)))
+        continue;
+      foreach (QuadD q in FaceQuadsD(el, mats[el.Path]))
+        foreach ((double X, double Y, double Z) p in q.Points)
+          yield return viewRot.Mul(p.X, p.Y, p.Z);
+    }
+  }
+
+  /// <summary>
   /// Renders <paramref name="shape"/>'s leaves (or only those under a path in
   /// <paramref name="only"/>) from <paramref name="view"/>, <paramref name="ppu"/> pixels per
   /// world unit, textured with <paramref name="textures"/> (resolved from the shape's own path
@@ -460,10 +515,12 @@ public static class Renderer {
       return empty;
     }
 
-    double xmin = quads.SelectMany(q => q.PtsView).Min(p => p.Item1) - margin;
+    // The canvas's own origin comes from Project, so a caller annotating the result afterwards
+    // measures with the very numbers this render laid the shape out on.
+    Projection projection = Project(shape, view, ppu, margin, only, poses);
+    double xmin = projection.XMin, ymax = projection.YMax;
     double xmax = quads.SelectMany(q => q.PtsView).Max(p => p.Item1) + margin;
     double ymin = quads.SelectMany(q => q.PtsView).Min(p => p.Item2) - margin;
-    double ymax = quads.SelectMany(q => q.PtsView).Max(p => p.Item2) + margin;
 
     int width = Math.Max(1, (int)Math.Ceiling((xmax - xmin) * ppu));
     int height = Math.Max(1, (int)Math.Ceiling((ymax - ymin) * ppu));

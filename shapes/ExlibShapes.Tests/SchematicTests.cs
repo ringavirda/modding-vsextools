@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 using SkiaSharp;
+using Vintagestory.API.Common;
 using Xunit;
 
 namespace ExpandedLib.Shapes.Tests;
@@ -61,6 +62,15 @@ public class SchematicTests {
     // number 2 is the single anchor cell of layer 0; every other cell of that layer is number 1
     Assert.Equal(1, CountOccurrences(svg, "<rect"));
     Assert.Equal(1, CountOccurrences(svg, "class=\"cell anchor\""));
+  }
+
+  [Fact]
+  public void Plan_svg_captions_the_layer_it_draws() {
+    Layout layout = Layout.Load(Fixture);
+    Dictionary<int, LegendEntry> legend = Schematic.LegendColors(layout);
+    Assert.Contains(">Layer 0, the starter block's row<", Schematic.PlanSvg(layout, 0, legend));
+    Assert.Contains(">Layer +1<", Schematic.PlanSvg(layout, 1, legend));
+    Assert.Equal("Layer -1", Schematic.LayerCaption(-1));
   }
 
   [Fact]
@@ -124,6 +134,53 @@ public class SchematicTests {
   }
 
   [Fact]
+  public void A_megablock_draws_its_body_over_a_footprint_outline_and_a_structure_keeps_its_boxes() {
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+    Layout mega = Footprint.Placed(
+      Layout.Load(FixturePath.Of("schematic/mods/demo/assets/demo/blocktypes/mega.json"), "mega-north"),
+      index
+    );
+    (JObject raw, Dictionary<string, string> values) = Schematic.Compose(mega, index);
+    List<string> names = [.. raw["elements"]!.Select(el => (string)el["name"]!)];
+    Assert.Contains(Schematic.PrincipalPrefix, names);
+    Assert.DoesNotContain(names, n => n.StartsWith("filler", StringComparison.Ordinal));
+    // Two columns, four bars each: the principal's own cell and the one filler it reserves.
+    Assert.Equal(8, names.Count(n => n.StartsWith("footprint", StringComparison.Ordinal)));
+    Assert.Contains("demo:block/wall", values.Values);
+
+    // The kiln's fillers stand clear of its anchor block, so they stay boxes.
+    (JObject kiln, _) = Schematic.Compose(DemoLayout(), index);
+    Assert.Equal(
+      2,
+      kiln["elements"]!.Count(el => ((string)el["name"]!).StartsWith("filler", StringComparison.Ordinal))
+    );
+  }
+
+  [Fact]
+  public void Iso_png_reserves_its_left_edge_for_the_layer_scale() {
+    Layout layout = DemoLayout();
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+    (JObject raw, Dictionary<string, string> textureValues) = Schematic.Compose(layout, index);
+    Shape shape = Newtonsoft.Json.JsonConvert.DeserializeObject<Shape>(raw.ToString())!;
+    using SKBitmap plain = Renderer.Render(
+      ShapeFile.FromRaw(shape, null, new Dictionary<string, string>()),
+      Renderer.NamedViews["iso"],
+      ppu: 8,
+      textures: TextureSet.FromResolved(textureValues, index.ResolveTexture, new Dictionary<string, byte[,,]>())
+    );
+    using SKBitmap scaled = Schematic.IsoPng(layout, index, ppu: 8);
+    Assert.Equal(plain.Height, scaled.Height);
+    Assert.True(scaled.Width > plain.Width, "the scale is drawn beside the composite, not over it");
+    // The ticks and their labels are the only ink left of the drawing.
+    int ink = 0;
+    for (int y = 0; y < scaled.Height; y++)
+      for (int x = 0; x < scaled.Width - plain.Width; x++)
+        if (scaled.GetPixel(x, y).Red < 128)
+          ink++;
+    Assert.True(ink > 0, "no tick was drawn in the reserved margin");
+  }
+
+  [Fact]
   public void A_blocktypes_all_texture_stands_in_for_every_key_of_its_shape() {
     // demo:masonry's shape declares and uses `brick`, naming a texture that does not exist; the
     // blocktype's `all` is what the game paints every face with. demo:rusty declares no textures
@@ -159,6 +216,22 @@ public class SchematicTests {
     Assert.Equal(
       new HashSet<string> { "game:claybricks-fire-*", "game:brickslabs-fire-south-free" },
       m["warnings"]!.Select(w => (string)w!).ToHashSet()
+    );
+  }
+
+  [Fact]
+  public void Manifest_names_each_plan_with_the_layer_it_draws() {
+    Layout layout = Layout.Load(Fixture);
+    JObject m = Schematic.Manifest(
+      layout,
+      Schematic.LegendColors(layout),
+      ["kiln-plan-y0.svg", "kiln-plan-y1.svg", "kiln-iso.png"],
+      plans: [("kiln-plan-y0.svg", 0), ("kiln-plan-y1.svg", 1)]
+    );
+    Assert.Equal(3, ((JArray)m["files"]!).Count);
+    Assert.Equal(
+      [("kiln-plan-y0.svg", 0), ("kiln-plan-y1.svg", 1)],
+      m["plans"]!.Select(p => ((string)p["file"]!, (int)p["layer"]!))
     );
   }
 

@@ -233,11 +233,13 @@ internal static class Program {
     }
 
     var files = new List<string>();
+    var plans = new List<(string File, int Layer)>();
     if (viewSet.Contains("plan"))
       foreach (int y in layout.Layers()) {
         string path = Path.Combine(outDir, $"{stem}-plan-y{y}.svg");
         File.WriteAllText(path, Schematic.PlanSvg(layout, y, legend));
         files.Add(path);
+        plans.Add((path, y));
       }
 
     if (viewSet.Contains("iso")) {
@@ -265,7 +267,8 @@ internal static class Program {
       files,
       index.Ambiguities,
       Schematic.MissingTextures(layout, index),
-      index.ParseWarnings
+      index.ParseWarnings,
+      plans
     );
     string manifestPath = Path.Combine(outDir, $"{stem}.json");
     File.WriteAllText(manifestPath, manifest.ToString(Formatting.Indented));
