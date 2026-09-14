@@ -1,0 +1,9 @@
+This package redistributes the following third-party components.
+
+Newtonsoft.Json
+  https://github.com/JamesNK/Newtonsoft.Json
+  MIT License, Copyright (c) 2007 James Newton-King
+
+Tavis.JsonPatch
+  https://github.com/Tavis-Software/JsonPatch
+  MIT License, Copyright (c) Tavis Software

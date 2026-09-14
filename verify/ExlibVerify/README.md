@@ -27,4 +27,4 @@ What it checks:
 Exit codes: `0` clean, `1` findings, `2` a usage or load failure. `--strict` makes informational
 findings count; `--json` prints the findings as JSON for a CI step to read.
 
-Part of [ExpandedLib](https://github.com/ringavirda/modding-vsexmods). MIT licensed.
+Part of [ExpandedLib](https://github.com/ringavirda/modding-vsextools). MIT licensed.

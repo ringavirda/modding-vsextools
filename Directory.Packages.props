@@ -21,5 +21,9 @@
          explicitly. -->
     <PackageVersion Include="SkiaSharp.NativeAssets.Linux" Version="3.119.1" />
     <PackageVersion Include="protobuf-net" Version="2.4.9" />
+    <!-- protobuf-net depends on these for a WCF surrogate neither tool compiles against; pinned
+         and excluded so the package's own SOAP assemblies (~2 MB) do not ship in exlib-shapes. -->
+    <PackageVersion Include="System.ServiceModel.Primitives" Version="4.5.3" />
+    <PackageVersion Include="System.Private.ServiceModel" Version="4.5.3" />
   </ItemGroup>
 </Project>

@@ -62,11 +62,10 @@ public class BlocksTests {
     Assert.False(index.Optional("demo:nosuchblock"));
   }
 
-  [Fact]
+  [SkippableFact]
   public void Structurefiller_resolves_through_the_exlib_checkout() {
-    if (ExlibRoot is not { } exlibRoot)
-      return; // skips when the sibling exlib checkout is absent
-    BlockIndex index = BlockIndex.Build([exlibRoot]);
+    Skip.If(ExlibRoot is null, "the sibling exlib checkout is absent");
+    BlockIndex index = BlockIndex.Build([ExlibRoot!]);
     ResolvedBlock? block = index.Resolve("exlib:structurefiller");
     Assert.NotNull(block);
     Assert.NotNull(block!.ShapePath);

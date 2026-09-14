@@ -505,7 +505,8 @@ from exlib's own templates - `exmod help scaffold` lists every kind.
 
 ## Licence
 
-MIT licensed; see LICENSE.
+MIT licensed; see LICENSE. The copyright line names whoever ran `exmod starter` - update it if
+that is not you.
 '@
 
 # The starter repository at $Dest: both sample mods as a monorepo, the launcher scripts, the

@@ -76,9 +76,7 @@ public static class Runner {
       string game = GameInstall.Resolve(gamePath);
       // VintagestoryAPI and Tavis.JsonPatch are compile-only (Private=false - a global tool must
       // never bundle a copy of the game's own assemblies) and resolved at runtime from whichever
-      // install --game/$VINTAGE_STORY actually named; no compatible Tavis.JsonPatch is published
-      // to NuGet (see ExlibVerify.csproj), so it stays this way rather than becoming a package
-      // reference like Newtonsoft.Json.
+      // install --game/$VINTAGE_STORY actually named.
       string[] probeDirs =
       [
         game,

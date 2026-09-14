@@ -33,11 +33,11 @@ public class ResolverDumpTests {
     "mods/siex/tests/goldens/siex/blocktypes/cowperstove/intake.json",
   ];
 
-  [Fact]
+  [SkippableFact]
   public void Resolve_matches_the_reference_representative_for_every_selector_of_every_family_golden() {
     string? exmods = FixturePath.Workspace("exmods");
-    if (exmods is not { } repo)
-      return; // skips when the sibling exmods (and exlib) checkout is absent
+    Skip.If(exmods is null, "the sibling exmods (and exlib) checkout is absent");
+    string repo = exmods!;
 
     var sb = new StringBuilder();
     foreach (string rel in Goldens) {

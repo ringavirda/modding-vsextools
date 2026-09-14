@@ -1,0 +1,14 @@
+This package redistributes the following third-party components.
+
+SkiaSharp / libSkiaSharp
+  https://github.com/mono/SkiaSharp
+  MIT License, Copyright (c) Microsoft Corporation
+
+Newtonsoft.Json
+  https://github.com/JamesNK/Newtonsoft.Json
+  MIT License, Copyright (c) 2007 James Newton-King
+
+protobuf-net
+  https://github.com/protobuf-net/protobuf-net
+  Apache License 2.0, Copyright protobuf-net contributors
+  Full text: https://www.apache.org/licenses/LICENSE-2.0

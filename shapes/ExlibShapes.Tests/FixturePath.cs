@@ -73,7 +73,7 @@ internal static class FixturePath {
       if (!Directory.Exists(Path.Combine(dir.FullName, first)))
         continue;
       string candidate = Path.Combine(dir.FullName, relativePath);
-      return File.Exists(candidate) ? candidate : null;
+      return File.Exists(candidate) || Directory.Exists(candidate) ? candidate : null;
     }
     return null;
   }

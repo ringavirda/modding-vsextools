@@ -33,6 +33,7 @@
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="THIRD-PARTY-NOTICES.txt" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>
@@ -51,10 +52,8 @@
     <!-- The game's own RFC-6902 patch engine, applied against the real target document the same
          way ModJsonPatchLoader (vsessentialsmod) drives it. Stays a compile-only game-path
          Reference like VintagestoryAPI, resolved at runtime by Runner.cs's AssemblyResolve hook:
-         nuget.org's Tavis.JsonPatch never passed 0.5.2-beta, and that release is a different,
-         incompatible API (namespace Tavis.JsonPatch, not the JsonPatch.Operations/Tavis this code
-         calls) - not the library the game ships as 1.0.0, so there is no package to redistribute
-         a copy of instead. -->
+         no compatible Tavis.JsonPatch exists on nuget.org (the feed tops out at 0.5.2-beta, a
+         different, incompatible API), so this stays a game-path compile-only reference. -->
     <Reference Include="Tavis.JsonPatch">
       <HintPath>$(GamePath)/Lib/Tavis.JsonPatch.dll</HintPath>
       <Private>false</Private>

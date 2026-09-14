@@ -13,7 +13,7 @@
          native alongside the shared managed assemblies in tools/<tfm>/any/; `dotnet tool install`
          picks the right one for the installing machine. Not self-contained: the .NET runtime
          itself still comes from whatever SDK the consumer has. -->
-    <RuntimeIdentifiers>linux-x64;win-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifiers>linux-x64;linux-arm64;win-x64;win-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
     <SelfContained>false</SelfContained>
   </PropertyGroup>
 
@@ -40,6 +40,7 @@
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" Condition="Exists('README.md')" />
+    <None Include="THIRD-PARTY-NOTICES.txt" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>
@@ -54,6 +55,10 @@
          reflection touches while building its contract cache, even though this tool never
          serialises through it - without the reference, deserialising a Shape throws at runtime. -->
     <PackageReference Include="protobuf-net" />
+    <!-- protobuf-net's own WCF surrogate depends on these; nothing here compiles against either,
+         so both are excluded rather than shipped as three dead SOAP assemblies. -->
+    <PackageReference Include="System.ServiceModel.Primitives" ExcludeAssets="all" />
+    <PackageReference Include="System.Private.ServiceModel" ExcludeAssets="all" />
     <!-- The software rasteriser's pixel buffer and PNG encoding; the native libSkiaSharp for each
          RuntimeIdentifiers entry above comes along as the package's own native asset, so nothing
          here copies one out of the game install. -->
