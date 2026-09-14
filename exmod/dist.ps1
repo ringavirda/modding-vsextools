@@ -107,7 +107,7 @@ the current game version only; on 1.21 and 1.20 a consumer references it from so
 # both follow.
 function Invoke-Nuget([string[]]$Argv) {
   $configuration = Get-Opt $Argv '-Configuration' 'Release'
-  $out = Get-Opt $Argv '-Out' 'dist/nuget'
+  $out = Get-Opt $Argv '-Output' 'dist/nuget'
   $outFull = if ([System.IO.Path]::IsPathRooted($out)) { $out } else { Join-Path $RepoRoot $out }
 
   $projects = @(Get-ExmodPackages)
@@ -131,16 +131,14 @@ function Invoke-Nuget([string[]]$Argv) {
 Add-ExmodCommand -Group package -Name nuget -Summary 'the NuGet packages' -Action {
   param([string[]]$Argv) Invoke-Nuget $Argv
 } -Detail @'
-exmod nuget [-Configuration Release|Debug] [-Out <path>]
+exmod nuget [-Configuration Release|Debug] [-Output <path>]
 
-Packs the two projects that ship on NuGet into dist/nuget (or -Out): ExpandedLib.Verify and
-ExpandedLib.Shapes, both as .NET tools, so a consumer gets `exlib-verify`/`exlib-shapes` with no
-game licence, no built mod and no test runner.
+Packs the projects this repository's exmod.json names under `packages` into dist/nuget (or
+-Output), each as its own .nupkg.
 
 Each packable project reads its own version from exmod.json, so a release bumps one number for
-both tools together.
-Nothing here pushes to NuGet.org: that is a separate decision, and the step in release.yml that
-would do it is present and commented out.
+all of them. Nothing here pushes to NuGet.org: that is a separate decision, taken by release.yml's
+push step, which is gated on the NUGET_USER repository variable rather than commented out.
 '@
 
 #endregion
