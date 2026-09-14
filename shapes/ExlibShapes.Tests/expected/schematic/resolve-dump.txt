@@ -1,6 +1,6 @@
 == blastcore angle=0 cells=160 fillers=0 connectors=n,s
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
-2 iiex:furnace-blastcore-*-n iiex:furnace-blastcore-tier1-n shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
+2 iiex:furnace-blastcore-*-n iiex:furnace-blastcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 3 iiex:furnace-irontap-w iiex:furnace-irontap-w shape=irontap.json rot=(0.0,90.0,0.0) optional=False
 4 iiex:furnace-slagtap-e iiex:furnace-slagtap-e shape=slagtap.json rot=(0.0,270.0,0.0) optional=False
 5 iiex:furnace-tuyere-* iiex:furnace-tuyere-s shape=tuyere.json rot=(0.0,0.0,0.0) optional=False
@@ -10,8 +10,8 @@
 9 *:@(air|coalpile|furnace-chargepile|hearthmetal-.*) None optional=True
 10 game:air None optional=True
 == blastcore angle=90 cells=160 fillers=0 connectors=e,w
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
-2 iiex:furnace-blastcore-*-w iiex:furnace-blastcore-tier1-w shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
+2 iiex:furnace-blastcore-*-w iiex:furnace-blastcore-tier1-w shape=cube.json rot=(0.0,0.0,0.0) optional=False
 3 iiex:furnace-irontap-s iiex:furnace-irontap-s shape=irontap.json rot=(0.0,180.0,0.0) optional=False
 4 iiex:furnace-slagtap-n iiex:furnace-slagtap-n shape=slagtap.json rot=(0.0,0.0,0.0) optional=False
 5 iiex:furnace-tuyere-* iiex:furnace-tuyere-s shape=tuyere.json rot=(0.0,0.0,0.0) optional=False
@@ -21,8 +21,8 @@
 9 *:@(air|coalpile|furnace-chargepile|hearthmetal-.*) None optional=True
 10 game:air None optional=True
 == blastcore angle=180 cells=160 fillers=0 connectors=n,s
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
-2 iiex:furnace-blastcore-*-s iiex:furnace-blastcore-tier1-s shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
+2 iiex:furnace-blastcore-*-s iiex:furnace-blastcore-tier1-s shape=cube.json rot=(0.0,0.0,0.0) optional=False
 3 iiex:furnace-irontap-e iiex:furnace-irontap-e shape=irontap.json rot=(0.0,270.0,0.0) optional=False
 4 iiex:furnace-slagtap-w iiex:furnace-slagtap-w shape=slagtap.json rot=(0.0,90.0,0.0) optional=False
 5 iiex:furnace-tuyere-* iiex:furnace-tuyere-s shape=tuyere.json rot=(0.0,0.0,0.0) optional=False
@@ -32,8 +32,8 @@
 9 *:@(air|coalpile|furnace-chargepile|hearthmetal-.*) None optional=True
 10 game:air None optional=True
 == blastcore angle=270 cells=160 fillers=0 connectors=e,w
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
-2 iiex:furnace-blastcore-*-e iiex:furnace-blastcore-tier1-e shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
+2 iiex:furnace-blastcore-*-e iiex:furnace-blastcore-tier1-e shape=cube.json rot=(0.0,0.0,0.0) optional=False
 3 iiex:furnace-irontap-n iiex:furnace-irontap-n shape=irontap.json rot=(0.0,0.0,0.0) optional=False
 4 iiex:furnace-slagtap-s iiex:furnace-slagtap-s shape=slagtap.json rot=(0.0,180.0,0.0) optional=False
 5 iiex:furnace-tuyere-* iiex:furnace-tuyere-s shape=tuyere.json rot=(0.0,0.0,0.0) optional=False
@@ -43,11 +43,11 @@
 9 *:@(air|coalpile|furnace-chargepile|hearthmetal-.*) None optional=True
 10 game:air None optional=True
 == puddlingcore angle=0 cells=92 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 3 game:brickslabs-fire-south-free game:brickslabs-fire-south-free shape=slab-south.json rot=(0.0,0.0,0.0) optional=False
 4 game:cokeovendoor-*-north game:cokeovendoor-closed-north shape=closed.json rot=(0.0,0.0,0.0) optional=False
-5 iiex:furnace-puddlingcore-*-* iiex:furnace-puddlingcore-tier1-n shape=None rot=(0.0,0.0,0.0) optional=False
+5 iiex:furnace-puddlingcore-*-* iiex:furnace-puddlingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-puddlinghearth-n iiex:furnace-puddlinghearth-n shape=puddlinghearth.json rot=(0.0,0.0,0.0) optional=False
 7 iiex:furnace-puddlingchargedoor-s iiex:furnace-puddlingchargedoor-s shape=puddlingchargedoor.json rot=(0.0,180.0,0.0) optional=False
 8 iiex:furnace-puddlingchimneycap-n iiex:furnace-puddlingchimneycap-n shape=puddlingchimneycap.json rot=(0.0,0.0,0.0) optional=False
@@ -55,11 +55,11 @@
 10 iiex:furnace-firebox-*-* iiex:furnace-firebox-tier1-n shape=firebox.json rot=(0.0,0.0,0.0) optional=False
 11 game:air None optional=True
 == puddlingcore angle=90 cells=92 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 3 game:brickslabs-fire-east-free game:brickslabs-fire-east-free shape=slab-east.json rot=(0.0,0.0,0.0) optional=False
 4 game:cokeovendoor-*-west game:cokeovendoor-closed-west shape=closed.json rot=(0.0,90.0,0.0) optional=False
-5 iiex:furnace-puddlingcore-*-* iiex:furnace-puddlingcore-tier1-n shape=None rot=(0.0,0.0,0.0) optional=False
+5 iiex:furnace-puddlingcore-*-* iiex:furnace-puddlingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-puddlinghearth-w iiex:furnace-puddlinghearth-w shape=puddlinghearth.json rot=(0.0,90.0,0.0) optional=False
 7 iiex:furnace-puddlingchargedoor-e iiex:furnace-puddlingchargedoor-e shape=puddlingchargedoor.json rot=(0.0,270.0,0.0) optional=False
 8 iiex:furnace-puddlingchimneycap-w iiex:furnace-puddlingchimneycap-w shape=puddlingchimneycap.json rot=(0.0,90.0,0.0) optional=False
@@ -67,11 +67,11 @@
 10 iiex:furnace-firebox-*-* iiex:furnace-firebox-tier1-n shape=firebox.json rot=(0.0,0.0,0.0) optional=False
 11 game:air None optional=True
 == puddlingcore angle=180 cells=92 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 3 game:brickslabs-fire-north-free game:brickslabs-fire-north-free shape=slab-north.json rot=(0.0,0.0,0.0) optional=False
 4 game:cokeovendoor-*-south game:cokeovendoor-closed-south shape=closed.json rot=(0.0,180.0,0.0) optional=False
-5 iiex:furnace-puddlingcore-*-* iiex:furnace-puddlingcore-tier1-n shape=None rot=(0.0,0.0,0.0) optional=False
+5 iiex:furnace-puddlingcore-*-* iiex:furnace-puddlingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-puddlinghearth-s iiex:furnace-puddlinghearth-s shape=puddlinghearth.json rot=(0.0,180.0,0.0) optional=False
 7 iiex:furnace-puddlingchargedoor-n iiex:furnace-puddlingchargedoor-n shape=puddlingchargedoor.json rot=(0.0,0.0,0.0) optional=False
 8 iiex:furnace-puddlingchimneycap-s iiex:furnace-puddlingchimneycap-s shape=puddlingchimneycap.json rot=(0.0,180.0,0.0) optional=False
@@ -79,11 +79,11 @@
 10 iiex:furnace-firebox-*-* iiex:furnace-firebox-tier1-n shape=firebox.json rot=(0.0,0.0,0.0) optional=False
 11 game:air None optional=True
 == puddlingcore angle=270 cells=92 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 3 game:brickslabs-fire-west-free game:brickslabs-fire-west-free shape=slab-west.json rot=(0.0,0.0,0.0) optional=False
 4 game:cokeovendoor-*-east game:cokeovendoor-closed-east shape=closed.json rot=(0.0,270.0,0.0) optional=False
-5 iiex:furnace-puddlingcore-*-* iiex:furnace-puddlingcore-tier1-n shape=None rot=(0.0,0.0,0.0) optional=False
+5 iiex:furnace-puddlingcore-*-* iiex:furnace-puddlingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-puddlinghearth-e iiex:furnace-puddlinghearth-e shape=puddlinghearth.json rot=(0.0,270.0,0.0) optional=False
 7 iiex:furnace-puddlingchargedoor-w iiex:furnace-puddlingchargedoor-w shape=puddlingchargedoor.json rot=(0.0,90.0,0.0) optional=False
 8 iiex:furnace-puddlingchimneycap-e iiex:furnace-puddlingchimneycap-e shape=puddlingchimneycap.json rot=(0.0,270.0,0.0) optional=False
@@ -91,96 +91,96 @@
 10 iiex:furnace-firebox-*-* iiex:furnace-firebox-tier1-n shape=firebox.json rot=(0.0,0.0,0.0) optional=False
 11 game:air None optional=True
 == heatingcore angle=0 cells=109 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 iiex:furnace-firebox-*-* iiex:furnace-firebox-tier1-n shape=firebox.json rot=(0.0,0.0,0.0) optional=False
 3 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 4 game:brickslabs-fire-south-free game:brickslabs-fire-south-free shape=slab-south.json rot=(0.0,0.0,0.0) optional=False
 5 game:cokeovendoor-*-north game:cokeovendoor-closed-north shape=closed.json rot=(0.0,0.0,0.0) optional=False
-6 iiex:furnace-heatingcore-*-* iiex:furnace-heatingcore-tier1-n shape=None rot=(0.0,0.0,0.0) optional=False
+6 iiex:furnace-heatingcore-*-* iiex:furnace-heatingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 7 iiex:furnace-chargedoor-s iiex:furnace-chargedoor-s shape=chargedoor.json rot=(0.0,180.0,0.0) optional=False
 8 iiex:furnace-heatinghearth-n iiex:furnace-heatinghearth-n shape=heatinghearth.json rot=(0.0,0.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 10 game:air None optional=True
 == heatingcore angle=90 cells=109 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 iiex:furnace-firebox-*-* iiex:furnace-firebox-tier1-n shape=firebox.json rot=(0.0,0.0,0.0) optional=False
 3 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 4 game:brickslabs-fire-east-free game:brickslabs-fire-east-free shape=slab-east.json rot=(0.0,0.0,0.0) optional=False
 5 game:cokeovendoor-*-west game:cokeovendoor-closed-west shape=closed.json rot=(0.0,90.0,0.0) optional=False
-6 iiex:furnace-heatingcore-*-* iiex:furnace-heatingcore-tier1-n shape=None rot=(0.0,0.0,0.0) optional=False
+6 iiex:furnace-heatingcore-*-* iiex:furnace-heatingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 7 iiex:furnace-chargedoor-e iiex:furnace-chargedoor-e shape=chargedoor.json rot=(0.0,270.0,0.0) optional=False
 8 iiex:furnace-heatinghearth-w iiex:furnace-heatinghearth-w shape=heatinghearth.json rot=(0.0,90.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 10 game:air None optional=True
 == heatingcore angle=180 cells=109 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 iiex:furnace-firebox-*-* iiex:furnace-firebox-tier1-n shape=firebox.json rot=(0.0,0.0,0.0) optional=False
 3 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 4 game:brickslabs-fire-north-free game:brickslabs-fire-north-free shape=slab-north.json rot=(0.0,0.0,0.0) optional=False
 5 game:cokeovendoor-*-south game:cokeovendoor-closed-south shape=closed.json rot=(0.0,180.0,0.0) optional=False
-6 iiex:furnace-heatingcore-*-* iiex:furnace-heatingcore-tier1-n shape=None rot=(0.0,0.0,0.0) optional=False
+6 iiex:furnace-heatingcore-*-* iiex:furnace-heatingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 7 iiex:furnace-chargedoor-n iiex:furnace-chargedoor-n shape=chargedoor.json rot=(0.0,0.0,0.0) optional=False
 8 iiex:furnace-heatinghearth-s iiex:furnace-heatinghearth-s shape=heatinghearth.json rot=(0.0,180.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 10 game:air None optional=True
 == heatingcore angle=270 cells=109 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 iiex:furnace-firebox-*-* iiex:furnace-firebox-tier1-n shape=firebox.json rot=(0.0,0.0,0.0) optional=False
 3 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 4 game:brickslabs-fire-west-free game:brickslabs-fire-west-free shape=slab-west.json rot=(0.0,0.0,0.0) optional=False
 5 game:cokeovendoor-*-east game:cokeovendoor-closed-east shape=closed.json rot=(0.0,270.0,0.0) optional=False
-6 iiex:furnace-heatingcore-*-* iiex:furnace-heatingcore-tier1-n shape=None rot=(0.0,0.0,0.0) optional=False
+6 iiex:furnace-heatingcore-*-* iiex:furnace-heatingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 7 iiex:furnace-chargedoor-w iiex:furnace-chargedoor-w shape=chargedoor.json rot=(0.0,90.0,0.0) optional=False
 8 iiex:furnace-heatinghearth-e iiex:furnace-heatinghearth-e shape=heatinghearth.json rot=(0.0,270.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 10 game:air None optional=True
 == cruciblecore angle=0 cells=34 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 @(claybricks-(good-fire|clinkerrough)|refractorybricks-good-.*|brickcourse-.*) game:claybricks-good-fire shape=cube-masonry.json rot=(0.0,0.0,0.0) optional=False
 3 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 4 game:cokeovendoor-*-north game:cokeovendoor-closed-north shape=closed.json rot=(0.0,0.0,0.0) optional=False
-5 iiex:furnace-cruciblecore-*-* iiex:furnace-cruciblecore-tier1-n shape=None rot=(0.0,0.0,0.0) optional=False
+5 iiex:furnace-cruciblecore-*-* iiex:furnace-cruciblecore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-cruciblehearth-*-* iiex:furnace-cruciblehearth-tier1-n shape=cruciblehearth.json rot=(0.0,0.0,0.0) optional=False
 7 iiex:furnace-chargedoor-s iiex:furnace-chargedoor-s shape=chargedoor.json rot=(0.0,180.0,0.0) optional=False
 8 iiex:furnace-puddlingchimneycap-s iiex:furnace-puddlingchimneycap-s shape=puddlingchimneycap.json rot=(0.0,180.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 10 game:air None optional=True
 == cruciblecore angle=90 cells=34 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 @(claybricks-(good-fire|clinkerrough)|refractorybricks-good-.*|brickcourse-.*) game:claybricks-good-fire shape=cube-masonry.json rot=(0.0,0.0,0.0) optional=False
 3 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 4 game:cokeovendoor-*-west game:cokeovendoor-closed-west shape=closed.json rot=(0.0,90.0,0.0) optional=False
-5 iiex:furnace-cruciblecore-*-* iiex:furnace-cruciblecore-tier1-n shape=None rot=(0.0,0.0,0.0) optional=False
+5 iiex:furnace-cruciblecore-*-* iiex:furnace-cruciblecore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-cruciblehearth-*-* iiex:furnace-cruciblehearth-tier1-n shape=cruciblehearth.json rot=(0.0,0.0,0.0) optional=False
 7 iiex:furnace-chargedoor-e iiex:furnace-chargedoor-e shape=chargedoor.json rot=(0.0,270.0,0.0) optional=False
 8 iiex:furnace-puddlingchimneycap-e iiex:furnace-puddlingchimneycap-e shape=puddlingchimneycap.json rot=(0.0,270.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 10 game:air None optional=True
 == cruciblecore angle=180 cells=34 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 @(claybricks-(good-fire|clinkerrough)|refractorybricks-good-.*|brickcourse-.*) game:claybricks-good-fire shape=cube-masonry.json rot=(0.0,0.0,0.0) optional=False
 3 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 4 game:cokeovendoor-*-south game:cokeovendoor-closed-south shape=closed.json rot=(0.0,180.0,0.0) optional=False
-5 iiex:furnace-cruciblecore-*-* iiex:furnace-cruciblecore-tier1-n shape=None rot=(0.0,0.0,0.0) optional=False
+5 iiex:furnace-cruciblecore-*-* iiex:furnace-cruciblecore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-cruciblehearth-*-* iiex:furnace-cruciblehearth-tier1-n shape=cruciblehearth.json rot=(0.0,0.0,0.0) optional=False
 7 iiex:furnace-chargedoor-n iiex:furnace-chargedoor-n shape=chargedoor.json rot=(0.0,0.0,0.0) optional=False
 8 iiex:furnace-puddlingchimneycap-n iiex:furnace-puddlingchimneycap-n shape=puddlingchimneycap.json rot=(0.0,0.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 10 game:air None optional=True
 == cruciblecore angle=270 cells=34 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 @(claybricks-(good-fire|clinkerrough)|refractorybricks-good-.*|brickcourse-.*) game:claybricks-good-fire shape=cube-masonry.json rot=(0.0,0.0,0.0) optional=False
 3 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 4 game:cokeovendoor-*-east game:cokeovendoor-closed-east shape=closed.json rot=(0.0,270.0,0.0) optional=False
-5 iiex:furnace-cruciblecore-*-* iiex:furnace-cruciblecore-tier1-n shape=None rot=(0.0,0.0,0.0) optional=False
+5 iiex:furnace-cruciblecore-*-* iiex:furnace-cruciblecore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-cruciblehearth-*-* iiex:furnace-cruciblehearth-tier1-n shape=cruciblehearth.json rot=(0.0,0.0,0.0) optional=False
 7 iiex:furnace-chargedoor-w iiex:furnace-chargedoor-w shape=chargedoor.json rot=(0.0,90.0,0.0) optional=False
 8 iiex:furnace-puddlingchimneycap-w iiex:furnace-puddlingchimneycap-w shape=puddlingchimneycap.json rot=(0.0,90.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 10 game:air None optional=True
 == cupolacore angle=0 cells=64 fillers=0 connectors=n
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
-2 iiex:furnace-cupolacore-*-n iiex:furnace-cupolacore-tier1-n shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
+2 iiex:furnace-cupolacore-*-n iiex:furnace-cupolacore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 3 iiex:furnace-irontap-e iiex:furnace-irontap-e shape=irontap.json rot=(0.0,270.0,0.0) optional=False
 4 iiex:furnace-slagtap-w iiex:furnace-slagtap-w shape=slagtap.json rot=(0.0,90.0,0.0) optional=False
 5 iiex:furnace-tuyere-* iiex:furnace-tuyere-s shape=tuyere.json rot=(0.0,0.0,0.0) optional=False
@@ -190,8 +190,8 @@
 9 *:@(air|coalpile|furnace-chargepile|hearthmetal-.*) None optional=True
 10 game:air None optional=True
 == cupolacore angle=90 cells=64 fillers=0 connectors=w
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
-2 iiex:furnace-cupolacore-*-w iiex:furnace-cupolacore-tier1-w shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
+2 iiex:furnace-cupolacore-*-w iiex:furnace-cupolacore-tier1-w shape=cube.json rot=(0.0,0.0,0.0) optional=False
 3 iiex:furnace-irontap-n iiex:furnace-irontap-n shape=irontap.json rot=(0.0,0.0,0.0) optional=False
 4 iiex:furnace-slagtap-s iiex:furnace-slagtap-s shape=slagtap.json rot=(0.0,180.0,0.0) optional=False
 5 iiex:furnace-tuyere-* iiex:furnace-tuyere-s shape=tuyere.json rot=(0.0,0.0,0.0) optional=False
@@ -201,8 +201,8 @@
 9 *:@(air|coalpile|furnace-chargepile|hearthmetal-.*) None optional=True
 10 game:air None optional=True
 == cupolacore angle=180 cells=64 fillers=0 connectors=s
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
-2 iiex:furnace-cupolacore-*-s iiex:furnace-cupolacore-tier1-s shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
+2 iiex:furnace-cupolacore-*-s iiex:furnace-cupolacore-tier1-s shape=cube.json rot=(0.0,0.0,0.0) optional=False
 3 iiex:furnace-irontap-w iiex:furnace-irontap-w shape=irontap.json rot=(0.0,90.0,0.0) optional=False
 4 iiex:furnace-slagtap-e iiex:furnace-slagtap-e shape=slagtap.json rot=(0.0,270.0,0.0) optional=False
 5 iiex:furnace-tuyere-* iiex:furnace-tuyere-s shape=tuyere.json rot=(0.0,0.0,0.0) optional=False
@@ -212,8 +212,8 @@
 9 *:@(air|coalpile|furnace-chargepile|hearthmetal-.*) None optional=True
 10 game:air None optional=True
 == cupolacore angle=270 cells=64 fillers=0 connectors=e
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
-2 iiex:furnace-cupolacore-*-e iiex:furnace-cupolacore-tier1-e shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
+2 iiex:furnace-cupolacore-*-e iiex:furnace-cupolacore-tier1-e shape=cube.json rot=(0.0,0.0,0.0) optional=False
 3 iiex:furnace-irontap-s iiex:furnace-irontap-s shape=irontap.json rot=(0.0,180.0,0.0) optional=False
 4 iiex:furnace-slagtap-n iiex:furnace-slagtap-n shape=slagtap.json rot=(0.0,0.0,0.0) optional=False
 5 iiex:furnace-tuyere-* iiex:furnace-tuyere-s shape=tuyere.json rot=(0.0,0.0,0.0) optional=False
@@ -227,7 +227,7 @@
 2 iiex:furnace-firebox-*-* iiex:furnace-firebox-tier1-n shape=firebox.json rot=(0.0,0.0,0.0) optional=False
 3 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 4 game:brickslabs-fire-south-free game:brickslabs-fire-south-free shape=slab-south.json rot=(0.0,0.0,0.0) optional=False
-5 iiex:furnace-cokeovencore-* iiex:furnace-cokeovencore-n shape=None rot=(0.0,0.0,0.0) optional=False
+5 iiex:furnace-cokeovencore-* iiex:furnace-cokeovencore-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-chargedoor-s iiex:furnace-chargedoor-s shape=chargedoor.json rot=(0.0,180.0,0.0) optional=False
 7 iiex:furnace-chargelid-s iiex:furnace-chargelid-s shape=chargelid.json rot=(0.0,180.0,0.0) optional=False
 8 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
@@ -237,7 +237,7 @@
 2 iiex:furnace-firebox-*-* iiex:furnace-firebox-tier1-n shape=firebox.json rot=(0.0,0.0,0.0) optional=False
 3 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 4 game:brickslabs-fire-east-free game:brickslabs-fire-east-free shape=slab-east.json rot=(0.0,0.0,0.0) optional=False
-5 iiex:furnace-cokeovencore-* iiex:furnace-cokeovencore-n shape=None rot=(0.0,0.0,0.0) optional=False
+5 iiex:furnace-cokeovencore-* iiex:furnace-cokeovencore-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-chargedoor-e iiex:furnace-chargedoor-e shape=chargedoor.json rot=(0.0,270.0,0.0) optional=False
 7 iiex:furnace-chargelid-e iiex:furnace-chargelid-e shape=chargelid.json rot=(0.0,270.0,0.0) optional=False
 8 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
@@ -247,7 +247,7 @@
 2 iiex:furnace-firebox-*-* iiex:furnace-firebox-tier1-n shape=firebox.json rot=(0.0,0.0,0.0) optional=False
 3 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 4 game:brickslabs-fire-north-free game:brickslabs-fire-north-free shape=slab-north.json rot=(0.0,0.0,0.0) optional=False
-5 iiex:furnace-cokeovencore-* iiex:furnace-cokeovencore-n shape=None rot=(0.0,0.0,0.0) optional=False
+5 iiex:furnace-cokeovencore-* iiex:furnace-cokeovencore-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-chargedoor-n iiex:furnace-chargedoor-n shape=chargedoor.json rot=(0.0,0.0,0.0) optional=False
 7 iiex:furnace-chargelid-n iiex:furnace-chargelid-n shape=chargelid.json rot=(0.0,0.0,0.0) optional=False
 8 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
@@ -257,7 +257,7 @@
 2 iiex:furnace-firebox-*-* iiex:furnace-firebox-tier1-n shape=firebox.json rot=(0.0,0.0,0.0) optional=False
 3 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 4 game:brickslabs-fire-west-free game:brickslabs-fire-west-free shape=slab-west.json rot=(0.0,0.0,0.0) optional=False
-5 iiex:furnace-cokeovencore-* iiex:furnace-cokeovencore-n shape=None rot=(0.0,0.0,0.0) optional=False
+5 iiex:furnace-cokeovencore-* iiex:furnace-cokeovencore-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-chargedoor-w iiex:furnace-chargedoor-w shape=chargedoor.json rot=(0.0,90.0,0.0) optional=False
 7 iiex:furnace-chargelid-w iiex:furnace-chargelid-w shape=chargelid.json rot=(0.0,90.0,0.0) optional=False
 8 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
@@ -299,8 +299,8 @@
 7 iiex:molten-canal-straight-*-* iiex:molten-canal-straight-fire-ns shape=straight.json rot=(0.0,0.0,0.0) optional=False
 8 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 == core angle=0 cells=147 fillers=0 connectors=n,s
-1 game:refractorybricks-good-tier3 game:refractorybricks-good-tier3 shape=None rot=(0.0,0.0,0.0) optional=False
-2 siex:blastfurnacecore-* siex:blastfurnacecore-n shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier3 game:refractorybricks-good-tier3 shape=cube.json rot=(0.0,0.0,0.0) optional=False
+2 siex:blastfurnacecore-* siex:blastfurnacecore-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 3 iiex:furnace-irontap-w iiex:furnace-irontap-w shape=irontap.json rot=(0.0,90.0,0.0) optional=False
 4 iiex:furnace-slagtap-e iiex:furnace-slagtap-e shape=slagtap.json rot=(0.0,270.0,0.0) optional=False
 5 iiex:furnace-tuyere-* iiex:furnace-tuyere-s shape=tuyere.json rot=(0.0,0.0,0.0) optional=False
@@ -311,8 +311,8 @@
 10 *:@(air|coalpile|furnace-chargepile|hearthmetal-.*) None optional=True
 11 game:air None optional=True
 == core angle=90 cells=147 fillers=0 connectors=e,w
-1 game:refractorybricks-good-tier3 game:refractorybricks-good-tier3 shape=None rot=(0.0,0.0,0.0) optional=False
-2 siex:blastfurnacecore-* siex:blastfurnacecore-n shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier3 game:refractorybricks-good-tier3 shape=cube.json rot=(0.0,0.0,0.0) optional=False
+2 siex:blastfurnacecore-* siex:blastfurnacecore-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 3 iiex:furnace-irontap-s iiex:furnace-irontap-s shape=irontap.json rot=(0.0,180.0,0.0) optional=False
 4 iiex:furnace-slagtap-n iiex:furnace-slagtap-n shape=slagtap.json rot=(0.0,0.0,0.0) optional=False
 5 iiex:furnace-tuyere-* iiex:furnace-tuyere-s shape=tuyere.json rot=(0.0,0.0,0.0) optional=False
@@ -323,8 +323,8 @@
 10 *:@(air|coalpile|furnace-chargepile|hearthmetal-.*) None optional=True
 11 game:air None optional=True
 == core angle=180 cells=147 fillers=0 connectors=n,s
-1 game:refractorybricks-good-tier3 game:refractorybricks-good-tier3 shape=None rot=(0.0,0.0,0.0) optional=False
-2 siex:blastfurnacecore-* siex:blastfurnacecore-n shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier3 game:refractorybricks-good-tier3 shape=cube.json rot=(0.0,0.0,0.0) optional=False
+2 siex:blastfurnacecore-* siex:blastfurnacecore-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 3 iiex:furnace-irontap-e iiex:furnace-irontap-e shape=irontap.json rot=(0.0,270.0,0.0) optional=False
 4 iiex:furnace-slagtap-w iiex:furnace-slagtap-w shape=slagtap.json rot=(0.0,90.0,0.0) optional=False
 5 iiex:furnace-tuyere-* iiex:furnace-tuyere-s shape=tuyere.json rot=(0.0,0.0,0.0) optional=False
@@ -335,8 +335,8 @@
 10 *:@(air|coalpile|furnace-chargepile|hearthmetal-.*) None optional=True
 11 game:air None optional=True
 == core angle=270 cells=147 fillers=0 connectors=e,w
-1 game:refractorybricks-good-tier3 game:refractorybricks-good-tier3 shape=None rot=(0.0,0.0,0.0) optional=False
-2 siex:blastfurnacecore-* siex:blastfurnacecore-n shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier3 game:refractorybricks-good-tier3 shape=cube.json rot=(0.0,0.0,0.0) optional=False
+2 siex:blastfurnacecore-* siex:blastfurnacecore-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 3 iiex:furnace-irontap-n iiex:furnace-irontap-n shape=irontap.json rot=(0.0,0.0,0.0) optional=False
 4 iiex:furnace-slagtap-s iiex:furnace-slagtap-s shape=slagtap.json rot=(0.0,180.0,0.0) optional=False
 5 iiex:furnace-tuyere-* iiex:furnace-tuyere-s shape=tuyere.json rot=(0.0,0.0,0.0) optional=False
@@ -347,27 +347,27 @@
 10 *:@(air|coalpile|furnace-chargepile|hearthmetal-.*) None optional=True
 11 game:air None optional=True
 == intake angle=0 cells=72 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 siex:smokestack-intake-*-* siex:smokestack-intake-tier1-n shape=outlet.json rot=(0.0,180.0,0.0) optional=False
 3 game:air None optional=True
 4 @(claybricks-(good-fire|clinkerrough)|refractorybricks-good-.*|brickcourse-.*) game:claybricks-good-fire shape=cube-masonry.json rot=(0.0,0.0,0.0) optional=False
 == intake angle=90 cells=72 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 siex:smokestack-intake-*-* siex:smokestack-intake-tier1-n shape=outlet.json rot=(0.0,180.0,0.0) optional=False
 3 game:air None optional=True
 4 @(claybricks-(good-fire|clinkerrough)|refractorybricks-good-.*|brickcourse-.*) game:claybricks-good-fire shape=cube-masonry.json rot=(0.0,0.0,0.0) optional=False
 == intake angle=180 cells=72 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 siex:smokestack-intake-*-* siex:smokestack-intake-tier1-n shape=outlet.json rot=(0.0,180.0,0.0) optional=False
 3 game:air None optional=True
 4 @(claybricks-(good-fire|clinkerrough)|refractorybricks-good-.*|brickcourse-.*) game:claybricks-good-fire shape=cube-masonry.json rot=(0.0,0.0,0.0) optional=False
 == intake angle=270 cells=72 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 siex:smokestack-intake-*-* siex:smokestack-intake-tier1-n shape=outlet.json rot=(0.0,180.0,0.0) optional=False
 3 game:air None optional=True
 4 @(claybricks-(good-fire|clinkerrough)|refractorybricks-good-.*|brickcourse-.*) game:claybricks-good-fire shape=cube-masonry.json rot=(0.0,0.0,0.0) optional=False
 == intake angle=0 cells=59 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 siex:cowperstove-intake-*-* siex:cowperstove-intake-tier1-n shape=intake.json rot=(0.0,0.0,0.0) optional=False
 3 iiex:pipe-outlet* iiex:pipe-outlet-fire-s shape=outlet.json rot=(0.0,0.0,0.0) optional=False
 4 iiex:pipe-cast-passthrough-* iiex:pipe-cast-passthrough-fire-ns shape=passthrough.json rot=(0.0,0.0,0.0) optional=False
@@ -376,7 +376,7 @@
 7 game:air None optional=True
 8 @(air|coalpile) None optional=True
 == intake angle=90 cells=59 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 siex:cowperstove-intake-*-* siex:cowperstove-intake-tier1-n shape=intake.json rot=(0.0,0.0,0.0) optional=False
 3 iiex:pipe-outlet* iiex:pipe-outlet-fire-s shape=outlet.json rot=(0.0,0.0,0.0) optional=False
 4 iiex:pipe-cast-passthrough-* iiex:pipe-cast-passthrough-fire-ns shape=passthrough.json rot=(0.0,0.0,0.0) optional=False
@@ -385,7 +385,7 @@
 7 game:air None optional=True
 8 @(air|coalpile) None optional=True
 == intake angle=180 cells=59 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 siex:cowperstove-intake-*-* siex:cowperstove-intake-tier1-n shape=intake.json rot=(0.0,0.0,0.0) optional=False
 3 iiex:pipe-outlet* iiex:pipe-outlet-fire-s shape=outlet.json rot=(0.0,0.0,0.0) optional=False
 4 iiex:pipe-cast-passthrough-* iiex:pipe-cast-passthrough-fire-ns shape=passthrough.json rot=(0.0,0.0,0.0) optional=False
@@ -394,7 +394,7 @@
 7 game:air None optional=True
 8 @(air|coalpile) None optional=True
 == intake angle=270 cells=59 fillers=0 connectors=
-1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=None rot=(0.0,0.0,0.0) optional=False
+1 game:refractorybricks-good-tier* game:refractorybricks-good-tier1 shape=cube.json rot=(0.0,0.0,0.0) optional=False
 2 siex:cowperstove-intake-*-* siex:cowperstove-intake-tier1-n shape=intake.json rot=(0.0,0.0,0.0) optional=False
 3 iiex:pipe-outlet* iiex:pipe-outlet-fire-s shape=outlet.json rot=(0.0,0.0,0.0) optional=False
 4 iiex:pipe-cast-passthrough-* iiex:pipe-cast-passthrough-fire-ns shape=passthrough.json rot=(0.0,0.0,0.0) optional=False

@@ -1,0 +1,7 @@
+{
+  "code": "masonry",
+  "shape": { "base": "demo:block/masonry" },
+  "textures": {
+    "all": { "base": "demo:block/wall" }
+  }
+}

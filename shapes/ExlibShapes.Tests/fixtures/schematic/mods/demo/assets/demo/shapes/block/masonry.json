@@ -1,0 +1,20 @@
+{
+	"textures": {
+		"brick": "demo:block/nonexistent"
+	},
+	"elements": [
+		{
+			"name": "brick",
+			"from": [0, 0, 0],
+			"to": [16, 16, 16],
+			"faces": {
+				"north": { "texture": "#brick", "uv": [0, 0, 16, 16] },
+				"east": { "texture": "#brick", "uv": [0, 0, 16, 16] },
+				"south": { "texture": "#brick", "uv": [0, 0, 16, 16] },
+				"west": { "texture": "#brick", "uv": [0, 0, 16, 16] },
+				"up": { "texture": "#brick", "uv": [0, 0, 16, 16] },
+				"down": { "texture": "#brick", "uv": [0, 0, 16, 16] }
+			}
+		}
+	]
+}

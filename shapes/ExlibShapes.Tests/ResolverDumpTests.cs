@@ -17,7 +17,9 @@ namespace ExpandedLib.Shapes.Tests;
 /// <see cref="LayoutTests"/>'s own facts - so this is a straight parity check), and compares the
 /// text against <c>expected/schematic/resolve-dump.txt</c>, produced once by the same walk over
 /// <c>vsshape.blocks</c>/<c>vsshape.layout</c> (the script is not committed; the fixture is what
-/// matters).
+/// matters), with one deliberate departure: a block drawing the engine's <c>block/basic/cube</c>
+/// names that shape file here (found under the install's <c>assets/game</c>, which the Python
+/// never looked in) where the Python drew its synthetic cube.
 /// </summary>
 public class ResolverDumpTests {
   // Relative to the family workspace's own exmods checkout - dev machine only, same as
@@ -72,6 +74,12 @@ public class ResolverDumpTests {
         }
       }
     }
+
+    // The dump as this run produced it, beside the binary, to diff against the fixture when a
+    // resolver change is meant to move it.
+    string actualDir = Path.Combine(System.AppContext.BaseDirectory, "actual");
+    Directory.CreateDirectory(actualDir);
+    File.WriteAllText(Path.Combine(actualDir, "resolve-dump.txt"), sb.ToString());
 
     string expected = File.ReadAllText(FixturePath.Expected("schematic/resolve-dump.txt"));
     Assert.Equal(Normalize(expected), Normalize(sb.ToString()));

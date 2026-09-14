@@ -120,6 +120,32 @@ public class SchematicTests {
   }
 
   [Fact]
+  public void A_blocktypes_all_texture_stands_in_for_every_key_of_its_shape() {
+    // demo:masonry's shape declares and uses `brick`, naming a texture that does not exist; the
+    // blocktype's `all` is what the game paints every face with. demo:rusty declares no textures
+    // at all, so its shape's own unresolvable `rust` is reported, not painted over.
+    Layout layout = Layout.Load(FixturePath.Of("schematic/textures-kiln.json"));
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+    (_, Dictionary<string, string> values) = Schematic.Compose(layout, index);
+    Assert.Equal("demo:block/wall", values["c0_brick"]);
+    Assert.Equal("demo:block/wall", values["c0_all"]);
+    Assert.Equal("demo:block/nonexistent", values["c1_rust"]);
+    Assert.Equal(
+      ["demo:rusty: texture rust (demo:block/nonexistent) not found"],
+      Schematic.MissingTextures(layout, index)
+    );
+
+    JObject manifest = Schematic.Manifest(
+      layout,
+      Schematic.LegendColors(layout),
+      [],
+      null,
+      Schematic.MissingTextures(layout, index)
+    );
+    Assert.Contains("demo:rusty: texture rust (demo:block/nonexistent) not found", manifest["warnings"]!.Select(w => (string)w!));
+  }
+
+  [Fact]
   public void Manifest_lists_every_number_and_warns_when_unresolved() {
     Layout layout = Layout.Load(Fixture);
     Dictionary<int, LegendEntry> legend = Schematic.LegendColors(layout);

@@ -259,7 +259,13 @@ internal static class Program {
       }
     }
 
-    JObject manifest = Schematic.Manifest(layout, legend, files, index.Ambiguities);
+    JObject manifest = Schematic.Manifest(
+      layout,
+      legend,
+      files,
+      index.Ambiguities,
+      Schematic.MissingTextures(layout, index)
+    );
     string manifestPath = Path.Combine(outDir, $"{stem}.json");
     File.WriteAllText(manifestPath, manifest.ToString(Formatting.Indented));
 
@@ -268,7 +274,7 @@ internal static class Program {
     Console.WriteLine(manifestPath);
     var warnings = (JArray)manifest["warnings"]!;
     if (warnings.Count > 0)
-      Console.WriteLine("unresolved selectors: [" + string.Join(", ", warnings.Select(w => (string)w!)) + "]");
+      Console.WriteLine("warnings: [" + string.Join(", ", warnings.Select(w => (string)w!)) + "]");
     return 0;
   }
 

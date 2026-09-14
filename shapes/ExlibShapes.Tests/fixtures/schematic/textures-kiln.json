@@ -1,0 +1,17 @@
+{
+	code: "textureskiln",
+	// A hand-written fixture: one cell whose blocktype's `all` must stand in for the shape's own
+	// unresolvable key, one whose shape names a texture nothing resolves.
+	attributes: {
+		multiblockStructure: {
+			blockNumbers: {
+				"demo:masonry": 1,
+				"demo:rusty": 2,
+			},
+			offsets: [
+				{ x: 0, y: 0, z: 0, w: 1 },
+				{ x: 1, y: 0, z: 0, w: 2 },
+			],
+		},
+	},
+}

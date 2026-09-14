@@ -256,7 +256,9 @@ public static class Schematic {
 
   // The cell's group element (world position and shapeByType rotation, its own shape elements
   // namespaced underneath) and its texture values (the shape's own map overridden by the
-  // blocktype's, keyed with the same prefix).
+  // blocktype's, keyed with the same prefix). The blocktype's `all` entry is the game's own
+  // catch-all: it stands in for every key the shape declares or its faces use that the blocktype
+  // does not name itself.
   private static (JObject Group, Dictionary<string, string> Textures) WrappedCell(
     ResolvedBlock block,
     Offset offset,
@@ -264,6 +266,9 @@ public static class Schematic {
   ) {
     (JArray elements, Dictionary<string, string> shapeTextures) = BlockElements(block);
     var textures = new Dictionary<string, string>(shapeTextures);
+    if (block.Textures.TryGetValue("all", out string? all))
+      foreach (string key in shapeTextures.Keys.Concat(FaceTextureKeys(elements)).Distinct())
+        textures[key] = all;
     foreach ((string key, string value) in block.Textures)
       textures[key] = value;
 
@@ -280,6 +285,19 @@ public static class Schematic {
     };
     Dictionary<string, string> prefixed = textures.ToDictionary(kv => $"{prefix}_{kv.Key}", kv => kv.Value);
     return (group, prefixed);
+  }
+
+  // Every `#key` a face of `elements` (children included) references, without the `#`.
+  private static IEnumerable<string> FaceTextureKeys(JArray elements) {
+    foreach (JToken el in elements) {
+      if (el["faces"] is JObject faces)
+        foreach (JProperty face in faces.Properties())
+          if ((string?)face.Value["texture"] is { } tex && tex.StartsWith('#'))
+            yield return tex[1..];
+      if (el["children"] is JArray children)
+        foreach (string key in FaceTextureKeys(children))
+          yield return key;
+    }
   }
 
   private static JObject FillerBox(Offset offset, string name) {
@@ -335,6 +353,28 @@ public static class Schematic {
     return (raw, textureValues);
   }
 
+  /// <summary>
+  /// One line per texture value of <paramref name="layout"/>'s composite that
+  /// <see cref="BlockIndex.ResolveTexture"/> cannot find - <c>{block code}: texture {key}
+  /// ({value}) not found</c>, sorted, each block and key once - the faces the iso render paints
+  /// with the magenta placeholder. Empty when every value resolves.
+  /// </summary>
+  public static IReadOnlyList<string> MissingTextures(Layout layout, BlockIndex index) {
+    (_, Dictionary<string, string> textureValues) = Compose(layout, index);
+    var lines = new SortedSet<string>(StringComparer.Ordinal);
+    foreach ((string prefixed, string value) in textureValues) {
+      if (index.ResolveTexture(value) != null)
+        continue;
+      // Compose keys a cell's textures `c{cell index}_{key}`.
+      int underscore = prefixed.IndexOf('_');
+      int cell = int.Parse(prefixed[1..underscore], CultureInfo.InvariantCulture);
+      string key = prefixed[(underscore + 1)..];
+      string code = index.Resolve(layout.Numbers[layout.Cells[cell].Number])?.Code ?? "?";
+      lines.Add($"{code}: texture {key} ({value}) not found");
+    }
+    return [.. lines];
+  }
+
   /// <summary>The isometric textured composite of <paramref name="layout"/> - every resolved,
   /// non-optional cell's shape plus a translucent grey box per filler cell, <paramref name="cutAt"/>
   /// omitting layers above it.</summary>
@@ -370,12 +410,14 @@ public static class Schematic {
   /// <see cref="BlockIndex"/> has filled them in). <paramref name="ambiguities"/> is
   /// <see cref="BlockIndex.Ambiguities"/>, read after every selector in <paramref name="legend"/>
   /// has been resolved: each entry adds a warning naming the selector and every source file its
-  /// match spanned, since only one of them was drawn.</summary>
+  /// match spanned, since only one of them was drawn. <paramref name="missingTextures"/> is
+  /// <see cref="MissingTextures"/>'s lines, appended after those.</summary>
   public static JObject Manifest(
     Layout layout,
     IReadOnlyDictionary<int, LegendEntry> legend,
     IReadOnlyList<string> files,
-    IReadOnlyDictionary<string, IReadOnlyList<string>>? ambiguities = null
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? ambiguities = null,
+    IReadOnlyList<string>? missingTextures = null
   ) {
     var rows = new JArray();
     var warnings = new JArray();
@@ -400,6 +442,8 @@ public static class Schematic {
         }
       );
     }
+    foreach (string line in missingTextures ?? [])
+      warnings.Add(line);
     return new JObject {
       ["files"] = new JArray(files),
       ["legend"] = rows,

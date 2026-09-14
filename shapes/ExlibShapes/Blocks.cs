@@ -123,9 +123,10 @@ public sealed class BlockIndex {
   /// two under <c>legacy/*</c>, <c>src/*/assets/*/blocktypes/**</c>,
   /// <c>samples/*/assets/*/blocktypes/**</c>, <c>samples/*/tests/goldens/*/blocktypes/**</c> and
   /// <c>tests/*/goldens/*/blocktypes/**</c>), plus the game install's own
-  /// <c>assets/survival/blocktypes/**</c> under each root's <c>.game/&lt;version&gt;</c> (the
-  /// latest version present). Symbolic links along a <c>.game</c> path are resolved first, so
-  /// two roots linking the same install contribute its files once.
+  /// <c>assets/survival/blocktypes/**</c> and <c>assets/game/blocktypes/**</c> under each root's
+  /// <c>.game/&lt;version&gt;</c> (the latest version present); both folders are the <c>game</c>
+  /// domain, survival looked up first. Symbolic links along a <c>.game</c> path are resolved
+  /// first, so two roots linking the same install contribute its files once.
   /// </summary>
   /// <param name="roots">Repository checkouts to scan; see <see cref="DefaultRoots"/>.</param>
   /// <param name="gamePath">A game install directory that replaces every root's own
@@ -139,8 +140,7 @@ public sealed class BlockIndex {
     // overrides every root's own `.game/<version>` discovery, for both the domain root and the
     // blocktype files it contributes - a caller pointing this index at a different install than
     // whichever one a root's own checkout carries.
-    string? explicitSurvival =
-      gamePath != null ? RealPath(Path.Combine(gamePath, "assets", "survival")) : null;
+    IReadOnlyList<string>? explicitDirs = gamePath != null ? GameAssetDirs(RealPath(gamePath)) : null;
 
     var domainRoots = new Dictionary<string, List<string>>(StringComparer.Ordinal);
     foreach (string wildcardDir in legacyFirst ? LegacyFirstAssetRootTrees : AssetRootTrees)
@@ -148,11 +148,9 @@ public sealed class BlockIndex {
         foreach ((string domain, string dir) in GlobAssetRoots(root, wildcardDir))
           if (domain != "game")
             AddDomainRoot(domainRoots, domain, dir);
-    foreach (string root in roots) {
-      string? survivalForRoots = explicitSurvival ?? GameSurvival(root);
-      if (survivalForRoots != null)
-        AddDomainRoot(domainRoots, "game", survivalForRoots);
-    }
+    foreach (string root in roots)
+      foreach (string dir in explicitDirs ?? GameAssetDirsOf(root))
+        AddDomainRoot(domainRoots, "game", dir);
 
     var variants = new List<Variant>();
     var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -166,20 +164,20 @@ public sealed class BlockIndex {
           );
         }
 
-      string? survival = explicitSurvival ?? GameSurvival(root);
-      if (survival == null)
-        continue;
-      string blocktypesDir = Path.Combine(survival, "blocktypes");
-      if (!Directory.Exists(blocktypesDir))
-        continue;
-      foreach (
-        string file in Directory
-          .EnumerateFiles(blocktypesDir, "*.json", SearchOption.AllDirectories)
-          .OrderBy(f => f, StringComparer.Ordinal)
-      ) {
-        if (!seen.Add(file))
+      IReadOnlyList<string> gameDirs = explicitDirs ?? GameAssetDirsOf(root);
+      foreach (string dir in gameDirs) {
+        string blocktypesDir = Path.Combine(dir, "blocktypes");
+        if (!Directory.Exists(blocktypesDir))
           continue;
-        variants.AddRange(Expand(file, "game", [survival]));
+        foreach (
+          string file in Directory
+            .EnumerateFiles(blocktypesDir, "*.json", SearchOption.AllDirectories)
+            .OrderBy(f => f, StringComparer.Ordinal)
+        ) {
+          if (!seen.Add(file))
+            continue;
+          variants.AddRange(Expand(file, "game", gameDirs));
+        }
       }
     }
 
@@ -579,25 +577,29 @@ public sealed class BlockIndex {
     }
   }
 
-  // The latest version's assets/survival under <root>/.game, the same root the game's own
-  // blocktypes, shapes and worldproperties ship from.
-  private static string? GameSurvival(string root) {
+  // The `game` domain's asset folders of the latest version under <root>/.game (the one holding
+  // assets/survival), the same folders the game's own blocktypes, shapes and worldproperties ship
+  // from; empty when the root carries no install.
+  private static IReadOnlyList<string> GameAssetDirsOf(string root) {
     string game = Path.Combine(root, ".game");
     if (!Directory.Exists(game))
-      return null;
+      return [];
     game = RealPath(game);
     List<string> versions = [
       .. Directory
         .EnumerateDirectories(game)
         .OrderBy(d => Path.GetFileName(d), Comparer<string>.Create(CompareVersions)),
     ];
-    for (int i = versions.Count - 1; i >= 0; i--) {
-      string survival = Path.Combine(versions[i], "assets", "survival");
-      if (Directory.Exists(survival))
-        return survival;
-    }
-    return null;
+    for (int i = versions.Count - 1; i >= 0; i--)
+      if (Directory.Exists(Path.Combine(versions[i], "assets", "survival")))
+        return GameAssetDirs(versions[i]);
+    return [];
   }
+
+  // An install's assets/survival then assets/game - both the `game` domain, survival holding
+  // nearly every block and game the engine's basics (the unit cube shape among them).
+  private static IReadOnlyList<string> GameAssetDirs(string install) =>
+    [.. new[] { "survival", "game" }.Select(d => Path.Combine(install, "assets", d)).Where(Directory.Exists)];
 
   // The path with every symbolic link along it resolved: the family's checkouts each link .game to
   // one shared install, and only the resolved path lets the same vanilla file reached through two
