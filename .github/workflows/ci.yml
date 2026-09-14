@@ -38,9 +38,15 @@ jobs:
           dotnet-version: "10.0.x"
       - uses: actions/cache@v4
         with:
-          path: .game
-          key: vs-game-${{ env.VS_VERSION }}
-      - name: Provision Vintage Story (server assemblies)
-        run: bash scripts/exmod.sh provision game -Version "$VS_VERSION" -Kind server
+          # The downloaded archive is not kept: the extracted install is what the job needs, and
+          # caching both doubles an already large entry.
+          path: |
+            .game
+            !.game/.cache
+          key: vs-game-client-${{ env.VS_VERSION }}
+      # The client, not the server: the shapes tests paint real blocks with the game's own
+      # textures, which only the client archive ships.
+      - name: Provision Vintage Story (client assets)
+        run: bash scripts/exmod.sh provision game -Version "$VS_VERSION" -Kind client
       - name: Test the verify and shapes tools
         run: bash scripts/exmod.sh test latest

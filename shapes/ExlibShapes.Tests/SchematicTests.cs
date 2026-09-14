@@ -34,6 +34,18 @@ public class SchematicTests {
     }
   }
 
+  // The client install the texture facts need. CI provisions one (.github/workflows/ci.yml), so
+  // its absence there fails rather than skipping and leaving the placeholder regression unguarded.
+  private static string RequireClientGame() {
+    string? game = ClientGame;
+    Skip.If(
+      game is null && Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == null,
+      "a client install with real textures is absent"
+    );
+    Assert.NotNull(game);
+    return game!;
+  }
+
   [Fact]
   public void Plan_svg_layer_zero_has_nine_cells_two_colours_one_anchor() {
     Layout layout = Layout.Load(Fixture);
@@ -275,13 +287,12 @@ public class SchematicTests {
   [SkippableFact]
   public void The_slab_lined_furnace_cores_paint_no_placeholder_at_all() {
     string? golden = BlastcoreGolden;
-    string? game = ClientGame;
     Skip.If(golden is null, "the sibling exmods checkout is absent");
-    Skip.If(game is null, "a client install with real textures is absent");
+    string game = RequireClientGame();
     // The four cores whose materials include game:brickslabs-fire-*, whose own shape names its
     // faces north..down while the blocktype paints them through `horizontals` and `verticals`.
     string furnaces = Path.GetDirectoryName(golden!)!;
-    BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(golden!), game!);
+    BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(golden!), game);
     foreach (string name in new[] { "cokeovencore", "puddlingcore", "heatingcore", "cruciblecore" }) {
       Layout layout = Layout.Load(Path.Combine(furnaces, name + ".json"));
       using SKBitmap drawn = Schematic.IsoPng(layout, index, ppu: 4);
@@ -451,11 +462,10 @@ public class SchematicTests {
     // self-contained fixture textures. The install is named explicitly, so the fact does not
     // depend on what VINTAGE_STORY points at.
     string? golden = BlastcoreGolden;
-    string? game = ClientGame;
     Skip.If(golden is null, "the sibling exmods checkout is absent");
-    Skip.If(game is null, "a client install with real textures is absent");
+    string game = RequireClientGame();
     IReadOnlyList<string> roots = BlockIndex.DefaultRoots(golden!);
-    BlockIndex index = BlockIndex.Build(roots, game!);
+    BlockIndex index = BlockIndex.Build(roots, game);
     Layout layout = Layout.Load(golden!);
     using SKBitmap actual = Schematic.IsoPng(layout, index, ppu: 8);
     using SKBitmap expected = SKBitmap.Decode(FixturePath.Expected("schematic/blastcore-iso.png"));
