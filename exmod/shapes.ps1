@@ -8,10 +8,12 @@
 # Runs shapes/ExlibShapes's own dotnet project for one subcommand, the way Invoke-Verify runs
 # ExlibVerify: -p:GamePath resolves the tool project's own VintagestoryAPI reference, and the same
 # install is passed as the tool's own --game unless the caller already named one (a modder pointing
-# at a different install than this repository's own provisioned one).
+# at a different install than this repository's own provisioned one). This must be a client install,
+# never the default server one: the dedicated-server archive ships almost no assets/survival/textures,
+# so a render or schematic against it comes out entirely in the magenta missing-texture placeholder.
 function Invoke-ExlibShapes([string]$Subcommand, [string[]]$Argv) {
   $game = Get-Opt $Argv '--game' $null
-  if (-not $game) { $game = Resolve-GameInstall }
+  if (-not $game) { $game = Resolve-GameInstall $CurrentGameVersion 'client' }
 
   $toolArgs = @($Subcommand) + $Argv
   if (-not (Get-Opt $Argv '--game' $null)) { $toolArgs += @('--game', $game) }

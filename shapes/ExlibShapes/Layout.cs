@@ -10,6 +10,8 @@ namespace ExpandedLib.Shapes;
 /// <summary>Raised when a blocktype file carries neither a <c>multiblockStructure</c> nor any
 /// <c>fillerOffsets</c> - there is nothing a <see cref="Layout"/> could represent.</summary>
 public sealed class LayoutError : Exception {
+  /// <summary>Wraps <paramref name="message"/> naming the file and which of the two the file
+  /// carries neither of.</summary>
   public LayoutError(string message) : base(message) { }
 }
 
@@ -142,15 +144,14 @@ public sealed class Layout {
     return new Layout(cells, numbers, fillers, facings, connectors, roles);
   }
 
-  // attributes.fillerOffsets when present; else the file's own top-level attributesByType entry
-  // (a sibling of "attributes", the same shape/shapeByType and textures/texturesByType keep) whose
-  // wildcard key the game's WildcardUtil.Match accepts for `variant`, or the first declared entry
-  // that carries fillerOffsets when `variant` is null - IFillerHost's own footprint-by-variant
-  // convention (the flywheel's normal/large sizes).
+  // The file's own top-level attributesByType entry (a sibling of "attributes", the same
+  // shape/shapeByType and textures/texturesByType keep) whose wildcard key the game's
+  // WildcardUtil.Match accepts for `variant`, or the first declared entry that carries
+  // fillerOffsets when `variant` is null - IFillerHost's own footprint-by-variant convention (the
+  // flywheel's normal/large sizes); else attributes.fillerOffsets. Checked in that order, matching
+  // the game's own <key>ByType convention, where a matching ByType entry REPLACES the plain key
+  // for that variant rather than being a fallback for it.
   private static List<Offset> ReadFillerOffsets(JObject? attrs, JObject raw, string? variant) {
-    if (attrs?["fillerOffsets"] is JArray direct)
-      return ReadOffsets(direct);
-
     if (raw["attributesByType"] is JObject byType) {
       JProperty? chosen = null;
       foreach (JProperty prop in byType.Properties()) {
@@ -165,6 +166,9 @@ public sealed class Layout {
       if (chosen != null)
         return ReadOffsets((JArray)((JObject)chosen.Value)["fillerOffsets"]!);
     }
+
+    if (attrs?["fillerOffsets"] is JArray direct)
+      return ReadOffsets(direct);
 
     return [];
   }
@@ -207,16 +211,21 @@ public sealed class Layout {
     return new Layout(cells, numbers, fillers, facings, connectors, roles, Anchor);
   }
 
-  /// <summary>(lo, hi), inclusive, over every cell offset.</summary>
+  /// <summary>(lo, hi), inclusive, over every cell and filler offset - a filler-only megablock has
+  /// no <see cref="Cells"/> at all, so <see cref="Fillers"/> alone still bounds it.</summary>
   public (Offset Lo, Offset Hi) Bounds() {
-    int x0 = Cells.Min(c => c.X), x1 = Cells.Max(c => c.X);
-    int y0 = Cells.Min(c => c.Y), y1 = Cells.Max(c => c.Y);
-    int z0 = Cells.Min(c => c.Z), z1 = Cells.Max(c => c.Z);
-    return (new Offset(x0, y0, z0), new Offset(x1, y1, z1));
+    List<int> xs = [.. Cells.Select(c => c.X), .. Fillers.Select(f => f.X)];
+    List<int> ys = [.. Cells.Select(c => c.Y), .. Fillers.Select(f => f.Y)];
+    List<int> zs = [.. Cells.Select(c => c.Z), .. Fillers.Select(f => f.Z)];
+    return (new Offset(xs.Min(), ys.Min(), zs.Min()), new Offset(xs.Max(), ys.Max(), zs.Max()));
   }
 
-  /// <summary>Every distinct Y layer among <see cref="Cells"/>, ascending.</summary>
-  public IReadOnlyList<int> Layers() => [.. Cells.Select(c => c.Y).Distinct().OrderBy(y => y)];
+  /// <summary>Every distinct Y layer among <see cref="Cells"/> and <see cref="Fillers"/>, ascending
+  /// - a filler-only megablock has no <see cref="Cells"/> at all, so its layers come from
+  /// <see cref="Fillers"/> alone.</summary>
+  public IReadOnlyList<int> Layers() => [
+    .. Cells.Select(c => c.Y).Concat(Fillers.Select(f => f.Y)).Distinct().OrderBy(y => y),
+  ];
 
   // ExOrientation.RotateOffset: (x, z) turns 90:(z,-x) 180:(-x,-z) 270:(-z,x); y is untouched.
   internal static Offset RotateOffset(Offset offset, int angle) {

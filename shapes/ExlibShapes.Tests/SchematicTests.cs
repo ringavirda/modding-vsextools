@@ -14,8 +14,17 @@ namespace ExpandedLib.Shapes.Tests;
 public class SchematicTests {
   private static string Fixture => FixturePath.Of("schematic/kiln.json");
   private static string DemoRoot => FixturePath.Of("schematic");
-  private const string BlastcoreGolden =
-    "/home/fallen/src/modding-vsex/exmods/mods/iiex/tests/goldens/iiex/blocktypes/furnace/blastcore.json";
+
+  // The family workspace's own exmods checkout and this checkout's own client game install - dev
+  // machine only; the facts naming them skip (an early return) when either is absent.
+  private static string? BlastcoreGolden =>
+    FixturePath.Workspace("exmods/mods/iiex/tests/goldens/iiex/blocktypes/furnace/blastcore.json");
+  private static string? ClientGame {
+    get {
+      string candidate = Path.Combine(FixturePath.RepoRoot, ".game", "1.22");
+      return Directory.Exists(candidate) ? candidate : null;
+    }
+  }
 
   [Fact]
   public void Plan_svg_layer_zero_has_nine_cells_two_colours_one_anchor() {
@@ -134,6 +143,22 @@ public class SchematicTests {
   }
 
   [Fact]
+  public void Manifest_warns_about_a_selector_whose_match_spanned_two_files() {
+    Layout layout = Layout.Load(Fixture);
+    Dictionary<int, LegendEntry> legend = Schematic.LegendColors(layout);
+    legend[1].Representative = "game:claybricks-fire-good";
+    legend[2].Representative = "game:brickslabs-fire-south-free";
+    var ambiguities = new Dictionary<string, IReadOnlyList<string>> {
+      ["game:claybricks-fire-*"] = ["a/claybricks.json", "b/claybricks.json"],
+    };
+    JObject m = Schematic.Manifest(layout, legend, [], ambiguities);
+    string warning = Assert.Single(m["warnings"]!.Select(w => (string)w!));
+    Assert.Contains("game:claybricks-fire-*", warning);
+    Assert.Contains("a/claybricks.json", warning);
+    Assert.Contains("b/claybricks.json", warning);
+  }
+
+  [Fact]
   public void Manifest_matches_the_reference_json_field_for_field() {
     Layout layout = Layout.Load(Fixture);
     Dictionary<int, LegendEntry> legend = Schematic.LegendColors(layout);
@@ -144,9 +169,11 @@ public class SchematicTests {
 
   [Fact]
   public void Blastcore_golden_manifest_matches_the_reference_json_field_for_field() {
-    IReadOnlyList<string> roots = BlockIndex.DefaultRoots(BlastcoreGolden);
+    if (BlastcoreGolden is not { } golden)
+      return; // needs the family workspace's own exmods checkout, dev machine only
+    IReadOnlyList<string> roots = BlockIndex.DefaultRoots(golden);
     BlockIndex index = BlockIndex.Build(roots);
-    Layout layout = Layout.Load(BlastcoreGolden);
+    Layout layout = Layout.Load(golden);
     Dictionary<int, LegendEntry> legend = Schematic.LegendColors(layout);
     foreach ((int n, string selector) in layout.Numbers) {
       ResolvedBlock? block = index.Resolve(selector);
@@ -160,10 +187,29 @@ public class SchematicTests {
 
   [Fact]
   public void Blastcore_golden_plan_svg_layer_zero_matches_the_reference_text_exactly() {
-    Layout layout = Layout.Load(BlastcoreGolden);
+    if (BlastcoreGolden is not { } golden)
+      return; // needs the family workspace's own exmods checkout, dev machine only
+    Layout layout = Layout.Load(golden);
     string svg = Schematic.PlanSvg(layout, 0, Schematic.LegendColors(layout));
     string expected = File.ReadAllText(FixturePath.Expected("schematic/blastcore-plan-y0.svg"));
     Assert.Equal(expected, svg);
+  }
+
+  [Fact]
+  public void Blastcore_golden_iso_png_matches_the_reference_render_through_a_real_domain_root() {
+    // Unlike DemoLayout's self-contained fixture textures, every cell here resolves through
+    // game:/iiex: domain roots - the exact path the magenta missing-texture regression (a --game
+    // pointed at a dedicated-server archive, which ships almost no assets/survival/textures) needs
+    // exercised. A client install is required explicitly, never left to whatever GameInstall.Resolve
+    // would pick, so this fact is stable regardless of which install VINTAGE_STORY names.
+    if (BlastcoreGolden is not { } golden || ClientGame is not { } game)
+      return; // needs the family workspace and a client install with real textures, dev machine only
+    IReadOnlyList<string> roots = BlockIndex.DefaultRoots(golden);
+    BlockIndex index = BlockIndex.Build(roots, game);
+    Layout layout = Layout.Load(golden);
+    using SKBitmap actual = Schematic.IsoPng(layout, index, ppu: 8);
+    using SKBitmap expected = SKBitmap.Decode(FixturePath.Expected("schematic/blastcore-iso.png"));
+    AssertMatchesWithinTolerance(expected, actual, "blastcore-iso");
   }
 
   [Fact]

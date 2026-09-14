@@ -9,8 +9,11 @@ namespace ExpandedLib.Shapes.Tests;
 /// plus the megablock filler-by-type case the Python leaves open (T6).</summary>
 public class LayoutTests {
   private static string Fixture => FixturePath.Of("schematic/kiln.json");
-  private static string Flywheel =>
-    "/home/fallen/src/modding-vsex/exmods/mods/iiex/tests/goldens/iiex/blocktypes/mpenergy/flywheel.json";
+
+  // The family workspace's own exmods checkout - dev machine only, same as BlocksTests' own
+  // workspace-dependent facts; the two facts naming it skip (an early return) when it is absent.
+  private static string? Flywheel =>
+    FixturePath.Workspace("exmods/mods/iiex/tests/goldens/iiex/blocktypes/mpenergy/flywheel.json");
 
   [Fact]
   public void Load_reads_cells_numbers_fillers_and_anchor() {
@@ -110,10 +113,12 @@ public class LayoutTests {
 
   [Fact]
   public void Load_of_a_megablock_with_no_structure_table_uses_the_first_attributesByType_filler() {
+    if (Flywheel is not { } flywheel)
+      return; // needs the family workspace's own exmods checkout, dev machine only
     // flywheel.json carries no multiblockStructure at all - just an attributesByType fillerOffsets
     // per size variant (IFillerHost) - so the default (no variant named) picks the first declared
     // entry, "*-normal-*", whose footprint is 8 cells.
-    Layout layout = Layout.Load(Flywheel);
+    Layout layout = Layout.Load(flywheel);
     Assert.Empty(layout.Cells);
     Assert.Empty(layout.Numbers);
     Assert.Equal(8, layout.Fillers.Count);
@@ -121,9 +126,24 @@ public class LayoutTests {
 
   [Fact]
   public void Load_of_a_megablock_picks_the_attributesByType_entry_the_named_variant_matches() {
-    Layout normal = Layout.Load(Flywheel, "mpenergy-flywheel-normal-ns");
-    Layout large = Layout.Load(Flywheel, "mpenergy-flywheel-large-we");
+    if (Flywheel is not { } flywheel)
+      return; // needs the family workspace's own exmods checkout, dev machine only
+    Layout normal = Layout.Load(flywheel, "mpenergy-flywheel-normal-ns");
+    Layout large = Layout.Load(flywheel, "mpenergy-flywheel-large-we");
     Assert.Equal(8, normal.Fillers.Count);
     Assert.Equal(49, large.Fillers.Count);
+  }
+
+  [Fact]
+  public void Load_of_a_megablock_derives_layers_and_bounds_from_fillers_alone() {
+    if (Flywheel is not { } flywheel)
+      return; // needs the family workspace's own exmods checkout, dev machine only
+    // Layers()/Bounds() must not depend on Cells: a filler-only megablock has none at all, and the
+    // schematic CLI's plan/cut loops iterate Layers() to decide what to write.
+    Layout layout = Layout.Load(flywheel);
+    Assert.Equal([0, 1, 2], layout.Layers());
+    (Offset lo, Offset hi) = layout.Bounds();
+    Assert.Equal(new Offset(-1, 0, 0), lo);
+    Assert.Equal(new Offset(1, 2, 0), hi);
   }
 }

@@ -367,8 +367,16 @@ public static class Schematic {
   /// <see cref="LegendEntry.Representative"/> and <see cref="LegendEntry.Optional"/> come from
   /// whatever the caller stored in <paramref name="legend"/> (a plain <see cref="LegendColors"/>
   /// layout has neither, so every number is folded into <c>warnings</c> until a
-  /// <see cref="BlockIndex"/> has filled them in).</summary>
-  public static JObject Manifest(Layout layout, IReadOnlyDictionary<int, LegendEntry> legend, IReadOnlyList<string> files) {
+  /// <see cref="BlockIndex"/> has filled them in). <paramref name="ambiguities"/> is
+  /// <see cref="BlockIndex.Ambiguities"/>, read after every selector in <paramref name="legend"/>
+  /// has been resolved: each entry adds a warning naming the selector and every source file its
+  /// match spanned, since only one of them was drawn.</summary>
+  public static JObject Manifest(
+    Layout layout,
+    IReadOnlyDictionary<int, LegendEntry> legend,
+    IReadOnlyList<string> files,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? ambiguities = null
+  ) {
     var rows = new JArray();
     var warnings = new JArray();
     foreach (int n in layout.Numbers.Keys.OrderBy(n => n)) {
@@ -378,6 +386,8 @@ public static class Schematic {
       bool optional = row?.Optional ?? false;
       if (representative == null && !optional)
         warnings.Add(selector);
+      if (ambiguities != null && ambiguities.TryGetValue(selector, out IReadOnlyList<string>? spanned))
+        warnings.Add($"{selector}: ambiguous between {string.Join(", ", spanned)}");
       rows.Add(
         new JObject {
           ["number"] = n,

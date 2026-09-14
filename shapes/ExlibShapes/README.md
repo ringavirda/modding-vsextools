@@ -11,8 +11,10 @@ exlib-shapes render path/to/shape.json --out out/ --game path/to/vintagestory
 exlib-shapes schematic path/to/blocktype.json --out out/ --game path/to/vintagestory
 ```
 
-`--game` is any Vintage Story install; the freely downloadable dedicated-server archive is enough,
-so no game licence is needed.
+`--game` is any Vintage Story install carrying `assets/survival/textures` - a client install, not
+the dedicated-server archive, which ships almost none of them and renders every vanilla-textured
+surface as the magenta missing-texture placeholder. The client archive is still freely downloadable
+without a game licence.
 
 ## render
 

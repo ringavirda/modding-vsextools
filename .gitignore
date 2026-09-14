@@ -2,6 +2,7 @@
 /.gamedata
 /.dotnet
 /.extools
+/dist
 [Bb]in/
 [Oo]bj/
 *.log

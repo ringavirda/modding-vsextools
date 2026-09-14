@@ -39,4 +39,40 @@ internal static class FixturePath {
       "Could not find ExlibShapes.Tests.csproj above " + AppContext.BaseDirectory
     );
   }
+
+  /// <summary>This checkout's own root (the directory holding <c>exmod.json</c>, two levels above
+  /// <c>ExlibShapes.Tests.csproj</c>) - where CI and every contributor's own clone provisions
+  /// <c>.game</c>, so a test naming only <c>.game</c> can assert it exists rather than skip.</summary>
+  public static string RepoRoot {
+    get {
+      for (
+        DirectoryInfo? dir = new(AppContext.BaseDirectory);
+        dir != null;
+        dir = dir.Parent
+      ) {
+        string csproj = Path.Combine(dir.FullName, "ExlibShapes.Tests.csproj");
+        if (File.Exists(csproj))
+          return dir.Parent!.Parent!.FullName;
+      }
+      throw new DirectoryNotFoundException(
+        "Could not find ExlibShapes.Tests.csproj above " + AppContext.BaseDirectory
+      );
+    }
+  }
+
+  /// <summary>
+  /// <paramref name="relativePath"/> (e.g. <c>"exmods/mods/iiex/.../blastcore.json"</c>) resolved
+  /// against the nearest ancestor of <see cref="RepoRoot"/> that carries its first path segment as
+  /// a directory - the sibling family checkout a contributor's own workspace clones next to this
+  /// one, whether this repo sits there directly or nested under <c>.worktrees/</c>. Null when no
+  /// such ancestor exists: extools' own CI checks out this repo alone, with no family workspace
+  /// around it, so a test naming a sibling repo's golden must skip rather than fail there.
+  /// </summary>
+  public static string? Workspace(string relativePath) {
+    string first = relativePath.Split('/')[0];
+    for (DirectoryInfo? dir = new(RepoRoot); dir != null; dir = dir.Parent)
+      if (Directory.Exists(Path.Combine(dir.FullName, first)))
+        return Path.Combine(dir.FullName, relativePath);
+    return null;
+  }
 }

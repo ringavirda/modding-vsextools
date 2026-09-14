@@ -5,7 +5,10 @@
 A second .NET tool, `exlib-shapes` (`ExpandedLib.Shapes`, packed alongside `ExpandedLib.Verify`):
 renders a shape file to textured views and animation frames, and a multiblock or megablock
 blocktype file to a build schematic (a plan-grid SVG per Y layer, an isometric textured composite,
-a manifest), matching the Python `vsshape` toolkit's own renderer pixel for pixel. `exmod render`
+a manifest), matching the Python `vsshape` toolkit's own renderer to within a small pixel
+tolerance on every fixture but the `iso` view, where a handful of exactly-touching faces flip a
+strict z-test on a BLAS-rounding difference from the Python's numpy matmul (documented on
+`RendererTests.Matches_the_reference_render`). `exmod render`
 and `exmod schematic` run it through `dotnet run --project` the way `exmod verify` runs
 `exlib-verify`; `--out` needs the `=` form there (`--out=DIR`), since PowerShell's own parameter
 binder treats a bare `--out` as an ambiguous prefix of its common `-OutVariable`/`-OutBuffer`

@@ -100,16 +100,25 @@ internal static class Program {
     return null;
   }
 
-  // --name VALUE or --name=VALUE, every occurrence, in order - --only/--highlight/--roots are
-  // repeatable.
+  // --name VALUE or --name=VALUE, every occurrence, in order; a bare `--name` also swallows every
+  // following token up to the next `--flag` or the end (the help text's `--roots PATH...`, argparse's
+  // nargs="+"), so `--roots a b --game x` names two roots rather than silently dropping `b`.
   private static List<string> OptAllOf(string[] args, string name) {
     string prefix = name + "=";
     var result = new List<string>();
     for (int i = 0; i < args.Length; i++) {
-      if (args[i].StartsWith(prefix, StringComparison.Ordinal))
+      if (args[i].StartsWith(prefix, StringComparison.Ordinal)) {
         result.Add(args[i][prefix.Length..]);
-      else if (args[i] == name)
-        result.Add(i + 1 < args.Length ? args[++i] : throw new UsageException($"{name} needs a value"));
+        continue;
+      }
+      if (args[i] != name)
+        continue;
+      int j = i + 1;
+      if (j >= args.Length || args[j].StartsWith("--", StringComparison.Ordinal))
+        throw new UsageException($"{name} needs a value");
+      while (j < args.Length && !args[j].StartsWith("--", StringComparison.Ordinal))
+        result.Add(args[j++]);
+      i = j - 1;
     }
     return result;
   }
@@ -250,7 +259,7 @@ internal static class Program {
       }
     }
 
-    JObject manifest = Schematic.Manifest(layout, legend, files);
+    JObject manifest = Schematic.Manifest(layout, legend, files, index.Ambiguities);
     string manifestPath = Path.Combine(outDir, $"{stem}.json");
     File.WriteAllText(manifestPath, manifest.ToString(Formatting.Indented));
 

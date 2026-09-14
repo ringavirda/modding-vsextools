@@ -49,10 +49,13 @@ public sealed record ResolvedBlock(
 /// </para>
 /// <para>
 /// A selector whose match spans more than one source file (two vanilla blocktype files can declare
-/// the same base <c>code</c> - <c>game:cobblestone-*</c> among them) resolves deterministically:
-/// the file with an expanded code exactly equal to the selector wins, else the file that sorts
-/// first by path; either way the ambiguity is recorded in <see cref="Ambiguities"/> for a caller
-/// (the schematic manifest) to warn about, naming every file involved.
+/// the same base <c>code</c> - <c>game:cobblestone-*</c> among them, one of them a texture reskin
+/// of the other under an unrelated file name) resolves deterministically: the file with an
+/// expanded code exactly equal to the selector wins; else, for a wildcard selector, the file whose
+/// own name (without <c>.json</c>) equals the selector's text before the first <c>*</c> with a
+/// trailing dash trimmed; else the file that sorts first by path. Either way the ambiguity is
+/// recorded in <see cref="Ambiguities"/> for a caller (the schematic manifest) to warn about,
+/// naming every file involved.
 /// </para>
 /// </summary>
 public sealed class BlockIndex {
@@ -243,8 +246,10 @@ public sealed class BlockIndex {
   }
 
   // More than one source file among `matches`: deterministic tie-break (a file with an expanded
-  // code exactly equal to the selector text, else the file that sorts first by path), and the
-  // ambiguity is recorded once per selector for the caller to warn about.
+  // code exactly equal to the selector text; else, for a wildcard selector, the file whose own
+  // name equals the selector's text before the first `*` with a trailing dash trimmed; else the
+  // file that sorts first by path), and the ambiguity is recorded once per selector for the caller
+  // to warn about.
   private Variant Disambiguate(List<Variant> matches, string selectorText) {
     if (matches.Count == 1)
       return matches[0];
@@ -254,11 +259,32 @@ public sealed class BlockIndex {
     if (files.Count == 1)
       return matches[0];
 
-    List<Variant> exact = [.. matches.Where(v => v.Code == selectorText).OrderBy(v => v.SourceFile, StringComparer.Ordinal)];
-    Variant chosen = exact.Count > 0 ? exact[0] : matches.First(v => v.SourceFile == files[0]);
     if (!_ambiguities.ContainsKey(selectorText))
       _ambiguities[selectorText] = files;
-    return chosen;
+
+    List<Variant> exact = [.. matches.Where(v => v.Code == selectorText).OrderBy(v => v.SourceFile, StringComparer.Ordinal)];
+    if (exact.Count > 0)
+      return exact[0];
+
+    int star = selectorText.IndexOf('*');
+    if (star >= 0) {
+      string baseCode = selectorText[..star].TrimEnd('-');
+      int colon = baseCode.IndexOf(':');
+      // The declared "code" alone is not enough to name one file: two vanilla files can declare
+      // the identical code (aquatic/cobble-coral.json and stone/cobble/cobblestone.json both say
+      // "cobblestone") for what is really a texture reskin of the other, so the file itself - its
+      // own name, stripped of ".json" - is what the selector's base code is actually naming.
+      string baseName = colon >= 0 ? baseCode[(colon + 1)..] : baseCode;
+      List<Variant> baseMatch = [
+        .. matches
+          .Where(v => Path.GetFileNameWithoutExtension(v.SourceFile) == baseName)
+          .OrderBy(v => v.SourceFile, StringComparer.Ordinal),
+      ];
+      if (baseMatch.Count > 0)
+        return baseMatch[0];
+    }
+
+    return matches.First(v => v.SourceFile == files[0]);
   }
 
   private ResolvedBlock ToBlock(Variant variant) {
