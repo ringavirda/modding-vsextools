@@ -23,9 +23,14 @@ public sealed class LegendEntry {
   public string? Representative { get; set; }
 
   /// <summary>Whether the selector's first-resolving alternative is <c>air</c> - drawn as empty
-  /// space by <see cref="Schematic.PlanSvg"/>/<see cref="Schematic.IsoPng"/> rather than warned
-  /// about.</summary>
+  /// space by <see cref="Schematic.IsoPng"/> and as an outlined, hatched cell by
+  /// <see cref="Schematic.PlanSvg"/>, rather than warned about.</summary>
   public bool Optional { get; set; }
+
+  /// <summary>The number this row is drawn and listed under, counted up from 1 over the layout's
+  /// own numbers in order; the mod's own number can skip and is kept in the manifest beside it.
+  /// Null until a caller numbers the rows (<see cref="Schematic.LegendColors"/> does).</summary>
+  public int? Display { get; set; }
 }
 
 /// <summary>
@@ -106,20 +111,32 @@ public static class Schematic {
   public static Dictionary<int, LegendEntry> LegendColors(Layout layout) {
     var result = new Dictionary<int, LegendEntry>();
     int i = 0;
-    foreach (int n in layout.Numbers.Keys.OrderBy(n => n))
-      result[n] = new LegendEntry { Color = ColorFor(i++) };
+    foreach (int n in layout.Numbers.Keys.OrderBy(n => n)) {
+      result[n] = new LegendEntry { Color = ColorFor(i), Display = i + 1 };
+      i++;
+    }
     return result;
   }
 
   /// <summary>
   /// One Y layer as a plan grid: a <paramref name="cell"/>-px square per structure cell, coloured
-  /// by its number's legend entry, the anchor cell outlined thicker (<c>class="anchor"</c>), a
-  /// filler cell hatched with a diagonal cross, a connector face as a short arrow on the cell edge
-  /// its side faces. Every layer of one structure shares the same grid (extents taken over every
-  /// layer, not just <paramref name="y"/>), so the layers line up when read side by side. North is
-  /// up (smaller Z is nearer the top).
+  /// by its number's legend entry and carrying that entry's display number, the anchor cell
+  /// outlined thicker (<c>class="anchor"</c>), an optional cell outlined and hatched, a filler cell
+  /// hatched with a diagonal cross, a connector face as a short arrow on the cell edge its side
+  /// faces. Every layer of one structure shares the same grid (extents taken over every layer, not
+  /// just <paramref name="y"/>), so the layers line up when read side by side.
+  /// <para>
+  /// The grid is drawn in the machine's own frame, smaller Z nearer the top:
+  /// <paramref name="front"/> names the side a player stands at, which labels the edges.
+  /// </para>
   /// </summary>
-  public static string PlanSvg(Layout layout, int y, IReadOnlyDictionary<int, LegendEntry> legend, int cell = 32) {
+  public static string PlanSvg(
+    Layout layout,
+    int y,
+    IReadOnlyDictionary<int, LegendEntry> legend,
+    int cell = 32,
+    string? front = null
+  ) {
     List<int> allX = [.. layout.Cells.Select(c => c.X), .. layout.Fillers.Select(o => o.X)];
     List<int> allZ = [.. layout.Cells.Select(c => c.Z), .. layout.Fillers.Select(o => o.Z)];
     foreach (IReadOnlyList<Offset> offsets in layout.Connectors.Values) {
@@ -135,19 +152,20 @@ public static class Schematic {
     int Pz(int z) => (z - z0) * cell;
 
     const int margin = 24;
-    const int caption = 18;
     int canvas = Math.Max(width, CaptionWidth(LayerCaption(y))) + 2 * margin;
     int left = (canvas - width) / 2;
     var sb = new StringBuilder();
     sb.Append(
       // The iso render's paper colour behind the grid, so the labels read on a dark page too.
       $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{canvas}\" "
-        + $"height=\"{height + 2 * margin + caption}\" font-family=\"sans-serif\" font-size=\"{FontSize}\" "
-        + "style=\"background-color:#f0f0ec\">"
+        + $"height=\"{height + 2 * margin + CaptionSpace}\" font-family=\"sans-serif\" "
+        + $"font-size=\"{FontSize}\" style=\"background-color:#f0f0ec\">"
     );
     sb.Append(
       "<defs><marker id=\"arrow\" markerWidth=\"6\" markerHeight=\"6\" refX=\"3\" refY=\"3\" "
-        + "orient=\"auto\"><path d=\"M0,0 L6,3 L0,6 z\" fill=\"red\" /></marker></defs>"
+        + "orient=\"auto\"><path d=\"M0,0 L6,3 L0,6 z\" fill=\"red\" /></marker>"
+        + Hatch
+        + "</defs>"
     );
     sb.Append($"<g transform=\"translate({left},{margin})\">");
 
@@ -155,15 +173,22 @@ public static class Schematic {
       if (c.Y != y)
         continue;
       legend.TryGetValue(c.Number, out LegendEntry? row);
-      if (row?.Optional == true)
-        continue; // an optional selector (@(air|...)) draws as air, same as the iso render
+      bool optional = row?.Optional == true;
       string color = row?.Color ?? "#999999";
       bool isAnchor = new Offset(c.X, c.Y, c.Z) == layout.Anchor;
-      string cls = isAnchor ? "cell anchor" : "cell";
+      string cls = (optional ? "cell optional" : "cell") + (isAnchor ? " anchor" : "");
       int strokeWidth = isAnchor ? 3 : 1;
+      // An optional cell is air the player may leave filled; it is outlined and hatched rather
+      // than painted, so the legend's row is on the picture as well as in the key.
       sb.Append(
         $"<rect class=\"{cls}\" x=\"{Px(c.X)}\" y=\"{Pz(c.Z)}\" width=\"{cell}\" height=\"{cell}\" "
-          + $"fill=\"{color}\" stroke=\"black\" stroke-width=\"{strokeWidth}\" />"
+          + $"fill=\"{(optional ? "url(#hatch)" : color)}\" stroke=\"black\" stroke-width=\"{strokeWidth}\" />"
+      );
+      if (row?.Display is not { } display)
+        continue;
+      sb.Append(
+        $"<text class=\"number\" x=\"{Svg(Px(c.X) + cell / 2.0)}\" y=\"{Svg(Pz(c.Z) + cell / 2.0 + 3.5)}\" "
+          + $"text-anchor=\"middle\" fill=\"{(optional ? "black" : Ink(color))}\">{display}</text>"
       );
     }
 
@@ -196,15 +221,56 @@ public static class Schematic {
       }
     }
 
-    sb.Append($"<text x=\"{Svg(width / 2.0)}\" y=\"-10\" text-anchor=\"middle\">north</text>");
-    sb.Append($"<text x=\"{width + 4}\" y=\"{Svg(height / 2.0)}\">x</text>");
-    sb.Append($"<text x=\"-14\" y=\"{Svg(height / 2.0)}\">z</text>");
+    Edges(sb, width, height, front);
     sb.Append(
-      $"<text class=\"caption\" x=\"{Svg(width / 2.0)}\" y=\"{height + caption}\" text-anchor=\"middle\">"
-        + $"{LayerCaption(y)}</text>"
+      $"<text class=\"caption\" x=\"{Svg(width / 2.0)}\" y=\"{height + CaptionSpace - 4}\" "
+        + $"text-anchor=\"middle\">{LayerCaption(y)}</text>"
     );
     sb.Append("</g></svg>");
     return sb.ToString();
+  }
+
+  // Pixels reserved under a grid for the edge label and the caption below it.
+  private const int CaptionSpace = 30;
+
+  // A light diagonal hatch over the paper, the fill of a cell the player may leave as air.
+  private const string Hatch =
+    "<pattern id=\"hatch\" width=\"6\" height=\"6\" patternUnits=\"userSpaceOnUse\" "
+      + "patternTransform=\"rotate(45)\">"
+      + "<line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"6\" stroke=\"#999999\" stroke-width=\"1\" /></pattern>";
+
+  // Black on a light fill, white on a dark one, by the fill's own luminance.
+  private static string Ink(string color) {
+    int r = Convert.ToInt32(color.Substring(1, 2), 16);
+    int g = Convert.ToInt32(color.Substring(3, 2), 16);
+    int b = Convert.ToInt32(color.Substring(5, 2), 16);
+    return 0.299 * r + 0.587 * g + 0.114 * b > 140 ? "black" : "white";
+  }
+
+  // The edges named for the machine rather than the compass: the side a player stands at is the
+  // front, the one opposite it the back, each written against its own edge. North is the top of
+  // every grid and is marked there in small text unless the back already stands for it.
+  private static void Edges(StringBuilder sb, int width, int height, string? front) {
+    void Label(string text, double x, double y, string anchor, int size) =>
+      sb.Append(
+        $"<text class=\"edge\" x=\"{Svg(x)}\" y=\"{Svg(y)}\" text-anchor=\"{anchor}\""
+          + $"{(size == FontSize ? "" : $" font-size=\"{size}\"")}>{text}</text>"
+      );
+
+    // The four edges of the grid with the point each label hangs from.
+    (string Side, double X, double Y, string Anchor)[] edges = [
+      ("north", width / 2.0, -10, "middle"),
+      ("south", width / 2.0, height + 12, "middle"),
+      ("east", width + 4.0, height / 2.0, "start"),
+      ("west", -4.0, height / 2.0, "end"),
+    ];
+    foreach ((string side, double x, double yy, string anchor) in edges) {
+      string? text = front == null ? null : front == side ? "front" : Presentation.Front(side) == front ? "back" : null;
+      if (text != null)
+        Label(text, x, yy, anchor, FontSize);
+    }
+    if (front != "south")
+      Label("north", width, -10, "end", 8);
   }
 
   /// <summary>The caption every footprint plan carries under its grid.</summary>
@@ -223,9 +289,10 @@ public static class Schematic {
   /// A megablock's reserved footprint as one plan: a <paramref name="cell"/>-px square per (x, z)
   /// column its body occupies (<see cref="Footprint.Cells"/> with every Y layer projected onto one),
   /// the principal's own column filled in the first legend colour and outlined thicker
-  /// (<c>class="anchor"</c>). North is up (smaller Z is nearer the top).
+  /// (<c>class="anchor"</c>). The grid is drawn in the machine's own frame, smaller Z nearer the
+  /// top; <paramref name="front"/> names the side a player stands at, which labels the edges.
   /// </summary>
-  public static string FootprintSvg(Layout layout, int cell = 32) {
+  public static string FootprintSvg(Layout layout, int cell = 32, string? front = null) {
     IReadOnlyList<Offset> cells = Footprint.Cells(layout);
     List<(int X, int Z)> columns = [.. cells.Select(c => (c.X, c.Z)).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X)];
     int x0 = columns.Min(c => c.X), x1 = columns.Max(c => c.X);
@@ -234,15 +301,14 @@ public static class Schematic {
     int height = (z1 - z0 + 1) * cell;
 
     const int margin = 24;
-    const int caption = 18;
     int canvas = Math.Max(width, CaptionWidth(FootprintCaption)) + 2 * margin;
     int left = (canvas - width) / 2;
     var sb = new StringBuilder();
     sb.Append(
       // The iso render's paper colour behind the grid, so the labels read on a dark page too.
       $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{canvas}\" "
-        + $"height=\"{height + 2 * margin + caption}\" font-family=\"sans-serif\" font-size=\"{FontSize}\" "
-        + "style=\"background-color:#f0f0ec\">"
+        + $"height=\"{height + 2 * margin + CaptionSpace}\" font-family=\"sans-serif\" "
+        + $"font-size=\"{FontSize}\" style=\"background-color:#f0f0ec\">"
     );
     sb.Append($"<g transform=\"translate({left},{margin})\">");
     foreach ((int x, int z) in columns) {
@@ -253,12 +319,10 @@ public static class Schematic {
           + $"stroke=\"black\" stroke-width=\"{(isAnchor ? 3 : 1)}\" />"
       );
     }
-    sb.Append($"<text x=\"{Svg(width / 2.0)}\" y=\"-10\" text-anchor=\"middle\">north</text>");
-    sb.Append($"<text x=\"{width + 4}\" y=\"{Svg(height / 2.0)}\">x</text>");
-    sb.Append($"<text x=\"-14\" y=\"{Svg(height / 2.0)}\">z</text>");
+    Edges(sb, width, height, front);
     sb.Append(
-      $"<text class=\"caption\" x=\"{Svg(width / 2.0)}\" y=\"{height + caption}\" text-anchor=\"middle\">"
-        + $"{FootprintCaption}</text>"
+      $"<text class=\"caption\" x=\"{Svg(width / 2.0)}\" y=\"{height + CaptionSpace - 4}\" "
+        + $"text-anchor=\"middle\">{FootprintCaption}</text>"
     );
     sb.Append("</g></svg>");
     return sb.ToString();
@@ -657,6 +721,7 @@ public static class Schematic {
       rows.Add(
         new JObject {
           ["number"] = n,
+          ["display"] = row?.Display ?? n,
           ["selector"] = selector,
           // A null string assigns as JTokenType.String with a null value, not JTokenType.Null;
           // JValue.CreateNull() is needed for the field to serialize as JSON null.

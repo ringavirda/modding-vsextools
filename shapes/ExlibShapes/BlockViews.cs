@@ -107,7 +107,7 @@ public static class BlockViews {
 
     if (footprint != null) {
       string path = Path.Combine(outDir, $"{stem}-footprint.svg");
-      File.WriteAllText(path, Schematic.FootprintSvg(footprint));
+      File.WriteAllText(path, Schematic.FootprintSvg(footprint, front: front));
       files.Add(path);
     }
 

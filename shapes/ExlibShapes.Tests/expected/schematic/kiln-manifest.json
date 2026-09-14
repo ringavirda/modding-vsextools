@@ -8,6 +8,7 @@
   "legend": [
     {
       "number": 1,
+      "display": 1,
       "selector": "game:claybricks-fire-*",
       "representative": null,
       "color": "#4C72B0",
@@ -15,6 +16,7 @@
     },
     {
       "number": 2,
+      "display": 2,
       "selector": "game:brickslabs-fire-south-free",
       "representative": null,
       "color": "#DD8452",

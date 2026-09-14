@@ -54,14 +54,50 @@ public class SchematicTests {
   }
 
   [Fact]
-  public void Plan_svg_omits_an_optional_cell_instead_of_painting_it_solid() {
+  public void Plan_svg_hatches_an_optional_cell_instead_of_painting_it_solid() {
     Layout layout = Layout.Load(Fixture);
     Dictionary<int, LegendEntry> legend = Schematic.LegendColors(layout);
-    legend[1].Optional = true; // e.g. `*:@(air|...)`, drawn as air by the iso render too
+    legend[1].Optional = true; // e.g. `*:@(air|...)`, drawn as air by the iso render
     string svg = Schematic.PlanSvg(layout, 0, legend);
     // number 2 is the single anchor cell of layer 0; every other cell of that layer is number 1
-    Assert.Equal(1, CountOccurrences(svg, "<rect"));
+    Assert.Equal(9, CountOccurrences(svg, "<rect"));
+    Assert.Equal(8, CountOccurrences(svg, "fill=\"url(#hatch)\""));
     Assert.Equal(1, CountOccurrences(svg, "class=\"cell anchor\""));
+  }
+
+  [Fact]
+  public void Plan_svg_numbers_every_cell_it_draws_with_the_legend_s_display_number() {
+    Layout layout = Layout.Load(Fixture);
+    Dictionary<int, LegendEntry> legend = Schematic.LegendColors(layout);
+    Assert.Equal([1, 2], layout.Numbers.Keys.OrderBy(n => n));
+    Assert.Equal([1, 2], legend.OrderBy(kv => kv.Key).Select(kv => kv.Value.Display));
+    string svg = Schematic.PlanSvg(layout, 0, legend);
+    Assert.Equal(9, CountOccurrences(svg, "class=\"number\""));
+    // The fill decides the ink: white on the eight dark blue cells, black on the lighter anchor.
+    Assert.Equal(8, CountOccurrences(svg, "fill=\"white\""));
+    Assert.Equal(1, CountOccurrences(svg, "fill=\"black\""));
+  }
+
+  [Fact]
+  public void Plan_svg_labels_the_edges_by_the_machine_when_it_knows_the_front() {
+    Layout layout = Layout.Load(Fixture);
+    Dictionary<int, LegendEntry> legend = Schematic.LegendColors(layout);
+    string compass = Schematic.PlanSvg(layout, 0, legend);
+    Assert.DoesNotContain(">x</text>", compass);
+    Assert.DoesNotContain(">z</text>", compass);
+    Assert.Contains(">north</text>", compass);
+    Assert.DoesNotContain(">front</text>", compass);
+
+    string machine = Schematic.PlanSvg(layout, 0, legend, front: "south");
+    Assert.Contains(">front</text>", machine);
+    Assert.Contains(">back</text>", machine);
+    // North is the back, so the back label stands for it and no compass marker is drawn.
+    Assert.DoesNotContain(">north</text>", machine);
+
+    // A front on a side edge keeps the compass marker, north no longer being the back.
+    string sideways = Schematic.PlanSvg(layout, 0, legend, front: "east");
+    Assert.Contains(">north</text>", sideways);
+    Assert.Contains(">front</text>", sideways);
   }
 
   [Fact]

@@ -115,9 +115,9 @@ function Find-UsableGameInstall([string]$Version, [string]$Kind) {
 # code straight through. Builds and stages first unless -NoBuild. Never provisions a client on its
 # own - the archive is about a gigabyte - unless -Provision is given; otherwise it prints the exact
 # command to fetch one and exits 1.
-# A data folder the game has never written starts fullscreen, and on WSLg's Wayland a fullscreen
-# window freezes the moment a dialog opens. A fresh folder gets a windowed, vsync-off settings
-# file; the game fills in every other setting itself and an existing file is never touched.
+# A data folder the game has never written starts fullscreen. A fresh folder gets a windowed,
+# vsync-off settings file, so a debug session keeps the editor in reach; the game fills in every
+# other setting itself and an existing file is never touched.
 function Initialize-ClientSettings([string]$DataPath) {
   $settings = Join-Path $DataPath 'clientsettings.json'
   if (Test-Path $settings) { return }

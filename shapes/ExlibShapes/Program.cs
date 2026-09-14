@@ -246,7 +246,7 @@ internal static class Program {
     if (viewSet.Contains("plan"))
       foreach (int y in layout.Layers()) {
         string path = Path.Combine(outDir, $"{stem}-plan-y{y}.svg");
-        File.WriteAllText(path, Schematic.PlanSvg(layout, y, legend));
+        File.WriteAllText(path, Schematic.PlanSvg(layout, y, legend, front: front));
         files.Add(path);
         plans.Add((path, y));
       }

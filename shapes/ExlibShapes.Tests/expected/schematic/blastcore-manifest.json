@@ -8,6 +8,7 @@
   "legend": [
     {
       "number": 1,
+      "display": 1,
       "selector": "game:refractorybricks-good-tier*",
       "representative": "game:refractorybricks-good-tier1",
       "color": "#4C72B0",
@@ -15,6 +16,7 @@
     },
     {
       "number": 2,
+      "display": 2,
       "selector": "iiex:furnace-blastcore-*-n",
       "representative": "iiex:furnace-blastcore-tier1-n",
       "color": "#DD8452",
@@ -22,6 +24,7 @@
     },
     {
       "number": 3,
+      "display": 3,
       "selector": "iiex:furnace-irontap-w",
       "representative": "iiex:furnace-irontap-w",
       "color": "#55A868",
@@ -29,6 +32,7 @@
     },
     {
       "number": 4,
+      "display": 4,
       "selector": "iiex:furnace-slagtap-e",
       "representative": "iiex:furnace-slagtap-e",
       "color": "#C44E52",
@@ -36,6 +40,7 @@
     },
     {
       "number": 5,
+      "display": 5,
       "selector": "iiex:furnace-tuyere-*",
       "representative": "iiex:furnace-tuyere-s",
       "color": "#8172B2",
@@ -43,6 +48,7 @@
     },
     {
       "number": 6,
+      "display": 6,
       "selector": "iiex:hopper-tall-e",
       "representative": "iiex:hopper-tall-e",
       "color": "#937860",
@@ -50,6 +56,7 @@
     },
     {
       "number": 7,
+      "display": 7,
       "selector": "exlib:structurefiller",
       "representative": "exlib:structurefiller",
       "color": "#DA8BC3",
@@ -57,6 +64,7 @@
     },
     {
       "number": 8,
+      "display": 8,
       "selector": "*:@(air|coalpile|furnace-chargepile)",
       "representative": null,
       "color": "#8C8C8C",
@@ -64,6 +72,7 @@
     },
     {
       "number": 9,
+      "display": 9,
       "selector": "*:@(air|coalpile|furnace-chargepile|hearthmetal-.*)",
       "representative": null,
       "color": "#CCB974",
@@ -71,6 +80,7 @@
     },
     {
       "number": 10,
+      "display": 10,
       "selector": "game:air",
       "representative": null,
       "color": "#64B5CD",
