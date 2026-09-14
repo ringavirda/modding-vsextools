@@ -625,6 +625,12 @@ A starter monorepo for [Expanded Library](https://github.com/ringavirda/modding-
 
 {3}
 
+## Before you start
+
+Needs the .NET 10 SDK on PATH, and network access to cdn.vintagestory.at (setup downloads the Vintage Story {4} dedicated server build named by exmod.json - the free server binaries, no game licence needed) and to GitHub releases (the dependency mods, exlib among them). PowerShell 7 is not something to install by hand: setup fetches it into `.dotnet/tools` on its own if the machine has none.
+
+The first `setup` takes a few minutes - it is fetching a game install and a mod release, not just restoring packages - and prints its own progress under `==` headers (`.NET`, `Vintage Story`, `Restore`, `Dependency mods`) before ending on `Ready.` and a short list of what to run next.
+
 ## Using it
 
 ```
@@ -934,7 +940,7 @@ jobs:
       "| ``mods/$_`` | $($info.name) | $($info.description) |"
     }
   )
-  ($StarterReadmeTemplate -f $repoName, $version, $repoName, ($modsTable -join "`n")) |
+  ($StarterReadmeTemplate -f $repoName, $version, $repoName, ($modsTable -join "`n"), ($manifestObj.series -join ', ')) |
     Set-Content (Join-Path $dest 'README.md')
 
   # The same two passes as `exmod format`: CSharpier wraps to the print width and emits Allman
