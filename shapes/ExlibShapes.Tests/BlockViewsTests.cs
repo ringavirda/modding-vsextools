@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using Newtonsoft.Json.Linq;
 using Xunit;
 
@@ -94,6 +96,60 @@ public class BlockViewsTests {
       manifest["missingTextures"]!.Select(t => (string)t!)
     );
   }
+
+  [SkippableFact]
+  public void The_blast_furnace_door_is_drawn_iron_side_out() {
+    string? file = FixturePath.Workspace("exmods/legacy/smex/assets/smex/blocktypes/blastfurnace/door.json");
+    Skip.If(file is null, "the sibling exmods checkout is absent");
+    BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(file!), null, legacyFirst: true);
+    IReadOnlyList<Variant> variants = index.VariantsOf(file!);
+    // Refractory tiers only: the door's own facing lives in BlockBlastFurnaceDoor, so no variant
+    // names it and the art is all the drawing has to go on.
+    Assert.Null(BlockIndex.Facing(variants, Presentation.Facing));
+
+    JObject manifest = BlockViews.Write(file!, variants[0], index, OutDir("door"), views: ["iso"], ppu: 4);
+    Assert.Equal("south", (string?)manifest["front"]);
+
+    // The brick boxes are the block's own body and everything else is the iron door, its straps and
+    // its handle; the turn stands that furniture between the brick and the camera.
+    ResolvedBlock block = index.Resolve((string)manifest["variant"]!)!;
+    Vector3 toward = Turn(
+      Middle(ShapeFile.Load(block.ShapePath!), name => !name.StartsWith("brick", StringComparison.Ordinal))
+        - Middle(ShapeFile.Load(block.ShapePath!), name => name.StartsWith("brick", StringComparison.Ordinal)),
+      (int)manifest["angle"]!
+    );
+    Vector3 eye = Renderer.Eye(Renderer.NamedViews[Presentation.ViewName]);
+    Assert.True(
+      toward.X * eye.X + toward.Z * eye.Z > 0,
+      $"the door's iron stands {toward} of its brick, which is away from the camera"
+    );
+  }
+
+  // The mean centre of every drawn element of `shape` whose own name `wanted` accepts.
+  private static Vector3 Middle(LoadedShape shape, Func<string, bool> wanted) {
+    var mats = Geometry.WorldMatrices(shape);
+    List<Vector3> centres = [
+      .. shape
+        .Leaves()
+        .Where(el => wanted(el.Name))
+        .Select(el => {
+          (Vector3 lo, Vector3 hi) = Geometry.Aabb(Geometry.Corners(mats[el.Path], (Vector3)el.Size));
+          return (lo + hi) / 2;
+        }),
+    ];
+    Assert.NotEmpty(centres);
+    return centres.Aggregate(Vector3.Zero, (a, b) => a + b) / centres.Count;
+  }
+
+  // A direction turned about the y axis by a quarter turn, stated here rather than read from the
+  // tool: Vintage Story turns 90 degrees by (x, z) -> (z, -x).
+  private static Vector3 Turn(Vector3 v, int angle) =>
+    (((angle % 360) + 360) % 360) switch {
+      90 => new Vector3(v.Z, v.Y, -v.X),
+      180 => new Vector3(-v.X, v.Y, -v.Z),
+      270 => new Vector3(-v.Z, v.Y, v.X),
+      _ => v,
+    };
 
   [SkippableFact]
   public void A_ppex_engine_draws_its_north_variant_over_its_own_footprint() {

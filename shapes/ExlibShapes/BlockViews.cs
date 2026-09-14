@@ -37,9 +37,15 @@ public static class BlockViews {
   /// Writes <paramref name="variant"/>'s pictures into <paramref name="outDir"/> - one
   /// <c>&lt;stem&gt;-&lt;view&gt;.png</c> per view, plus <c>&lt;stem&gt;-footprint.svg</c> when
   /// <paramref name="file"/> declares a footprint - and the <c>&lt;stem&gt;.json</c> manifest
-  /// beside them, which it returns: <c>files</c>, the <c>variant</c> drawn, the world side its
-  /// <c>front</c> looks toward (JSON null for a block that faces no way), the
-  /// <c>missingTextures</c> the render painted magenta, and <c>warnings</c>.
+  /// beside them, which it returns: <c>files</c>, the <c>variant</c> drawn, the quarter turn
+  /// (<c>angle</c>) it is drawn at, the world side its <c>front</c> then looks toward (JSON null for
+  /// a block that faces no way), the <c>missingTextures</c> the render painted magenta, and
+  /// <c>warnings</c>.
+  /// <para>
+  /// The turn is the footprint's (<see cref="Presentation.Stage"/>) for a family that reserves one,
+  /// else the art's own (<see cref="Presentation.DetailTurn"/>) for a family with no facing variant
+  /// to choose between, else none - the drawn variant already faces the camera.
+  /// </para>
   /// </summary>
   /// <param name="file">The blocktype file, whose own name is the stem of everything written.</param>
   /// <param name="variant">The variant to draw, from <paramref name="index"/>.</param>
@@ -49,28 +55,42 @@ public static class BlockViews {
   /// <param name="views">Named <see cref="Renderer.NamedViews"/> entries; <see cref="DefaultViews"/>
   /// when null.</param>
   /// <param name="ppu">Pixels per shape unit, as <c>render</c> means it.</param>
+  /// <param name="angle">A quarter turn to draw the machine at instead of the one the rules above
+  /// choose; null takes theirs.</param>
   public static JObject Write(
     string file,
     Variant variant,
     BlockIndex index,
     string outDir,
     IReadOnlyList<string>? views = null,
-    int ppu = 24
+    int ppu = 24,
+    int? angle = null
   ) {
     ResolvedBlock block =
       index.Resolve(variant.Code) ?? throw new InvalidOperationException($"{variant.Code}: the index cannot resolve it");
-    int spin = 0;
-    string? front = Presentation.FrontOf(variant);
-    Layout? footprint = FootprintOf(file, variant, index);
-    if (footprint != null) {
-      Presentation.Staged staged = Presentation.Stage(footprint, variant);
-      (footprint, spin, front) = (staged.Layout, staged.Angle, staged.Front);
+    (JObject rest, Dictionary<string, string> textureValues) = Compose(block);
+    LoadedShape atRest = Loaded(rest, block, variant);
+
+    Layout? placed = FootprintOf(file, variant, index);
+    int spin;
+    string? front;
+    if (placed != null) {
+      Presentation.Staged staged = Presentation.Stage(placed, variant);
+      (spin, front) = (staged.Angle, staged.Front);
+    } else if (BlockIndex.Facing(index.VariantsOf(file), Presentation.Facing) == null) {
+      // No facing variant to choose between: the family's facing lives in its C#, so the art is
+      // what says which side a player looks at.
+      (spin, front) = Presentation.DetailTurn(atRest);
+    } else {
+      (spin, front) = (0, Presentation.FrontOf(variant));
     }
-    (JObject raw, Dictionary<string, string> textureValues) = Compose(block, spin);
-    Shape shape =
-      JsonConvert.DeserializeObject<Shape>(raw.ToString())
-      ?? throw new JsonException($"{variant.Code}: the composed block shape failed to parse");
-    LoadedShape loaded = ShapeFile.FromRaw(shape, block.ShapePath, new Dictionary<string, string>());
+    if (angle is { } wanted) {
+      front = front == null ? null : Layout.RotateSideWord(Layout.RotateSideWord(front, -spin), wanted);
+      spin = wanted;
+    }
+
+    Layout? footprint = placed == null || spin == 0 ? placed : placed.Rotated(spin);
+    LoadedShape loaded = spin == 0 ? atRest : Loaded(Compose(block, spin).Raw, block, variant);
     TextureSet textures = TextureSet.FromResolved(textureValues, index.ResolveTexture);
 
     Directory.CreateDirectory(outDir);
@@ -101,6 +121,7 @@ public static class BlockViews {
     var manifest = new JObject {
       ["files"] = new JArray(files),
       ["variant"] = block.Code,
+      ["angle"] = spin,
       ["front"] = front is { } side ? side : JValue.CreateNull(),
       ["missingTextures"] = new JArray(MissingTextures(block, textureValues, textures)),
       ["warnings"] = new JArray(warnings),
@@ -120,6 +141,14 @@ public static class BlockViews {
     foreach (string prefixed in textures.Missing)
       lines.Add($"{block.Code}: texture {prefixed[(Prefix.Length + 1)..]} ({textureValues[prefixed]}) not found");
     return [.. lines];
+  }
+
+  // The composed model as a shape the renderer draws, named for the block it came from.
+  private static LoadedShape Loaded(JObject raw, ResolvedBlock block, Variant variant) {
+    Shape shape =
+      JsonConvert.DeserializeObject<Shape>(raw.ToString())
+      ?? throw new JsonException($"{variant.Code}: the composed block shape failed to parse");
+    return ShapeFile.FromRaw(shape, block.ShapePath, new Dictionary<string, string>());
   }
 
   // The block's own reserved footprint, turned into the frame its model is drawn in, or null when

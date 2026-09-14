@@ -300,11 +300,12 @@ internal static class Program {
     (string file, string[] flags) = FileAndFlags(
       args,
       "usage: exlib-shapes block FILE --out DIR [--variant CODE] "
-        + "[--views iso,north,east,south,west,up] [--ppu N] [--roots PATH...] [--game PATH]"
+        + "[--views iso,north,east,south,west,up] [--angle N] [--ppu N] [--roots PATH...] [--game PATH]"
     );
     string outDir = OptOf(flags, "--out") ?? throw new UsageException("--out is required");
     string? wanted = OptOf(flags, "--variant");
     IReadOnlyList<string>? views = NamedViews(OptOf(flags, "--views"));
+    int? angle = OptOf(flags, "--angle") is { } a ? int.Parse(a, CultureInfo.InvariantCulture) : null;
     int ppu = int.Parse(OptOf(flags, "--ppu") ?? "24", CultureInfo.InvariantCulture);
     List<string> extraRoots = OptAllOf(flags, "--roots");
     string? game = OptOf(flags, "--game");
@@ -320,13 +321,14 @@ internal static class Program {
       index,
       outDir,
       views,
-      ppu
+      ppu,
+      angle
     );
 
     foreach (JToken written in (JArray)manifest["files"]!)
       Console.WriteLine((string)written!);
     Console.WriteLine(Path.Combine(outDir, Path.GetFileNameWithoutExtension(file) + ".json"));
-    Console.WriteLine("variant: " + (string)manifest["variant"]!);
+    Console.WriteLine("variant: " + (string)manifest["variant"]! + " at " + (int)manifest["angle"]! + " degrees");
     Console.WriteLine(
       "missing textures: [" + string.Join(", ", ((JArray)manifest["missingTextures"]!).Select(t => (string)t!)) + "]"
     );

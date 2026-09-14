@@ -129,6 +129,91 @@ public static class Presentation {
     return side == "south" ? turned.Z == cells.Max(c => c.Z) : turned.X == cells.Max(c => c.X);
   }
 
+  /// <summary>
+  /// The quarter turn that brings the most of <paramref name="shape"/>'s detail to the camera, and
+  /// the side that detail then looks toward. A family whose facing lives in C# has no variant to
+  /// choose between, so the art itself has to say which side is the front: detail is every face
+  /// painted with a texture other than the model's most-used one - the furnace door's iron and
+  /// straps against its brick - weighed by the area the camera sees of it. (0, null) for a model
+  /// painted one texture throughout, which says nothing about a front.
+  /// </summary>
+  public static (int Angle, string? Front) DetailTurn(LoadedShape shape) {
+    List<(Vector3 Normal, double Area, string Texture)> faces = Faces(shape);
+    if (faces.Count == 0)
+      return (0, null);
+    var area = new Dictionary<string, double>(StringComparer.Ordinal);
+    foreach ((Vector3 _, double a, string texture) in faces)
+      area[texture] = area.GetValueOrDefault(texture) + a;
+    string body = area.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key, StringComparer.Ordinal).First().Key;
+    List<(Vector3 Normal, double Area, string Texture)> detail = [.. faces.Where(f => f.Texture != body)];
+    if (detail.Count == 0)
+      return (0, null);
+
+    double best = Quarters.Max(angle => Seen(detail, angle));
+    if (best <= 0)
+      return (0, null);
+    // Two turns showing the same detail to within a hundredth are the same picture of it; the
+    // least one keeps the model nearest the frame its art was drawn in.
+    int chosen = Quarters.First(angle => Seen(detail, angle) >= best * 0.99);
+    return (chosen, DetailSide(detail, chosen));
+  }
+
+  // Every drawn face of a shape as its world normal, its area and the texture key painting it.
+  private static List<(Vector3 Normal, double Area, string Texture)> Faces(LoadedShape shape) {
+    Dictionary<string, Renderer.Mat4d> mats = Renderer.WorldMatricesD(shape, null);
+    var faces = new List<(Vector3, double, string)>();
+    foreach (Node leaf in shape.Leaves())
+      foreach (Renderer.QuadD quad in Renderer.FaceQuadsD(leaf, mats[leaf.Path])) {
+        Vector3[] points = [.. quad.Points.Select(p => new Vector3((float)p.X, (float)p.Y, (float)p.Z))];
+        double a = Vector3.Cross(points[2] - points[0], points[3] - points[1]).Length() / 2;
+        faces.Add((new Vector3((float)quad.Normal.X, (float)quad.Normal.Y, (float)quad.Normal.Z), a, quad.Texture));
+      }
+    return faces;
+  }
+
+  // The detail area the camera sees once the model is turned by `angle`: each face's own area times
+  // how squarely it meets the camera, a face turned away counting nothing.
+  private static double Seen(IReadOnlyList<(Vector3 Normal, double Area, string Texture)> detail, int angle) {
+    Vector3 eye = Renderer.Eye(Renderer.NamedViews[ViewName]);
+    double total = 0;
+    foreach ((Vector3 normal, double area, string _) in detail) {
+      Vector3 turned = TurnY(normal, angle);
+      total += area * Math.Max(0, Vector3.Dot(turned, eye));
+    }
+    return total;
+  }
+
+  // The horizontal side the detail the camera sees at `angle` mostly looks toward, or null when
+  // none of it faces sideways at all.
+  private static string? DetailSide(IReadOnlyList<(Vector3 Normal, double Area, string Texture)> detail, int angle) {
+    Vector3 eye = Renderer.Eye(Renderer.NamedViews[ViewName]);
+    var seen = new Dictionary<string, double>(StringComparer.Ordinal);
+    foreach ((Vector3 normal, double area, string _) in detail) {
+      Vector3 turned = TurnY(normal, angle);
+      double lit = area * Vector3.Dot(turned, eye);
+      if (lit <= 0)
+        continue;
+      if (Math.Abs(turned.X) < 1e-6 && Math.Abs(turned.Z) < 1e-6)
+        continue;
+      string side = Math.Abs(turned.X) >= Math.Abs(turned.Z)
+        ? turned.X > 0 ? "east" : "west"
+        : turned.Z > 0 ? "south" : "north";
+      seen[side] = seen.GetValueOrDefault(side) + lit;
+    }
+    return seen.Count == 0
+      ? null
+      : seen.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key, StringComparer.Ordinal).First().Key;
+  }
+
+  // A direction turned about the y axis by a quarter turn, the same mapping a cell offset takes.
+  private static Vector3 TurnY(Vector3 v, int angle) =>
+    (((angle % 360) + 360) % 360) switch {
+      90 => new Vector3(v.Z, v.Y, -v.X),
+      180 => new Vector3(-v.X, v.Y, -v.Z),
+      270 => new Vector3(-v.Z, v.Y, v.X),
+      _ => v,
+    };
+
   // How far the turned anchor stands in front of the turned footprint's centre, along the camera's
   // own direction: a one-cell-deep footprint turned side-on puts its body beside the anchor and
   // scores zero, while the turn that puts the body behind it scores the depth.
