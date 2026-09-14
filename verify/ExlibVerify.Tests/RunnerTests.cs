@@ -83,6 +83,27 @@ public class RunnerTests {
   }
 
   [Fact]
+  public void Bad_shape_texture_block_reports_the_unmapped_code_as_an_error() {
+    (int exit, List<Finding> findings) = Verify("bad-shape-texture-block");
+    Finding finding = Assert.Single(findings);
+    Assert.Equal(FindingLevel.Error, finding.Level);
+    Assert.Equal("ShapeTexture", finding.Check);
+    Assert.Contains("#missing", finding.Message);
+    Assert.Contains("fixturemod:testblock", finding.Message);
+    Assert.Equal(1, exit);
+  }
+
+  [Fact]
+  public void Bad_shape_texture_item_reports_the_unmapped_code_as_informational() {
+    (int exit, List<Finding> findings) = Verify("bad-shape-texture-item");
+    Finding finding = Assert.Single(findings);
+    Assert.Equal(FindingLevel.Info, finding.Level);
+    Assert.Equal("ShapeTexture", finding.Check);
+    Assert.Contains("#missing", finding.Message);
+    Assert.Equal(0, exit);
+  }
+
+  [Fact]
   public void Soft_depends_is_informational_only_and_exits_zero() {
     (int exit, List<Finding> findings) = Verify("soft-depends");
     Finding finding = Assert.Single(findings);

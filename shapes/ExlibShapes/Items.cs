@@ -6,6 +6,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using SkiaSharp;
 using Vintagestory.API.Common;
+using ExpandedLib.Assets;
 
 namespace ExpandedLib.Shapes;
 
@@ -111,7 +112,7 @@ public static class ItemViews {
   /// <summary>The flat icon <paramref name="variant"/> declares - its <c>texture</c> entry, read
   /// through the game's own ByType rule - or null when it draws a shape instead.</summary>
   public static TextureRef? IconOf(Variant variant) =>
-    BlockIndex.ByType(variant.Raw, "texture", variant.Path) is { } entry
+    BlockTypeResolution.ByType(variant.Raw, "texture", variant.Path) is { } entry
       ? BlockIndex.TextureOf(entry, variant)
       : null;
 

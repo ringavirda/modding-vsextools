@@ -1,0 +1,7 @@
+{
+  "code": "testitem",
+  "shape": { "base": "fixturemod:testitem" },
+  "textures": {
+    "covered": { "base": "fixturemod:item/covered" }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "code": "testblock",
+  "shape": { "base": "fixturemod:testblock" },
+  "textures": {
+    "covered": { "base": "fixturemod:block/covered" }
+  }
+}

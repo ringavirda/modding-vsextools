@@ -214,6 +214,22 @@ public static class Runner {
       findings.AddRange(
         LangParityChecker.Run(domain, OwnFiles(primary, store, domain, "lang/"))
       );
+      findings.AddRange(
+        ShapeTextureChecker.Run(
+          store,
+          domain,
+          OwnFiles(primary, store, domain, "blocktypes/"),
+          isBlock: true
+        )
+      );
+      findings.AddRange(
+        ShapeTextureChecker.Run(
+          store,
+          domain,
+          OwnFiles(primary, store, domain, "itemtypes/"),
+          isBlock: false
+        )
+      );
     }
   }
 

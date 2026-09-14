@@ -1,0 +1,9 @@
+{
+  "code": "goodblock",
+  "variantgroups": [{ "code": "type", "states": ["a", "b"] }],
+  "shape": { "base": "fixturemod:goodblock" },
+  "texturesByType": {
+    "*-a": { "bytype": { "base": "fixturemod:block/bytype-a" } },
+    "*-b": { "bytype": { "base": "fixturemod:block/bytype-b" } }
+  }
+}

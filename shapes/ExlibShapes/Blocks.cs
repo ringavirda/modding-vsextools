@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
-using Vintagestory.API.Util;
+using ExpandedLib.Assets;
 
 namespace ExpandedLib.Shapes;
 
@@ -44,10 +44,10 @@ public sealed record ResolvedBlock(
 /// <c>*</c> wildcard, or the <c>domain:@(a|b|c)</c> regex form the family's megablock fillers and
 /// vanilla ore piles use) to one representative block.
 /// <para>
-/// A <c>shapeByType</c>/<c>texturesByType</c> entry is picked with the game's own
-/// <see cref="WildcardUtil.Match(string, string)"/>, not a hand-rolled glob, so this index resolves
-/// exactly the entry the running game would (<see cref="Layout"/>'s filler-only megablock case
-/// resolves its <c>attributesByType</c> entry the same way).
+/// A <c>shapeByType</c>/<c>texturesByType</c> entry is picked with
+/// <see cref="ExpandedLib.Assets.BlockTypeResolution.ByType"/>, not a hand-rolled glob, so this
+/// index resolves exactly the entry the running game would (<see cref="Layout"/>'s filler-only
+/// megablock case resolves its <c>attributesByType</c> entry the same way).
 /// </para>
 /// <para>
 /// A selector whose match spans more than one source file (two vanilla blocktype files can declare
@@ -427,12 +427,12 @@ public sealed class BlockIndex {
   }
 
   private ResolvedBlock ToBlock(Variant variant) {
-    JObject? shapeEntry = ByType(variant.Raw, "shape", variant.Path) as JObject;
+    JObject? shapeEntry = BlockTypeResolution.ByType(variant.Raw, "shape", variant.Path) as JObject;
     string? shapeBase = (string?)shapeEntry?["base"];
     string? shapePath = shapeBase != null ? ShapePath(Substitute(shapeBase, variant.States)) : null;
 
     var textures = new Dictionary<string, TextureRef>();
-    if (ByType(variant.Raw, "textures", variant.Path) is JObject texturesJson)
+    if (BlockTypeResolution.ByType(variant.Raw, "textures", variant.Path) is JObject texturesJson)
       foreach (JProperty prop in texturesJson.Properties())
         if (TextureOf(prop.Value, variant) is { } texture)
           textures[prop.Name] = texture;
@@ -453,7 +453,7 @@ public sealed class BlockIndex {
   internal static TextureRef? TextureOf(JToken entry, Variant variant) {
     if (entry is not JObject obj)
       return (string?)entry is { } plain ? new TextureRef(Substitute(plain, variant.States)) : null;
-    if ((string?)ByType(obj, "base", variant.Path) is not { } value)
+    if ((string?)BlockTypeResolution.ByType(obj, "base", variant.Path) is not { } value)
       return null;
     List<string> overlays = [
       .. ((JArray?)obj["overlays"])?.Select(o => Substitute((string)o!, variant.States)) ?? [],
@@ -466,32 +466,9 @@ public sealed class BlockIndex {
   // matches this variant, else the plain `rotateY`, else no turn. ppex's boilers and engines carry
   // their spin in the ByType form only, and a block drawn unspun stands in the wrong frame.
   private static double Spin(JObject? shapeEntry, string key, string path) =>
-    shapeEntry != null && ByType(shapeEntry, key, path) is JValue value && value.Type != JTokenType.Null
+    shapeEntry != null && BlockTypeResolution.ByType(shapeEntry, key, path) is JValue value && value.Type != JTokenType.Null
       ? (double)value
       : 0.0;
-
-  // The game's "<key>ByType" convention: the first entry whose wildcard key WildcardUtil.Match
-  // accepts for `path` (domain stripped), else the plain raw[baseKey]. Shared by shape/shapeByType,
-  // textures/texturesByType and, from Layout, attributes/attributesByType's fillerOffsets.
-  internal static JToken? ByType(JObject raw, string baseKey, string path) {
-    if (GetCi(raw, baseKey + "ByType") is JObject byType)
-      foreach (JProperty prop in byType.Properties())
-        if (WildcardUtil.Match(prop.Name, path))
-          return prop.Value;
-    return GetCi(raw, baseKey);
-  }
-
-  // Vanilla and family JSON disagree on the case of a few keys (shapeByType next to shapebytype); a
-  // plain JObject indexer would silently miss one spelling.
-  private static JToken? GetCi(JObject raw, string key) {
-    if (raw[key] is { } exact)
-      return exact;
-    string lowered = key.ToLowerInvariant();
-    foreach (JProperty prop in raw.Properties())
-      if (prop.Name.ToLowerInvariant() == lowered)
-        return prop.Value;
-    return null;
-  }
 
   private static string Substitute(string text, IReadOnlyDictionary<string, string> states) {
     foreach ((string code, string state) in states)
@@ -622,7 +599,7 @@ public sealed class BlockIndex {
         if (code != null)
           outp.Add(code);
       }
-      return ((string?)GetCi(data, "code"), outp);
+      return ((string?)BlockTypeResolution.GetCi(data, "code"), outp);
     } catch (Exception e) {
       warnings.Add($"malformed worldproperties file: {p}: {e.Message}");
       return (null, []);
