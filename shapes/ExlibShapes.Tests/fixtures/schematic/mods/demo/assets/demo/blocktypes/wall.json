@@ -1,0 +1,16 @@
+{
+  "code": "wall",
+  "variantgroups": [
+    { "code": "side", "states": ["north", "east", "south", "west"] }
+  ],
+  "shape": { "base": "demo:block/wall" },
+  "shapeByType": {
+    "wall-north": { "base": "demo:block/wall", "rotateY": 0 },
+    "wall-east": { "base": "demo:block/wall", "rotateY": 270 },
+    "wall-south": { "base": "demo:block/wall", "rotateY": 180 },
+    "wall-west": { "base": "demo:block/wall", "rotateY": 90 }
+  },
+  "textures": {
+    "wall": { "base": "demo:block/wall" }
+  }
+}
