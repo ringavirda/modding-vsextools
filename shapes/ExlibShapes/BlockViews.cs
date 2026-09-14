@@ -13,7 +13,8 @@ namespace ExpandedLib.Shapes;
 /// Draws one blocktype variant the way the game draws it in the world: its own shape file under its
 /// <c>shapeByType</c> turn, painted with the blocktype's texture map (the <c>all</c> entry standing
 /// in for every key it does not name), or a unit cube when it ships no shape at all. A family that
-/// reserves a footprint also gets that footprint's plan, in the same frame as the pictures.
+/// reserves a footprint also gets that footprint's plan, in the same frame as the pictures, and the
+/// machine stands the way <see cref="Presentation.Stage"/> puts it: front toward the camera.
 /// </summary>
 public static class BlockViews {
   /// <summary>The views a page of a block shows: the isometric one and the five faces a reader can
@@ -25,9 +26,10 @@ public static class BlockViews {
   private const string Prefix = "block";
 
   /// <summary>The raw shape JSON of <paramref name="block"/>'s drawn model and the texture values
-  /// (key to the block's own value string) it references.</summary>
-  public static (JObject Raw, Dictionary<string, string> TextureValues) Compose(ResolvedBlock block) {
-    (JObject group, Dictionary<string, string> values) = Schematic.WrappedCell(block, default, Prefix);
+  /// (key to the block's own value string) it references. <paramref name="spin"/> turns the model
+  /// about its own cell, the machine standing that way round.</summary>
+  public static (JObject Raw, Dictionary<string, string> TextureValues) Compose(ResolvedBlock block, int spin = 0) {
+    (JObject group, Dictionary<string, string> values) = Schematic.WrappedCell(block, default, Prefix, spin);
     return (new JObject { ["textures"] = new JObject(), ["elements"] = new JArray(group) }, values);
   }
 
@@ -57,7 +59,14 @@ public static class BlockViews {
   ) {
     ResolvedBlock block =
       index.Resolve(variant.Code) ?? throw new InvalidOperationException($"{variant.Code}: the index cannot resolve it");
-    (JObject raw, Dictionary<string, string> textureValues) = Compose(block);
+    int spin = 0;
+    string? front = Presentation.FrontOf(variant);
+    Layout? footprint = FootprintOf(file, variant, index);
+    if (footprint != null) {
+      Presentation.Staged staged = Presentation.Stage(footprint, variant);
+      (footprint, spin, front) = (staged.Layout, staged.Angle, staged.Front);
+    }
+    (JObject raw, Dictionary<string, string> textureValues) = Compose(block, spin);
     Shape shape =
       JsonConvert.DeserializeObject<Shape>(raw.ToString())
       ?? throw new JsonException($"{variant.Code}: the composed block shape failed to parse");
@@ -76,7 +85,7 @@ public static class BlockViews {
       files.Add(path);
     }
 
-    if (FootprintOf(file, variant, index) is { } footprint) {
+    if (footprint != null) {
       string path = Path.Combine(outDir, $"{stem}-footprint.svg");
       File.WriteAllText(path, Schematic.FootprintSvg(footprint));
       files.Add(path);
@@ -92,7 +101,7 @@ public static class BlockViews {
     var manifest = new JObject {
       ["files"] = new JArray(files),
       ["variant"] = block.Code,
-      ["front"] = Presentation.FrontOf(variant) is { } front ? front : JValue.CreateNull(),
+      ["front"] = front is { } side ? side : JValue.CreateNull(),
       ["missingTextures"] = new JArray(MissingTextures(block, textureValues, textures)),
       ["warnings"] = new JArray(warnings),
     };

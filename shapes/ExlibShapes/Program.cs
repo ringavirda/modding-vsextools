@@ -220,10 +220,13 @@ internal static class Program {
     List<string> roots = [.. extraRoots, .. BlockIndex.DefaultRoots(file)];
     BlockIndex index = BlockIndex.Build(roots, game, BlockIndex.UnderLegacyTree(file));
     Variant? drawn = DrawnVariant(index, file, null);
-    Layout layout = Footprint.Placed(Layout.Load(file, drawn?.Path), index);
-    string? front = drawn == null ? null : Presentation.FrontOf(drawn);
+    Presentation.Staged staged = Presentation.Stage(Footprint.Placed(Layout.Load(file, drawn?.Path), index), drawn);
+    Layout layout = staged.Layout;
+    int spin = staged.Angle;
+    string? front = staged.Front;
     if (angle != 0) {
       layout = layout.Rotated(angle);
+      spin += angle;
       front = front == null ? null : Layout.RotateSideWord(front, angle);
     }
 
@@ -250,7 +253,7 @@ internal static class Program {
 
     if (viewSet.Contains("iso")) {
       string path = Path.Combine(outDir, $"{stem}-iso.png");
-      using (SKBitmap img = Schematic.IsoPng(layout, index, ppu))
+      using (SKBitmap img = Schematic.IsoPng(layout, index, ppu, spin: spin))
         SavePng(img, path);
       files.Add(path);
 
@@ -261,7 +264,7 @@ internal static class Program {
       };
       foreach (int y in cutLayers) {
         string cutPath = Path.Combine(outDir, $"{stem}-iso-y{y}.png");
-        using (SKBitmap img = Schematic.IsoPng(layout, index, ppu, y))
+        using (SKBitmap img = Schematic.IsoPng(layout, index, ppu, y, spin))
           SavePng(img, cutPath);
         files.Add(cutPath);
       }

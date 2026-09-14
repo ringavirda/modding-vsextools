@@ -316,15 +316,16 @@ public static class Schematic {
     return (new JArray(cube), []);
   }
 
-  // The cell's group element (world position and shapeByType rotation, its own shape elements
-  // namespaced underneath) and its texture values (the shape's own map overridden by the
-  // blocktype's, keyed with the same prefix). The blocktype's `all` entry is the game's own
-  // catch-all: it stands in for every key the shape declares or its faces use that the blocktype
-  // does not name itself.
+  // The cell's group element (world position, shapeByType rotation and `spin` degrees more about
+  // the cell's own centre, its own shape elements namespaced underneath) and its texture values
+  // (the shape's own map overridden by the blocktype's, keyed with the same prefix). The
+  // blocktype's `all` entry is the game's own catch-all: it stands in for every key the shape
+  // declares or its faces use that the blocktype does not name itself.
   internal static (JObject Group, Dictionary<string, string> Textures) WrappedCell(
     ResolvedBlock block,
     Offset offset,
-    string prefix
+    string prefix,
+    int spin = 0
   ) {
     (JArray elements, Dictionary<string, string> shapeTextures) = BlockElements(block);
     var textures = new Dictionary<string, string>(shapeTextures);
@@ -341,7 +342,7 @@ public static class Schematic {
       ["to"] = new JArray(ox, oy, oz),
       ["rotationOrigin"] = new JArray(ox + 8, oy + 8, oz + 8),
       ["rotationX"] = block.RotateX,
-      ["rotationY"] = block.RotateY,
+      ["rotationY"] = block.RotateY + spin,
       ["rotationZ"] = block.RotateZ,
       ["children"] = Namespaced(elements, prefix),
     };
@@ -412,11 +413,18 @@ public static class Schematic {
   /// <paramref name="cutAt"/> omits every cell and filler above that Y layer. A cell whose selector
   /// is unresolved or optional (drawn as air) is omitted.
   /// </para>
+  /// <para>
+  /// <paramref name="spin"/> is the turn <see cref="Presentation.Stage"/> made of the layout, in
+  /// degrees: the machine is built that way round, so every drawn mesh turns with it about its own
+  /// cell. A cell whose selector carries facing data has already turned, its code naming the
+  /// rotated variant, and keeps its own rotation.
+  /// </para>
   /// </summary>
   public static (JObject Raw, Dictionary<string, string> TextureValues) Compose(
     Layout layout,
     BlockIndex index,
-    int? cutAt = null
+    int? cutAt = null,
+    int spin = 0
   ) {
     var elements = new JArray();
     var textureValues = new Dictionary<string, string>();
@@ -429,7 +437,12 @@ public static class Schematic {
       ResolvedBlock? block = index.Resolve(selector);
       if (block == null)
         continue;
-      (JObject group, Dictionary<string, string> values) = WrappedCell(block, new Offset(c.X, c.Y, c.Z), $"c{i}");
+      (JObject group, Dictionary<string, string> values) = WrappedCell(
+        block,
+        new Offset(c.X, c.Y, c.Z),
+        $"c{i}",
+        layout.Facings.ContainsKey(selector) ? 0 : spin
+      );
       elements.Add(group);
       foreach ((string key, string value) in values)
         textureValues[key] = value;
@@ -441,7 +454,12 @@ public static class Schematic {
       && (cutAt == null || layout.Anchor.Y <= cutAt)
       && index.Resolve(layout.Principal) is { } principal
     ) {
-      (JObject group, Dictionary<string, string> values) = WrappedCell(principal, layout.Anchor, PrincipalPrefix);
+      (JObject group, Dictionary<string, string> values) = WrappedCell(
+        principal,
+        layout.Anchor,
+        PrincipalPrefix,
+        spin
+      );
       elements.Add(group);
       foreach ((string key, string value) in values)
         textureValues[key] = value;
@@ -451,7 +469,10 @@ public static class Schematic {
     // as a ground outline under the model rather than as a box over it. A megablock with no
     // structure table is all body, whatever shape it ships; elsewhere the mesh's own box decides,
     // and a cell the model does not reach keeps its box.
-    Footprint.Box? body = layout.Cells.Count == 0 ? null : Footprint.PrincipalMesh(layout, index);
+    Footprint.Box? body =
+      layout.Cells.Count == 0 || Footprint.PrincipalMesh(layout, index) is not { } mesh
+        ? null
+        : Footprint.Turned(mesh, spin);
     var outlined = new List<Offset> { layout.Anchor };
     for (int i = 0; i < layout.Fillers.Count; i++) {
       Offset offset = layout.Fillers[i];
@@ -514,10 +535,11 @@ public static class Schematic {
   /// cell's shape plus a grey box per filler cell, or, for a filler-only megablock, its own body
   /// over its footprint outline. <paramref name="cutAt"/> omits layers above it. A vertical scale
   /// runs down the left edge, one tick per drawn Y layer labelled with the layer number, so height
-  /// is counted off the picture.
+  /// is counted off the picture. <paramref name="spin"/> turns every drawn mesh, as
+  /// <see cref="Compose"/> means it.
   /// </summary>
-  public static SKBitmap IsoPng(Layout layout, BlockIndex index, int ppu = 8, int? cutAt = null) {
-    (JObject raw, Dictionary<string, string> textureValues) = Compose(layout, index, cutAt);
+  public static SKBitmap IsoPng(Layout layout, BlockIndex index, int ppu = 8, int? cutAt = null, int spin = 0) {
+    (JObject raw, Dictionary<string, string> textureValues) = Compose(layout, index, cutAt, spin);
     Shape shape =
       JsonConvert.DeserializeObject<Shape>(raw.ToString())
       ?? throw new JsonException("the composed schematic shape failed to parse");

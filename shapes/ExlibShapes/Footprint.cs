@@ -44,6 +44,18 @@ public static class Footprint {
       ? [layout.Anchor, .. layout.Fillers]
       : [.. layout.Cells.Select(c => new Offset(c.X, c.Y, c.Z))];
 
+  /// <summary>
+  /// Every cell <paramref name="layout"/> reserves: its anchor, its structure cells and its filler
+  /// cells, each once. <see cref="Layout.Bounds"/> spans the declared offsets alone, which for a
+  /// filler-only megablock leave out the block's own cell.
+  /// </summary>
+  public static IReadOnlyList<Offset> Reserved(Layout layout) => [
+    .. new[] { layout.Anchor }
+      .Concat(layout.Cells.Select(c => new Offset(c.X, c.Y, c.Z)))
+      .Concat(layout.Fillers)
+      .Distinct(),
+  ];
+
   /// <summary>The box <paramref name="cells"/> span, each cell reaching half a block either side of
   /// its centre. An empty list is the principal's own cell alone.</summary>
   public static Box CellBox(IReadOnlyList<Offset> cells) {

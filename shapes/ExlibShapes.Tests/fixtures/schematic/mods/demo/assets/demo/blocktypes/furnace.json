@@ -1,0 +1,18 @@
+{
+  "code": "furnace",
+  // A structure the old way: the starter block stands on the north row, the file records no facing
+  // for any of its cells, and nothing but the anchor says which side a player works from.
+  "attributes": {
+    "multiblockStructure": {
+      "blockNumbers": {
+        "demo:masonry": 1,
+        "demo:wall-north": 2
+      },
+      "offsets": [
+        { "x": 0, "y": 0, "z": 0, "w": 2 },
+        { "x": 0, "y": 0, "z": 1, "w": 1 },
+        { "x": 0, "y": 0, "z": 2, "w": 1 }
+      ]
+    }
+  }
+}
