@@ -37,6 +37,7 @@ function Install-ScaffoldTemplate([string]$Kind) {
   $sibling = Join-Path $RepoRoot '../exlib/templates/content'
   if (Test-Path (Join-Path $sibling "exlib-$Kind")) {
     dotnet new install (Join-Path $sibling "exlib-$Kind") --force | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "dotnet new install $sibling/exlib-$Kind failed." }
     return
   }
   $props = Join-Path $RepoRoot 'Directory.Packages.props'
