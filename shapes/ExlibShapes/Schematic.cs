@@ -735,7 +735,7 @@ public static class Schematic {
 
     using var paint = new SKPaint { Color = SKColors.Black, IsAntialias = false, StrokeWidth = 1 };
     using var guide = new SKPaint { Color = new SKColor(0, 0, 0, 40), IsAntialias = false, StrokeWidth = 1 };
-    using var font = new SKFont { Size = 10 };
+    using var font = new SKFont(Text.Face, 10);
     var rows = new List<float>();
     foreach ((int y, double value) in ticks) {
       var row = (float)value;

@@ -710,7 +710,7 @@ public static class Renderer {
     using var canvas = new SKCanvas(outBmp);
     canvas.Clear(Background);
     using var paint = new SKPaint { Color = SKColors.Black };
-    using var font = new SKFont { Size = 12 };
+    using var font = new SKFont(Text.Face, 12);
     int x = 0;
     for (int i = 0; i < images.Count; i++) {
       canvas.DrawBitmap(images[i], x, 0);

@@ -41,6 +41,7 @@
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" Condition="Exists('README.md')" />
     <None Include="THIRD-PARTY-NOTICES.txt" Pack="true" PackagePath="\" />
+    <EmbeddedResource Include="Fonts/NotoSans-Regular.ascii.ttf" LogicalName="ExpandedLib.Shapes.Fonts.NotoSans" />
   </ItemGroup>
 
   <ItemGroup>
