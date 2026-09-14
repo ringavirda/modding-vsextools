@@ -658,7 +658,7 @@ function Show-ExmodHelp([string]$Name) {
 # and their Add-ExmodCommand calls run before dispatch. A file that is not there is skipped rather
 # than fatal: another repo copies this dispatcher with only the stages it wants (see
 # templates/ci/tests.yml), and here a missing one shows up as a missing command in `exmod`.
-foreach ($module in @('provision', 'new', 'src', 'run', 'dist', 'windows')) {
+foreach ($module in @('provision', 'new', 'src', 'run', 'shapes', 'dist', 'windows')) {
   $path = Join-Path $PSScriptRoot "exmod/$module.ps1"
   if (Test-Path $path) { . $path }
 }

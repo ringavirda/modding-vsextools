@@ -101,14 +101,20 @@ public sealed class BlockIndex {
   /// install's own <c>assets/survival/blocktypes/**</c> under each root's <c>.game/&lt;version&gt;</c>
   /// (the latest version present).
   /// </summary>
-  public static BlockIndex Build(IReadOnlyList<string> roots) {
+  public static BlockIndex Build(IReadOnlyList<string> roots, string? gamePath = null) {
+    // An explicit `--game` (a game install directory, the same one GameInstall.Resolve returns)
+    // overrides every root's own `.game/<version>` discovery, for both the domain root and the
+    // blocktype files it contributes - a caller pointing this index at a different install than
+    // whichever one a root's own checkout carries.
+    string? explicitSurvival = gamePath != null ? Path.Combine(gamePath, "assets", "survival") : null;
+
     var domainRoots = new Dictionary<string, string>(StringComparer.Ordinal);
     foreach (string root in roots) {
       foreach (string wildcardDir in AssetRootTrees)
         foreach ((string domain, string dir) in GlobAssetRoots(root, wildcardDir))
           if (domain != "game")
             domainRoots.TryAdd(domain, dir);
-      string? survivalForRoots = GameSurvival(root);
+      string? survivalForRoots = explicitSurvival ?? GameSurvival(root);
       if (survivalForRoots != null)
         domainRoots.TryAdd("game", survivalForRoots);
     }
@@ -123,7 +129,7 @@ public sealed class BlockIndex {
           variants.AddRange(Expand(file, domain, domainRoots.GetValueOrDefault(domain)));
         }
 
-      string? survival = GameSurvival(root);
+      string? survival = explicitSurvival ?? GameSurvival(root);
       if (survival == null)
         continue;
       string blocktypesDir = Path.Combine(survival, "blocktypes");
