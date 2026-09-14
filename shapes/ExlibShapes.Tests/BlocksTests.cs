@@ -141,6 +141,22 @@ public class BlocksTests {
   }
 
   [Fact]
+  public void Malformed_blocktype_file_warns_naming_its_path_instead_of_vanishing() {
+    string root = Path.Combine(Path.GetTempPath(), "exlib-shapes-" + Guid.NewGuid().ToString("N"));
+    string blocktypesDir = Path.Combine(root, "mods", "broken", "assets", "broken", "blocktypes");
+    Directory.CreateDirectory(blocktypesDir);
+    string brokenFile = Path.Combine(blocktypesDir, "broken.json");
+    File.WriteAllText(brokenFile, "{ this is not json");
+    try {
+      BlockIndex index = BlockIndex.Build([root]);
+      Assert.Null(index.Resolve("broken:anything"));
+      Assert.Contains(index.ParseWarnings, w => w.Contains(brokenFile));
+    } finally {
+      Directory.Delete(root, true);
+    }
+  }
+
+  [Fact]
   public void Two_roots_linking_one_install_index_its_files_once() {
     // exlib and exmods each link .game to the workspace's one install; a selector matching a
     // vanilla file must not come out ambiguous between that file's two spellings.

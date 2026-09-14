@@ -264,7 +264,8 @@ internal static class Program {
       legend,
       files,
       index.Ambiguities,
-      Schematic.MissingTextures(layout, index)
+      Schematic.MissingTextures(layout, index),
+      index.ParseWarnings
     );
     string manifestPath = Path.Combine(outDir, $"{stem}.json");
     File.WriteAllText(manifestPath, manifest.ToString(Formatting.Indented));
@@ -272,6 +273,10 @@ internal static class Program {
     foreach (string f in files)
       Console.WriteLine(f);
     Console.WriteLine(manifestPath);
+    // A malformed source file is reported here too, not only in the manifest: a caller watching
+    // the run should see it without opening the JSON.
+    foreach (string line in index.ParseWarnings)
+      Console.Error.WriteLine($"exlib-shapes: {line}");
     var warnings = (JArray)manifest["warnings"]!;
     if (warnings.Count > 0)
       Console.WriteLine("warnings: [" + string.Join(", ", warnings.Select(w => (string)w!)) + "]");

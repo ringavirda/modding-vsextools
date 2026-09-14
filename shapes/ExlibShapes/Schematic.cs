@@ -409,13 +409,16 @@ public static class Schematic {
   /// <see cref="BlockIndex.Ambiguities"/>, read after every selector in <paramref name="legend"/>
   /// has been resolved: each entry adds a warning naming the selector and every source file its
   /// match spanned, since only one of them was drawn. <paramref name="missingTextures"/> is
-  /// <see cref="MissingTextures"/>'s lines, appended after those.</summary>
+  /// <see cref="MissingTextures"/>'s lines, appended after those. <paramref name="parseWarnings"/>
+  /// is <see cref="BlockIndex.ParseWarnings"/>, appended last, one line per blocktype or
+  /// worldproperties file that failed to parse.</summary>
   public static JObject Manifest(
     Layout layout,
     IReadOnlyDictionary<int, LegendEntry> legend,
     IReadOnlyList<string> files,
     IReadOnlyDictionary<string, IReadOnlyList<string>>? ambiguities = null,
-    IReadOnlyList<string>? missingTextures = null
+    IReadOnlyList<string>? missingTextures = null,
+    IReadOnlyList<string>? parseWarnings = null
   ) {
     var rows = new JArray();
     var warnings = new JArray();
@@ -441,6 +444,8 @@ public static class Schematic {
       );
     }
     foreach (string line in missingTextures ?? [])
+      warnings.Add(line);
+    foreach (string line in parseWarnings ?? [])
       warnings.Add(line);
     return new JObject {
       ["files"] = new JArray(files),

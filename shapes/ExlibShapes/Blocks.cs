@@ -96,6 +96,7 @@ public sealed class BlockIndex {
   private readonly Dictionary<string, List<string>> _domainRoots;
   private readonly bool _legacyFirst;
   private readonly Dictionary<string, List<string>> _ambiguities = new(StringComparer.Ordinal);
+  private readonly List<string> _parseWarnings;
 
   /// <summary>Selector to every distinct source file its match spanned, sorted - populated as
   /// <see cref="Resolve"/>/<see cref="Representative"/>/<see cref="Optional"/> encounter an
@@ -104,9 +105,20 @@ public sealed class BlockIndex {
   public IReadOnlyDictionary<string, IReadOnlyList<string>> Ambiguities =>
     _ambiguities.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<string>)kv.Value);
 
-  private BlockIndex(List<Variant> variants, Dictionary<string, List<string>> domainRoots, bool legacyFirst) {
+  /// <summary>One line per blocktype or worldproperties file that failed to parse or carried no
+  /// <c>code</c>, naming the path, in the order <see cref="Build"/> encountered them - that file's
+  /// codes are simply absent from the index rather than failing the whole build.</summary>
+  public IReadOnlyList<string> ParseWarnings => _parseWarnings;
+
+  private BlockIndex(
+    List<Variant> variants,
+    Dictionary<string, List<string>> domainRoots,
+    bool legacyFirst,
+    List<string> parseWarnings
+  ) {
     _domainRoots = domainRoots;
     _legacyFirst = legacyFirst;
+    _parseWarnings = parseWarnings;
     foreach (Variant v in variants) {
       if (!_byCode.TryGetValue(v.Code, out List<Variant>? list)) {
         list = [];
@@ -154,13 +166,20 @@ public sealed class BlockIndex {
 
     var variants = new List<Variant>();
     var seen = new HashSet<string>(StringComparer.Ordinal);
+    var parseWarnings = new List<string>();
     foreach (string root in roots) {
       foreach ((string wildcardDir, string[] literal) in BlocktypeTrees)
         foreach ((string domain, string file) in GlobBlocktypes(root, wildcardDir, literal)) {
           if (!seen.Add(file))
             continue;
           variants.AddRange(
-            Expand(file, domain, domainRoots.GetValueOrDefault(domain) ?? [], wildcardDir == "legacy")
+            Expand(
+              file,
+              domain,
+              domainRoots.GetValueOrDefault(domain) ?? [],
+              parseWarnings,
+              wildcardDir == "legacy"
+            )
           );
         }
 
@@ -176,12 +195,12 @@ public sealed class BlockIndex {
         ) {
           if (!seen.Add(file))
             continue;
-          variants.AddRange(Expand(file, "game", gameDirs));
+          variants.AddRange(Expand(file, "game", gameDirs, parseWarnings));
         }
       }
     }
 
-    return new BlockIndex(variants, domainRoots, legacyFirst);
+    return new BlockIndex(variants, domainRoots, legacyFirst, parseWarnings);
   }
 
   /// <summary>True when <paramref name="file"/> sits under a <c>legacy/</c> directory - the
@@ -451,6 +470,7 @@ public sealed class BlockIndex {
     string path,
     string domain,
     IReadOnlyList<string> domainRoots,
+    List<string> warnings,
     bool legacy = false
   ) {
     JObject raw;
@@ -458,7 +478,8 @@ public sealed class BlockIndex {
       if (JToken.Parse(File.ReadAllText(path)) is not JObject parsed || parsed["code"] == null)
         return [];
       raw = parsed;
-    } catch {
+    } catch (Exception e) {
+      warnings.Add($"malformed blocktype file: {path}: {e.Message}");
       return [];
     }
     string code = (string)raw["code"]!;
@@ -473,7 +494,7 @@ public sealed class BlockIndex {
         } else if ((string?)g["loadFromProperties"] is { } reference) {
           // A group naming only a worldproperties file takes that file's own code as its axis,
           // the way the game does for `{ loadFromProperties: "abstract/horizontalorientation" }`.
-          (string? fileCode, List<string> fileStates) = PropertyStates(reference, domainRoots);
+          (string? fileCode, List<string> fileStates) = PropertyStates(reference, domainRoots, warnings);
           if ((gcode ?? fileCode) is { } axisCode)
             axes.Add((axisCode, fileStates));
         }
@@ -511,7 +532,8 @@ public sealed class BlockIndex {
   // when no root does, so that axis drops out of expansion rather than failing the whole blocktype.
   private static (string? Code, List<string> States) PropertyStates(
     string reference,
-    IReadOnlyList<string> domainRoots
+    IReadOnlyList<string> domainRoots,
+    List<string> warnings
   ) {
     string? p = domainRoots
       .Select(root => Path.Combine(root, "worldproperties", reference + ".json"))
@@ -528,7 +550,8 @@ public sealed class BlockIndex {
           outp.Add(code);
       }
       return ((string?)GetCi(data, "code"), outp);
-    } catch {
+    } catch (Exception e) {
+      warnings.Add($"malformed worldproperties file: {p}: {e.Message}");
       return (null, []);
     }
   }

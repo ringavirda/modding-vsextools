@@ -57,8 +57,9 @@ repository and its sibling `exlib` checkout when present.
 A `<stem>.json` manifest is always written alongside the pictures: `files` (every path written),
 `legend` (one row per declared number - its selector, resolved representative code, palette
 colour, and whether it is optional, drawn as air), and `warnings` (a selector that resolved to
-neither a block nor `air`, or a selector whose match spanned more than one source blocktype file -
-named in the warning together, since only one of them is drawn).
+neither a block nor `air`; a selector whose match spanned more than one source blocktype file,
+named in the warning together, since only one of them is drawn; or a blocktype or worldproperties
+file that failed to parse, named by path - also printed to stderr as the run happens).
 
 ## tree / measure
 
