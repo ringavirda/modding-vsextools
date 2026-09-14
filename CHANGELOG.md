@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0] - 2026-09-14
+
+`exmod scaffold` (alias `g`) puts a compiling, tested block, item, recipe, megablock, multiblock,
+node, blockbehavior, entitybehavior, config, migration or command into an existing mod, from the
+`dotnet new` templates exlib ships as `ExpandedLib.Templates`; the lang keys the generated code
+reads are merged into the mod's `en.json`. `exmod starter` now reads its sample list from exlib's
+own manifest, in manifest order, and generates every mod in the family layout
+(`mods/<id>/{src,assets,tests}`), the same shape a real mod or `exmod new` scaffold uses - the
+README's mods paragraph is a table read from each sample's own `modinfo.json`, and a cross-sample
+`ProjectReference` (e.g. a mill depending on a grain catalogue) is rewritten generically instead of
+by name.
+
 ## [0.2.4] - 2026-09-07
 
 The coverage gate finds the floors file where the manifest names it, else at `tests/` or
