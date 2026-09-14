@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using ExpandedLib.Assets;
 
 namespace ExpandedLib.Verify.Tests;
 

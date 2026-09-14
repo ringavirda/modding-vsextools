@@ -38,6 +38,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The lenient asset store, the block/item catalogue, the game install resolver and the mod
+         source, shared with the shapes tool. -->
+    <ProjectReference Include="..\..\assets\ExlibAssets\ExlibAssets.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- AssetLocation, WildcardUtil - the same asset-addressing types the game itself uses, so a
          patch target or a recipe code resolves exactly the way it would in game. -->
     <Reference Include="VintagestoryAPI">

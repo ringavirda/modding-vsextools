@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace ExpandedLib.Verify;
+namespace ExpandedLib.Assets;
 
 /// <summary>Locates the Vintage Story install this run checks against, mirroring
 /// <c>ExpandedLib.Testing.VsAssemblyResolver</c>'s own priority (an explicit override, then the

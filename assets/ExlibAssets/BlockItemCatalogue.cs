@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 
-namespace ExpandedLib.Verify;
+namespace ExpandedLib.Assets;
 
 /// <summary>
 /// Every concrete block/item code a domain declares, resolved from its <c>blocktypes/</c> and

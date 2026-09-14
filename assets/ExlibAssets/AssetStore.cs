@@ -5,7 +5,7 @@ using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace ExpandedLib.Verify;
+namespace ExpandedLib.Assets;
 
 /// <summary>
 /// Every JSON asset loaded for this run, indexed the way the game itself addresses one:

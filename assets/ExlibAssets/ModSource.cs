@@ -4,7 +4,7 @@ using System.IO.Compression;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 
-namespace ExpandedLib.Verify;
+namespace ExpandedLib.Assets;
 
 /// <summary>
 /// One loaded mod folder or zip: its <see cref="ModId"/> (read from <c>modinfo.json</c>) and the
