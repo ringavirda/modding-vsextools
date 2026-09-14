@@ -152,6 +152,21 @@ public class BlockViewsTests {
     };
 
   [SkippableFact]
+  public void A_hollow_boiler_tells_its_firebox_end_from_its_flue_end() {
+    string? file = FixturePath.Workspace("exmods/mods/siex/tests/goldens/siex/blocktypes/boiler/lancashire.json");
+    Skip.If(file is null, "the sibling exmods checkout is absent");
+    BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(file!));
+    string outDir = OutDir("lancashire");
+    BlockViews.Write(file!, Drawn(index, file!), index, outDir, views: ["north", "south"], ppu: 4);
+
+    // Culled, the flue openings showed the paper through both ends and the two views came out
+    // pixel for pixel the same; with the back faces drawn the ends read apart.
+    byte[] north = File.ReadAllBytes(Path.Combine(outDir, "lancashire-north.png"));
+    byte[] south = File.ReadAllBytes(Path.Combine(outDir, "lancashire-south.png"));
+    Assert.False(north.AsSpan().SequenceEqual(south), "the boiler's two ends are drawn identically");
+  }
+
+  [SkippableFact]
   public void A_ppex_engine_draws_its_north_variant_over_its_own_footprint() {
     string? watt = FixturePath.Workspace("exmods/legacy/ppex/assets/ppex/blocktypes/engine/watt.json");
     Skip.If(watt is null, "the sibling exmods checkout is absent");

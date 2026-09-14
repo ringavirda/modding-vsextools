@@ -28,8 +28,8 @@ public static class BlockViews {
   /// <summary>The raw shape JSON of <paramref name="block"/>'s drawn model and the texture values
   /// (key to the block's own value string) it references. <paramref name="spin"/> turns the model
   /// about its own cell, the machine standing that way round.</summary>
-  public static (JObject Raw, Dictionary<string, string> TextureValues) Compose(ResolvedBlock block, int spin = 0) {
-    (JObject group, Dictionary<string, string> values) = Schematic.WrappedCell(block, default, Prefix, spin);
+  public static (JObject Raw, Dictionary<string, TextureRef> TextureValues) Compose(ResolvedBlock block, int spin = 0) {
+    (JObject group, Dictionary<string, TextureRef> values) = Schematic.WrappedCell(block, default, Prefix, spin);
     return (new JObject { ["textures"] = new JObject(), ["elements"] = new JArray(group) }, values);
   }
 
@@ -68,7 +68,7 @@ public static class BlockViews {
   ) {
     ResolvedBlock block =
       index.Resolve(variant.Code) ?? throw new InvalidOperationException($"{variant.Code}: the index cannot resolve it");
-    (JObject rest, Dictionary<string, string> textureValues) = Compose(block);
+    (JObject rest, Dictionary<string, TextureRef> textureValues) = Compose(block);
     LoadedShape atRest = Loaded(rest, block, variant);
 
     Layout? placed = FootprintOf(file, variant, index);
@@ -98,7 +98,9 @@ public static class BlockViews {
     var files = new List<string>();
     foreach (string view in views ?? DefaultViews) {
       string path = Path.Combine(outDir, $"{stem}-{view}.png");
-      using (SKBitmap image = Renderer.Render(loaded, Renderer.NamedViews[view], ppu: ppu, textures: textures))
+      // Back faces are drawn as well as front ones: a boiler's flue openings and a hopper's
+      // mouth are hollow, and culled they read as holes cut through to the paper.
+      using (SKBitmap image = Renderer.Render(loaded, Renderer.NamedViews[view], ppu: ppu, textures: textures, cull: false))
       using (SKData data = image.Encode(SKEncodedImageFormat.Png, 100))
       using (FileStream stream = File.Create(path))
         data.SaveTo(stream);
@@ -134,7 +136,7 @@ public static class BlockViews {
   // sorted; Compose keys every value `block_<key>`.
   private static IReadOnlyList<string> MissingTextures(
     ResolvedBlock block,
-    IReadOnlyDictionary<string, string> textureValues,
+    IReadOnlyDictionary<string, TextureRef> textureValues,
     TextureSet textures
   ) {
     var lines = new SortedSet<string>(StringComparer.Ordinal);

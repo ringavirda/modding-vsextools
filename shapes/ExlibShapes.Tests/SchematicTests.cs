@@ -218,11 +218,11 @@ public class SchematicTests {
   public void Compose_includes_every_resolved_cell_not_only_the_fillers() {
     Layout layout = DemoLayout();
     BlockIndex index = BlockIndex.Build([DemoRoot]);
-    (JObject raw, Dictionary<string, string> textureValues) = Schematic.Compose(layout, index);
+    (JObject raw, Dictionary<string, TextureRef> textureValues) = Schematic.Compose(layout, index);
     // one leaf per resolved cell (all 18 resolve to demo:wall-north) plus one box per filler cell;
     // a compose that silently dropped the resolved geometry would still pass on filler leaves alone
     Assert.Equal(layout.Cells.Count + layout.Fillers.Count, CountLeaves(raw));
-    Assert.Contains("demo:block/wall", textureValues.Values);
+    Assert.Contains(textureValues.Values, v => v.Base == "demo:block/wall");
   }
 
   [Fact]
@@ -232,13 +232,13 @@ public class SchematicTests {
       Layout.Load(FixturePath.Of("schematic/mods/demo/assets/demo/blocktypes/mega.json"), "mega-north"),
       index
     );
-    (JObject raw, Dictionary<string, string> values) = Schematic.Compose(mega, index);
+    (JObject raw, Dictionary<string, TextureRef> values) = Schematic.Compose(mega, index);
     List<string> names = [.. raw["elements"]!.Select(el => (string)el["name"]!)];
     Assert.Contains(Schematic.PrincipalPrefix, names);
     Assert.DoesNotContain(names, n => n.StartsWith("filler", StringComparison.Ordinal));
     // Two columns, four bars each: the principal's own cell and the one filler it reserves.
     Assert.Equal(8, names.Count(n => n.StartsWith("footprint", StringComparison.Ordinal)));
-    Assert.Contains("demo:block/wall", values.Values);
+    Assert.Contains(values.Values, v => v.Base == "demo:block/wall");
 
     // The kiln's fillers stand clear of its anchor block, so they stay boxes.
     (JObject kiln, _) = Schematic.Compose(DemoLayout(), index);
@@ -252,7 +252,7 @@ public class SchematicTests {
   public void Iso_png_reserves_its_left_edge_for_the_layer_scale() {
     Layout layout = DemoLayout();
     BlockIndex index = BlockIndex.Build([DemoRoot]);
-    (JObject raw, Dictionary<string, string> textureValues) = Schematic.Compose(layout, index);
+    (JObject raw, Dictionary<string, TextureRef> textureValues) = Schematic.Compose(layout, index);
     Shape shape = Newtonsoft.Json.JsonConvert.DeserializeObject<Shape>(raw.ToString())!;
     using SKBitmap plain = Renderer.Render(
       ShapeFile.FromRaw(shape, null, new Dictionary<string, string>()),
@@ -270,6 +270,31 @@ public class SchematicTests {
         if (scaled.GetPixel(x, y).Red < 128)
           ink++;
     Assert.True(ink > 0, "no tick was drawn in the reserved margin");
+  }
+
+  [SkippableFact]
+  public void The_slab_lined_furnace_cores_paint_no_placeholder_at_all() {
+    string? golden = BlastcoreGolden;
+    string? game = ClientGame;
+    Skip.If(golden is null, "the sibling exmods checkout is absent");
+    Skip.If(game is null, "a client install with real textures is absent");
+    // The four cores whose materials include game:brickslabs-fire-*, whose own shape names its
+    // faces north..down while the blocktype paints them through `horizontals` and `verticals`.
+    string furnaces = Path.GetDirectoryName(golden!)!;
+    BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(golden!), game!);
+    foreach (string name in new[] { "cokeovencore", "puddlingcore", "heatingcore", "cruciblecore" }) {
+      Layout layout = Layout.Load(Path.Combine(furnaces, name + ".json"));
+      using SKBitmap drawn = Schematic.IsoPng(layout, index, ppu: 4);
+      int placeholder = 0;
+      for (int y = 0; y < drawn.Height; y++)
+        for (int x = 0; x < drawn.Width; x++) {
+          SKColor pixel = drawn.GetPixel(x, y);
+          // The placeholder is magenta, drawn at whatever shade its face takes.
+          if (pixel.Green == 0 && pixel.Red == pixel.Blue && pixel.Red >= 64)
+            placeholder++;
+        }
+      Assert.True(placeholder == 0, $"{name}: {placeholder} pixels of the magenta placeholder");
+    }
   }
 
   [Fact]
@@ -308,10 +333,10 @@ public class SchematicTests {
     // at all, so its shape's own unresolvable `rust` is reported, not painted over.
     Layout layout = Layout.Load(FixturePath.Of("schematic/textures-kiln.json"));
     BlockIndex index = BlockIndex.Build([DemoRoot]);
-    (_, Dictionary<string, string> values) = Schematic.Compose(layout, index);
-    Assert.Equal("demo:block/wall", values["c0_brick"]);
-    Assert.Equal("demo:block/wall", values["c0_all"]);
-    Assert.Equal("demo:block/nonexistent", values["c1_rust"]);
+    (_, Dictionary<string, TextureRef> values) = Schematic.Compose(layout, index);
+    Assert.Equal("demo:block/wall", values["c0_brick"].Base);
+    Assert.Equal("demo:block/wall", values["c0_all"].Base);
+    Assert.Equal("demo:block/nonexistent", values["c1_rust"].Base);
     Assert.Equal(
       ["demo:rusty: texture rust (demo:block/nonexistent) not found"],
       Schematic.MissingTextures(layout, index)

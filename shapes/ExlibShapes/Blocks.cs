@@ -27,14 +27,15 @@ public sealed record Variant(
 }
 
 /// <summary>One selector resolved to a concrete block: its shape file, the rotation its
-/// <c>shapeByType</c> entry carries for that variant, and its texture map.</summary>
+/// <c>shapeByType</c> entry carries for that variant, and its texture map (each key's base value
+/// and the overlays painted over it).</summary>
 public sealed record ResolvedBlock(
   string Code,
   string? ShapePath,
   double RotateX,
   double RotateY,
   double RotateZ,
-  IReadOnlyDictionary<string, string> Textures
+  IReadOnlyDictionary<string, TextureRef> Textures
 );
 
 /// <summary>
@@ -413,13 +414,11 @@ public sealed class BlockIndex {
     string? shapeBase = (string?)shapeEntry?["base"];
     string? shapePath = shapeBase != null ? ShapePath(Substitute(shapeBase, variant.States)) : null;
 
-    var textures = new Dictionary<string, string>();
+    var textures = new Dictionary<string, TextureRef>();
     if (ByType(variant.Raw, "textures", variant.Path) is JObject texturesJson)
-      foreach (JProperty prop in texturesJson.Properties()) {
-        string? value = prop.Value is JObject vo ? (string?)vo["base"] : (string?)prop.Value;
-        if (value != null)
-          textures[prop.Name] = Substitute(value, variant.States);
-      }
+      foreach (JProperty prop in texturesJson.Properties())
+        if (TextureOf(prop.Value, variant) is { } texture)
+          textures[prop.Name] = texture;
 
     return new ResolvedBlock(
       variant.Code,
@@ -429,6 +428,20 @@ public sealed class BlockIndex {
       Spin(shapeEntry, "rotateZ", variant.Path),
       textures
     );
+  }
+
+  // One entry of a blocktype's textures map: a bare value string, or the object form carrying
+  // `base`/`baseByType` (read through the game's own ByType rule, as vanilla's planks and slabs
+  // spell their variants) and the `overlays` painted over it. Null when the entry names no base.
+  private static TextureRef? TextureOf(JToken entry, Variant variant) {
+    if (entry is not JObject obj)
+      return (string?)entry is { } plain ? new TextureRef(Substitute(plain, variant.States)) : null;
+    if ((string?)ByType(obj, "base", variant.Path) is not { } value)
+      return null;
+    List<string> overlays = [
+      .. ((JArray?)obj["overlays"])?.Select(o => Substitute((string)o!, variant.States)) ?? [],
+    ];
+    return new TextureRef(Substitute(value, variant.States), overlays);
   }
 
   // A shape entry's own turn about one axis, read through the same ByType rule the entry itself

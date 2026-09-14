@@ -155,6 +155,28 @@ public static class Textures {
 }
 
 /// <summary>
+/// One texture assignment: the image a face is painted with, and the images painted over it in
+/// order (a blocktype's <c>overlays</c>, the furnace core's marks over its brick).
+/// </summary>
+/// <param name="Base">The value string a resolver turns into a file, or empty when the block
+/// assigns the key no texture at all - a face painted with the placeholder.</param>
+/// <param name="Overlays">Value strings painted over <paramref name="Base"/>, first to last.</param>
+public sealed record TextureRef(string Base, IReadOnlyList<string> Overlays) {
+  /// <summary>An assignment of <paramref name="value"/> alone, with nothing over it.</summary>
+  public TextureRef(string value) : this(value, []) { }
+
+  /// <summary>Whether the block names no texture for this key, which paints the face with the
+  /// placeholder.</summary>
+  public bool Unassigned => Base.Length == 0;
+
+  /// <summary>The assignment as one line, for a warning naming what could not be found.</summary>
+  public override string ToString() =>
+    Unassigned ? "unassigned"
+    : Overlays.Count == 0 ? Base
+    : $"{Base} over {string.Join(", ", Overlays)}";
+}
+
+/// <summary>
 /// Every texture a shape needs, decoded to RGBA - key to a <c>[height, width, 4]</c> byte array,
 /// unresolved keys mapped to a 16x16 magenta placeholder and listed in <see cref="Missing"/>.
 /// </summary>
@@ -207,32 +229,58 @@ public sealed class TextureSet {
   /// own domain roots, not a shape file's ancestry, so it calls this directly with
   /// <see cref="BlockIndex.ResolveTexture"/> as <paramref name="resolvePath"/>.
   /// </summary>
-  /// <param name="values">Texture key to the raw value string (bare or <c>domain:path</c>) it
-  /// names.</param>
+  /// <param name="values">Texture key to the assignment (a base value and its overlays) it
+  /// names; an overlay is composited over the base the way the game paints it.</param>
   /// <param name="resolvePath">Resolves one raw value string to a PNG path, or null when it cannot
   /// be found.</param>
   /// <param name="extra">Additional key to already-decoded array entries merged in as is (a
   /// schematic's synthetic filler texture, which names no real file at all).</param>
   public static TextureSet FromResolved(
-    IReadOnlyDictionary<string, string> values,
+    IReadOnlyDictionary<string, TextureRef> values,
     Func<string, string?> resolvePath,
     IReadOnlyDictionary<string, byte[,,]>? extra = null
   ) {
     var arrays = new Dictionary<string, byte[,,]>();
     var missing = new HashSet<string>();
-    foreach ((string key, string value) in values) {
-      string? path = resolvePath(value);
+    foreach ((string key, TextureRef value) in values) {
+      string? path = value.Unassigned ? null : resolvePath(value.Base);
       if (path == null) {
         missing.Add(key);
         arrays[key] = MissingImage;
-      } else {
-        arrays[key] = Decode(path);
+        continue;
       }
+      byte[,,] image = Decode(path);
+      foreach (string overlay in value.Overlays) {
+        if (resolvePath(overlay) is not { } overlayPath) {
+          missing.Add(key);
+          continue;
+        }
+        image = Over(image, Decode(overlayPath));
+      }
+      arrays[key] = image;
     }
     if (extra != null)
       foreach ((string key, byte[,,] array) in extra)
         arrays[key] = array;
     return new TextureSet(arrays, missing);
+  }
+
+  // `over` alpha-blended onto `under`, at the finer of the two resolutions and sampled nearest, so
+  // a 32-pixel overlay keeps its detail on a 16-pixel base.
+  private static byte[,,] Over(byte[,,] under, byte[,,] over) {
+    int h = Math.Max(under.GetLength(0), over.GetLength(0));
+    int w = Math.Max(under.GetLength(1), over.GetLength(1));
+    var result = new byte[h, w, 4];
+    for (int y = 0; y < h; y++)
+      for (int x = 0; x < w; x++) {
+        int uy = y * under.GetLength(0) / h, ux = x * under.GetLength(1) / w;
+        int oy = y * over.GetLength(0) / h, ox = x * over.GetLength(1) / w;
+        double alpha = over[oy, ox, 3] / 255.0;
+        for (int c = 0; c < 3; c++)
+          result[y, x, c] = (byte)Math.Round(over[oy, ox, c] * alpha + under[uy, ux, c] * (1 - alpha));
+        result[y, x, 3] = (byte)Math.Max(under[uy, ux, 3], over[oy, ox, 3]);
+      }
+    return result;
   }
 
   /// <summary>The decoded <c>[height, width, 4]</c> RGBA array for <paramref name="key"/>, or

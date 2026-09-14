@@ -364,7 +364,7 @@ public static class Schematic {
   // synthetic full unit cube (textured from whichever of all/up/north the blocktype declares) when
   // it ships no shape file - most vanilla and family blocks draw the engine's default cube rather
   // than an authored one.
-  private static (JArray Elements, Dictionary<string, string> Textures) BlockElements(ResolvedBlock block) {
+  private static (JArray Elements, Dictionary<string, TextureRef> Textures) BlockElements(ResolvedBlock block) {
     if (block.ShapePath != null) {
       JObject? raw = null;
       try {
@@ -373,10 +373,10 @@ public static class Schematic {
         Console.Error.WriteLine($"warning: {block.ShapePath}: shape failed to parse ({e.Message}); drawing a unit cube");
       }
       if (raw?["elements"] is JArray elements && elements.Count > 0) {
-        var shapeTextures = new Dictionary<string, string>();
+        var shapeTextures = new Dictionary<string, TextureRef>();
         if (raw["textures"] is JObject texturesJson)
           foreach (JProperty prop in texturesJson.Properties())
-            shapeTextures[prop.Name] = (string)prop.Value!;
+            shapeTextures[prop.Name] = new TextureRef((string)prop.Value!);
         return ((JArray)elements.DeepClone(), shapeTextures);
       }
     }
@@ -394,27 +394,34 @@ public static class Schematic {
       ["to"] = new JArray(16, 16, 16),
       ["faces"] = faces,
     };
-    return (new JArray(cube), []);
+    return (new JArray(cube), new Dictionary<string, TextureRef>());
   }
 
   // The cell's group element (world position, shapeByType rotation and `spin` degrees more about
   // the cell's own centre, its own shape elements namespaced underneath) and its texture values
-  // (the shape's own map overridden by the blocktype's, keyed with the same prefix). The
-  // blocktype's `all` entry is the game's own catch-all: it stands in for every key the shape
-  // declares or its faces use that the blocktype does not name itself.
-  internal static (JObject Group, Dictionary<string, string> Textures) WrappedCell(
+  // (the shape's own map overridden by the blocktype's, keyed with the same prefix). A blocktype
+  // names whole sets of faces at once as well as single keys, which is how vanilla's slabs paint a
+  // shape whose faces they never name one by one.
+  internal static (JObject Group, Dictionary<string, TextureRef> Textures) WrappedCell(
     ResolvedBlock block,
     Offset offset,
     string prefix,
     int spin = 0
   ) {
-    (JArray elements, Dictionary<string, string> shapeTextures) = BlockElements(block);
-    var textures = new Dictionary<string, string>(shapeTextures);
-    if (block.Textures.TryGetValue("all", out string? all))
-      foreach (string key in shapeTextures.Keys.Concat(FaceTextureKeys(elements)).Distinct())
-        textures[key] = all;
-    foreach ((string key, string value) in block.Textures)
+    (JArray elements, Dictionary<string, TextureRef> shapeTextures) = BlockElements(block);
+    var textures = new Dictionary<string, TextureRef>(shapeTextures);
+    List<string> keys = [.. shapeTextures.Keys.Concat(FaceTextureKeys(elements)).Distinct()];
+    foreach ((string shorthand, IReadOnlyList<string>? faces) in Shorthands)
+      if (block.Textures.TryGetValue(shorthand, out TextureRef? stands))
+        foreach (string key in faces == null ? keys : keys.Intersect(faces))
+          textures[key] = stands;
+    foreach ((string key, TextureRef value) in block.Textures)
       textures[key] = value;
+    // A face whose key nothing assigns is painted with the placeholder; it is carried here as an
+    // unassigned entry so the manifest names it instead of the render alone showing it.
+    foreach (string key in FaceTextureKeys(elements))
+      if (!textures.ContainsKey(key))
+        textures[key] = new TextureRef("");
 
     int ox = offset.X * 16, oy = offset.Y * 16, oz = offset.Z * 16;
     var group = new JObject {
@@ -427,9 +434,18 @@ public static class Schematic {
       ["rotationZ"] = block.RotateZ,
       ["children"] = Namespaced(elements, prefix),
     };
-    Dictionary<string, string> prefixed = textures.ToDictionary(kv => $"{prefix}_{kv.Key}", kv => kv.Value);
+    Dictionary<string, TextureRef> prefixed = textures.ToDictionary(kv => $"{prefix}_{kv.Key}", kv => kv.Value);
     return (group, prefixed);
   }
+
+  // The game's shorthand texture keys and the face keys each stands in for; a null list stands in
+  // for every key the shape declares or its faces use, and a longer list wins over a shorter one.
+  private static readonly (string Key, IReadOnlyList<string>? Faces)[] Shorthands = [
+    ("all", null),
+    ("sides", null),
+    ("horizontals", new[] { "north", "east", "south", "west" }),
+    ("verticals", new[] { "up", "down" }),
+  ];
 
   // Every `#key` a face of `elements` (children included) references, without the `#`.
   private static IEnumerable<string> FaceTextureKeys(JArray elements) {
@@ -501,14 +517,14 @@ public static class Schematic {
   /// rotated variant, and keeps its own rotation.
   /// </para>
   /// </summary>
-  public static (JObject Raw, Dictionary<string, string> TextureValues) Compose(
+  public static (JObject Raw, Dictionary<string, TextureRef> TextureValues) Compose(
     Layout layout,
     BlockIndex index,
     int? cutAt = null,
     int spin = 0
   ) {
     var elements = new JArray();
-    var textureValues = new Dictionary<string, string>();
+    var textureValues = new Dictionary<string, TextureRef>();
     for (int i = 0; i < layout.Cells.Count; i++) {
       Cell c = layout.Cells[i];
       if (cutAt != null && c.Y > cutAt)
@@ -518,14 +534,14 @@ public static class Schematic {
       ResolvedBlock? block = index.Resolve(selector);
       if (block == null)
         continue;
-      (JObject group, Dictionary<string, string> values) = WrappedCell(
+      (JObject group, Dictionary<string, TextureRef> values) = WrappedCell(
         block,
         new Offset(c.X, c.Y, c.Z),
         $"c{i}",
         layout.Facings.ContainsKey(selector) ? 0 : spin
       );
       elements.Add(group);
-      foreach ((string key, string value) in values)
+      foreach ((string key, TextureRef value) in values)
         textureValues[key] = value;
     }
 
@@ -535,14 +551,14 @@ public static class Schematic {
       && (cutAt == null || layout.Anchor.Y <= cutAt)
       && index.Resolve(layout.Principal) is { } principal
     ) {
-      (JObject group, Dictionary<string, string> values) = WrappedCell(
+      (JObject group, Dictionary<string, TextureRef> values) = WrappedCell(
         principal,
         layout.Anchor,
         PrincipalPrefix,
         spin
       );
       elements.Add(group);
-      foreach ((string key, string value) in values)
+      foreach ((string key, TextureRef value) in values)
         textureValues[key] = value;
     }
 
@@ -577,6 +593,14 @@ public static class Schematic {
     return (raw, textureValues);
   }
 
+  /// <summary>Whether every image <paramref name="value"/> names resolves to a file through
+  /// <paramref name="index"/> - a base that does not, or an overlay that does not, paints the face
+  /// with the placeholder.</summary>
+  public static bool Resolves(TextureRef value, BlockIndex index) =>
+    !value.Unassigned
+    && index.ResolveTexture(value.Base) != null
+    && value.Overlays.All(o => index.ResolveTexture(o) != null);
+
   // A cell's own centre (in blocks from the principal's centre, the frame Footprint measures in)
   // within a mesh box.
   private static bool Inside(Footprint.Box box, Offset cell) =>
@@ -591,10 +615,10 @@ public static class Schematic {
   /// with the magenta placeholder. Empty when every value resolves.
   /// </summary>
   public static IReadOnlyList<string> MissingTextures(Layout layout, BlockIndex index) {
-    (_, Dictionary<string, string> textureValues) = Compose(layout, index);
+    (_, Dictionary<string, TextureRef> textureValues) = Compose(layout, index);
     var lines = new SortedSet<string>(StringComparer.Ordinal);
-    foreach ((string prefixed, string value) in textureValues) {
-      if (index.ResolveTexture(value) != null)
+    foreach ((string prefixed, TextureRef value) in textureValues) {
+      if (Resolves(value, index))
         continue;
       // Compose keys a cell's textures `c{cell index}_{key}` and a megablock's own body
       // `principal_{key}`.
@@ -621,7 +645,7 @@ public static class Schematic {
   /// <see cref="Compose"/> means it.
   /// </summary>
   public static SKBitmap IsoPng(Layout layout, BlockIndex index, int ppu = 8, int? cutAt = null, int spin = 0) {
-    (JObject raw, Dictionary<string, string> textureValues) = Compose(layout, index, cutAt, spin);
+    (JObject raw, Dictionary<string, TextureRef> textureValues) = Compose(layout, index, cutAt, spin);
     Shape shape =
       JsonConvert.DeserializeObject<Shape>(raw.ToString())
       ?? throw new JsonException("the composed schematic shape failed to parse");
