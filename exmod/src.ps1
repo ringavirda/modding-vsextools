@@ -35,16 +35,9 @@ function Get-ExmodSourceRoots {
 # the previous build's file list, whose paths from the other platform resolve here to the files
 # this build just copied (modinfo.json, modicon.png), and deletes them; bin and obj go instead.
 function Reset-ForeignBuildState([string]$ProjectDir) {
-  $lists = @(Get-ChildItem -Path (Join-Path $ProjectDir 'obj') -Recurse -Filter '*.FileListAbsolute.txt' -ErrorAction SilentlyContinue)
-  foreach ($list in $lists) {
-    $first = Get-Content $list.FullName -TotalCount 1 -ErrorAction SilentlyContinue
-    if (-not $first) { continue }
-    $foreign = if ($OnWindows) { $first.StartsWith('/') } else { $first -match '^([A-Za-z]:\\|\\\\)' }
-    if (-not $foreign) { continue }
-    Write-Host "$(Split-Path $ProjectDir -Leaf): last built on another platform - starting from clean"
-    Remove-Item -Recurse -Force (Join-Path $ProjectDir 'bin'), (Join-Path $ProjectDir 'obj') -ErrorAction SilentlyContinue
-    return
-  }
+  if (-not (Test-ForeignBuildState $ProjectDir)) { return }
+  Write-Host "$(Split-Path (Split-Path $ProjectDir -Parent) -Leaf): last built on another platform - starting from clean"
+  Remove-Item -Recurse -Force (Join-Path $ProjectDir 'bin'), (Join-Path $ProjectDir 'obj') -ErrorAction SilentlyContinue
 }
 
 function Invoke-Build([string[]]$Argv) {
@@ -70,12 +63,6 @@ function Invoke-Build([string[]]$Argv) {
 
   foreach ($proj in @($targets.Values) + @($testTargets.Values | ForEach-Object { $_.Proj })) {
     Reset-ForeignBuildState (Split-Path $proj -Parent)
-  }
-  # A dependency built from a sibling checkout is built by this run too, through its project reference.
-  foreach ($dep in @(Resolve-DependencyMods $configuration)) {
-    if ($dep.Path -match '[\\/]bin[\\/][^\\/]+[\\/]Mods[\\/]mod[\\/]?$') {
-      Reset-ForeignBuildState (Split-Path (Split-Path (Split-Path (Split-Path $dep.Path -Parent) -Parent) -Parent) -Parent)
-    }
   }
   foreach ($v in $wanted) {
     $tfm = $GameTfms[$v]

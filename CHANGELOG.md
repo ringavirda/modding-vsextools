@@ -22,15 +22,26 @@ script on a share no longer asks before every step.
 changed) instead of only when nothing was built yet, so F5 never runs a mod older than its source.
 A project last built on another platform (a checkout shared between Windows and WSL) is built from
 clean, because MSBuild's incremental clean, fed the other platform's file list, deleted the copied
-modinfo.json and modicon.png and `stage` then found no mod to stage.
+modinfo.json and modicon.png and `stage` then found no mod to stage. A workspace sibling the
+other platform built is left to it: the build takes the release the floor names instead of
+building the sibling across the share.
 
 `exlib-verify` now catches the client's own "Missing mapping for texture code" defect headlessly: a
 new check reads every shape a blocktype's or itemtype's `shape`/`shapeByType` (alternates included)
 names, and reports a face's `#code` that neither the shape's own `textures` nor the definition's
 `textures`/`texturesByType` for that variant covers - the `all`/`sides`/`horizontals`/`verticals`
-shorthands honoured the same way `exlib-shapes` reads them. A block finding is an error, since the
-client always logs one; an item finding is informational, since the client silently leaves the face
-untextured there instead.
+shorthands honoured the same way `exlib-shapes` reads them. A block finding is an error and an item
+finding is informational - the client logs this for an item exactly as for a block, but vanilla
+itself ships this defect (its own metalbit mapping only `#ore` against `game:item/nugget`'s
+`#granite`), so an item finding stays a note rather than failing a mod's run for a defect the mod
+inherited from the game.
+
+`sides` now covers exactly the six cardinal/up/down face names, matching
+`TextureAtlasManager.ResolveTextureDict`, instead of standing in for any code at all; `westeast`
+and `northsouth` are honoured beside it, and a face carrying `"enabled": false` is no longer
+checked, since the client never tesselates one. A code-first mod's own `tests/goldens/<domain>`
+tree is read the same way its shipped assets would be, so `exlib-verify` (and `exmod verify`) now
+covers a domain whose blocktypes/itemtypes exist only there.
 
 ## [0.3.2] - 2026-09-14
 

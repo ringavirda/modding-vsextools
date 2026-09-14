@@ -61,6 +61,19 @@ function Get-ClientDataPath {
   return Join-Path $RepoRoot '.gamedata'
 }
 
+# Whether a project's last build was another platform's: its MSBuild file list names paths in
+# the other platform's form.
+function Test-ForeignBuildState([string]$ProjectDir) {
+  $lists = @(Get-ChildItem -Path (Join-Path $ProjectDir 'obj') -Recurse -Filter '*.FileListAbsolute.txt' -ErrorAction SilentlyContinue)
+  foreach ($list in $lists) {
+    $first = Get-Content $list.FullName -TotalCount 1 -ErrorAction SilentlyContinue
+    if (-not $first) { continue }
+    if ($OnWindows) { if ($first.StartsWith('/')) { return $true } }
+    elseif ($first -match '^([A-Za-z]:\\|\\\\)') { return $true }
+  }
+  return $false
+}
+
 function Get-ClientSlot([string]$Slug) {
   if ($OnWindows) { return Join-Path $env:LOCALAPPDATA "exmod/game/$Slug" }
   return ".game/$Slug-$PlatformSlot"
@@ -502,6 +515,12 @@ function Expand-DependencyZip([string]$Zip, [string]$Dest) {
 # under $RepoRoot/.exmod/cache and extract under $RepoRoot/.exmod/mods/<Id>.
 function Resolve-OneDependency([string]$Id, [string]$Floor, [string]$Configuration) {
   $siblingProject = Get-ExmodDependencySiblingProject $Id
+  # A sibling another platform builds (a WSL checkout seen from Windows) is that platform's to
+  # build; this one takes the release the floor names instead.
+  if ($siblingProject -and (Test-ForeignBuildState (Split-Path $siblingProject -Parent))) {
+    Write-Host "$Id : workspace sibling built on another platform - using the release instead"
+    $siblingProject = $null
+  }
   if ($siblingProject) {
     $srcDir = Split-Path $siblingProject -Parent
     $built = Join-Path $srcDir "bin/$Configuration/Mods/mod"
