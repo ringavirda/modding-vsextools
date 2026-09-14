@@ -69,9 +69,12 @@ internal static class FixturePath {
   /// </summary>
   public static string? Workspace(string relativePath) {
     string first = relativePath.Split('/')[0];
-    for (DirectoryInfo? dir = new(RepoRoot); dir != null; dir = dir.Parent)
-      if (Directory.Exists(Path.Combine(dir.FullName, first)))
-        return Path.Combine(dir.FullName, relativePath);
+    for (DirectoryInfo? dir = new(RepoRoot); dir != null; dir = dir.Parent) {
+      if (!Directory.Exists(Path.Combine(dir.FullName, first)))
+        continue;
+      string candidate = Path.Combine(dir.FullName, relativePath);
+      return File.Exists(candidate) ? candidate : null;
+    }
     return null;
   }
 }

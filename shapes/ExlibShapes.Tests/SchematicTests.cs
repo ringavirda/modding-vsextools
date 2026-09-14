@@ -16,14 +16,17 @@ public class SchematicTests {
   private static string DemoRoot => FixturePath.Of("schematic");
 
   // The family workspace's own exmods checkout and this checkout's own client game install; the
-  // facts naming them skip (an early return) when either is absent.
+  // facts naming them Skip.If (rather than run against nothing) when either is absent.
   private static string? BlastcoreGolden =>
     FixturePath.Workspace("exmods/mods/iiex/tests/goldens/iiex/blocktypes/furnace/blastcore.json");
   private static string? ClientGame {
     get {
       foreach (string slug in new[] { "1.22-client", "1.22" }) {
         string candidate = Path.Combine(FixturePath.RepoRoot, ".game", slug);
-        if (File.Exists(Path.Combine(candidate, "Vintagestory.dll")))
+        // A dedicated-server install lands at this same path (Invoke-ProvisionGame's "-server"
+        // suffix is only added once a client is already there), and ships no textures at all -
+        // Vintagestory.dll alone does not tell the two apart.
+        if (Directory.Exists(Path.Combine(candidate, "assets/game/textures/block")))
           return candidate;
       }
       return null;
@@ -212,26 +215,28 @@ public class SchematicTests {
     Assert.True(JToken.DeepEquals(expected, m), $"expected:\n{expected}\n\nactual:\n{m}");
   }
 
-  [Fact]
+  [SkippableFact]
   public void Blastcore_golden_plan_svg_layer_zero_matches_the_reference_text_exactly() {
-    if (BlastcoreGolden is not { } golden)
-      return; // skips when the sibling exmods checkout is absent
-    Layout layout = Layout.Load(golden);
+    string? golden = BlastcoreGolden;
+    Skip.If(golden is null, "the sibling exmods checkout is absent");
+    Layout layout = Layout.Load(golden!);
     string svg = Schematic.PlanSvg(layout, 0, Schematic.LegendColors(layout));
     string expected = File.ReadAllText(FixturePath.Expected("schematic/blastcore-plan-y0.svg"));
     Assert.Equal(expected, svg);
   }
 
-  [Fact]
+  [SkippableFact]
   public void Blastcore_golden_iso_png_matches_the_reference_render_through_a_real_domain_root() {
     // Every cell here resolves through the game:/iiex: domain roots rather than the
     // self-contained fixture textures. The install is named explicitly, so the fact does not
     // depend on what VINTAGE_STORY points at.
-    if (BlastcoreGolden is not { } golden || ClientGame is not { } game)
-      return; // skips when the sibling exmods checkout or a client install with real textures is absent
-    IReadOnlyList<string> roots = BlockIndex.DefaultRoots(golden);
-    BlockIndex index = BlockIndex.Build(roots, game);
-    Layout layout = Layout.Load(golden);
+    string? golden = BlastcoreGolden;
+    string? game = ClientGame;
+    Skip.If(golden is null, "the sibling exmods checkout is absent");
+    Skip.If(game is null, "a client install with real textures is absent");
+    IReadOnlyList<string> roots = BlockIndex.DefaultRoots(golden!);
+    BlockIndex index = BlockIndex.Build(roots, game!);
+    Layout layout = Layout.Load(golden!);
     using SKBitmap actual = Schematic.IsoPng(layout, index, ppu: 8);
     using SKBitmap expected = SKBitmap.Decode(FixturePath.Expected("schematic/blastcore-iso.png"));
     AssertMatchesWithinTolerance(expected, actual, "blastcore-iso");
