@@ -68,6 +68,14 @@ already-cloned `.extools/` moves between pins. The generated README says plain `
 the dedicated server only and names what fetches the client the launch configurations point at,
 `.game/<series>/Vintagestory.dll`.
 
+The generated `.vscode/tasks.json` runs the launcher itself, `scripts/exmod.sh` through bash and
+`scripts/exmod.ps1` through pwsh on Windows, so a task no longer needs pwsh on PATH; the current
+series' launch configuration runs the game on the system .NET, and only the legacy series carry
+`DOTNET_ROOT` and provision their own. `stage` keeps the build's console lines out of the list of
+staged mods it returns, which used to surface as `modinfo.json has no modid to stage under`. A data
+folder the game has never written is seeded windowed with vsync off, so a debug session keeps the
+editor in reach.
+
 ## [0.3.1] - 2026-09-14
 
 A fresh clone works: `setup` used to run the API patcher from inside the tools checkout, where
