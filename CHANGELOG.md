@@ -9,7 +9,8 @@ foreign client goes to `<slot>-client` the way a server request already did. The
 configurations give each platform its own client slot, `.game/<series>-linux` and `-macos` in the
 checkout and `%LOCALAPPDATA%\exmod\game\<series>` on Windows, where a client on a network share
 (a checkout under `\\wsl.localhost`) cannot load its native libraries, so a checkout shared
-between Windows and WSL keeps both clients and F5 works from either side. On Linux the client runs on X11: GLFW's Wayland backend cannot place the cursor, which
+between Windows and WSL keeps both clients and F5 works from either side. The Windows client's data lives beside it under
+`%LOCALAPPDATA%\exmod\data\<repo>`, since SQLite cannot lock a save file over a share. On Linux the client runs on X11: GLFW's Wayland backend cannot place the cursor, which
 mouse look needs, so the launcher and the launch configuration hand GLFW a display name no
 compositor answers to and it falls back to XWayland. `exmod client -Software` runs the game on
 Mesa's software rasterizer for a GPU driver that hangs it.
