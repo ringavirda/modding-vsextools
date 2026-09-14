@@ -1,0 +1,33 @@
+{
+	"textures": {
+		"tooled": "demo:block/wall"
+	},
+	"elements": [
+		{
+			"name": "body",
+			"from": [0, 0, 0],
+			"to": [16, 16, 16],
+			"faces": {
+				"north": { "texture": "#tooled", "uv": [0, 0, 16, 16] },
+				"east": { "texture": "#tooled", "uv": [0, 0, 16, 16] },
+				"south": { "texture": "#tooled", "uv": [0, 0, 16, 16] },
+				"west": { "texture": "#tooled", "uv": [0, 0, 16, 16] },
+				"up": { "texture": "#tooled", "uv": [0, 0, 16, 16] },
+				"down": { "texture": "#tooled", "uv": [0, 0, 16, 16] }
+			}
+		},
+		{
+			"name": "rabble",
+			"from": [4, 40, 4],
+			"to": [12, 56, 12],
+			"faces": {
+				"north": { "texture": "#tooled", "uv": [0, 0, 8, 16] },
+				"east": { "texture": "#tooled", "uv": [0, 0, 8, 16] },
+				"south": { "texture": "#tooled", "uv": [0, 0, 8, 16] },
+				"west": { "texture": "#tooled", "uv": [0, 0, 8, 16] },
+				"up": { "texture": "#tooled", "uv": [0, 0, 8, 8] },
+				"down": { "texture": "#tooled", "uv": [0, 0, 8, 8] }
+			}
+		}
+	]
+}

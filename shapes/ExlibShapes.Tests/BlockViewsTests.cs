@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using Newtonsoft.Json.Linq;
+using SkiaSharp;
 using Xunit;
 
 namespace ExpandedLib.Shapes.Tests;
@@ -95,6 +96,26 @@ public class BlockViewsTests {
       ["demo:rusty: texture rust (demo:block/nonexistent) not found"],
       manifest["missingTextures"]!.Select(t => (string)t!)
     );
+  }
+
+  [Fact]
+  public void A_part_parked_outside_the_block_is_not_drawn() {
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+    string file = Blocktype("tooled");
+    string clippedDir = OutDir("tooled");
+    JObject clipped = BlockViews.Write(file, Drawn(index, file), index, clippedDir, views: ["iso"], ppu: 4);
+    Assert.True((bool)clipped["clipped"]!);
+    Assert.Equal(["rabble"], clipped["hidden"]!.Select(h => (string)h!));
+
+    string fullDir = OutDir("tooled-full");
+    JObject whole = BlockViews.Write(file, Drawn(index, file), index, fullDir, views: ["iso"], ppu: 4, full: true);
+    Assert.False((bool)whole["clipped"]!);
+    Assert.Empty((JArray)whole["hidden"]!);
+
+    // The parked bar stands two cells above the block, so keeping it makes a taller picture.
+    using SKBitmap block = SKBitmap.Decode(Path.Combine(clippedDir, "tooled-iso.png"));
+    using SKBitmap all = SKBitmap.Decode(Path.Combine(fullDir, "tooled-iso.png"));
+    Assert.True(all.Height > block.Height, "the parked part is drawn either way");
   }
 
   [SkippableFact]

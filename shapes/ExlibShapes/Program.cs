@@ -300,12 +300,14 @@ internal static class Program {
     (string file, string[] flags) = FileAndFlags(
       args,
       "usage: exlib-shapes block FILE --out DIR [--variant CODE] "
-        + "[--views iso,north,east,south,west,up] [--angle N] [--ppu N] [--roots PATH...] [--game PATH]"
+        + "[--views iso,north,east,south,west,up] [--angle N] [--full] [--ppu N] [--roots PATH...] "
+        + "[--game PATH]"
     );
     string outDir = OptOf(flags, "--out") ?? throw new UsageException("--out is required");
     string? wanted = OptOf(flags, "--variant");
     IReadOnlyList<string>? views = NamedViews(OptOf(flags, "--views"));
     int? angle = OptOf(flags, "--angle") is { } a ? int.Parse(a, CultureInfo.InvariantCulture) : null;
+    bool full = FlagOf(flags, "--full");
     int ppu = int.Parse(OptOf(flags, "--ppu") ?? "24", CultureInfo.InvariantCulture);
     List<string> extraRoots = OptAllOf(flags, "--roots");
     string? game = OptOf(flags, "--game");
@@ -322,7 +324,8 @@ internal static class Program {
       outDir,
       views,
       ppu,
-      angle
+      angle,
+      full
     );
 
     foreach (JToken written in (JArray)manifest["files"]!)
@@ -332,6 +335,8 @@ internal static class Program {
     Console.WriteLine(
       "missing textures: [" + string.Join(", ", ((JArray)manifest["missingTextures"]!).Select(t => (string)t!)) + "]"
     );
+    if ((JArray)manifest["hidden"]! is { Count: > 0 } hidden)
+      Console.WriteLine("outside the block, not drawn: " + string.Join(", ", hidden.Select(h => (string)h!)));
     foreach (JToken warning in (JArray)manifest["warnings"]!)
       Console.Error.WriteLine($"exlib-shapes: {(string)warning!}");
     return 0;

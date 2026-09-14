@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using SkiaSharp;
@@ -57,6 +58,8 @@ public static class BlockViews {
   /// <param name="ppu">Pixels per shape unit, as <c>render</c> means it.</param>
   /// <param name="angle">A quarter turn to draw the machine at instead of the one the rules above
   /// choose; null takes theirs.</param>
+  /// <param name="full">Draws the whole model, parts parked outside the block's own cells
+  /// included; false clips to those cells.</param>
   public static JObject Write(
     string file,
     Variant variant,
@@ -64,7 +67,8 @@ public static class BlockViews {
     string outDir,
     IReadOnlyList<string>? views = null,
     int ppu = 24,
-    int? angle = null
+    int? angle = null,
+    bool full = false
   ) {
     ResolvedBlock block =
       index.Resolve(variant.Code) ?? throw new InvalidOperationException($"{variant.Code}: the index cannot resolve it");
@@ -92,6 +96,13 @@ public static class BlockViews {
     Layout? footprint = placed == null || spin == 0 ? placed : placed.Rotated(spin);
     LoadedShape loaded = spin == 0 ? atRest : Loaded(Compose(block, spin).Raw, block, variant);
     TextureSet textures = TextureSet.FromResolved(textureValues, index.ResolveTexture);
+    IReadOnlyList<string> hidden = [];
+    if (!full) {
+      JObject clipped = (JObject)Compose(block, spin).Raw;
+      hidden = Clip(clipped, loaded, footprint);
+      if (hidden.Count > 0)
+        loaded = Loaded(clipped, block, variant);
+    }
 
     Directory.CreateDirectory(outDir);
     string stem = Path.GetFileNameWithoutExtension(file);
@@ -100,7 +111,9 @@ public static class BlockViews {
       string path = Path.Combine(outDir, $"{stem}-{view}.png");
       // Back faces are drawn as well as front ones: a boiler's flue openings and a hopper's
       // mouth are hollow, and culled they read as holes cut through to the paper.
-      using (SKBitmap image = Renderer.Render(loaded, Renderer.NamedViews[view], ppu: ppu, textures: textures, cull: false))
+      using (
+        SKBitmap image = Renderer.Render(loaded, Renderer.NamedViews[view], ppu: ppu, textures: textures, cull: false)
+      )
       using (SKData data = image.Encode(SKEncodedImageFormat.Png, 100))
       using (FileStream stream = File.Create(path))
         data.SaveTo(stream);
@@ -124,6 +137,8 @@ public static class BlockViews {
       ["files"] = new JArray(files),
       ["variant"] = block.Code,
       ["angle"] = spin,
+      ["clipped"] = !full,
+      ["hidden"] = new JArray(hidden),
       ["front"] = front is { } side ? side : JValue.CreateNull(),
       ["missingTextures"] = new JArray(MissingTextures(block, textureValues, textures)),
       ["warnings"] = new JArray(warnings),
@@ -144,6 +159,63 @@ public static class BlockViews {
       lines.Add($"{block.Code}: texture {prefixed[(Prefix.Length + 1)..]} ({textureValues[prefixed]}) not found");
     return [.. lines];
   }
+
+  // `raw` with every part parked outside the cells `footprint` reserves cut out of it, and the
+  // names of the parts that went. A part with less than half its own bulk inside those cells is an
+  // animated tool in its rest pose rather than anything a placed block shows; whatever hangs off it
+  // goes with it. Half is what tells the two apart: a vice bolted to the end of a bench and a hatch
+  // standing proud of a wall sit mostly in their own block, while a rabble parked for its animation
+  // lies right outside it.
+  private static IReadOnlyList<string> Clip(JObject raw, LoadedShape shape, Layout? footprint) {
+    Footprint.Box cells = Footprint.CellBox(footprint == null ? [] : Footprint.Reserved(footprint));
+    // Footprint measures in blocks about the block's own centre; the composed model is drawn in
+    // shape units, sixteen to a block, from that cell's own corner. Art may stand the overhang
+    // proud of its cells before any of it counts as outside.
+    Vector3 lo = (cells.Lo + new Vector3(0.5f - (float)Footprint.Overhang)) * 16;
+    Vector3 hi = (cells.Hi + new Vector3(0.5f + (float)Footprint.Overhang)) * 16;
+
+    Dictionary<string, Matrix4x4> mats = Geometry.WorldMatrices(shape);
+    var outside = new HashSet<string>(StringComparer.Ordinal);
+    foreach (Node leaf in shape.Leaves()) {
+      (Vector3 elLo, Vector3 elHi) = Geometry.Aabb(Geometry.Corners(mats[leaf.Path], (Vector3)leaf.Size));
+      // A face-thin element has no volume of its own to weigh; every part is taken half a unit
+      // thicker on each axis so a plane inside the cells counts as inside them.
+      elLo -= new Vector3(0.5f);
+      elHi += new Vector3(0.5f);
+      if (Shared(elLo, elHi, lo, hi) * 2 < Volume(elLo, elHi))
+        outside.Add(leaf.Path);
+    }
+    if (outside.Count == 0)
+      return [];
+
+    var hidden = new List<string>();
+    void Cut(JArray elements, string prefix) {
+      for (int i = elements.Count - 1; i >= 0; i--) {
+        var element = (JObject)elements[i];
+        string name = (string?)element["name"] ?? "?";
+        string path = (prefix.Length > 0 ? prefix + "/" : "") + name;
+        if (outside.Contains(path)) {
+          hidden.Add(name);
+          elements.RemoveAt(i);
+          continue;
+        }
+        if (element["children"] is JArray children)
+          Cut(children, path);
+      }
+    }
+    Cut((JArray)raw["elements"]!, "");
+    hidden.Reverse();
+    return hidden;
+  }
+
+  private static double Volume(Vector3 lo, Vector3 hi) =>
+    (double)(hi.X - lo.X) * (hi.Y - lo.Y) * (hi.Z - lo.Z);
+
+  // The volume two boxes share, zero when they miss each other on any axis.
+  private static double Shared(Vector3 aLo, Vector3 aHi, Vector3 bLo, Vector3 bHi) =>
+    (double)Math.Max(0, Math.Min(aHi.X, bHi.X) - Math.Max(aLo.X, bLo.X))
+    * Math.Max(0, Math.Min(aHi.Y, bHi.Y) - Math.Max(aLo.Y, bLo.Y))
+    * Math.Max(0, Math.Min(aHi.Z, bHi.Z) - Math.Max(aLo.Z, bLo.Z));
 
   // The composed model as a shape the renderer draws, named for the block it came from.
   private static LoadedShape Loaded(JObject raw, ResolvedBlock block, Variant variant) {

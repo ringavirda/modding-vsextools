@@ -1,0 +1,9 @@
+{
+  "code": "tooled",
+  // A block whose shape parks an animated tool above it, the way the puddling door parks its
+  // rabble: the rest pose is nowhere a player ever sees it on a placed block.
+  "shape": { "base": "demo:block/tooled" },
+  "textures": {
+    "all": { "base": "demo:block/wall" }
+  }
+}
