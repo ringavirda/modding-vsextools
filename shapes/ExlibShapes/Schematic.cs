@@ -202,6 +202,47 @@ public static class Schematic {
       _ => $"Layer {y}",
     };
 
+  /// <summary>
+  /// A megablock's reserved footprint as one plan: a <paramref name="cell"/>-px square per (x, z)
+  /// column its body occupies (<see cref="Footprint.Cells"/> with every Y layer projected onto one),
+  /// the principal's own column filled in the first legend colour and outlined thicker
+  /// (<c>class="anchor"</c>). North is up (smaller Z is nearer the top).
+  /// </summary>
+  public static string FootprintSvg(Layout layout, int cell = 32) {
+    IReadOnlyList<Offset> cells = Footprint.Cells(layout);
+    List<(int X, int Z)> columns = [.. cells.Select(c => (c.X, c.Z)).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X)];
+    int x0 = columns.Min(c => c.X), x1 = columns.Max(c => c.X);
+    int z0 = columns.Min(c => c.Z), z1 = columns.Max(c => c.Z);
+    int width = (x1 - x0 + 1) * cell;
+    int height = (z1 - z0 + 1) * cell;
+
+    const int margin = 24;
+    const int caption = 18;
+    var sb = new StringBuilder();
+    sb.Append(
+      $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width + 2 * margin}\" "
+        + $"height=\"{height + 2 * margin + caption}\" font-family=\"sans-serif\" font-size=\"10\">"
+    );
+    sb.Append($"<g transform=\"translate({margin},{margin})\">");
+    foreach ((int x, int z) in columns) {
+      bool isAnchor = x == layout.Anchor.X && z == layout.Anchor.Z;
+      sb.Append(
+        $"<rect class=\"{(isAnchor ? "cell anchor" : "cell")}\" x=\"{(x - x0) * cell}\" y=\"{(z - z0) * cell}\" "
+          + $"width=\"{cell}\" height=\"{cell}\" fill=\"{(isAnchor ? Palette[0] : FillerColor)}\" "
+          + $"stroke=\"black\" stroke-width=\"{(isAnchor ? 3 : 1)}\" />"
+      );
+    }
+    sb.Append($"<text x=\"{Svg(width / 2.0)}\" y=\"-10\" text-anchor=\"middle\">north</text>");
+    sb.Append($"<text x=\"{width + 4}\" y=\"{Svg(height / 2.0)}\">x</text>");
+    sb.Append($"<text x=\"-14\" y=\"{Svg(height / 2.0)}\">z</text>");
+    sb.Append(
+      $"<text class=\"caption\" x=\"{Svg(width / 2.0)}\" y=\"{height + caption}\" text-anchor=\"middle\">"
+        + "Footprint, the block's own cell marked</text>"
+    );
+    sb.Append("</g></svg>");
+    return sb.ToString();
+  }
+
   // .NET's default double.ToString() omits the decimal point for a whole number (16, not
   // 16.0); appended back so every coordinate in the SVG text shows one.
   private static string Svg(double v) {
@@ -276,7 +317,7 @@ public static class Schematic {
   // blocktype's, keyed with the same prefix). The blocktype's `all` entry is the game's own
   // catch-all: it stands in for every key the shape declares or its faces use that the blocktype
   // does not name itself.
-  private static (JObject Group, Dictionary<string, string> Textures) WrappedCell(
+  internal static (JObject Group, Dictionary<string, string> Textures) WrappedCell(
     ResolvedBlock block,
     Offset offset,
     string prefix

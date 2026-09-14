@@ -1,13 +1,14 @@
 # exlib-shapes
 
-Renders a Vintage Story shape file to textured views or animation frames, and a multiblock or
-megablock blocktype file to a build schematic - a plan-grid SVG per Y layer, an isometric textured
-composite, and a manifest a wiki page reads - with no game running. It depends on nothing in this
-repository beyond the game install it is pointed at.
+Renders a Vintage Story shape file to textured views or animation frames, a blocktype variant to
+the views a wiki page shows, and a multiblock or megablock blocktype file to a build schematic - a
+plan-grid SVG per Y layer, an isometric textured composite, and a manifest a wiki page reads - with
+no game running. It depends on nothing in this repository beyond the game install it is pointed at.
 
 ```sh
 dotnet tool install --global ExpandedLib.Shapes
 exlib-shapes render path/to/shape.json --out out/ --game path/to/vintagestory
+exlib-shapes block path/to/blocktype.json --out out/ --game path/to/vintagestory
 exlib-shapes schematic path/to/blocktype.json --out out/ --game path/to/vintagestory
 ```
 
@@ -48,18 +49,48 @@ filler cells, connector faces and named roles) or, for a filler-only megablock
 (`ExpandedLib.Structures.IFillerHost`, the family's flywheel among them), its `attributes.fillerOffsets`
 or per-variant `attributesByType` entry. `--angle` turns the whole layout before rendering (0, 90,
 180 or 270 - north 0, west 90, south 180, east 270). `--views` is `plan`, `iso`, or both (default:
-both): `plan` writes one `<stem>-plan-y<N>.svg` per Y layer; `iso` writes `<stem>-iso.png`, plus
-one `<stem>-iso-y<N>.png` per `--layer` (a single Y, or `all` for one per layer) cut at that
+both): `plan` writes one `<stem>-plan-y<N>.svg` per Y layer, each captioned with the layer it
+draws; `iso` writes `<stem>-iso.png` with a vertical scale down its left edge, one tick per layer,
+plus one `<stem>-iso-y<N>.png` per `--layer` (a single Y, or `all` for one per layer) cut at that
 height. `--ppu` is pixels per shape unit for the iso render (default 8). `--roots` names extra mod
 repository roots a selector resolves against, repeatable, in addition to the golden's own
 repository and its sibling `exlib` checkout when present.
 
+The declared offsets are authored in the block's own frame and the game turns them by its
+`StructureAngle`, a number that lives in C# and in no blocktype file; the drawing therefore takes
+the model's own `rotateY` as given and turns the declared cells onto it, which is that angle
+wherever the footprint tells the quarter turns apart. A megablock's own body is drawn over a thin
+outline of the cells it reserves rather than under grey boxes; a structure's filler cells, which
+the player leaves clear, keep theirs.
+
 A `<stem>.json` manifest is always written alongside the pictures: `files` (every path written),
-`legend` (one row per declared number - its selector, resolved representative code, palette
+`plans` (one `{file, layer}` row per plan SVG), `legend` (one row per declared number - its selector, resolved representative code, palette
 colour, and whether it is optional, drawn as air), and `warnings` (a selector that resolved to
 neither a block nor `air`; a selector whose match spanned more than one source blocktype file,
 named in the warning together, since only one of them is drawn; or a blocktype or worldproperties
 file that failed to parse, named by path - also printed to stderr as the run happens).
+
+## block
+
+```
+exlib-shapes block FILE --out DIR [--variant CODE] [--views iso,north,east,south,west,up]
+  [--ppu N] [--roots PATH...] [--game PATH]
+```
+
+Renders one variant of `FILE` the way the game draws it in the world: its own shape file under the
+turn its `shape`/`shapeByType` entry carries for that variant, painted with the blocktype's texture
+map (the `all` entry standing in for every key it does not name), or a unit cube when it ships no
+shape at all. `--variant` names the variant by full code or bare path; with none, the family's
+north-facing variant is drawn, or its first when the family has no facing. `--views` defaults to
+`iso,north,east,south,west,up`, one `<stem>-<view>.png` each; `--ppu` is pixels per shape unit
+(default 24). A family declaring a footprint (`fillerOffsets`) also gets `<stem>-footprint.svg`,
+the plan of the principal and the cells it reserves, the principal marked, drawn in the same frame
+as the pictures.
+
+The `<stem>.json` manifest carries `files` (every path written), `variant` (the code drawn),
+`missingTextures` (one line per key drawn as the magenta placeholder) and `warnings` (a block with
+no shape of its own, a selector whose match spanned more than one source file, a blocktype or
+worldproperties file that failed to parse).
 
 ## tree / measure
 

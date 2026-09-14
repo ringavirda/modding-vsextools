@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.1] - 2026-09-14
+
+`exlib-shapes block FILE --out DIR [--variant CODE]` renders one blocktype variant the way the game
+draws it - its own shape under the turn its `shape`/`shapeByType` entry carries for that variant,
+painted with the blocktype's texture map - one PNG per view, the plan of the footprint it reserves,
+and a manifest naming the variant, the textures it could not find and its warnings. `exmod block`
+runs it.
+
+`shape.rotateYByType` (and the X/Z forms) are read through the game's own ByType rule, which is
+where the old mods keep a boiler's or an engine's spin, and a variant group naming only a
+worldproperties file reads it from the domain the reference names - `game` when it names none,
+which is where `abstract/horizontalorientation` actually lives.
+
+A megablock's schematic now stands its declared footprint in the frame its model is drawn in: the
+cells turn onto the body rather than away from it, its own body is drawn over a thin outline of the
+cells it reserves instead of under grey boxes, and a structure's filler cells keep theirs. Every
+plan SVG carries the layer it draws as a caption, the manifest lists each plan with its layer under
+`plans`, and the isometric composite carries a vertical scale, one tick per layer.
+
 ## [0.3.0] - 2026-09-14
 
 `exmod scaffold` (alias `g`) puts a compiling, tested block, item, recipe, megablock, multiblock,

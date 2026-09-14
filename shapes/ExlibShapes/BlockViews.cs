@@ -1,0 +1,125 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using SkiaSharp;
+using Vintagestory.API.Common;
+
+namespace ExpandedLib.Shapes;
+
+/// <summary>
+/// Draws one blocktype variant the way the game draws it in the world: its own shape file under its
+/// <c>shapeByType</c> turn, painted with the blocktype's texture map (the <c>all</c> entry standing
+/// in for every key it does not name), or a unit cube when it ships no shape at all. A family that
+/// reserves a footprint also gets that footprint's plan, in the same frame as the pictures.
+/// </summary>
+public static class BlockViews {
+  /// <summary>The views a page of a block shows: the isometric one and the five faces a reader can
+  /// tell apart (a block's underside is not one of them).</summary>
+  public static readonly string[] DefaultViews = ["iso", "north", "east", "south", "west", "up"];
+
+  // The texture and element prefix of the single block being drawn; nothing else shares the
+  // composite, so the name only has to be stable for the manifest to report against.
+  private const string Prefix = "block";
+
+  /// <summary>The raw shape JSON of <paramref name="block"/>'s drawn model and the texture values
+  /// (key to the block's own value string) it references.</summary>
+  public static (JObject Raw, Dictionary<string, string> TextureValues) Compose(ResolvedBlock block) {
+    (JObject group, Dictionary<string, string> values) = Schematic.WrappedCell(block, default, Prefix);
+    return (new JObject { ["textures"] = new JObject(), ["elements"] = new JArray(group) }, values);
+  }
+
+  /// <summary>
+  /// Writes <paramref name="variant"/>'s pictures into <paramref name="outDir"/> - one
+  /// <c>&lt;stem&gt;-&lt;view&gt;.png</c> per view, plus <c>&lt;stem&gt;-footprint.svg</c> when
+  /// <paramref name="file"/> declares a footprint - and the <c>&lt;stem&gt;.json</c> manifest
+  /// beside them, which it returns: <c>files</c>, the <c>variant</c> drawn, the
+  /// <c>missingTextures</c> the render painted magenta, and <c>warnings</c>.
+  /// </summary>
+  /// <param name="file">The blocktype file, whose own name is the stem of everything written.</param>
+  /// <param name="variant">The variant to draw, from <paramref name="index"/>.</param>
+  /// <param name="index">The index <paramref name="variant"/> came from; its ambiguities and parse
+  /// warnings are read after the block resolves, so they land in the manifest.</param>
+  /// <param name="outDir">Created when absent.</param>
+  /// <param name="views">Named <see cref="Renderer.NamedViews"/> entries; <see cref="DefaultViews"/>
+  /// when null.</param>
+  /// <param name="ppu">Pixels per shape unit, as <c>render</c> means it.</param>
+  public static JObject Write(
+    string file,
+    Variant variant,
+    BlockIndex index,
+    string outDir,
+    IReadOnlyList<string>? views = null,
+    int ppu = 24
+  ) {
+    ResolvedBlock block =
+      index.Resolve(variant.Code) ?? throw new InvalidOperationException($"{variant.Code}: the index cannot resolve it");
+    (JObject raw, Dictionary<string, string> textureValues) = Compose(block);
+    Shape shape =
+      JsonConvert.DeserializeObject<Shape>(raw.ToString())
+      ?? throw new JsonException($"{variant.Code}: the composed block shape failed to parse");
+    LoadedShape loaded = ShapeFile.FromRaw(shape, block.ShapePath, new Dictionary<string, string>());
+    TextureSet textures = TextureSet.FromResolved(textureValues, index.ResolveTexture);
+
+    Directory.CreateDirectory(outDir);
+    string stem = Path.GetFileNameWithoutExtension(file);
+    var files = new List<string>();
+    foreach (string view in views ?? DefaultViews) {
+      string path = Path.Combine(outDir, $"{stem}-{view}.png");
+      using (SKBitmap image = Renderer.Render(loaded, Renderer.NamedViews[view], ppu: ppu, textures: textures))
+      using (SKData data = image.Encode(SKEncodedImageFormat.Png, 100))
+      using (FileStream stream = File.Create(path))
+        data.SaveTo(stream);
+      files.Add(path);
+    }
+
+    if (FootprintOf(file, variant, index) is { } footprint) {
+      string path = Path.Combine(outDir, $"{stem}-footprint.svg");
+      File.WriteAllText(path, Schematic.FootprintSvg(footprint));
+      files.Add(path);
+    }
+
+    var warnings = new List<string>();
+    if (block.ShapePath == null)
+      warnings.Add($"{block.Code}: no shape file; drawn as a unit cube");
+    foreach ((string selector, IReadOnlyList<string> spanned) in index.Ambiguities)
+      warnings.Add($"{selector}: ambiguous between {string.Join(", ", spanned)}");
+    warnings.AddRange(index.ParseWarnings);
+
+    var manifest = new JObject {
+      ["files"] = new JArray(files),
+      ["variant"] = block.Code,
+      ["missingTextures"] = new JArray(MissingTextures(block, textureValues, textures)),
+      ["warnings"] = new JArray(warnings),
+    };
+    File.WriteAllText(Path.Combine(outDir, $"{stem}.json"), manifest.ToString(Formatting.Indented));
+    return manifest;
+  }
+
+  // The same line the schematic manifest reports a magenta face with, one per unresolved key,
+  // sorted; Compose keys every value `block_<key>`.
+  private static IReadOnlyList<string> MissingTextures(
+    ResolvedBlock block,
+    IReadOnlyDictionary<string, string> textureValues,
+    TextureSet textures
+  ) {
+    var lines = new SortedSet<string>(StringComparer.Ordinal);
+    foreach (string prefixed in textures.Missing)
+      lines.Add($"{block.Code}: texture {prefixed[(Prefix.Length + 1)..]} ({textureValues[prefixed]}) not found");
+    return [.. lines];
+  }
+
+  // The block's own reserved footprint, turned into the frame its model is drawn in, or null when
+  // the file declares none - a plain block, and a structure whose cells are the player's own blocks.
+  private static Layout? FootprintOf(string file, Variant variant, BlockIndex index) {
+    Layout layout;
+    try {
+      layout = Layout.Load(file, variant.Path);
+    } catch (LayoutError) {
+      return null;
+    }
+    return layout.Fillers.Count > 0 ? Footprint.Placed(layout, index) : null;
+  }
+}

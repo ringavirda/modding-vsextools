@@ -1,8 +1,10 @@
-# exlib-shapes: renders a shape file to textured views or animation frames, or a multiblock/
-# megablock blocktype file to a build schematic - the same commands the wiki's own figures call.
+# exlib-shapes: renders a shape file to textured views or animation frames, a multiblock/megablock
+# blocktype file to a build schematic, or one blocktype variant to the views a wiki page shows -
+# the same commands the wiki's own figures call.
 #
 #   exmod render      shape file -> textured view or animation-frame PNGs
 #   exmod schematic   multiblock/megablock blocktype file -> plan SVGs, an iso PNG, a manifest
+#   exmod block       blocktype file -> a PNG per view, a footprint SVG, a manifest
 
 # Runs shapes/ExlibShapes's own dotnet project for one subcommand, the way Invoke-Verify runs
 # ExlibVerify: -p:GamePath resolves the tool project's own VintagestoryAPI reference, and the same
@@ -24,6 +26,7 @@ function Invoke-ExlibShapes([string]$Subcommand, [string[]]$Argv) {
 
 function Invoke-Render([string[]]$Argv) { Invoke-ExlibShapes 'render' $Argv }
 function Invoke-Schematic([string[]]$Argv) { Invoke-ExlibShapes 'schematic' $Argv }
+function Invoke-Block([string[]]$Argv) { Invoke-ExlibShapes 'block' $Argv }
 
 Add-ExmodCommand -Group source -Name render -Summary 'render a shape file to textured views or animation frames' -Action {
   param([string[]]$Argv) Invoke-Render $Argv
@@ -68,5 +71,28 @@ an ambiguous prefix of its common `-OutVariable`/`-OutBuffer` parameters and ref
   --layer N|all   an iso render cut at Y layer N, or one per layer with "all"
   --ppu N         pixels per shape unit for the iso render (default: 8)
   --roots PATH    extra mod repository roots to resolve selectors against (repeatable)
+  --game PATH     a specific game install (default: this repository's own provisioned one)
+'@
+
+Add-ExmodCommand -Group source -Name block -Summary 'render one blocktype variant to the views a page shows' -Action {
+  param([string[]]$Argv) Invoke-Block $Argv
+} -Detail @'
+exmod block FILE --out=DIR [--variant CODE] [--views iso,north,east,south,west,up] [--ppu N]
+  [--roots PATH...] [--game PATH]
+
+Renders one variant of a blocktype file the way the game draws it in the world - its own shape
+under its shapeByType turn, painted with its texture map, or a unit cube when it ships no shape -
+one PNG per view, plus the plan of the footprint it reserves when it declares one, and a
+manifest.json the wiki's generator reads. See shapes/ExlibShapes/README.md for the full option
+list and the standalone `exlib-shapes` tool. `--out` needs the `=` form here: PowerShell's own
+parameter binder treats a bare `--out` token as an ambiguous prefix of its common
+`-OutVariable`/`-OutBuffer` parameters and refuses it outright.
+
+  FILE            the blocktype JSON to render
+  --out=DIR       where the PNGs, the footprint SVG and manifest.json are written
+  --variant CODE  the variant to draw (default: the family's north-facing one, else its first)
+  --views a,b     named views (south, north, east, west, up, down, iso); default: all but down
+  --ppu N         pixels per shape unit (default: 24)
+  --roots PATH    extra mod repository roots to resolve textures against (repeatable)
   --game PATH     a specific game install (default: this repository's own provisioned one)
 '@
