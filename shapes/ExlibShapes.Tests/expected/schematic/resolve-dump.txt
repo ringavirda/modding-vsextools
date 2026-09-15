@@ -4,7 +4,7 @@
 3 iiex:furnace-irontap-w iiex:furnace-irontap-w shape=irontap.json rot=(0.0,90.0,0.0) optional=False
 4 iiex:furnace-slagtap-e iiex:furnace-slagtap-e shape=slagtap.json rot=(0.0,270.0,0.0) optional=False
 5 iiex:furnace-tuyere-* iiex:furnace-tuyere-s shape=tuyere.json rot=(0.0,0.0,0.0) optional=False
-6 iiex:hopper-tall-e iiex:hopper-tall-e shape=hopper-tall.json rot=(0.0,0.0,0.0) optional=False
+6 iiex:hopper-tall-e iiex:hopper-tall-e shape=hopper-tall.json rot=(0.0,270.0,0.0) optional=False
 7 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 8 *:@(air|coalpile|furnace-chargepile) None optional=True
 9 *:@(air|coalpile|furnace-chargepile|hearthmetal-.*) None optional=True
@@ -26,7 +26,7 @@
 3 iiex:furnace-irontap-e iiex:furnace-irontap-e shape=irontap.json rot=(0.0,270.0,0.0) optional=False
 4 iiex:furnace-slagtap-w iiex:furnace-slagtap-w shape=slagtap.json rot=(0.0,90.0,0.0) optional=False
 5 iiex:furnace-tuyere-* iiex:furnace-tuyere-s shape=tuyere.json rot=(0.0,0.0,0.0) optional=False
-6 iiex:hopper-tall-w iiex:hopper-tall-w shape=hopper-tall.json rot=(0.0,0.0,0.0) optional=False
+6 iiex:hopper-tall-w iiex:hopper-tall-w shape=hopper-tall.json rot=(0.0,90.0,0.0) optional=False
 7 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 8 *:@(air|coalpile|furnace-chargepile) None optional=True
 9 *:@(air|coalpile|furnace-chargepile|hearthmetal-.*) None optional=True
@@ -37,7 +37,7 @@
 3 iiex:furnace-irontap-n iiex:furnace-irontap-n shape=irontap.json rot=(0.0,0.0,0.0) optional=False
 4 iiex:furnace-slagtap-s iiex:furnace-slagtap-s shape=slagtap.json rot=(0.0,180.0,0.0) optional=False
 5 iiex:furnace-tuyere-* iiex:furnace-tuyere-s shape=tuyere.json rot=(0.0,0.0,0.0) optional=False
-6 iiex:hopper-tall-s iiex:hopper-tall-s shape=hopper-tall.json rot=(0.0,0.0,0.0) optional=False
+6 iiex:hopper-tall-s iiex:hopper-tall-s shape=hopper-tall.json rot=(0.0,180.0,0.0) optional=False
 7 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 8 *:@(air|coalpile|furnace-chargepile) None optional=True
 9 *:@(air|coalpile|furnace-chargepile|hearthmetal-.*) None optional=True
@@ -49,7 +49,7 @@
 4 game:cokeovendoor-*-north game:cokeovendoor-closed-north shape=closed.json rot=(0.0,0.0,0.0) optional=False
 5 iiex:furnace-puddlingcore-*-* iiex:furnace-puddlingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-puddlinghearth-n iiex:furnace-puddlinghearth-n shape=puddlinghearth.json rot=(0.0,0.0,0.0) optional=False
-7 iiex:furnace-puddlingchargedoor-s iiex:furnace-puddlingchargedoor-s shape=puddlingchargedoor.json rot=(0.0,180.0,0.0) optional=False
+7 iiex:furnace-puddlingchargedoor-n iiex:furnace-puddlingchargedoor-n shape=puddlingchargedoor.json rot=(0.0,0.0,0.0) optional=False
 8 iiex:furnace-puddlingchimneycap-s iiex:furnace-puddlingchimneycap-s shape=puddlingchimneycap.json rot=(0.0,180.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 10 iiex:furnace-firebox-*-* iiex:furnace-firebox-tier1-n shape=firebox.json rot=(0.0,0.0,0.0) optional=False
@@ -61,7 +61,7 @@
 4 game:cokeovendoor-*-west game:cokeovendoor-closed-west shape=closed.json rot=(0.0,90.0,0.0) optional=False
 5 iiex:furnace-puddlingcore-*-* iiex:furnace-puddlingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-puddlinghearth-w iiex:furnace-puddlinghearth-w shape=puddlinghearth.json rot=(0.0,90.0,0.0) optional=False
-7 iiex:furnace-puddlingchargedoor-e iiex:furnace-puddlingchargedoor-e shape=puddlingchargedoor.json rot=(0.0,270.0,0.0) optional=False
+7 iiex:furnace-puddlingchargedoor-w iiex:furnace-puddlingchargedoor-w shape=puddlingchargedoor.json rot=(0.0,90.0,0.0) optional=False
 8 iiex:furnace-puddlingchimneycap-e iiex:furnace-puddlingchimneycap-e shape=puddlingchimneycap.json rot=(0.0,270.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 10 iiex:furnace-firebox-*-* iiex:furnace-firebox-tier1-n shape=firebox.json rot=(0.0,0.0,0.0) optional=False
@@ -73,7 +73,7 @@
 4 game:cokeovendoor-*-south game:cokeovendoor-closed-south shape=closed.json rot=(0.0,180.0,0.0) optional=False
 5 iiex:furnace-puddlingcore-*-* iiex:furnace-puddlingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-puddlinghearth-s iiex:furnace-puddlinghearth-s shape=puddlinghearth.json rot=(0.0,180.0,0.0) optional=False
-7 iiex:furnace-puddlingchargedoor-n iiex:furnace-puddlingchargedoor-n shape=puddlingchargedoor.json rot=(0.0,0.0,0.0) optional=False
+7 iiex:furnace-puddlingchargedoor-s iiex:furnace-puddlingchargedoor-s shape=puddlingchargedoor.json rot=(0.0,180.0,0.0) optional=False
 8 iiex:furnace-puddlingchimneycap-n iiex:furnace-puddlingchimneycap-n shape=puddlingchimneycap.json rot=(0.0,0.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 10 iiex:furnace-firebox-*-* iiex:furnace-firebox-tier1-n shape=firebox.json rot=(0.0,0.0,0.0) optional=False
@@ -85,7 +85,7 @@
 4 game:cokeovendoor-*-east game:cokeovendoor-closed-east shape=closed.json rot=(0.0,270.0,0.0) optional=False
 5 iiex:furnace-puddlingcore-*-* iiex:furnace-puddlingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-puddlinghearth-e iiex:furnace-puddlinghearth-e shape=puddlinghearth.json rot=(0.0,270.0,0.0) optional=False
-7 iiex:furnace-puddlingchargedoor-w iiex:furnace-puddlingchargedoor-w shape=puddlingchargedoor.json rot=(0.0,90.0,0.0) optional=False
+7 iiex:furnace-puddlingchargedoor-e iiex:furnace-puddlingchargedoor-e shape=puddlingchargedoor.json rot=(0.0,270.0,0.0) optional=False
 8 iiex:furnace-puddlingchimneycap-w iiex:furnace-puddlingchimneycap-w shape=puddlingchimneycap.json rot=(0.0,90.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 10 iiex:furnace-firebox-*-* iiex:furnace-firebox-tier1-n shape=firebox.json rot=(0.0,0.0,0.0) optional=False
@@ -172,7 +172,7 @@
 3 iiex:furnace-irontap-e iiex:furnace-irontap-e shape=irontap.json rot=(0.0,270.0,0.0) optional=False
 4 iiex:furnace-slagtap-w iiex:furnace-slagtap-w shape=slagtap.json rot=(0.0,90.0,0.0) optional=False
 5 iiex:furnace-tuyere-* iiex:furnace-tuyere-s shape=tuyere.json rot=(0.0,0.0,0.0) optional=False
-6 iiex:hopper-tall-w iiex:hopper-tall-w shape=hopper-tall.json rot=(0.0,0.0,0.0) optional=False
+6 iiex:hopper-tall-w iiex:hopper-tall-w shape=hopper-tall.json rot=(0.0,90.0,0.0) optional=False
 7 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 8 *:@(air|coalpile|furnace-chargepile) None optional=True
 9 *:@(air|coalpile|furnace-chargepile|hearthmetal-.*) None optional=True
@@ -183,7 +183,7 @@
 3 iiex:furnace-irontap-n iiex:furnace-irontap-n shape=irontap.json rot=(0.0,0.0,0.0) optional=False
 4 iiex:furnace-slagtap-s iiex:furnace-slagtap-s shape=slagtap.json rot=(0.0,180.0,0.0) optional=False
 5 iiex:furnace-tuyere-* iiex:furnace-tuyere-s shape=tuyere.json rot=(0.0,0.0,0.0) optional=False
-6 iiex:hopper-tall-s iiex:hopper-tall-s shape=hopper-tall.json rot=(0.0,0.0,0.0) optional=False
+6 iiex:hopper-tall-s iiex:hopper-tall-s shape=hopper-tall.json rot=(0.0,180.0,0.0) optional=False
 7 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 8 *:@(air|coalpile|furnace-chargepile) None optional=True
 9 *:@(air|coalpile|furnace-chargepile|hearthmetal-.*) None optional=True
@@ -194,7 +194,7 @@
 3 iiex:furnace-irontap-w iiex:furnace-irontap-w shape=irontap.json rot=(0.0,90.0,0.0) optional=False
 4 iiex:furnace-slagtap-e iiex:furnace-slagtap-e shape=slagtap.json rot=(0.0,270.0,0.0) optional=False
 5 iiex:furnace-tuyere-* iiex:furnace-tuyere-s shape=tuyere.json rot=(0.0,0.0,0.0) optional=False
-6 iiex:hopper-tall-e iiex:hopper-tall-e shape=hopper-tall.json rot=(0.0,0.0,0.0) optional=False
+6 iiex:hopper-tall-e iiex:hopper-tall-e shape=hopper-tall.json rot=(0.0,270.0,0.0) optional=False
 7 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 8 *:@(air|coalpile|furnace-chargepile) None optional=True
 9 *:@(air|coalpile|furnace-chargepile|hearthmetal-.*) None optional=True
@@ -218,7 +218,7 @@
 5 iiex:furnace-cokeovencore-* iiex:furnace-cokeovencore-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-chargedoor-n iiex:furnace-chargedoor-n shape=chargedoor.json rot=(0.0,0.0,0.0) optional=False
 7 iiex:furnace-chargelid-s iiex:furnace-chargelid-s shape=chargelid.json rot=(0.0,180.0,0.0) optional=False
-8 iiex:hopper-tall-s iiex:hopper-tall-s shape=hopper-tall.json rot=(0.0,0.0,0.0) optional=False
+8 iiex:hopper-tall-s iiex:hopper-tall-s shape=hopper-tall.json rot=(0.0,180.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 10 game:air None optional=True
 == cokeovencore angle=90 cells=128 fillers=0 connectors=
@@ -229,7 +229,7 @@
 5 iiex:furnace-cokeovencore-* iiex:furnace-cokeovencore-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-chargedoor-w iiex:furnace-chargedoor-w shape=chargedoor.json rot=(0.0,90.0,0.0) optional=False
 7 iiex:furnace-chargelid-e iiex:furnace-chargelid-e shape=chargelid.json rot=(0.0,270.0,0.0) optional=False
-8 iiex:hopper-tall-e iiex:hopper-tall-e shape=hopper-tall.json rot=(0.0,0.0,0.0) optional=False
+8 iiex:hopper-tall-e iiex:hopper-tall-e shape=hopper-tall.json rot=(0.0,270.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 10 game:air None optional=True
 == cokeovencore angle=180 cells=128 fillers=0 connectors=
@@ -251,7 +251,7 @@
 5 iiex:furnace-cokeovencore-* iiex:furnace-cokeovencore-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-chargedoor-e iiex:furnace-chargedoor-e shape=chargedoor.json rot=(0.0,270.0,0.0) optional=False
 7 iiex:furnace-chargelid-w iiex:furnace-chargelid-w shape=chargelid.json rot=(0.0,90.0,0.0) optional=False
-8 iiex:hopper-tall-w iiex:hopper-tall-w shape=hopper-tall.json rot=(0.0,0.0,0.0) optional=False
+8 iiex:hopper-tall-w iiex:hopper-tall-w shape=hopper-tall.json rot=(0.0,90.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 10 game:air None optional=True
 == control angle=0 cells=33 fillers=0 connectors=
