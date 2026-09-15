@@ -768,13 +768,22 @@ upper cells to load crushed iron ore, the narrow upper cell to load lime, and th
 its base to pull the gate - both hoppers drop together into the shared basin as one batch, which
 you then take back out from any open basin cell.
 
+The plated pipes are the network example: straight runs, bends, tees and crosses of one pipe tier,
+registered with a burst pressure and a throughput of their own, plus the wall passthroughs the
+library ships shapes for. Lay a run from the blower's open end and the air goes down it.
+
+The smoke stack is the multiblock example: place the intake against the end of that run, then
+Ctrl + Shift + right-click it to see the outline of the 72-cell chimney and build it from refractory
+brick and bricks. Once complete it draws the blower's air off the network and vents it as a plume,
+so the whole chain - axle, blower, pipes, stack - can be watched working end to end.
+
 ## Licence
 
 MIT licensed; see LICENSE. The copyright line names whoever ran `exmod starter` - update it if
 that is not you.
 '@
 
-# The starter repository at $Dest: both sample mods as a monorepo, the launcher scripts, the
+# The starter repository at $Dest: the sample mods as a monorepo, the launcher scripts, the
 # manifest, a solution, CI and the repo dotfiles - everything a `git clone` of this generated repo
 # needs to restore, build, test and smoke with nothing hand-edited. Regenerates in place: every
 # path this command owns is wiped and rewritten on each run, and every mod `exmod new` has added
