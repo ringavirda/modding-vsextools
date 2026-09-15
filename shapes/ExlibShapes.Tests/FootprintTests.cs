@@ -21,10 +21,8 @@ public class FootprintTests {
   private static readonly Dictionary<string, (double Overhang, int FrameOffset, string Why)> FootprintDefects =
     new() {
       ["iiex:crafting-workbench"] = (0.4, 0, "a vice standing off the bench's far end"),
-      ["iiex:engine-fluidpump"] = (1.56, 0, "the barrel drawn up through the engine's own reserved column"),
       ["iiex:furnace-puddlingchargedoor"] = (1.5, 0, "the door drawn with its brick surround either side"),
       ["iiex:furnace-puddlingchimneycap"] = (2.1, 0, "the cap drawn with the stack below it"),
-      ["iiex:furnace-twintubblower"] = (2.0, 180, "the tubs drawn opposite the cells they reserve"),
       ["iiex:mpenergy-flywheel-large"] = (1.0, 180, "the slab drawn one cell off the pair it reserves"),
     };
 

@@ -148,12 +148,13 @@ public class BlockViewsTests {
   // puddling door's two tools and the chimney cap's control rod, each moved by an animation of its
   // own shape. Every other block keeps every part, however far it reaches.
   private static readonly string[] Clipped = [
+    "iiex:enginempgenerator-n: Shaft1",
     "iiex:furnace-puddlingchargedoor-n: Rabble, Paddle",
     "iiex:furnace-puddlingchimneycap-n: Cube34",
   ];
 
   [SkippableFact]
-  public void Only_the_two_blocks_with_a_parked_tool_lose_any_art() {
+  public void Only_the_blocks_with_a_parked_tool_lose_any_art() {
     string? exmods = FixturePath.Workspace("exmods");
     Skip.If(exmods is null, "the sibling exmods checkout is absent");
     var cut = new List<string>();

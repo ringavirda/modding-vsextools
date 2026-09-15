@@ -207,7 +207,7 @@ public class PresentationTests {
     Skip.If(file is null, "the sibling exmods checkout is absent");
     BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(file!));
     Variant drawn = BlockIndex.Facing(index.VariantsOf(file!), Presentation.Facing)!;
-    Assert.Equal("iiex:boilercornish-n", drawn.Code);
+    Assert.Equal("iiex:boilercornish-n-boilerplate", drawn.Code);
 
     // BlockBoiler's own half turn lands in the frame fit, not in the facing: the facing convention
     // alone answers south while the cells it places run the other way.
