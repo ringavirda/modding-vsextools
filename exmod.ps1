@@ -515,22 +515,30 @@ function Expand-DependencyZip([string]$Zip, [string]$Dest) {
 # under $RepoRoot/.exmod/cache and extract under $RepoRoot/.exmod/mods/<Id>.
 function Resolve-OneDependency([string]$Id, [string]$Floor, [string]$Configuration) {
   $siblingProject = Get-ExmodDependencySiblingProject $Id
-  # A sibling another platform builds (a WSL checkout seen from Windows) is that platform's to
-  # build; this one takes the release the floor names instead.
-  if ($siblingProject -and (Test-ForeignBuildState (Split-Path $siblingProject -Parent))) {
-    Write-Host "$Id : workspace sibling built on another platform - using the release instead"
-    $siblingProject = $null
-  }
   if ($siblingProject) {
     $srcDir = Split-Path $siblingProject -Parent
     $built = Join-Path $srcDir "bin/$Configuration/Mods/mod"
+    # A sibling another platform builds (a WSL checkout seen from Windows) is that platform's to
+    # build, but its built mod is managed code and assets and runs anywhere: it is staged as it
+    # stands, and only a sibling with no build falls back to the release the floor names.
+    $foreign = Test-ForeignBuildState $srcDir
     if (-not (Test-Path (Join-Path $built 'modinfo.json'))) {
-      Write-Host "Building $Id (workspace sibling, not yet built) ..."
-      dotnet build $siblingProject -c $Configuration -clp:ErrorsOnly | Out-Host
-      if ($LASTEXITCODE -ne 0) { throw "Build of $siblingProject failed." }
+      if ($foreign) {
+        Write-Host "$Id : workspace sibling built on another platform and not staged - using the release instead"
+        $siblingProject = $null
+      }
+      else {
+        Write-Host "Building $Id (workspace sibling, not yet built) ..."
+        dotnet build $siblingProject -c $Configuration -clp:ErrorsOnly | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "Build of $siblingProject failed." }
+      }
     }
-    Write-Host "$Id : workspace sibling, built output at $built"
-    return [pscustomobject]@{ Id = $Id; Version = $Floor; Path = $built; Source = 'workspace sibling' }
+    if ($siblingProject) {
+      $stamp = (Get-Item (Join-Path $built 'modinfo.json')).LastWriteTime.ToString('yyyy-MM-dd HH:mm')
+      $note = if ($foreign) { " (built on the other platform, $stamp; rebuild it there after a change)" } else { "" }
+      Write-Host "$Id : workspace sibling, built output at $built$note"
+      return [pscustomobject]@{ Id = $Id; Version = $Floor; Path = $built; Source = 'workspace sibling' }
+    }
   }
 
   $cacheDir = Join-Path $RepoRoot ".exmod/mods/$Id"
