@@ -770,7 +770,9 @@ you then take back out from any open basin cell.
 
 The plated pipes are the network example: straight runs, bends, tees and crosses of one pipe tier,
 registered with a burst pressure and a throughput of their own, plus the wall passthroughs the
-library ships shapes for. Lay a run from the blower's open end and the air goes down it.
+library ships shapes for. The passthroughs are also the example of texture variants: one block
+that takes the look of whichever masonry it is set in. Lay a run from the blower's open end and
+the air goes down it.
 
 The smoke stack is the multiblock example: place the intake against the end of that run, then
 Ctrl + Shift + right-click it to see the outline of the 72-cell chimney and build it from refractory
