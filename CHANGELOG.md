@@ -7,8 +7,13 @@
 - `render` and `block` take `--selective PATTERN,...`, the same `selectiveElements` syntax a
   shape entry's own list carries, so the wiki can draw a subset of a shape's elements. On `block`
   it narrows the shape entry's own list further, an element needing both to draw.
+- `exmod release` checks the tools repository itself: the version is the manifest's `tools` value,
+  the changelog the repo's own, and the archives check gives way to the packages the workflow ships.
 
 ### Fixed
+
+- The verify build lock file is ignored by git, so a checkout that has run `exmod verify` still
+  reads clean.
 
 - An itemtype's `selectiveElements` is applied once when its picture is composed; a second pass
   over the wrapped tree emptied every item picture with a list.

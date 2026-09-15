@@ -206,6 +206,15 @@ function Invoke-Release([string[]]$Argv) {
   Push-Location $RepoRoot
   try {
     $mods = @(Get-ModManifests)
+    # The tools repository itself: a manifest carrying `tools` and no mods. Its one version is that
+    # value, its changelog the repo's own, and it ships as packages rather than zips.
+    $toolsRelease = ($mods.Count -eq 0) -and (Get-ExmodManifest).tools
+    if ($toolsRelease) {
+      $mods = @([pscustomobject]@{
+        ModId = 'tools'; Folder = '.'; Version = (Get-ExmodManifest).tools; Depends = $null
+        Changelog = Join-Path $RepoRoot 'CHANGELOG.md'
+      })
+    }
     if ($modFilter) {
       $mods = @($mods | Where-Object { $_.Folder -eq $modFilter -or $_.ModId -eq $modFilter })
       if (-not $mods) { throw "No mod '$modFilter' under mods/." }
@@ -281,13 +290,15 @@ function Invoke-Release([string[]]$Argv) {
 
     $releases = Join-Path $RepoRoot 'dist/Releases'
     $zips = @(Get-ChildItem $releases -Recurse -Filter "*_$version*.zip" -ErrorAction SilentlyContinue)
-    if ($zips.Count -gt 0) {
+    if ($toolsRelease) {
+      Add-Check 'archives' 'INFO' 'the tools ship as the packages the release workflow packs'
+    } elseif ($zips.Count -gt 0) {
       Add-Check 'archives' 'PASS' "$($zips.Count) zip(s) for $version in dist/Releases"
     } else {
       Add-Check 'archives' 'WARN' "nothing for $version in dist/Releases; run exmod pack -All"
     }
 
-    if ($online) {
+    if ($online -and -not $toolsRelease) {
       foreach ($m in $mods) {
         $published = Get-PublishedVersions $m.ModId
         if ($null -eq $published) {
@@ -326,6 +337,11 @@ function Invoke-Release([string[]]$Argv) {
     Write-Host "  git tag -a $tag -m `"$version`""
     Write-Host "  git push origin $tag"
     Write-Host ''
+    if ($toolsRelease) {
+      Write-Host '.github/workflows/release.yml runs on a v* tag: it tests the tagged commit, packs the'
+      Write-Host 'packages, pushes them to NuGet.org and attaches them to a GitHub release.'
+      return
+    }
     Write-Host '.github/workflows/release.yml runs on a v* tag: it tests the tagged commit, builds'
     Write-Host 'the zips, the bundle and the packages, and attaches them to a GitHub release.'
     Write-Host ''
@@ -357,6 +373,9 @@ What it checks:
                    dist/Releases after packing, and that folder keeps only the newest zips, so a
                    release that is packed and never recorded loses its codes for good
   archives         dist/Releases holds this version
+
+In the tools repository itself (a manifest carrying `tools` and no mods) the version is that value,
+the changelog the repo's own, and the archives check does not apply: the tools ship as packages.
 
   -Version   the version to check the tag for; defaults to the first mod's modinfo version
   -Mod       check one mod rather than all of them
