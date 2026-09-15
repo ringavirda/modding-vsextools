@@ -19,8 +19,9 @@ public sealed class Node {
   /// <summary>The element's own <c>name</c> ("?" when the JSON omits it, matching the game).</summary>
   public string Name { get; }
 
-  /// <summary>Every ancestor's name joined by <c>/</c>, then this element's own name - the same
-  /// address <see cref="LoadedShape.Find"/> and a quad's <see cref="Geometry.Quad.Path"/> use.</summary>
+  /// <summary>Every ancestor's name joined by <c>/</c>, then this element's own name, with a
+  /// <c>#2</c>, <c>#3</c>, ... suffix when a sibling shares that name - the same address
+  /// <see cref="LoadedShape.Find"/> and a quad's <see cref="Geometry.Quad.Path"/> use.</summary>
   public string Path { get; }
 
   /// <summary>The element's near corner, in its parent's local space.</summary>
@@ -192,8 +193,9 @@ public static class ShapeFile {
     IReadOnlyList<string>? selective = null
   ) {
     List<Node> roots = [];
+    var rootNames = new Dictionary<string, int>(StringComparer.Ordinal);
     foreach (ShapeElement el in raw.Elements ?? [])
-      roots.Add(Build(el, null, ""));
+      roots.Add(Build(el, null, "", rootNames));
     if (selective is { Count: > 0 })
       roots = Select(roots, selective);
     return new LoadedShape(path, textures ?? StringifyTextures(raw.Textures), roots, raw.Animations ?? []);
@@ -226,9 +228,16 @@ public static class ShapeFile {
     return textures;
   }
 
-  private static Node Build(ShapeElement raw, Node? parent, string prefix) {
+  // `siblingNames` counts one occurrence of `raw`'s own name among the elements it shares its
+  // list with: Model Creator can save two siblings under one name (the vanilla steam engine's
+  // second bank of gear teeth among them), and every dictionary this tool keys by Path - the
+  // renderer's and Footprint's world matrices, Program.measure's element boxes - would otherwise
+  // collapse them onto whichever one is built last. The second and later occurrences get a
+  // "#2", "#3", ... suffix on their own Path alone; Name, faces and children are unaffected.
+  private static Node Build(ShapeElement raw, Node? parent, string prefix, Dictionary<string, int> siblingNames) {
     string name = raw.Name ?? "?";
-    string path = (prefix.Length > 0 ? prefix + "/" : "") + name;
+    int occurrence = siblingNames[name] = siblingNames.GetValueOrDefault(name) + 1;
+    string path = (prefix.Length > 0 ? prefix + "/" : "") + name + (occurrence > 1 ? "#" + occurrence : "");
     Vec3d from = ToVec3d(raw.From, Vec3d.Zero);
     Vec3d to = ToVec3d(raw.To, Vec3d.Zero);
     Vec3d origin = raw.RotationOrigin != null ? ToVec3d(raw.RotationOrigin, from) : from;
@@ -244,9 +253,11 @@ public static class ShapeFile {
           faces[Geometry.Faces[i]] = face;
 
     var node = new Node(name, from, to, origin, rotation, faces, path, parent);
-    if (raw.Children != null)
+    if (raw.Children != null) {
+      var childNames = new Dictionary<string, int>(StringComparer.Ordinal);
       foreach (ShapeElement child in raw.Children)
-        node.ChildrenList.Add(Build(child, node, path));
+        node.ChildrenList.Add(Build(child, node, path, childNames));
+    }
     return node;
   }
 

@@ -5,6 +5,10 @@
 ### Fixed
 
 - An itemtype's `selectiveElements` governs its wiki render, as a blocktype's already did.
+- A shape element that shares its name with a sibling (the vanilla steam engine's 24-tooth gear,
+  whose second bank of twelve teeth are all named `Tooth13`) gets a numbered `#2`, `#3`, ... on its
+  own address, so the renderer's per-element maps no longer collapse every one of them onto the
+  last sibling's own transform and draw the rest nowhere.
 
 ## [0.3.3] - 2026-09-14
 

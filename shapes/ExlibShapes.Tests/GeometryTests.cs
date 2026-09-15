@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Numerics;
 using Newtonsoft.Json;
 using Vintagestory.API.Common;
@@ -157,5 +159,46 @@ public class GeometryTests {
         AssertClose(new Vector3((float)dq.Normal.X, (float)dq.Normal.Y, (float)dq.Normal.Z), fq.Normal, 1e-4f);
       }
     }
+  }
+
+  // The client install the vanilla gear fact needs. CI provisions one (.github/workflows/ci.yml),
+  // so its absence there fails rather than skipping and leaving the regression unguarded.
+  private static string RequireClientGame() {
+    string? game = null;
+    foreach (string slug in new[] { "1.22-client", "1.22" }) {
+      string candidate = Path.Combine(FixturePath.RepoRoot, ".game", slug);
+      if (Directory.Exists(Path.Combine(candidate, "assets/survival/shapes")))
+        game = candidate;
+    }
+    Skip.If(game is null && Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == null, "a client install is absent");
+    Assert.NotNull(game);
+    return game!;
+  }
+
+  // The vanilla steam engine's 24-tooth gear draws its second bank of twelve teeth (ShaftUD24's
+  // TOOTHMOVER2, rotated 180 from the first) as twelve elements all named "Tooth13": before
+  // ShapeFile.Build numbered a repeated sibling's own Path, every one of the twelve collapsed
+  // onto the single dictionary entry WorldMatrices keyed by that shared, unnumbered Path, and
+  // eleven of the gear's twenty-four teeth drew at the last one's position instead of their own.
+  [SkippableFact]
+  public void The_vanilla_two_dozen_gear_draws_every_tooth_at_its_own_position() {
+    string game = RequireClientGame();
+    LoadedShape shape = ShapeFile.Load(
+      Path.Combine(game, "assets/survival/shapes/block/machine/jonas/steamengine/gear24.json")
+    );
+    List<Node> teeth = [.. shape.Leaves().Where(el => el.Name.StartsWith("Tooth", StringComparison.Ordinal))];
+    Assert.Equal(24, teeth.Count);
+
+    Dictionary<string, Matrix4x4> mats = Geometry.WorldMatrices(shape);
+    // One world matrix per element in the tree, not per distinct name: a collapsed duplicate
+    // would leave fewer entries than elements once every "Tooth13" shared one dictionary key.
+    Assert.Equal(shape.Walk().Count(), mats.Count);
+
+    HashSet<(int X, int Z)> centres = [];
+    foreach (Node tooth in teeth) {
+      Vector3 centre = Vector3.Transform((Vector3)tooth.Size / 2, mats[tooth.Path]);
+      centres.Add(((int)MathF.Round(centre.X * 4), (int)MathF.Round(centre.Z * 4)));
+    }
+    Assert.Equal(24, centres.Count);
   }
 }
