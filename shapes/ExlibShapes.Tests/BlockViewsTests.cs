@@ -144,12 +144,12 @@ public class BlockViewsTests {
     ("exmods/mods/siex/tests/goldens", false),
   ];
 
-  // The only two blocks of the family whose art is parked outside the block it belongs to: the
-  // puddling door's two tools and the chimney cap's control rod, each moved by an animation of its
-  // own shape. Every other block keeps every part, however far it reaches.
+  // The blocks of the family whose art is parked outside the block it belongs to: the generator's
+  // shaft and the chimney cap's control rod, each moved by an animation of its own shape. The
+  // puddling door's tools stay out of its picture through its selectiveElements. Every other block
+  // keeps every part, however far it reaches.
   private static readonly string[] Clipped = [
     "iiex:enginempgenerator-n: Shaft1",
-    "iiex:furnace-puddlingchargedoor-n: Rabble, Paddle",
     "iiex:furnace-puddlingchimneycap-n: Cube34",
   ];
 

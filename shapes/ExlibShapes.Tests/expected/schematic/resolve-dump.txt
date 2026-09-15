@@ -97,7 +97,7 @@
 4 game:brickslabs-fire-south-free game:brickslabs-fire-south-free shape=slab-south.json rot=(0.0,0.0,0.0) optional=False
 5 game:cokeovendoor-*-north game:cokeovendoor-closed-north shape=closed.json rot=(0.0,0.0,0.0) optional=False
 6 iiex:furnace-heatingcore-*-* iiex:furnace-heatingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
-7 iiex:furnace-chargedoor-s iiex:furnace-chargedoor-s shape=chargedoor.json rot=(0.0,180.0,0.0) optional=False
+7 iiex:furnace-chargedoor-n iiex:furnace-chargedoor-n shape=chargedoor.json rot=(0.0,0.0,0.0) optional=False
 8 iiex:furnace-heatinghearth-n iiex:furnace-heatinghearth-n shape=heatinghearth.json rot=(0.0,0.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 10 game:air None optional=True
@@ -108,7 +108,7 @@
 4 game:brickslabs-fire-east-free game:brickslabs-fire-east-free shape=slab-east.json rot=(0.0,0.0,0.0) optional=False
 5 game:cokeovendoor-*-west game:cokeovendoor-closed-west shape=closed.json rot=(0.0,90.0,0.0) optional=False
 6 iiex:furnace-heatingcore-*-* iiex:furnace-heatingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
-7 iiex:furnace-chargedoor-e iiex:furnace-chargedoor-e shape=chargedoor.json rot=(0.0,270.0,0.0) optional=False
+7 iiex:furnace-chargedoor-w iiex:furnace-chargedoor-w shape=chargedoor.json rot=(0.0,90.0,0.0) optional=False
 8 iiex:furnace-heatinghearth-w iiex:furnace-heatinghearth-w shape=heatinghearth.json rot=(0.0,90.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 10 game:air None optional=True
@@ -119,7 +119,7 @@
 4 game:brickslabs-fire-north-free game:brickslabs-fire-north-free shape=slab-north.json rot=(0.0,0.0,0.0) optional=False
 5 game:cokeovendoor-*-south game:cokeovendoor-closed-south shape=closed.json rot=(0.0,180.0,0.0) optional=False
 6 iiex:furnace-heatingcore-*-* iiex:furnace-heatingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
-7 iiex:furnace-chargedoor-n iiex:furnace-chargedoor-n shape=chargedoor.json rot=(0.0,0.0,0.0) optional=False
+7 iiex:furnace-chargedoor-s iiex:furnace-chargedoor-s shape=chargedoor.json rot=(0.0,180.0,0.0) optional=False
 8 iiex:furnace-heatinghearth-s iiex:furnace-heatinghearth-s shape=heatinghearth.json rot=(0.0,180.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 10 game:air None optional=True
@@ -130,7 +130,7 @@
 4 game:brickslabs-fire-west-free game:brickslabs-fire-west-free shape=slab-west.json rot=(0.0,0.0,0.0) optional=False
 5 game:cokeovendoor-*-east game:cokeovendoor-closed-east shape=closed.json rot=(0.0,270.0,0.0) optional=False
 6 iiex:furnace-heatingcore-*-* iiex:furnace-heatingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
-7 iiex:furnace-chargedoor-w iiex:furnace-chargedoor-w shape=chargedoor.json rot=(0.0,90.0,0.0) optional=False
+7 iiex:furnace-chargedoor-e iiex:furnace-chargedoor-e shape=chargedoor.json rot=(0.0,270.0,0.0) optional=False
 8 iiex:furnace-heatinghearth-e iiex:furnace-heatinghearth-e shape=heatinghearth.json rot=(0.0,270.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
 10 game:air None optional=True
@@ -216,7 +216,7 @@
 3 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 4 game:brickslabs-fire-south-free game:brickslabs-fire-south-free shape=slab-south.json rot=(0.0,0.0,0.0) optional=False
 5 iiex:furnace-cokeovencore-* iiex:furnace-cokeovencore-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
-6 iiex:furnace-chargedoor-e iiex:furnace-chargedoor-e shape=chargedoor.json rot=(0.0,270.0,0.0) optional=False
+6 iiex:furnace-chargedoor-n iiex:furnace-chargedoor-n shape=chargedoor.json rot=(0.0,0.0,0.0) optional=False
 7 iiex:furnace-chargelid-s iiex:furnace-chargelid-s shape=chargelid.json rot=(0.0,180.0,0.0) optional=False
 8 iiex:hopper-tall-s iiex:hopper-tall-s shape=hopper-tall.json rot=(0.0,0.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
@@ -227,7 +227,7 @@
 3 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 4 game:brickslabs-fire-east-free game:brickslabs-fire-east-free shape=slab-east.json rot=(0.0,0.0,0.0) optional=False
 5 iiex:furnace-cokeovencore-* iiex:furnace-cokeovencore-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
-6 iiex:furnace-chargedoor-n iiex:furnace-chargedoor-n shape=chargedoor.json rot=(0.0,0.0,0.0) optional=False
+6 iiex:furnace-chargedoor-w iiex:furnace-chargedoor-w shape=chargedoor.json rot=(0.0,90.0,0.0) optional=False
 7 iiex:furnace-chargelid-e iiex:furnace-chargelid-e shape=chargelid.json rot=(0.0,270.0,0.0) optional=False
 8 iiex:hopper-tall-e iiex:hopper-tall-e shape=hopper-tall.json rot=(0.0,0.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
@@ -238,7 +238,7 @@
 3 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 4 game:brickslabs-fire-north-free game:brickslabs-fire-north-free shape=slab-north.json rot=(0.0,0.0,0.0) optional=False
 5 iiex:furnace-cokeovencore-* iiex:furnace-cokeovencore-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
-6 iiex:furnace-chargedoor-w iiex:furnace-chargedoor-w shape=chargedoor.json rot=(0.0,90.0,0.0) optional=False
+6 iiex:furnace-chargedoor-s iiex:furnace-chargedoor-s shape=chargedoor.json rot=(0.0,180.0,0.0) optional=False
 7 iiex:furnace-chargelid-n iiex:furnace-chargelid-n shape=chargelid.json rot=(0.0,0.0,0.0) optional=False
 8 iiex:hopper-tall-n iiex:hopper-tall-n shape=hopper-tall.json rot=(0.0,0.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
@@ -249,7 +249,7 @@
 3 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 4 game:brickslabs-fire-west-free game:brickslabs-fire-west-free shape=slab-west.json rot=(0.0,0.0,0.0) optional=False
 5 iiex:furnace-cokeovencore-* iiex:furnace-cokeovencore-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
-6 iiex:furnace-chargedoor-s iiex:furnace-chargedoor-s shape=chargedoor.json rot=(0.0,180.0,0.0) optional=False
+6 iiex:furnace-chargedoor-e iiex:furnace-chargedoor-e shape=chargedoor.json rot=(0.0,270.0,0.0) optional=False
 7 iiex:furnace-chargelid-w iiex:furnace-chargelid-w shape=chargelid.json rot=(0.0,90.0,0.0) optional=False
 8 iiex:hopper-tall-w iiex:hopper-tall-w shape=hopper-tall.json rot=(0.0,0.0,0.0) optional=False
 9 exlib:structurefiller exlib:structurefiller shape=empty.json rot=(0.0,0.0,0.0) optional=False
