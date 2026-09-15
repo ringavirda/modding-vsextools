@@ -43,6 +43,22 @@ public class ItemViewsTests {
   }
 
   [Fact]
+  public void An_item_whose_shape_entry_selects_elements_still_draws_them() {
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+    string file = Itemtype("chip");
+    Variant variant = Assert.Single(index.ItemVariants(file));
+    string outDir = OutDir("chip");
+    JObject manifest = ItemViews.Write(file, variant, index, outDir, ppu: 8);
+    Assert.Equal(["chip-iso.png"], manifest["files"]!.Select(f => Path.GetFileName((string)f!)));
+    using SKBitmap picture = SKBitmap.Decode(Path.Combine(outDir, "chip-iso.png"));
+    bool drawn = false;
+    for (int y = 0; y < picture.Height && !drawn; y++)
+      for (int x = 0; x < picture.Width && !drawn; x++)
+        drawn = picture.GetPixel(x, y) != Renderer.Background;
+    Assert.True(drawn, "the kept element is drawn");
+  }
+
+  [Fact]
   public void An_item_with_a_shape_gets_the_isometric_render_of_it() {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     string file = Itemtype("tool");

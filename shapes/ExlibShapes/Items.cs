@@ -60,7 +60,9 @@ public static class ItemViews {
       string path = Path.Combine(outDir, $"{stem}-iso.png");
       using (
         SKBitmap image = Renderer.Render(
-          ShapeFile.FromRaw(shape, item.ShapePath, new Dictionary<string, string>(), item.Selective),
+          // Compose already kept the entry's selectiveElements and wrapped the tree, so the
+          // patterns match nothing here; a second pass would empty the picture.
+          ShapeFile.FromRaw(shape, item.ShapePath, new Dictionary<string, string>()),
           Renderer.NamedViews[Presentation.ViewName],
           ppu: ppu,
           textures: textures,

@@ -1,0 +1,8 @@
+{
+  "code": "chip",
+  // An item whose shape entry keeps only a named element.
+  "shape": { "base": "demo:block/masonry", "selectiveElements": ["brick"] },
+  "textures": {
+    "all": { "base": "demo:block/wall" }
+  }
+}

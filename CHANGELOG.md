@@ -10,7 +10,8 @@
 
 ### Fixed
 
-- An itemtype's `selectiveElements` governs its wiki render, as a blocktype's already did.
+- An itemtype's `selectiveElements` is applied once when its picture is composed; a second pass
+  over the wrapped tree emptied every item picture with a list.
 - A shape element that shares its name with a sibling (the vanilla steam engine's 24-tooth gear,
   whose second bank of twelve teeth are all named `Tooth13`) gets a numbered `#2`, `#3`, ... on its
   own address, so the renderer's per-element maps no longer collapse every one of them onto the
