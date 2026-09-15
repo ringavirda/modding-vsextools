@@ -756,8 +756,9 @@ two variables in the launch configuration's `env` (`LIBGL_ALWAYS_SOFTWARE=1`,
 
 ## Playing the samples
 
-The twin-tub blower is a mechanically driven pair of bellows: place one, then mount an axle against
-its upper rear cell (the face turned away from where the blower opens onto its pipe run) and turn
+The twin-tub blower is a mechanically driven pair of bellows: place its base, raise it through its
+five right-click construction stages (beams, the axle gear, the tubs, the pipe connection), then
+mount an axle against its upper rear cell (the face turned away from where the blower opens onto its pipe run) and turn
 it - the bellows spin up and start pushing cold air into the pipe network the blower stands in,
 scaling with how fast the axle turns. Look at the blower to read its current output.
 
