@@ -40,6 +40,16 @@ public class SelectiveElementsTests {
     Assert.Empty(shape.Elements[0].Children);
   }
 
+  // render's own --selective is a comma-separated list split into exactly this kind of patterns
+  // list before it reaches ShapeFile.Load; two of them together keep the union of what each names.
+  [Fact]
+  public void Two_patterns_together_keep_the_union() {
+    LoadedShape shape = ShapeFile.Load(Write(), ["Base", "Fillings/*"]);
+    Assert.Equal(["Base", "Fillings"], shape.Elements.Select(e => e.Name));
+    Assert.Empty(shape.Elements[0].Children);
+    Assert.Equal(["Coal"], shape.Elements[1].Children.Select(e => e.Name));
+  }
+
   [Fact]
   public void No_pattern_keeps_the_whole_shape() {
     LoadedShape shape = ShapeFile.Load(Write(), []);

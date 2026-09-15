@@ -28,9 +28,14 @@ public static class BlockViews {
 
   /// <summary>The raw shape JSON of <paramref name="block"/>'s drawn model and the texture values
   /// (key to the block's own value string) it references. <paramref name="spin"/> turns the model
-  /// about its own cell, the machine standing that way round.</summary>
-  public static (JObject Raw, Dictionary<string, TextureRef> TextureValues) Compose(ResolvedBlock block, int spin = 0) {
-    (JObject group, Dictionary<string, TextureRef> values) = Schematic.WrappedCell(block, default, Prefix, spin);
+  /// about its own cell, the machine standing that way round. <paramref name="selective"/> narrows
+  /// the shape entry's own <c>selectiveElements</c> further: an element needs both to draw.</summary>
+  public static (JObject Raw, Dictionary<string, TextureRef> TextureValues) Compose(
+    ResolvedBlock block,
+    int spin = 0,
+    IReadOnlyList<string>? selective = null
+  ) {
+    (JObject group, Dictionary<string, TextureRef> values) = Schematic.WrappedCell(block, default, Prefix, spin, selective);
     return (new JObject { ["textures"] = new JObject(), ["elements"] = new JArray(group) }, values);
   }
 
@@ -69,12 +74,21 @@ public static class BlockViews {
   /// choose; null takes theirs.</param>
   /// <param name="full">Keeps the whole model, the parts an animation parks outside the block's own
   /// cells included; false clips them.</param>
+  /// <param name="selective">Narrows the shape entry's own <c>selectiveElements</c> further: an
+  /// element needs both to draw.</param>
   /// <exception cref="InvalidOperationException"><paramref name="index"/> cannot resolve
   /// <paramref name="variant"/>.</exception>
-  public static Drawing Draw(string file, Variant variant, BlockIndex index, int? angle = null, bool full = false) {
+  public static Drawing Draw(
+    string file,
+    Variant variant,
+    BlockIndex index,
+    int? angle = null,
+    bool full = false,
+    IReadOnlyList<string>? selective = null
+  ) {
     ResolvedBlock block =
       index.Resolve(variant.Code) ?? throw new InvalidOperationException($"{variant.Code}: the index cannot resolve it");
-    (JObject rest, Dictionary<string, TextureRef> textureValues) = Compose(block);
+    (JObject rest, Dictionary<string, TextureRef> textureValues) = Compose(block, selective: selective);
     LoadedShape atRest = Loaded(rest, block, variant);
 
     Layout? placed = FootprintOf(file, variant, index);
@@ -96,11 +110,11 @@ public static class BlockViews {
     }
 
     Layout? footprint = placed == null || spin == 0 ? placed : placed.Rotated(spin);
-    LoadedShape loaded = spin == 0 ? atRest : Loaded(Compose(block, spin).Raw, block, variant);
+    LoadedShape loaded = spin == 0 ? atRest : Loaded(Compose(block, spin, selective).Raw, block, variant);
     TextureSet textures = TextureSet.FromResolved(textureValues, index.ResolveTexture);
     IReadOnlyList<string> hidden = [];
     if (!full) {
-      JObject clipped = (JObject)Compose(block, spin).Raw;
+      JObject clipped = (JObject)Compose(block, spin, selective).Raw;
       hidden = Clip(clipped, loaded, footprint, Moving(block));
       if (hidden.Count > 0)
         loaded = Loaded(clipped, block, variant);
@@ -135,6 +149,8 @@ public static class BlockViews {
   /// choose; null takes theirs.</param>
   /// <param name="full">Draws the whole model, the parts an animation parks outside the block's own
   /// cells included; false clips them.</param>
+  /// <param name="selective">Narrows the shape entry's own <c>selectiveElements</c> further: an
+  /// element needs both to draw.</param>
   public static JObject Write(
     string file,
     Variant variant,
@@ -143,11 +159,12 @@ public static class BlockViews {
     IReadOnlyList<string>? views = null,
     int ppu = 24,
     int? angle = null,
-    bool full = false
+    bool full = false,
+    IReadOnlyList<string>? selective = null
   ) {
     ResolvedBlock block =
       index.Resolve(variant.Code) ?? throw new InvalidOperationException($"{variant.Code}: the index cannot resolve it");
-    Drawing drawn = Draw(file, variant, index, angle, full);
+    Drawing drawn = Draw(file, variant, index, angle, full, selective);
     LoadedShape loaded = drawn.Shape;
     Layout? footprint = drawn.Footprint;
     int spin = drawn.Angle;

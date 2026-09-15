@@ -1,0 +1,8 @@
+{
+  "code": "selective",
+  // Its own selectiveElements already drops the rabble; --selective narrows it further, on top.
+  "shape": { "base": "demo:block/tooled", "selectiveElements": ["body", "vice"] },
+  "textures": {
+    "all": { "base": "demo:block/wall" }
+  }
+}

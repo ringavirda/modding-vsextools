@@ -22,7 +22,8 @@ without a game licence.
 
 ```
 exlib-shapes render FILE --out DIR [--views a,b,...] [--ppu N] [--anim CLIP --frames N]
-  [--only PATH...] [--highlight PATH...] [--no-grid] [--no-edges] [--game PATH] [--repo PATH]
+  [--only PATH...] [--highlight PATH...] [--selective PATTERN,...] [--no-grid] [--no-edges]
+  [--game PATH] [--repo PATH]
 ```
 
 Renders `FILE`'s named views, one PNG each, to `--out`. `--views` is a comma-separated list of
@@ -30,10 +31,13 @@ Renders `FILE`'s named views, one PNG each, to `--out`. `--views` is a comma-sep
 unit (default 24). `--anim CLIP --frames N` (comma-separated frame numbers, which may be
 fractional) renders that animation clip's poses instead of the shape's rest pose. `--only`
 restricts the render to elements whose path starts with the given prefix, repeatable; `--highlight`
-outlines an element regardless of depth, repeatable. `--no-grid`/`--no-edges` drop the floor grid
-or the face outlines. `--repo` is the mod repository a `domain:path` or bare texture reference
-resolves against (default: the shape file's own ancestry - the nearest ancestor holding
-`workbench/`, `mods/` or `.game/`).
+outlines an element regardless of depth, repeatable. `--selective` is a comma-separated list of
+`selectiveElements` patterns (`A/*` for a subtree, a bare `A` for that element alone), the game's
+own rule for what a blocktype's shape entry draws, applied here to a bare shape file so the wiki
+can draw a subset of it. `--no-grid`/`--no-edges` drop the floor grid or the face outlines.
+`--repo` is the mod repository a `domain:path` or bare texture reference resolves against
+(default: the shape file's own ancestry - the nearest ancestor holding `workbench/`, `mods/` or
+`.game/`).
 
 Prints every PNG's path, then the texture keys that could not be resolved (drawn as a magenta
 placeholder).
@@ -91,7 +95,7 @@ also printed to stderr as the run happens).
 
 ```
 exlib-shapes block FILE --out DIR [--variant CODE] [--views iso,north,east,south,west,up]
-  [--angle N] [--full] [--ppu N] [--roots PATH...] [--game PATH]
+  [--angle N] [--full] [--ppu N] [--selective PATTERN,...] [--roots PATH...] [--game PATH]
 ```
 
 Renders one variant of `FILE` the way the game draws it in the world: its own shape file under the
@@ -100,9 +104,11 @@ map (the `all` entry standing in for every key it does not name), or a unit cube
 shape at all. `--variant` names the variant by full code or bare path; with none, the family is
 drawn at its presentation facing, or as its first variant when the family has no facing.
 `--views` defaults to `iso,north,east,south,west,up`, one `<stem>-<view>.png` each; `--ppu` is
-pixels per shape unit (default 24). A family declaring a footprint (`fillerOffsets`) also gets
-`<stem>-footprint.svg`, the plan of the principal and the cells it reserves, the principal marked,
-drawn in the same frame as the pictures.
+pixels per shape unit (default 24). `--selective` is a comma-separated list of `selectiveElements`
+patterns applied on top of the shape entry's own list, when it carries one: an element needs both
+to draw, so `--selective` only ever narrows what the entry already shows. A family declaring a
+footprint (`fillerOffsets`) also gets `<stem>-footprint.svg`, the plan of the principal and the
+cells it reserves, the principal marked, drawn in the same frame as the pictures.
 
 The machine is turned so its front meets the camera: the quarter turn that stands its own cell on
 the camera-facing edge of the footprint it reserves, or, for a family with no facing variant to

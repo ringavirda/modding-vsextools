@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- `render` and `block` take `--selective PATTERN,...`, the same `selectiveElements` syntax a
+  shape entry's own list carries, so the wiki can draw a subset of a shape's elements. On `block`
+  it narrows the shape entry's own list further, an element needing both to draw.
+
 ### Fixed
 
 - An itemtype's `selectiveElements` governs its wiki render, as a blocktype's already did.

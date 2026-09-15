@@ -364,7 +364,10 @@ public static class Schematic {
   // synthetic full unit cube (textured from whichever of all/up/north the blocktype declares) when
   // it ships no shape file - most vanilla and family blocks draw the engine's default cube rather
   // than an authored one.
-  private static (JArray Elements, Dictionary<string, TextureRef> Textures) BlockElements(ResolvedBlock block) {
+  private static (JArray Elements, Dictionary<string, TextureRef> Textures) BlockElements(
+    ResolvedBlock block,
+    IReadOnlyList<string>? selective
+  ) {
     if (block.ShapePath != null) {
       JObject? raw = null;
       try {
@@ -377,7 +380,12 @@ public static class Schematic {
         if (raw["textures"] is JObject texturesJson)
           foreach (JProperty prop in texturesJson.Properties())
             shapeTextures[prop.Name] = new TextureRef((string)prop.Value!);
-        return (SelectiveElements.Prune((JArray)elements.DeepClone(), block.Selective), shapeTextures);
+        JArray pruned = SelectiveElements.Prune((JArray)elements.DeepClone(), block.Selective);
+        // `--selective` narrows further, on top of the shape entry's own list: an element must
+        // survive both to be drawn.
+        if (selective is { Count: > 0 })
+          pruned = SelectiveElements.Prune(pruned, selective);
+        return (pruned, shapeTextures);
       }
     }
 
@@ -406,9 +414,10 @@ public static class Schematic {
     ResolvedBlock block,
     Offset offset,
     string prefix,
-    int spin = 0
+    int spin = 0,
+    IReadOnlyList<string>? selective = null
   ) {
-    (JArray elements, Dictionary<string, TextureRef> shapeTextures) = BlockElements(block);
+    (JArray elements, Dictionary<string, TextureRef> shapeTextures) = BlockElements(block, selective);
     var textures = new Dictionary<string, TextureRef>(shapeTextures);
     List<string> keys = [.. shapeTextures.Keys.Concat(FaceTextureKeys(elements)).Distinct()];
     foreach ((string shorthand, IReadOnlyList<string>? faces) in Shorthands)

@@ -125,6 +125,27 @@ public class BlockViewsTests {
   }
 
   [Fact]
+  public void Selective_narrows_the_drawn_elements_with_no_selectiveElements_of_its_own() {
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+    string file = Blocktype("tooled");
+    BlockViews.Drawing drawn = BlockViews.Draw(file, Drawn(index, file), index, selective: ["body"]);
+    Assert.Equal(["body"], drawn.Shape.Leaves().Select(el => el.Name));
+  }
+
+  [Fact]
+  public void Selective_intersects_with_the_shape_entrys_own_selectiveElements() {
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+    string file = Blocktype("selective");
+    // The blocktype's own list already drops the rabble, keeping body and vice; --selective
+    // narrows that to vice alone rather than adding to it.
+    BlockViews.Drawing wholeList = BlockViews.Draw(file, Drawn(index, file), index);
+    Assert.Equal(["body", "vice"], wholeList.Shape.Leaves().Select(el => el.Name));
+
+    BlockViews.Drawing narrowed = BlockViews.Draw(file, Drawn(index, file), index, selective: ["vice"]);
+    Assert.Equal(["vice"], narrowed.Shape.Leaves().Select(el => el.Name));
+  }
+
+  [Fact]
   public void A_static_part_reaching_past_the_block_is_still_drawn() {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     string file = Blocktype("tooled");

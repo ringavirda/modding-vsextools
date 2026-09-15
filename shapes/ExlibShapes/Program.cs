@@ -128,6 +128,13 @@ internal static class Program {
 
   private static bool FlagOf(string[] args, string name) => args.Contains(name);
 
+  // --selective's own comma-separated patterns, empty when the flag is absent - the same
+  // selectiveElements syntax a shape entry's own list uses.
+  private static List<string> SelectiveOf(string[] args) =>
+    OptOf(args, "--selective") is { } value
+      ? [.. value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)]
+      : [];
+
   private static (string File, string[] Flags) FileAndFlags(string[] args, string usage) {
     if (args.Length == 0)
       throw new UsageException(usage);
@@ -151,7 +158,8 @@ internal static class Program {
     (string file, string[] flags) = FileAndFlags(
       args,
       "usage: exlib-shapes render FILE --out DIR [--views a,b] [--ppu N] [--anim CLIP --frames N] "
-        + "[--only PATH...] [--highlight PATH...] [--no-grid] [--no-edges] [--game PATH] [--repo PATH]"
+        + "[--only PATH...] [--highlight PATH...] [--selective PATTERN,...] [--no-grid] [--no-edges] "
+        + "[--game PATH] [--repo PATH]"
     );
     string outDir = OptOf(flags, "--out") ?? throw new UsageException("--out is required");
     string views = OptOf(flags, "--views") ?? "iso";
@@ -160,12 +168,13 @@ internal static class Program {
     string framesArg = OptOf(flags, "--frames") ?? "0";
     List<string> only = OptAllOf(flags, "--only");
     List<string> highlight = OptAllOf(flags, "--highlight");
+    List<string> selective = SelectiveOf(flags);
     bool noGrid = FlagOf(flags, "--no-grid");
     bool noEdges = FlagOf(flags, "--no-edges");
     string? game = OptOf(flags, "--game");
     string? repo = OptOf(flags, "--repo");
 
-    LoadedShape shape = ShapeFile.Load(file);
+    LoadedShape shape = ShapeFile.Load(file, selective);
     TextureSet textures = TextureSet.ForShape(shape, TextureRoots.Build(game, repo, file));
     Directory.CreateDirectory(outDir);
     string stem = Path.GetFileNameWithoutExtension(file);
@@ -302,8 +311,8 @@ internal static class Program {
     (string file, string[] flags) = FileAndFlags(
       args,
       "usage: exlib-shapes block FILE --out DIR [--variant CODE] "
-        + "[--views iso,north,east,south,west,up] [--angle N] [--full] [--ppu N] [--roots PATH...] "
-        + "[--game PATH]"
+        + "[--views iso,north,east,south,west,up] [--angle N] [--full] [--ppu N] "
+        + "[--selective PATTERN,...] [--roots PATH...] [--game PATH]"
     );
     string outDir = OptOf(flags, "--out") ?? throw new UsageException("--out is required");
     string? wanted = OptOf(flags, "--variant");
@@ -311,6 +320,7 @@ internal static class Program {
     int? angle = OptOf(flags, "--angle") is { } a ? int.Parse(a, CultureInfo.InvariantCulture) : null;
     bool full = FlagOf(flags, "--full");
     int ppu = int.Parse(OptOf(flags, "--ppu") ?? "24", CultureInfo.InvariantCulture);
+    List<string> selective = SelectiveOf(flags);
     List<string> extraRoots = OptAllOf(flags, "--roots");
     string? game = OptOf(flags, "--game");
 
@@ -327,7 +337,8 @@ internal static class Program {
       views,
       ppu,
       angle,
-      full
+      full,
+      selective
     );
 
     foreach (JToken written in (JArray)manifest["files"]!)
