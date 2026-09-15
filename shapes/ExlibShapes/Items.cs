@@ -60,7 +60,7 @@ public static class ItemViews {
       string path = Path.Combine(outDir, $"{stem}-iso.png");
       using (
         SKBitmap image = Renderer.Render(
-          ShapeFile.FromRaw(shape, item.ShapePath, new Dictionary<string, string>()),
+          ShapeFile.FromRaw(shape, item.ShapePath, new Dictionary<string, string>(), item.Selective),
           Renderer.NamedViews[Presentation.ViewName],
           ppu: ppu,
           textures: textures,

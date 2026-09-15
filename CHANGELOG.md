@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- An itemtype's `selectiveElements` governs its wiki render, as a blocktype's already did.
+
 ## [0.3.3] - 2026-09-14
 
 A client built for another platform no longer passes for this one: the launcher looks for the
