@@ -160,14 +160,14 @@ public static class ShapeFile {
   /// </summary>
   /// <exception cref="FileNotFoundException"><paramref name="path"/> does not exist.</exception>
   /// <exception cref="JsonException">The file is not valid shape JSON.</exception>
-  public static LoadedShape Load(string path) {
+  public static LoadedShape Load(string path, IReadOnlyList<string>? selective = null) {
     if (!File.Exists(path))
       throw new FileNotFoundException($"No such shape file: {path}", path);
     string text = File.ReadAllText(path);
     Shape raw =
       JsonConvert.DeserializeObject<Shape>(text)
       ?? throw new JsonException($"{path}: not a shape (empty document)");
-    return FromRaw(raw, path, RawTextures(text));
+    return FromRaw(raw, path, RawTextures(text), selective);
   }
 
   // The document's own "textures" object, string for string - JObject.Parse rather than the
@@ -188,12 +188,30 @@ public static class ShapeFile {
   public static LoadedShape FromRaw(
     Shape raw,
     string? path,
-    IReadOnlyDictionary<string, string>? textures = null
+    IReadOnlyDictionary<string, string>? textures = null,
+    IReadOnlyList<string>? selective = null
   ) {
     List<Node> roots = [];
     foreach (ShapeElement el in raw.Elements ?? [])
       roots.Add(Build(el, null, ""));
+    if (selective is { Count: > 0 })
+      roots = Select(roots, selective);
     return new LoadedShape(path, textures ?? StringifyTextures(raw.Textures), roots, raw.Animations ?? []);
+  }
+
+  // The blocktype's selectiveElements rule over a built tree: a node no pattern names goes with
+  // its subtree, and a kept node's children are checked under its path in turn.
+  private static List<Node> Select(List<Node> nodes, IReadOnlyList<string> selective) {
+    List<Node> kept = [];
+    foreach (Node node in nodes) {
+      if (!SelectiveElements.Keeps(selective, node.Path))
+        continue;
+      List<Node> children = Select(node.ChildrenList, selective);
+      node.ChildrenList.Clear();
+      node.ChildrenList.AddRange(children);
+      kept.Add(node);
+    }
+    return kept;
   }
 
   // A domain-aware AssetLocation back to the "domain:path" (or bare path) spelling a shape's own

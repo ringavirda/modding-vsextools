@@ -377,7 +377,7 @@ public static class Schematic {
         if (raw["textures"] is JObject texturesJson)
           foreach (JProperty prop in texturesJson.Properties())
             shapeTextures[prop.Name] = new TextureRef((string)prop.Value!);
-        return ((JArray)elements.DeepClone(), shapeTextures);
+        return (SelectiveElements.Prune((JArray)elements.DeepClone(), block.Selective), shapeTextures);
       }
     }
 

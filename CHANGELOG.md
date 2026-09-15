@@ -50,6 +50,12 @@ reads as unresolved. ExlibVerify also reports a texture code a shape names that 
 error on a blocktype (the client logs it) and an information line on an itemtype (the client is
 silent there); the ByType resolver it shares with the shapes tool lives in ExlibAssets.
 
+A blocktype's `selectiveElements` are honoured the way the game reads them, segment by segment
+down an element's path with a parent kept for the children a pattern names, and a machine raised
+by right-click is drawn at its last stage, every stage's `addElements` united with the placed
+block's own list, so a charge filling or a later course never counts against a footprint or shows
+in a picture the game would not draw.
+
 ## [0.3.2] - 2026-09-14
 
 `exlib-shapes item FILE --out DIR [--variant CODE]` renders an itemtype variant: the isometric view

@@ -35,8 +35,13 @@ public sealed record ResolvedBlock(
   double RotateX,
   double RotateY,
   double RotateZ,
-  IReadOnlyDictionary<string, TextureRef> Textures
-);
+  IReadOnlyDictionary<string, TextureRef> Textures,
+  IReadOnlyList<string>? SelectiveElements = null
+) {
+  /// <summary>The <c>selectiveElements</c> patterns the shape entry carries, empty when it draws
+  /// the whole shape.</summary>
+  public IReadOnlyList<string> Selective => SelectiveElements ?? [];
+}
 
 /// <summary>
 /// Finds a blocktype JSON by code across the game install and every mod repo, expands its
@@ -443,7 +448,8 @@ public sealed class BlockIndex {
       Spin(shapeEntry, "rotateX", variant.Path),
       Spin(shapeEntry, "rotateY", variant.Path),
       Spin(shapeEntry, "rotateZ", variant.Path),
-      textures
+      textures,
+      FinishedSelective(variant.Raw, shapeEntry, variant.Path)
     );
   }
 
@@ -465,6 +471,33 @@ public sealed class BlockIndex {
   // was picked with: a `rotateYByType` object beside `base` wins with the entry whose wildcard key
   // matches this variant, else the plain `rotateY`, else no turn. ppex's boilers and engines carry
   // their spin in the ByType form only, and a block drawn unspun stands in the wrong frame.
+  // The elements a picture of the finished machine draws: the shape entry's selectiveElements (what
+  // the block shows when placed) plus every group a right-click construction stage adds, since the
+  // page describes the built machine, not the first course of it.
+  private static IReadOnlyList<string> FinishedSelective(JObject raw, JObject? shapeEntry, string path) {
+    List<string> patterns = [.. Selective(shapeEntry, path)];
+    // A definition that spells its turns in shapeByType keeps its selectiveElements on the plain
+    // shape entry beside them; that list governs every turn.
+    if (patterns.Count == 0 && raw["shape"] is JObject plain)
+      patterns = [.. Selective(plain, path)];
+    if (patterns.Count == 0)
+      return patterns;
+    JArray? behaviors = (raw["entityBehaviors"] ?? raw["entitybehaviors"]) as JArray;
+    foreach (JToken behavior in behaviors ?? [])
+      if (((string?)behavior["name"])?.Contains("RightClickConstructable", StringComparison.Ordinal) == true)
+        foreach (JToken stage in (behavior["properties"]?["stages"] as JArray) ?? [])
+          foreach (JToken added in (stage["addElements"] as JArray) ?? [])
+            if ((string?)added is { } name)
+              patterns.Add(name.Contains('*') ? name : name + "/*");
+    return patterns.Distinct().ToList();
+  }
+
+  // The entry's selectiveElements, read through the same ByType rule as its turn.
+  private static IReadOnlyList<string> Selective(JObject? shapeEntry, string path) =>
+    shapeEntry != null && BlockTypeResolution.ByType(shapeEntry, "selectiveElements", path) is JArray patterns
+      ? [.. patterns.Select(p => (string?)p).OfType<string>()]
+      : [];
+
   private static double Spin(JObject? shapeEntry, string key, string path) =>
     shapeEntry != null && BlockTypeResolution.ByType(shapeEntry, key, path) is JValue value && value.Type != JTokenType.Null
       ? (double)value

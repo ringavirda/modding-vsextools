@@ -199,7 +199,7 @@ public static class Footprint {
     if (selector == null || index.Resolve(selector) is not { ShapePath: { } path } block)
       return null;
     try {
-      return MeshBox(ShapeFile.Load(path), block.RotateY);
+      return MeshBox(ShapeFile.Load(path, block.Selective), block.RotateY);
     } catch (Exception e) {
       Console.Error.WriteLine($"warning: {path}: shape failed to load ({e.Message}); the declared footprint frame is kept");
       return null;

@@ -225,7 +225,7 @@ public static class BlockViews {
     if (block.ShapePath == null)
       return new HashSet<string>(StringComparer.Ordinal);
     try {
-      return Poses.AnimatedNames(ShapeFile.Load(block.ShapePath));
+      return Poses.AnimatedNames(ShapeFile.Load(block.ShapePath, block.Selective));
     } catch (Exception) {
       return new HashSet<string>(StringComparer.Ordinal);
     }
