@@ -388,6 +388,27 @@ function Get-ExmodVerifySources {
   return $out
 }
 
+# Runs $Body with an exclusive OS-level lock on $LockPath held for its duration: a second call
+# (any process, not just this one) blocks here until the first releases it, rather than racing it.
+# ExlibVerify's own build is the one thing this guards - two `exmod verify` runs (two mods, two
+# lanes, whatever launched them) building it at the same time hit MSBuild mid-write on the shared
+# obj directory of its ExlibAssets dependency (CS0006 metadata file not found), or on a
+# self-contained apphost's own libhostpolicy.so.
+function Invoke-WithLock([string]$LockPath, [scriptblock]$Body) {
+  New-Item -ItemType Directory -Force -Path (Split-Path $LockPath -Parent) | Out-Null
+  $stream = $null
+  $deadline = (Get-Date).AddMinutes(5)
+  while (-not $stream) {
+    try {
+      $stream = [System.IO.File]::Open($LockPath, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+    } catch [System.IO.IOException] {
+      if ((Get-Date) -gt $deadline) { throw "Timed out waiting for the build lock at $LockPath (another `exmod verify` still holds it?)." }
+      Start-Sleep -Milliseconds 200
+    }
+  }
+  try { & $Body } finally { $stream.Close() }
+}
+
 # Runs infra/tools/ExlibVerify - the headless check of shipped assets (patch application, recipe
 # codes, handbook lang coverage) - over one or more built mods, with no game running. Each named
 # mod is checked in its own run, with every OTHER named mod's built folder passed as --mods, so a
@@ -433,6 +454,14 @@ function Invoke-Verify([string[]]$Argv) {
   $game = Resolve-GameInstall $version 'server'
   $exlibVerifyProj = Join-Path $ToolsRoot 'verify/ExlibVerify/ExlibVerify.csproj'
 
+  # Built once, up front, under the lock: every per-mod run below shares this same build (and its
+  # ExlibAssets dependency) and passes --no-build, rather than each one triggering `dotnet run`'s
+  # own implicit build of it.
+  Invoke-WithLock (Join-Path $ToolsRoot 'verify/ExlibVerify/.build.lock') {
+    dotnet build $exlibVerifyProj -c Debug -p:GamePath=$game -clp:ErrorsOnly
+    if ($LASTEXITCODE -ne 0) { throw "Build of $exlibVerifyProj failed." }
+  }
+
   $results = @()
   foreach ($n in $names) {
     $others = @($built.Keys | Where-Object { $_ -ne $n } | ForEach-Object { $built[$_] })
@@ -442,7 +471,7 @@ function Invoke-Verify([string[]]$Argv) {
     if ($json) { $toolArgs += '--json' }
 
     Write-Host "`n-- $n --"
-    dotnet run --project $exlibVerifyProj -p:GamePath=$game -- @toolArgs
+    dotnet run --project $exlibVerifyProj --no-build -p:GamePath=$game -- @toolArgs
     $exit = $LASTEXITCODE
     $results += [pscustomobject]@{ Name = $n; Ok = ($exit -eq 0); Exit = $exit }
   }

@@ -15,6 +15,11 @@
   whose second bank of twelve teeth are all named `Tooth13`) gets a numbered `#2`, `#3`, ... on its
   own address, so the renderer's per-element maps no longer collapse every one of them onto the
   last sibling's own transform and draw the rest nowhere.
+- `exmod verify` builds ExlibVerify (and its ExlibAssets dependency) once, up front, under a lock,
+  instead of once per mod: two mods verifying at the same time - two lanes, any two `exmod verify`
+  processes on the same checkout - no longer race MSBuild's incremental state for that shared obj
+  directory (`CS0006`, or a missing `libhostpolicy.so` for a self-contained apphost caught
+  mid-write).
 
 ## [0.3.3] - 2026-09-14
 
