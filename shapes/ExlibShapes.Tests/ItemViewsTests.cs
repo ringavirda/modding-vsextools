@@ -134,17 +134,18 @@ public class ItemViewsTests {
   }
 
   [SkippableFact]
-  public void An_iiex_item_with_a_shape_is_painted_from_the_itemtype_s_own_map() {
+  public void An_iiex_item_with_its_own_shape_renders_every_texture() {
     string? file = FixturePath.Workspace(
-      "exmods/mods/iiex/tests/goldens/iiex/itemtypes/spurgear.json"
+      "exmods/mods/iiex/tests/goldens/iiex/itemtypes/machined/spurgear.json"
     );
     Skip.If(file is null, "the sibling exmods checkout is absent");
     BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(file!));
     Variant variant = Assert.Single(index.ItemVariants(file!));
     ResolvedBlock item = index.ResolveVariant(variant);
-    // The shape is the game's own gear; the cast-iron it is painted with is the mod's.
-    Assert.NotNull(item.ShapePath);
-    Assert.Equal("iiex:block/metal/castiron", item.Textures["rusty-iron"].Base);
+    Assert.EndsWith(
+      Path.Combine("iiex", "shapes", "item", "gearspur.json"),
+      item.ShapePath
+    );
 
     string outDir = OutDir("spurgear");
     JObject manifest = ItemViews.Write(file!, variant, index, outDir, ppu: 8);
