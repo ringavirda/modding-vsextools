@@ -159,8 +159,8 @@ public class BlockViewsTests {
   // The blocktype trees of the four mods, and whether each is read with the legacy resolution
   // order. Every megablock and structure block of the family lives under one of them.
   private static readonly (string Tree, bool Legacy)[] FamilyTrees = [
-    ("exmods/legacy/smex/assets", true),
-    ("exmods/legacy/ppex/assets", true),
+    ("exmods-legacy/smex/assets", true),
+    ("exmods-legacy/ppex/assets", true),
     ("exmods/mods/iiex/tests/goldens", false),
     ("exmods/mods/siex/tests/goldens", false),
   ];
@@ -206,8 +206,8 @@ public class BlockViewsTests {
 
   [SkippableFact]
   public void The_blast_furnace_door_is_drawn_iron_side_out() {
-    string? file = FixturePath.Workspace("exmods/legacy/smex/assets/smex/blocktypes/blastfurnace/door.json");
-    Skip.If(file is null, "the sibling exmods checkout is absent");
+    string? file = FixturePath.Workspace("exmods-legacy/smex/assets/smex/blocktypes/blastfurnace/door.json");
+    Skip.If(file is null, "the sibling exmods-legacy checkout is absent");
     BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(file!), null, legacyFirst: true);
     IReadOnlyList<Variant> variants = index.VariantsOf(file!);
     // Refractory tiers only: the door's own facing lives in BlockBlastFurnaceDoor, so no variant
@@ -313,8 +313,8 @@ public class BlockViewsTests {
 
   [SkippableFact]
   public void A_ppex_engine_draws_its_north_variant_over_its_own_footprint() {
-    string? watt = FixturePath.Workspace("exmods/legacy/ppex/assets/ppex/blocktypes/engine/watt.json");
-    Skip.If(watt is null, "the sibling exmods checkout is absent");
+    string? watt = FixturePath.Workspace("exmods-legacy/ppex/assets/ppex/blocktypes/engine/watt.json");
+    Skip.If(watt is null, "the sibling exmods-legacy checkout is absent");
     BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(watt!), null, legacyFirst: true);
     string outDir = OutDir("watt");
     JObject manifest = BlockViews.Write(watt!, Drawn(index, watt!), index, outDir, views: ["iso"], ppu: 4);

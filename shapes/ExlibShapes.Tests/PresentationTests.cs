@@ -23,8 +23,8 @@ public class PresentationTests {
   // The four mods' own blocktype trees, and whether each is the published old side of a code the
   // family also declares.
   private static readonly (string Tree, bool Legacy)[] StructureTrees = [
-    ("exmods/legacy/smex/assets", true),
-    ("exmods/legacy/ppex/assets", true),
+    ("exmods-legacy/smex/assets", true),
+    ("exmods-legacy/ppex/assets", true),
     ("exmods/mods/iiex/tests/goldens", false),
     ("exmods/mods/siex/tests/goldens", false),
   ];
@@ -224,8 +224,8 @@ public class PresentationTests {
 
   [SkippableFact]
   public void The_cornish_boiler_draws_its_firebox_toward_the_camera() {
-    string? file = FixturePath.Workspace("exmods/legacy/ppex/assets/ppex/blocktypes/boiler/cornish.json");
-    Skip.If(file is null, "the sibling exmods checkout is absent");
+    string? file = FixturePath.Workspace("exmods-legacy/ppex/assets/ppex/blocktypes/boiler/cornish.json");
+    Skip.If(file is null, "the sibling exmods-legacy checkout is absent");
     BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(file!), null, BlockIndex.UnderLegacyTree(file!));
     Variant drawn = BlockIndex.Facing(index.VariantsOf(file!), Presentation.Facing)!;
     Assert.Equal("ppex:boilercornish-north", drawn.Code);

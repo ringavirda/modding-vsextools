@@ -62,7 +62,8 @@ public sealed record ResolvedBlock(
 /// own name (without <c>.json</c>) equals the selector's text before the first <c>*</c> with a
 /// trailing dash trimmed; else the file that sorts first by path. Either way the ambiguity is
 /// recorded in <see cref="Ambiguities"/> for a caller (the schematic manifest) to warn about,
-/// naming every file involved. A match spanning a <c>legacy/</c> file and a current one is not an
+/// naming every file involved. A match spanning a legacy file (one in a mod folder at its
+/// repository's root, see <see cref="UnderLegacyTree"/>) and a current one is not an
 /// ambiguity but two versions of one mod, settled by the side the index was built for (see
 /// <see cref="Build"/>) and never recorded.
 /// </para>
@@ -74,14 +75,18 @@ public sealed record ResolvedBlock(
 /// </para>
 /// </summary>
 public sealed class BlockIndex {
+  // The legacy tree: the repository root itself, whose own folders are mods, the layout of the
+  // published old mods' repository (exmods-legacy's ppex/, smex/ and exlib/).
+  private const string LegacyTree = "";
+
   // Every blocktype file's own convention: the family's per-mod mods/<mod>/ and the published old
-  // mods kept under legacy/<mod>/, or a single-mod repo's src/<project>/ and samples/<project>/
-  // (shipped) and tests/<project>/goldens/ (code-first).
+  // mods at <root>/<mod>/, or a single-mod repo's src/<project>/ and samples/<project>/ (shipped)
+  // and tests/<project>/goldens/ (code-first).
   private static readonly (string WildcardDir, string[] Literal)[] BlocktypeTrees = [
     ("mods", ["assets"]),
     ("mods", ["tests", "goldens"]),
-    ("legacy", ["assets"]),
-    ("legacy", ["tests", "goldens"]),
+    (LegacyTree, ["assets"]),
+    (LegacyTree, ["tests", "goldens"]),
     ("src", ["assets"]),
     ("samples", ["assets"]),
     ("samples", ["tests", "goldens"]),
@@ -91,11 +96,11 @@ public sealed class BlockIndex {
   // A domain's real assets - shapes, textures, worldproperties - live only under one of these,
   // never under tests/*/goldens/: exlib ships framework-only blocks there with no shipped shapes
   // of their own domain elsewhere, so a blocktype found in goldens still resolves its shape here.
-  // A domain can have a root in more than one tree (the old exlib under legacy/ declares the same
+  // A domain can have a root in more than one tree (the old exlib at <root>/exlib/ declares the same
   // domain as the framework's src/), looked up in this order: the current tree answers first and
   // the old one only for a file it alone holds.
-  private static readonly string[] AssetRootTrees = ["mods", "src", "samples", "legacy"];
-  private static readonly string[] LegacyFirstAssetRootTrees = ["legacy", "mods", "src", "samples"];
+  private static readonly string[] AssetRootTrees = ["mods", "src", "samples", LegacyTree];
+  private static readonly string[] LegacyFirstAssetRootTrees = [LegacyTree, "mods", "src", "samples"];
 
   private readonly Dictionary<string, List<Variant>> _byCode = new(StringComparer.Ordinal);
   private readonly List<string> _order = [];
@@ -138,7 +143,7 @@ public sealed class BlockIndex {
   /// <summary>
   /// Builds the index from every blocktype file under <paramref name="roots"/> (each root's
   /// <c>mods/*/assets/*/blocktypes/**</c>, <c>mods/*/tests/goldens/*/blocktypes/**</c>, the same
-  /// two under <c>legacy/*</c>, <c>src/*/assets/*/blocktypes/**</c>,
+  /// two under the root's own <c>*</c>, <c>src/*/assets/*/blocktypes/**</c>,
   /// <c>samples/*/assets/*/blocktypes/**</c>, <c>samples/*/tests/goldens/*/blocktypes/**</c> and
   /// <c>tests/*/goldens/*/blocktypes/**</c>), plus the game install's own
   /// <c>assets/survival/blocktypes/**</c> and <c>assets/game/blocktypes/**</c> under each root's
@@ -149,7 +154,7 @@ public sealed class BlockIndex {
   /// <param name="roots">Repository checkouts to scan; see <see cref="DefaultRoots"/>.</param>
   /// <param name="gamePath">A game install directory that replaces every root's own
   /// <c>.game/&lt;version&gt;</c>, or null to discover one per root.</param>
-  /// <param name="legacyFirst">True when the index serves a block under a <c>legacy/</c> tree
+  /// <param name="legacyFirst">True when the index serves a block of a legacy mod
   /// (<see cref="UnderLegacyTree"/>): a code declared both there and in a current tree then
   /// resolves to the legacy file, and a domain's assets are looked up in the legacy tree first.
   /// False resolves both toward the current trees.</param>
@@ -178,7 +183,7 @@ public sealed class BlockIndex {
         foreach ((string domain, string file) in GlobBlocktypes(root, wildcardDir, literal)) {
           if (!seen.Add(file))
             continue;
-          variants.AddRange(Expand(file, domain, domainRoots, parseWarnings, wildcardDir == "legacy"));
+          variants.AddRange(Expand(file, domain, domainRoots, parseWarnings, wildcardDir == LegacyTree));
         }
 
       IReadOnlyList<string> gameDirs = explicitDirs ?? GameAssetDirsOf(root);
@@ -201,11 +206,17 @@ public sealed class BlockIndex {
     return new BlockIndex(variants, domainRoots, legacyFirst, parseWarnings);
   }
 
-  /// <summary>True when <paramref name="file"/> sits under a <c>legacy/</c> directory - the
-  /// published old mods' tree, whose blocks resolve their ties toward that tree (the
-  /// <c>legacyFirst</c> argument of <see cref="Build"/>).</summary>
-  public static bool UnderLegacyTree(string file) =>
-    Path.GetFullPath(file).Split(Path.DirectorySeparatorChar).Contains("legacy");
+  /// <summary>True when <paramref name="file"/> sits in a mod folder at its repository's root
+  /// (<c>&lt;root&gt;/&lt;mod&gt;/assets/**</c> or <c>&lt;root&gt;/&lt;mod&gt;/tests/goldens/**</c>,
+  /// the repository found as <see cref="TextureRoots.Build"/> finds it) - the published old mods'
+  /// layout, whose blocks resolve their ties toward that tree (the <c>legacyFirst</c> argument of
+  /// <see cref="Build"/>).</summary>
+  public static bool UnderLegacyTree(string file) {
+    string full = Path.GetFullPath(file);
+    string repo = TextureRoots.Build(null, null, full).RepoPath!;
+    string[] parts = Path.GetRelativePath(repo, full).Split(Path.DirectorySeparatorChar);
+    return parts.Length > 3 && (parts[1] == "assets" || (parts[1] == "tests" && parts[2] == "goldens"));
+  }
 
   private static void AddDomainRoot(Dictionary<string, List<string>> domainRoots, string domain, string dir) {
     if (!domainRoots.TryGetValue(domain, out List<string>? dirs)) {

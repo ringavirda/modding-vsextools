@@ -40,7 +40,7 @@ public class FootprintTests {
   // The trees the family's megablocks live in: ppex's published assets and the code-first goldens of
   // iiex and siex (several of them shapeless, drawn as a unit cube).
   private static readonly (string Tree, bool Legacy)[] Trees = [
-    ("exmods/legacy/ppex/assets", true),
+    ("exmods-legacy/ppex/assets", true),
     ("exmods/mods/iiex/tests/goldens", false),
     ("exmods/mods/siex/tests/goldens", false),
   ];

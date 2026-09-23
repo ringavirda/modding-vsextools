@@ -21,7 +21,7 @@ public sealed class TextureRoots {
   /// <c>game:</c> or bare-path texture reference asked to resolve against one.</exception>
   public string GamePath => _gamePath.Value;
 
-  /// <summary>The mod repository (holding <c>mods/*</c> and <c>legacy/*</c>), or null when none
+  /// <summary>The mod repository (holding <c>mods/*</c>, or mod folders at its root), or null when none
   /// could be found - a <c>domain:</c> reference other than <c>game:</c> then never resolves.</summary>
   public string? RepoPath { get; }
 
@@ -48,8 +48,8 @@ public sealed class TextureRoots {
     return new TextureRoots(new Lazy<string>(() => GameInstall.Resolve(game)), repoPath);
   }
 
-  // A subtree can carry a .game of its own (the old mods' test scripts provision one under
-  // legacy/), so .game alone marks a root only when no ancestor holds workbench/, mods/ or .git.
+  // A subtree can carry a .game of its own, so .game alone marks a root only when no ancestor holds
+  // workbench/, mods/ or .git.
   private static string FindRepoRoot(string? shapePath) {
     string start =
       shapePath != null
@@ -90,7 +90,7 @@ public static class Textures {
   /// <item><c>domain:path</c>: <c>game:</c> resolves under
   /// <paramref name="roots"/>.<see cref="TextureRoots.GamePath"/>'s <c>assets/survival/textures</c>;
   /// any other domain under the first of <paramref name="roots"/>.<see cref="TextureRoots.RepoPath"/>'s
-  /// <c>mods/*/assets/&lt;domain&gt;/textures</c> then <c>legacy/*/assets/&lt;domain&gt;/textures</c>
+  /// <c>mods/*/assets/&lt;domain&gt;/textures</c> then its own <c>*/assets/&lt;domain&gt;/textures</c>
   /// to carry that path.</item>
   /// <item>a bare path resolves under the game's own vanilla textures.</item>
   /// </list>
@@ -118,7 +118,7 @@ public static class Textures {
         return Png(Path.Combine(roots.GamePath, "assets", "survival", "textures", rel));
       if (roots.RepoPath == null)
         return null;
-      foreach (string tree in new[] { "mods", "legacy" })
+      foreach (string tree in new[] { "mods", "" })
         foreach (string texturesDir in DomainTextureDirs(roots.RepoPath, tree, name)) {
           string? hit = Png(Path.Combine(texturesDir, rel));
           if (hit != null)
@@ -130,9 +130,9 @@ public static class Textures {
     return Png(Path.Combine(roots.GamePath, "assets", "survival", "textures", v));
   }
 
-  // <repo>/<treeRoot>/*/assets/<domain>/textures, in directory-name order - the same tie-break
-  // "last loaded wins" would use if two mods shipped the same domain, made deterministic here
-  // since only the first hit is taken.
+  // <repo>/<treeRoot>/*/assets/<domain>/textures (<repo>/*/... for an empty treeRoot), in
+  // directory-name order - the same tie-break "last loaded wins" would use if two mods shipped the
+  // same domain, made deterministic here since only the first hit is taken.
   private static IEnumerable<string> DomainTextureDirs(string repo, string treeRoot, string domain) {
     string parent = Path.Combine(repo, treeRoot);
     if (!Directory.Exists(parent))

@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- The published old mods are read from a repository whose root holds each mod's folder
+  (`<root>/<mod>/assets`, the exmods-legacy layout) instead of a `legacy/` subtree: blocktypes,
+  asset roots and `domain:` textures resolve there, and a block in such a folder settles a code
+  both sides declare toward the old side.
+
 ## [0.3.4] - 2026-09-15
 
 ### Added

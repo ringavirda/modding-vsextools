@@ -75,8 +75,8 @@ public class ItemViewsTests {
 
   [SkippableFact]
   public void The_smex_burden_draws_the_shape_it_borrows_from_the_game() {
-    string? file = FixturePath.Workspace("exmods/legacy/smex/assets/smex/itemtypes/burden.json");
-    Skip.If(file is null, "the sibling exmods checkout is absent");
+    string? file = FixturePath.Workspace("exmods-legacy/smex/assets/smex/itemtypes/burden.json");
+    Skip.If(file is null, "the sibling exmods-legacy checkout is absent");
     BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(file!), null, legacyFirst: true);
     Variant variant = Assert.Single(index.ItemVariants(file!));
     Assert.Equal("smex:burden", variant.Code);

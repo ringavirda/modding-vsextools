@@ -94,9 +94,9 @@ public class TexturesTests {
   [Fact]
   public void The_repository_root_outranks_a_nested_game_install() {
     string root = Path.Combine(Path.GetTempPath(), "exlib-shapes-" + Guid.NewGuid().ToString("N"));
-    string shapeDir = Path.Combine(root, "legacy", "old", "assets", "old", "shapes");
+    string shapeDir = Path.Combine(root, "old", "assets", "old", "shapes");
     Directory.CreateDirectory(shapeDir);
-    Directory.CreateDirectory(Path.Combine(root, "legacy", ".game", ".cache"));
+    Directory.CreateDirectory(Path.Combine(root, "old", ".game", ".cache"));
     Directory.CreateDirectory(Path.Combine(root, "mods"));
     File.WriteAllText(Path.Combine(root, ".git"), "gitdir: elsewhere");
     try {

@@ -148,14 +148,14 @@ public class BlocksTests {
 
   [Fact]
   public void Legacy_and_sample_trees_contribute_blocktypes_and_their_own_assets() {
-    // The published old mods live under legacy/<mod>/assets and a single-mod repo's samples under
+    // The published old mods live at <root>/<mod>/assets and a single-mod repo's samples under
     // samples/<project>/ with their goldens - the trees the wiki's first figures found missing.
     BlockIndex index = BlockIndex.Build([DemoRoot]);
 
     ResolvedBlock? gate = index.Resolve("old:gate-shut");
     Assert.NotNull(gate);
     Assert.EndsWith(
-      Path.Combine("legacy", "old", "assets", "old", "shapes", "block", "gate.json"),
+      Path.Combine("schematic", "old", "assets", "old", "shapes", "block", "gate.json"),
       gate!.ShapePath
     );
 
@@ -219,7 +219,7 @@ public class BlocksTests {
 
   [Fact]
   public void A_code_declared_on_both_sides_of_legacy_follows_the_side_the_index_serves() {
-    // legacy/old/assets/demo/blocktypes/wall.json declares the same "wall" as the current
+    // old/assets/demo/blocktypes/wall.json declares the same "wall" as the current
     // mods/demo tree with another shape: two versions of one mod, not an ambiguity to warn about.
     BlockIndex current = BlockIndex.Build([DemoRoot]);
     ResolvedBlock? wall = current.Resolve("demo:wall-north");
@@ -233,7 +233,10 @@ public class BlocksTests {
     Assert.EndsWith(Path.Combine("old", "shapes", "block", "gate.json"), old!.ShapePath);
     Assert.Empty(legacy.Ambiguities);
 
-    Assert.True(BlockIndex.UnderLegacyTree(Path.Combine(DemoRoot, "legacy", "old", "assets", "demo", "blocktypes", "wall.json")));
+    Assert.True(BlockIndex.UnderLegacyTree(Path.Combine(DemoRoot, "old", "assets", "demo", "blocktypes", "wall.json")));
+    Assert.True(BlockIndex.UnderLegacyTree(Path.Combine(DemoRoot, "old", "tests", "goldens", "demo", "blocktypes", "wall.json")));
+    Assert.False(BlockIndex.UnderLegacyTree(Path.Combine(DemoRoot, "old", "tests", "demo", "blocktypes", "wall.json")));
+    Assert.False(BlockIndex.UnderLegacyTree(Path.Combine(DemoRoot, "old", "assets", "wall.json")));
     Assert.False(BlockIndex.UnderLegacyTree(Path.Combine(DemoRoot, "mods", "demo", "assets", "demo", "blocktypes", "wall.json")));
   }
 

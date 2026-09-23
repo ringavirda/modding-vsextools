@@ -140,8 +140,8 @@ public class SchematicTests {
 
   [SkippableFact]
   public void Every_caption_of_the_ppex_engines_fits_its_own_viewport() {
-    string? engines = FixturePath.Workspace("exmods/legacy/ppex/assets/ppex/blocktypes/engine");
-    Skip.If(engines is null, "the sibling exmods checkout is absent");
+    string? engines = FixturePath.Workspace("exmods-legacy/ppex/assets/ppex/blocktypes/engine");
+    Skip.If(engines is null, "the sibling exmods-legacy checkout is absent");
     foreach (string file in Directory.EnumerateFiles(engines!, "*.json").OrderBy(f => f, StringComparer.Ordinal)) {
       Layout layout;
       try {
