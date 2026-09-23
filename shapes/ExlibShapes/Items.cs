@@ -2,11 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using ExpandedLib.Assets;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using SkiaSharp;
 using Vintagestory.API.Common;
-using ExpandedLib.Assets;
 
 namespace ExpandedLib.Shapes;
 
@@ -42,7 +42,13 @@ public static class ItemViews {
   /// <param name="index">The index the textures and the shape resolve through.</param>
   /// <param name="outDir">Created when absent.</param>
   /// <param name="ppu">Pixels per shape unit for the isometric render.</param>
-  public static JObject Write(string file, Variant variant, BlockIndex index, string outDir, int ppu = 24) {
+  public static JObject Write(
+    string file,
+    Variant variant,
+    BlockIndex index,
+    string outDir,
+    int ppu = 24
+  ) {
     ResolvedBlock item = index.ResolveVariant(variant);
     Directory.CreateDirectory(outDir);
     string stem = Path.GetFileNameWithoutExtension(file);
@@ -52,17 +58,28 @@ public static class ItemViews {
     var unpainted = new SortedSet<string>(StringComparer.Ordinal);
 
     if (item.ShapePath != null) {
-      (JObject raw, Dictionary<string, TextureRef> values) = BlockViews.Compose(item);
+      (JObject raw, Dictionary<string, TextureRef> values) = BlockViews.Compose(
+        item
+      );
       Shape shape =
         JsonConvert.DeserializeObject<Shape>(raw.ToString())
-        ?? throw new JsonException($"{variant.Code}: the composed item shape failed to parse");
-      TextureSet textures = TextureSet.FromResolved(values, index.ResolveTexture);
+        ?? throw new JsonException(
+          $"{variant.Code}: the composed item shape failed to parse"
+        );
+      TextureSet textures = TextureSet.FromResolved(
+        values,
+        index.ResolveTexture
+      );
       string path = Path.Combine(outDir, $"{stem}-iso.png");
       using (
         SKBitmap image = Renderer.Render(
           // Compose already kept the entry's selectiveElements and wrapped the tree, so the
           // patterns match nothing here; a second pass would empty the picture.
-          ShapeFile.FromRaw(shape, item.ShapePath, new Dictionary<string, string>()),
+          ShapeFile.FromRaw(
+            shape,
+            item.ShapePath,
+            new Dictionary<string, string>()
+          ),
           Renderer.NamedViews[Presentation.ViewName],
           ppu: ppu,
           textures: textures,
@@ -75,7 +92,9 @@ public static class ItemViews {
       foreach (string key in textures.Missing) {
         string name = key[(key.IndexOf('_') + 1)..];
         if (values[key].Unassigned)
-          unpainted.Add($"{item.Code}: face texture {name} is assigned nothing");
+          unpainted.Add(
+            $"{item.Code}: face texture {name} is assigned nothing"
+          );
         else
           missing.Add($"{item.Code}: texture {name} ({values[key]}) not found");
       }
@@ -95,9 +114,15 @@ public static class ItemViews {
     }
 
     if (files.Count == 0)
-      warnings.Add($"{item.Code}: neither a shape nor a texture; nothing to draw");
-    foreach ((string selector, IReadOnlyList<string> spanned) in index.Ambiguities)
-      warnings.Add($"{selector}: ambiguous between {string.Join(", ", spanned)}");
+      warnings.Add(
+        $"{item.Code}: neither a shape nor a texture; nothing to draw"
+      );
+    foreach (
+      (string selector, IReadOnlyList<string> spanned) in index.Ambiguities
+    )
+      warnings.Add(
+        $"{selector}: ambiguous between {string.Join(", ", spanned)}"
+      );
     warnings.AddRange(index.ParseWarnings);
 
     var manifest = new JObject {
@@ -107,21 +132,26 @@ public static class ItemViews {
       ["unpaintedFaces"] = new JArray(unpainted),
       ["warnings"] = new JArray(warnings),
     };
-    File.WriteAllText(Path.Combine(outDir, $"{stem}.json"), manifest.ToString(Formatting.Indented));
+    File.WriteAllText(
+      Path.Combine(outDir, $"{stem}.json"),
+      manifest.ToString(Formatting.Indented)
+    );
     return manifest;
   }
 
   /// <summary>The flat icon <paramref name="variant"/> declares - its <c>texture</c> entry, read
   /// through the game's own ByType rule - or null when it draws a shape instead.</summary>
   public static TextureRef? IconOf(Variant variant) =>
-    BlockTypeResolution.ByType(variant.Raw, "texture", variant.Path) is { } entry
+    BlockTypeResolution.ByType(variant.Raw, "texture", variant.Path)
+      is { } entry
       ? BlockIndex.TextureOf(entry, variant)
       : null;
 
   // The texture drawn at IconScale pixels per texel on the renders' own paper, each texel taken as
   // it is rather than blurred between its neighbours, and its transparency laid over the paper.
   private static SKBitmap Enlarged(byte[,,] texture) {
-    int height = texture.GetLength(0), width = texture.GetLength(1);
+    int height = texture.GetLength(0),
+      width = texture.GetLength(1);
     var image = new SKBitmap(
       width * IconScale + 2 * IconMargin,
       height * IconScale + 2 * IconMargin,
@@ -134,13 +164,26 @@ public static class ItemViews {
       for (int x = 0; x < width; x++) {
         double alpha = texture[y, x, 3] / 255.0;
         var color = new SKColor(
-          (byte)Math.Round(texture[y, x, 0] * alpha + Renderer.Background.Red * (1 - alpha)),
-          (byte)Math.Round(texture[y, x, 1] * alpha + Renderer.Background.Green * (1 - alpha)),
-          (byte)Math.Round(texture[y, x, 2] * alpha + Renderer.Background.Blue * (1 - alpha))
+          (byte)
+            Math.Round(
+              texture[y, x, 0] * alpha + Renderer.Background.Red * (1 - alpha)
+            ),
+          (byte)
+            Math.Round(
+              texture[y, x, 1] * alpha + Renderer.Background.Green * (1 - alpha)
+            ),
+          (byte)
+            Math.Round(
+              texture[y, x, 2] * alpha + Renderer.Background.Blue * (1 - alpha)
+            )
         );
         for (int dy = 0; dy < IconScale; dy++)
           for (int dx = 0; dx < IconScale; dx++)
-            image.SetPixel(IconMargin + x * IconScale + dx, IconMargin + y * IconScale + dy, color);
+            image.SetPixel(
+              IconMargin + x * IconScale + dx,
+              IconMargin + y * IconScale + dy,
+              color
+            );
       }
     return image;
   }

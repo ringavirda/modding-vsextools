@@ -161,7 +161,10 @@ public static class ShapeFile {
   /// </summary>
   /// <exception cref="FileNotFoundException"><paramref name="path"/> does not exist.</exception>
   /// <exception cref="JsonException">The file is not valid shape JSON.</exception>
-  public static LoadedShape Load(string path, IReadOnlyList<string>? selective = null) {
+  public static LoadedShape Load(
+    string path,
+    IReadOnlyList<string>? selective = null
+  ) {
     if (!File.Exists(path))
       throw new FileNotFoundException($"No such shape file: {path}", path);
     string text = File.ReadAllText(path);
@@ -198,12 +201,20 @@ public static class ShapeFile {
       roots.Add(Build(el, null, "", rootNames));
     if (selective is { Count: > 0 })
       roots = Select(roots, selective);
-    return new LoadedShape(path, textures ?? StringifyTextures(raw.Textures), roots, raw.Animations ?? []);
+    return new LoadedShape(
+      path,
+      textures ?? StringifyTextures(raw.Textures),
+      roots,
+      raw.Animations ?? []
+    );
   }
 
   // The blocktype's selectiveElements rule over a built tree: a node no pattern names goes with
   // its subtree, and a kept node's children are checked under its path in turn.
-  private static List<Node> Select(List<Node> nodes, IReadOnlyList<string> selective) {
+  private static List<Node> Select(
+    List<Node> nodes,
+    IReadOnlyList<string> selective
+  ) {
     List<Node> kept = [];
     foreach (Node node in nodes) {
       if (!SelectiveElements.Keeps(selective, node.Path))
@@ -224,7 +235,9 @@ public static class ShapeFile {
     var textures = new Dictionary<string, string>();
     if (locations != null)
       foreach ((string key, AssetLocation value) in locations)
-        textures[key] = value.HasDomain() ? $"{value.Domain}:{value.Path}" : value.Path;
+        textures[key] = value.HasDomain()
+          ? $"{value.Domain}:{value.Path}"
+          : value.Path;
     return textures;
   }
 
@@ -234,13 +247,23 @@ public static class ShapeFile {
   // renderer's and Footprint's world matrices, Program.measure's element boxes - would otherwise
   // collapse them onto whichever one is built last. The second and later occurrences get a
   // "#2", "#3", ... suffix on their own Path alone; Name, faces and children are unaffected.
-  private static Node Build(ShapeElement raw, Node? parent, string prefix, Dictionary<string, int> siblingNames) {
+  private static Node Build(
+    ShapeElement raw,
+    Node? parent,
+    string prefix,
+    Dictionary<string, int> siblingNames
+  ) {
     string name = raw.Name ?? "?";
-    int occurrence = siblingNames[name] = siblingNames.GetValueOrDefault(name) + 1;
-    string path = (prefix.Length > 0 ? prefix + "/" : "") + name + (occurrence > 1 ? "#" + occurrence : "");
+    int occurrence = siblingNames[name] =
+      siblingNames.GetValueOrDefault(name) + 1;
+    string path =
+      (prefix.Length > 0 ? prefix + "/" : "")
+      + name
+      + (occurrence > 1 ? "#" + occurrence : "");
     Vec3d from = ToVec3d(raw.From, Vec3d.Zero);
     Vec3d to = ToVec3d(raw.To, Vec3d.Zero);
-    Vec3d origin = raw.RotationOrigin != null ? ToVec3d(raw.RotationOrigin, from) : from;
+    Vec3d origin =
+      raw.RotationOrigin != null ? ToVec3d(raw.RotationOrigin, from) : from;
     Vec3d rotation = new(raw.RotationX, raw.RotationY, raw.RotationZ);
     // ShapeElement.Faces (a face-name-keyed dictionary) is obsolete and left null once the
     // deserialiser's own [OnDeserialized] hook runs: FacesResolved is a fixed 6-slot array in
@@ -248,7 +271,11 @@ public static class ShapeFile {
     // null, its texture already stripped of its leading '#'.
     Dictionary<string, ShapeElementFace> faces = [];
     if (raw.FacesResolved != null)
-      for (int i = 0; i < raw.FacesResolved.Length && i < Geometry.Faces.Length; i++)
+      for (
+        int i = 0;
+        i < raw.FacesResolved.Length && i < Geometry.Faces.Length;
+        i++
+      )
         if (raw.FacesResolved[i] is { } face)
           faces[Geometry.Faces[i]] = face;
 

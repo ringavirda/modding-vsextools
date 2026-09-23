@@ -41,7 +41,15 @@ public sealed class Pose {
 /// </summary>
 public static class Geometry {
   /// <summary>The six face names a <see cref="Node"/> can carry, in the game's own order.</summary>
-  public static readonly string[] Faces = ["north", "east", "south", "west", "up", "down"];
+  public static readonly string[] Faces =
+  [
+    "north",
+    "east",
+    "south",
+    "west",
+    "up",
+    "down",
+  ];
 
   /// <summary>The outward unit normal of each face in element-local space.</summary>
   public static readonly IReadOnlyDictionary<string, Vector3> FaceNormal =
@@ -59,28 +67,37 @@ public static class Geometry {
   /// top-left, bottom-left, as seen from outside; each entry picks the min (0) or max (1) corner
   /// on x, y, z, in units of the element's own size.
   /// </summary>
-  public static readonly IReadOnlyDictionary<string, (int X, int Y, int Z)[]> FaceCorners =
-    new Dictionary<string, (int, int, int)[]> {
-      ["north"] = [(0, 0, 0), (0, 1, 0), (1, 1, 0), (1, 0, 0)],
-      ["east"] = [(1, 0, 0), (1, 1, 0), (1, 1, 1), (1, 0, 1)],
-      ["south"] = [(1, 0, 1), (1, 1, 1), (0, 1, 1), (0, 0, 1)],
-      ["west"] = [(0, 0, 1), (0, 1, 1), (0, 1, 0), (0, 0, 0)],
-      ["up"] = [(1, 1, 1), (1, 1, 0), (0, 1, 0), (0, 1, 1)],
-      ["down"] = [(0, 0, 1), (0, 0, 0), (1, 0, 0), (1, 0, 1)],
-    };
+  public static readonly IReadOnlyDictionary<
+    string,
+    (int X, int Y, int Z)[]
+  > FaceCorners = new Dictionary<string, (int, int, int)[]> {
+    ["north"] = [(0, 0, 0), (0, 1, 0), (1, 1, 0), (1, 0, 0)],
+    ["east"] = [(1, 0, 0), (1, 1, 0), (1, 1, 1), (1, 0, 1)],
+    ["south"] = [(1, 0, 1), (1, 1, 1), (0, 1, 1), (0, 0, 1)],
+    ["west"] = [(0, 0, 1), (0, 1, 1), (0, 1, 0), (0, 0, 0)],
+    ["up"] = [(1, 1, 1), (1, 1, 0), (0, 1, 0), (0, 1, 1)],
+    ["down"] = [(0, 0, 1), (0, 0, 0), (1, 0, 0), (1, 0, 1)],
+  };
 
   /// <summary>Which face axes span its uv rect: (u axis index, v axis index), 0=x, 1=y, 2=z.</summary>
-  public static readonly IReadOnlyDictionary<string, (int U, int V)> FaceUvAxes =
-    new Dictionary<string, (int, int)> {
-      ["north"] = (0, 1),
-      ["south"] = (0, 1),
-      ["east"] = (2, 1),
-      ["west"] = (2, 1),
-      ["up"] = (0, 2),
-      ["down"] = (0, 2),
-    };
+  public static readonly IReadOnlyDictionary<
+    string,
+    (int U, int V)
+  > FaceUvAxes = new Dictionary<string, (int, int)> {
+    ["north"] = (0, 1),
+    ["south"] = (0, 1),
+    ["east"] = (2, 1),
+    ["west"] = (2, 1),
+    ["up"] = (0, 2),
+    ["down"] = (0, 2),
+  };
 
-  private static float Axis(Vector3 v, int i) => i switch { 0 => v.X, 1 => v.Y, _ => v.Z };
+  private static float Axis(Vector3 v, int i) =>
+    i switch {
+      0 => v.X,
+      1 => v.Y,
+      _ => v.Z,
+    };
 
   /// <summary><c>Mat4f.RotateByXYZ</c> as a matrix acting on column vectors: <c>Rx . Ry . Rz</c>,
   /// returned transposed for <see cref="System.Numerics.Matrix4x4"/>'s row-vector convention (see
@@ -111,7 +128,8 @@ public static class Geometry {
 
   /// <summary>A translation matrix (already in row-vector form: <see cref="Matrix4x4.CreateTranslation(Vector3)"/>
   /// is exactly the transpose of the column-vector translation the game builds).</summary>
-  public static Matrix4x4 Translate(Vector3 v) => Matrix4x4.CreateTranslation(v);
+  public static Matrix4x4 Translate(Vector3 v) =>
+    Matrix4x4.CreateTranslation(v);
 
   /// <summary>A scale matrix (diagonal, so transposing it is a no-op).</summary>
   public static Matrix4x4 Scale(Vector3 v) => Matrix4x4.CreateScale(v);
@@ -182,7 +200,11 @@ public static class Geometry {
   }
 
   /// <summary>Whether two AABBs (lo, hi) overlap or abut within <paramref name="tol"/> on every axis.</summary>
-  public static bool Touching((Vector3 Lo, Vector3 Hi) a, (Vector3 Lo, Vector3 Hi) b, float tol = 0.05f) {
+  public static bool Touching(
+    (Vector3 Lo, Vector3 Hi) a,
+    (Vector3 Lo, Vector3 Hi) b,
+    float tol = 0.05f
+  ) {
     Vector3 lo = Vector3.Max(a.Lo, b.Lo);
     Vector3 hi = Vector3.Min(a.Hi, b.Hi);
     return hi.X - lo.X >= -tol && hi.Y - lo.Y >= -tol && hi.Z - lo.Z >= -tol;
@@ -222,14 +244,18 @@ public static class Geometry {
       var pts = new Vector3[4];
       for (int i = 0; i < 4; i++) {
         (int cx, int cy, int cz) = corners[i];
-        pts[i] = Vector3.Transform(new Vector3(cx * size.X, cy * size.Y, cz * size.Z), m);
+        pts[i] = Vector3.Transform(
+          new Vector3(cx * size.X, cy * size.Y, cz * size.Z),
+          m
+        );
       }
-      Vector3 n = Vector3.Normalize(Vector3.TransformNormal(FaceNormal[face], m));
+      Vector3 n = Vector3.Normalize(
+        Vector3.TransformNormal(FaceNormal[face], m)
+      );
       (int ua, int va) = FaceUvAxes[face];
-      float[] uv =
-        spec.Uv is { Length: >= 4 }
-          ? [spec.Uv[0], spec.Uv[1], spec.Uv[2], spec.Uv[3]]
-          : [0f, 0f, Axis(size, ua), Axis(size, va)];
+      float[] uv = spec.Uv is { Length: >= 4 }
+        ? [spec.Uv[0], spec.Uv[1], spec.Uv[2], spec.Uv[3]]
+        : [0f, 0f, Axis(size, ua), Axis(size, va)];
       string tex = (spec.Texture ?? "").TrimStart('#');
       outp.Add(
         new Quad {

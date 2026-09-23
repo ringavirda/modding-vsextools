@@ -19,7 +19,9 @@ public class SchematicTests {
   // The family workspace's own exmods checkout and this checkout's own client game install; the
   // facts naming them Skip.If (rather than run against nothing) when either is absent.
   private static string? BlastcoreGolden =>
-    FixturePath.Workspace("exmods/mods/iiex/tests/goldens/iiex/blocktypes/furnace/blastcore.json");
+    FixturePath.Workspace(
+      "exmods/mods/iiex/tests/goldens/iiex/blocktypes/furnace/blastcore.json"
+    );
   private static string? ClientGame {
     get {
       foreach (string slug in new[] { "1.22-client", "1.22" }) {
@@ -27,7 +29,11 @@ public class SchematicTests {
         // A dedicated-server install lands at this same path (Invoke-ProvisionGame's "-server"
         // suffix is only added once a client is already there), and ships no textures at all -
         // Vintagestory.dll alone does not tell the two apart.
-        if (Directory.Exists(Path.Combine(candidate, "assets/game/textures/block")))
+        if (
+          Directory.Exists(
+            Path.Combine(candidate, "assets/game/textures/block")
+          )
+        )
           return candidate;
       }
       return null;
@@ -39,7 +45,8 @@ public class SchematicTests {
   private static string RequireClientGame() {
     string? game = ClientGame;
     Skip.If(
-      game is null && Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == null,
+      game is null
+        && Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == null,
       "a client install with real textures is absent"
     );
     Assert.NotNull(game);
@@ -52,7 +59,15 @@ public class SchematicTests {
     Dictionary<int, LegendEntry> legend = Schematic.LegendColors(layout);
     string svg = Schematic.PlanSvg(layout, 0, legend);
     Assert.Equal(9, CountOccurrences(svg, "<rect"));
-    HashSet<string> fills = [.. System.Text.RegularExpressions.Regex.Matches(svg, "fill=\"(#[0-9A-Fa-f]{6})\"").Select(m => m.Groups[1].Value)];
+    HashSet<string> fills =
+    [
+      .. System
+        .Text.RegularExpressions.Regex.Matches(
+          svg,
+          "fill=\"(#[0-9A-Fa-f]{6})\""
+        )
+        .Select(m => m.Groups[1].Value),
+    ];
     Assert.Equal(2, fills.Count);
     Assert.Equal(1, CountOccurrences(svg, "class=\"cell anchor\""));
   }
@@ -82,7 +97,10 @@ public class SchematicTests {
     Layout layout = Layout.Load(Fixture);
     Dictionary<int, LegendEntry> legend = Schematic.LegendColors(layout);
     Assert.Equal([1, 2], layout.Numbers.Keys.OrderBy(n => n));
-    Assert.Equal([1, 2], legend.OrderBy(kv => kv.Key).Select(kv => kv.Value.Display));
+    Assert.Equal(
+      [1, 2],
+      legend.OrderBy(kv => kv.Key).Select(kv => kv.Value.Display)
+    );
     string svg = Schematic.PlanSvg(layout, 0, legend);
     Assert.Equal(9, CountOccurrences(svg, "class=\"number\""));
     // The fill decides the ink: white on the eight dark blue cells, black on the lighter anchor.
@@ -116,7 +134,10 @@ public class SchematicTests {
   public void Plan_svg_captions_the_layer_it_draws() {
     Layout layout = Layout.Load(Fixture);
     Dictionary<int, LegendEntry> legend = Schematic.LegendColors(layout);
-    Assert.Contains(">Layer 0, the starter block's row<", Schematic.PlanSvg(layout, 0, legend));
+    Assert.Contains(
+      ">Layer 0, the starter block's row<",
+      Schematic.PlanSvg(layout, 0, legend)
+    );
     Assert.Contains(">Layer +1<", Schematic.PlanSvg(layout, 1, legend));
     Assert.Equal("Layer -1", Schematic.LayerCaption(-1));
   }
@@ -131,18 +152,31 @@ public class SchematicTests {
     AssertCaptionFits(Schematic.FootprintSvg(kiln), "kiln footprint");
 
     foreach (string name in new[] { "furnace", "mega" }) {
-      Layout layout = Layout.Load(FixturePath.Of($"schematic/mods/demo/assets/demo/blocktypes/{name}.json"));
+      Layout layout = Layout.Load(
+        FixturePath.Of(
+          $"schematic/mods/demo/assets/demo/blocktypes/{name}.json"
+        )
+      );
       foreach (int y in layout.Layers())
-        AssertCaptionFits(Schematic.PlanSvg(layout, y, Schematic.LegendColors(layout)), $"{name} layer {y}");
+        AssertCaptionFits(
+          Schematic.PlanSvg(layout, y, Schematic.LegendColors(layout)),
+          $"{name} layer {y}"
+        );
       AssertCaptionFits(Schematic.FootprintSvg(layout), $"{name} footprint");
     }
   }
 
   [SkippableFact]
   public void Every_caption_of_the_ppex_engines_fits_its_own_viewport() {
-    string? engines = FixturePath.Workspace("exmods-legacy/ppex/assets/ppex/blocktypes/engine");
+    string? engines = FixturePath.Workspace(
+      "exmods-legacy/ppex/assets/ppex/blocktypes/engine"
+    );
     Skip.If(engines is null, "the sibling exmods-legacy checkout is absent");
-    foreach (string file in Directory.EnumerateFiles(engines!, "*.json").OrderBy(f => f, StringComparer.Ordinal)) {
+    foreach (
+      string file in Directory
+        .EnumerateFiles(engines!, "*.json")
+        .OrderBy(f => f, StringComparer.Ordinal)
+    ) {
       Layout layout;
       try {
         layout = Layout.Load(file);
@@ -151,7 +185,10 @@ public class SchematicTests {
       }
       string name = Path.GetFileNameWithoutExtension(file);
       foreach (int y in layout.Layers())
-        AssertCaptionFits(Schematic.PlanSvg(layout, y, Schematic.LegendColors(layout)), $"{name} layer {y}");
+        AssertCaptionFits(
+          Schematic.PlanSvg(layout, y, Schematic.LegendColors(layout)),
+          $"{name} layer {y}"
+        );
       AssertCaptionFits(Schematic.FootprintSvg(layout), $"{name} footprint");
     }
   }
@@ -160,10 +197,16 @@ public class SchematicTests {
   // drawn on: both ends inside, or the page shows it clipped.
   private static void AssertCaptionFits(string svg, string what) {
     int viewport = int.Parse(
-      System.Text.RegularExpressions.Regex.Match(svg, "<svg[^>]*width=\"(\\d+)\"").Groups[1].Value
+      System
+        .Text.RegularExpressions.Regex.Match(svg, "<svg[^>]*width=\"(\\d+)\"")
+        .Groups[1]
+        .Value
     );
     double left = double.Parse(
-      System.Text.RegularExpressions.Regex.Match(svg, @"translate\((-?[0-9.]+),").Groups[1].Value,
+      System
+        .Text.RegularExpressions.Regex.Match(svg, @"translate\((-?[0-9.]+),")
+        .Groups[1]
+        .Value,
       System.Globalization.CultureInfo.InvariantCulture
     );
     var caption = System.Text.RegularExpressions.Regex.Match(
@@ -171,17 +214,30 @@ public class SchematicTests {
       "<text class=\"caption\" x=\"([-0-9.]+)\"[^>]*>([^<]*)</text>"
     );
     Assert.True(caption.Success, $"{what}: no caption at all");
-    double centre = left + double.Parse(caption.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+    double centre =
+      left
+      + double.Parse(
+        caption.Groups[1].Value,
+        System.Globalization.CultureInfo.InvariantCulture
+      );
     double half = Schematic.CaptionWidth(caption.Groups[2].Value) / 2.0;
-    Assert.True(centre - half >= 0, $"{what}: the caption starts at {centre - half}, left of the viewport");
-    Assert.True(centre + half <= viewport, $"{what}: the caption ends at {centre + half}, past {viewport}");
+    Assert.True(
+      centre - half >= 0,
+      $"{what}: the caption starts at {centre - half}, left of the viewport"
+    );
+    Assert.True(
+      centre + half <= viewport,
+      $"{what}: the caption ends at {centre + half}, past {viewport}"
+    );
   }
 
   [Fact]
   public void Plan_svg_matches_the_reference_text_exactly() {
     Layout layout = Layout.Load(Fixture);
     string svg = Schematic.PlanSvg(layout, 0, Schematic.LegendColors(layout));
-    string expected = File.ReadAllText(FixturePath.Expected("schematic/kiln-plan-y0.svg"));
+    string expected = File.ReadAllText(
+      FixturePath.Expected("schematic/kiln-plan-y0.svg")
+    );
     Assert.Equal(expected, svg);
   }
 
@@ -191,7 +247,9 @@ public class SchematicTests {
     Dictionary<int, LegendEntry> legend = Schematic.LegendColors(layout);
     legend[1].Optional = true;
     string svg = Schematic.PlanSvg(layout, 0, legend);
-    string expected = File.ReadAllText(FixturePath.Expected("schematic/kiln-plan-y0-optional.svg"));
+    string expected = File.ReadAllText(
+      FixturePath.Expected("schematic/kiln-plan-y0-optional.svg")
+    );
     Assert.Equal(expected, svg);
   }
 
@@ -204,7 +262,15 @@ public class SchematicTests {
       [2] = "demo:wall-north",
     };
     // Layout's constructor is internal; the test assembly reaches it through InternalsVisibleTo.
-    return new Layout(layout.Cells, numbers, layout.Fillers, layout.Facings, layout.Connectors, layout.Roles, layout.Anchor);
+    return new Layout(
+      layout.Cells,
+      numbers,
+      layout.Fillers,
+      layout.Facings,
+      layout.Connectors,
+      layout.Roles,
+      layout.Anchor
+    );
   }
 
   [Fact]
@@ -230,7 +296,8 @@ public class SchematicTests {
   public void Compose_includes_every_resolved_cell_not_only_the_fillers() {
     Layout layout = DemoLayout();
     BlockIndex index = BlockIndex.Build([DemoRoot]);
-    (JObject raw, Dictionary<string, TextureRef> textureValues) = Schematic.Compose(layout, index);
+    (JObject raw, Dictionary<string, TextureRef> textureValues) =
+      Schematic.Compose(layout, index);
     // one leaf per resolved cell (all 18 resolve to demo:wall-north) plus one box per filler cell;
     // a compose that silently dropped the resolved geometry would still pass on filler leaves alone
     Assert.Equal(layout.Cells.Count + layout.Fillers.Count, CountLeaves(raw));
@@ -241,22 +308,39 @@ public class SchematicTests {
   public void A_megablock_draws_its_body_over_a_footprint_outline_and_a_structure_keeps_its_boxes() {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     Layout mega = Footprint.Placed(
-      Layout.Load(FixturePath.Of("schematic/mods/demo/assets/demo/blocktypes/mega.json"), "mega-north"),
+      Layout.Load(
+        FixturePath.Of("schematic/mods/demo/assets/demo/blocktypes/mega.json"),
+        "mega-north"
+      ),
       index
     );
-    (JObject raw, Dictionary<string, TextureRef> values) = Schematic.Compose(mega, index);
-    List<string> names = [.. raw["elements"]!.Select(el => (string)el["name"]!)];
+    (JObject raw, Dictionary<string, TextureRef> values) = Schematic.Compose(
+      mega,
+      index
+    );
+    List<string> names =
+    [
+      .. raw["elements"]!.Select(el => (string)el["name"]!),
+    ];
     Assert.Contains(Schematic.PrincipalPrefix, names);
-    Assert.DoesNotContain(names, n => n.StartsWith("filler", StringComparison.Ordinal));
+    Assert.DoesNotContain(
+      names,
+      n => n.StartsWith("filler", StringComparison.Ordinal)
+    );
     // Two columns, four bars each: the principal's own cell and the one filler it reserves.
-    Assert.Equal(8, names.Count(n => n.StartsWith("footprint", StringComparison.Ordinal)));
+    Assert.Equal(
+      8,
+      names.Count(n => n.StartsWith("footprint", StringComparison.Ordinal))
+    );
     Assert.Contains(values.Values, v => v.Base == "demo:block/wall");
 
     // The kiln's fillers stand clear of its anchor block, so they stay boxes.
     (JObject kiln, _) = Schematic.Compose(DemoLayout(), index);
     Assert.Equal(
       2,
-      kiln["elements"]!.Count(el => ((string)el["name"]!).StartsWith("filler", StringComparison.Ordinal))
+      kiln["elements"]!.Count(el =>
+        ((string)el["name"]!).StartsWith("filler", StringComparison.Ordinal)
+      )
     );
   }
 
@@ -264,17 +348,27 @@ public class SchematicTests {
   public void Iso_png_reserves_its_left_edge_for_the_layer_scale() {
     Layout layout = DemoLayout();
     BlockIndex index = BlockIndex.Build([DemoRoot]);
-    (JObject raw, Dictionary<string, TextureRef> textureValues) = Schematic.Compose(layout, index);
-    Shape shape = Newtonsoft.Json.JsonConvert.DeserializeObject<Shape>(raw.ToString())!;
+    (JObject raw, Dictionary<string, TextureRef> textureValues) =
+      Schematic.Compose(layout, index);
+    Shape shape = Newtonsoft.Json.JsonConvert.DeserializeObject<Shape>(
+      raw.ToString()
+    )!;
     using SKBitmap plain = Renderer.Render(
       ShapeFile.FromRaw(shape, null, new Dictionary<string, string>()),
       Renderer.NamedViews["iso"],
       ppu: 8,
-      textures: TextureSet.FromResolved(textureValues, index.ResolveTexture, new Dictionary<string, byte[,,]>())
+      textures: TextureSet.FromResolved(
+        textureValues,
+        index.ResolveTexture,
+        new Dictionary<string, byte[,,]>()
+      )
     );
     using SKBitmap scaled = Schematic.IsoPng(layout, index, ppu: 8);
     Assert.Equal(plain.Height, scaled.Height);
-    Assert.True(scaled.Width > plain.Width, "the scale is drawn beside the composite, not over it");
+    Assert.True(
+      scaled.Width > plain.Width,
+      "the scale is drawn beside the composite, not over it"
+    );
     // The ticks and their labels are the only ink left of the drawing.
     int ink = 0;
     for (int y = 0; y < scaled.Height; y++)
@@ -293,7 +387,15 @@ public class SchematicTests {
     // faces north..down while the blocktype paints them through `horizontals` and `verticals`.
     string furnaces = Path.GetDirectoryName(golden!)!;
     BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(golden!), game);
-    foreach (string name in new[] { "cokeovencore", "puddlingcore", "heatingcore", "cruciblecore" }) {
+    foreach (
+      string name in new[]
+      {
+        "cokeovencore",
+        "puddlingcore",
+        "heatingcore",
+        "cruciblecore",
+      }
+    ) {
       Layout layout = Layout.Load(Path.Combine(furnaces, name + ".json"));
       using SKBitmap drawn = Schematic.IsoPng(layout, index, ppu: 4);
       int placeholder = 0;
@@ -304,7 +406,10 @@ public class SchematicTests {
           if (pixel.Green == 0 && pixel.Red == pixel.Blue && pixel.Red >= 64)
             placeholder++;
         }
-      Assert.True(placeholder == 0, $"{name}: {placeholder} pixels of the magenta placeholder");
+      Assert.True(
+        placeholder == 0,
+        $"{name}: {placeholder} pixels of the magenta placeholder"
+      );
     }
   }
 
@@ -313,7 +418,9 @@ public class SchematicTests {
     Layout layout = DemoLayout();
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     (JObject raw, _) = Schematic.Compose(layout, index);
-    Shape shape = Newtonsoft.Json.JsonConvert.DeserializeObject<Shape>(raw.ToString())!;
+    Shape shape = Newtonsoft.Json.JsonConvert.DeserializeObject<Shape>(
+      raw.ToString()
+    )!;
     Renderer.Projection projection = Renderer.Project(
       ShapeFile.FromRaw(shape, null, new Dictionary<string, string>()),
       Renderer.NamedViews["iso"],
@@ -324,7 +431,10 @@ public class SchematicTests {
     IReadOnlyList<Offset> cells = Footprint.Reserved(layout);
     int x = (cells.Max(c => c.X) + 1) * 16;
     int z = (cells.Max(c => c.Z) + 1) * 16;
-    IReadOnlyList<(int Layer, double Row)> ticks = Schematic.ScaleRows(projection, layout);
+    IReadOnlyList<(int Layer, double Row)> ticks = Schematic.ScaleRows(
+      projection,
+      layout
+    );
     Assert.Equal(layout.Layers(), ticks.Select(t => t.Layer));
     foreach ((int layer, double row) in ticks)
       Assert.Equal(projection.Screen(x, layer * 16 + 8, z).Row, row, 6);
@@ -333,7 +443,10 @@ public class SchematicTests {
     using SKBitmap drawn = Schematic.IsoPng(layout, index, ppu: 8);
     foreach ((int layer, double row) in ticks) {
       SKColor pixel = drawn.GetPixel(drawn.Width - 1, (int)Math.Round(row));
-      Assert.True(pixel != Renderer.Background, $"layer {layer}: no guide reaches the near edge");
+      Assert.True(
+        pixel != Renderer.Background,
+        $"layer {layer}: no guide reaches the near edge"
+      );
     }
   }
 
@@ -344,7 +457,10 @@ public class SchematicTests {
     // at all, so its shape's own unresolvable `rust` is reported, not painted over.
     Layout layout = Layout.Load(FixturePath.Of("schematic/textures-kiln.json"));
     BlockIndex index = BlockIndex.Build([DemoRoot]);
-    (_, Dictionary<string, TextureRef> values) = Schematic.Compose(layout, index);
+    (_, Dictionary<string, TextureRef> values) = Schematic.Compose(
+      layout,
+      index
+    );
     Assert.Equal("demo:block/wall", values["c0_brick"].Base);
     Assert.Equal("demo:block/wall", values["c0_all"].Base);
     Assert.Equal("demo:block/nonexistent", values["c1_rust"].Base);
@@ -360,7 +476,10 @@ public class SchematicTests {
       null,
       Schematic.MissingTextures(layout, index)
     );
-    Assert.Contains("demo:rusty: texture rust (demo:block/nonexistent) not found", manifest["warnings"]!.Select(w => (string)w!));
+    Assert.Contains(
+      "demo:rusty: texture rust (demo:block/nonexistent) not found",
+      manifest["warnings"]!.Select(w => (string)w!)
+    );
   }
 
   [Fact]
@@ -369,9 +488,16 @@ public class SchematicTests {
     Dictionary<int, LegendEntry> legend = Schematic.LegendColors(layout);
     JObject m = Schematic.Manifest(layout, legend, ["a.svg", "b.png"]);
     Assert.Equal(["a.svg", "b.png"], m["files"]!.Select(t => (string)t!));
-    Assert.Equal(new HashSet<int> { 1, 2 }, m["legend"]!.Select(r => (int)r["number"]!).ToHashSet());
     Assert.Equal(
-      new HashSet<string> { "game:claybricks-fire-*", "game:brickslabs-fire-south-free" },
+      new HashSet<int> { 1, 2 },
+      m["legend"]!.Select(r => (int)r["number"]!).ToHashSet()
+    );
+    Assert.Equal(
+      new HashSet<string>
+      {
+        "game:claybricks-fire-*",
+        "game:brickslabs-fire-south-free",
+      },
       m["warnings"]!.Select(w => (string)w!).ToHashSet()
     );
   }
@@ -423,8 +549,14 @@ public class SchematicTests {
     Layout layout = Layout.Load(Fixture);
     Dictionary<int, LegendEntry> legend = Schematic.LegendColors(layout);
     JObject m = Schematic.Manifest(layout, legend, ["a.svg", "b.png"]);
-    JObject expected = (JObject)JToken.Parse(File.ReadAllText(FixturePath.Expected("schematic/kiln-manifest.json")));
-    Assert.True(JToken.DeepEquals(expected, m), $"expected:\n{expected}\n\nactual:\n{m}");
+    JObject expected = (JObject)
+      JToken.Parse(
+        File.ReadAllText(FixturePath.Expected("schematic/kiln-manifest.json"))
+      );
+    Assert.True(
+      JToken.DeepEquals(expected, m),
+      $"expected:\n{expected}\n\nactual:\n{m}"
+    );
   }
 
   [Fact]
@@ -440,10 +572,26 @@ public class SchematicTests {
       legend[n].Representative = block?.Code;
       legend[n].Optional = index.Optional(selector);
     }
-    Variant drawn = BlockIndex.Facing(index.VariantsOf(golden), Presentation.Facing)!;
-    JObject m = Schematic.Manifest(layout, legend, ["a.svg", "b.png"], front: Presentation.FrontOf(drawn));
-    JObject expected = (JObject)JToken.Parse(File.ReadAllText(FixturePath.Expected("schematic/blastcore-manifest.json")));
-    Assert.True(JToken.DeepEquals(expected, m), $"expected:\n{expected}\n\nactual:\n{m}");
+    Variant drawn = BlockIndex.Facing(
+      index.VariantsOf(golden),
+      Presentation.Facing
+    )!;
+    JObject m = Schematic.Manifest(
+      layout,
+      legend,
+      ["a.svg", "b.png"],
+      front: Presentation.FrontOf(drawn)
+    );
+    JObject expected = (JObject)
+      JToken.Parse(
+        File.ReadAllText(
+          FixturePath.Expected("schematic/blastcore-manifest.json")
+        )
+      );
+    Assert.True(
+      JToken.DeepEquals(expected, m),
+      $"expected:\n{expected}\n\nactual:\n{m}"
+    );
   }
 
   [SkippableFact]
@@ -452,7 +600,9 @@ public class SchematicTests {
     Skip.If(golden is null, "the sibling exmods checkout is absent");
     Layout layout = Layout.Load(golden!);
     string svg = Schematic.PlanSvg(layout, 0, Schematic.LegendColors(layout));
-    string expected = File.ReadAllText(FixturePath.Expected("schematic/blastcore-plan-y0.svg"));
+    string expected = File.ReadAllText(
+      FixturePath.Expected("schematic/blastcore-plan-y0.svg")
+    );
     Assert.Equal(expected, svg);
   }
 
@@ -468,7 +618,9 @@ public class SchematicTests {
     BlockIndex index = BlockIndex.Build(roots, game);
     Layout layout = Layout.Load(golden!);
     using SKBitmap actual = Schematic.IsoPng(layout, index, ppu: 8);
-    using SKBitmap expected = SKBitmap.Decode(FixturePath.Expected("schematic/blastcore-iso.png"));
+    using SKBitmap expected = SKBitmap.Decode(
+      FixturePath.Expected("schematic/blastcore-iso.png")
+    );
     AssertMatchesWithinTolerance(expected, actual, "blastcore-iso");
   }
 
@@ -477,7 +629,9 @@ public class SchematicTests {
     Layout layout = DemoLayout();
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     using SKBitmap actual = Schematic.IsoPng(layout, index, ppu: 8);
-    using SKBitmap expected = SKBitmap.Decode(FixturePath.Expected("schematic/kiln-iso.png"));
+    using SKBitmap expected = SKBitmap.Decode(
+      FixturePath.Expected("schematic/kiln-iso.png")
+    );
     AssertMatchesWithinTolerance(expected, actual, "kiln-iso");
   }
 
@@ -486,16 +640,24 @@ public class SchematicTests {
     Layout layout = DemoLayout();
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     using SKBitmap actual = Schematic.IsoPng(layout, index, ppu: 8, cutAt: 0);
-    using SKBitmap expected = SKBitmap.Decode(FixturePath.Expected("schematic/kiln-iso-y0.png"));
+    using SKBitmap expected = SKBitmap.Decode(
+      FixturePath.Expected("schematic/kiln-iso-y0.png")
+    );
     AssertMatchesWithinTolerance(expected, actual, "kiln-iso-y0");
   }
 
-  private static void AssertMatchesWithinTolerance(SKBitmap expected, SKBitmap actual, string name) =>
-    PixelCompare.Assert(expected, actual, name);
+  private static void AssertMatchesWithinTolerance(
+    SKBitmap expected,
+    SKBitmap actual,
+    string name
+  ) => PixelCompare.Assert(expected, actual, name);
 
   private static int CountOccurrences(string haystack, string needle) {
-    int count = 0, index = 0;
-    while ((index = haystack.IndexOf(needle, index, StringComparison.Ordinal)) >= 0) {
+    int count = 0,
+      index = 0;
+    while (
+      (index = haystack.IndexOf(needle, index, StringComparison.Ordinal)) >= 0
+    ) {
       count++;
       index += needle.Length;
     }

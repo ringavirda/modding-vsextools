@@ -15,16 +15,37 @@ public class GeometryTests {
     Vector3.Transform(v, Geometry.RotateByXyz(rx, ry, rz));
 
   private static void AssertClose(Vector3 expected, Vector3 actual, float atol) {
-    Assert.True(MathF.Abs(expected.X - actual.X) <= atol, $"X: expected {expected.X}, got {actual.X}");
-    Assert.True(MathF.Abs(expected.Y - actual.Y) <= atol, $"Y: expected {expected.Y}, got {actual.Y}");
-    Assert.True(MathF.Abs(expected.Z - actual.Z) <= atol, $"Z: expected {expected.Z}, got {actual.Z}");
+    Assert.True(
+      MathF.Abs(expected.X - actual.X) <= atol,
+      $"X: expected {expected.X}, got {actual.X}"
+    );
+    Assert.True(
+      MathF.Abs(expected.Y - actual.Y) <= atol,
+      $"Y: expected {expected.Y}, got {actual.Y}"
+    );
+    Assert.True(
+      MathF.Abs(expected.Z - actual.Z) <= atol,
+      $"Z: expected {expected.Z}, got {actual.Z}"
+    );
   }
 
   [Fact]
   public void Rotation_convention_is_right_handed() {
-    AssertClose(new Vector3(0.7071f, 0, -0.7071f), RotVec(0, 45, 0, new Vector3(1, 0, 0)), 1e-3f);
-    AssertClose(new Vector3(0.7071f, 0.7071f, 0), RotVec(0, 0, -45, new Vector3(0, 1, 0)), 1e-3f);
-    AssertClose(new Vector3(0, 0.7071f, 0.7071f), RotVec(45, 0, 0, new Vector3(0, 1, 0)), 1e-3f);
+    AssertClose(
+      new Vector3(0.7071f, 0, -0.7071f),
+      RotVec(0, 45, 0, new Vector3(1, 0, 0)),
+      1e-3f
+    );
+    AssertClose(
+      new Vector3(0.7071f, 0.7071f, 0),
+      RotVec(0, 0, -45, new Vector3(0, 1, 0)),
+      1e-3f
+    );
+    AssertClose(
+      new Vector3(0, 0.7071f, 0.7071f),
+      RotVec(45, 0, 0, new Vector3(0, 1, 0)),
+      1e-3f
+    );
   }
 
   [Fact]
@@ -35,7 +56,9 @@ public class GeometryTests {
     // The game's Rx@Ry@Rz@v applies Rz first, then Ry, then Rx; System.Numerics' row-vector
     // A*B applies A first, so the matching composition order here is reversed: z, y, x.
     Matrix4x4 expected =
-      Geometry.RotateByXyz(0, 0, 50) * Geometry.RotateByXyz(0, 40, 0) * Geometry.RotateByXyz(30, 0, 0);
+      Geometry.RotateByXyz(0, 0, 50)
+      * Geometry.RotateByXyz(0, 40, 0)
+      * Geometry.RotateByXyz(30, 0, 0);
     Assert.True(MatrixClose(m, expected, 1e-5f));
   }
 
@@ -65,7 +88,9 @@ public class GeometryTests {
     LoadedShape shape = ShapeFromJson(json);
     var mats = Geometry.WorldMatrices(shape);
     Node cube53 = shape.Find("Lid/Cube53")!;
-    var (lo, hi) = Geometry.Aabb(Geometry.Corners(mats[cube53.Path], (Vector3)cube53.Size));
+    var (lo, hi) = Geometry.Aabb(
+      Geometry.Corners(mats[cube53.Path], (Vector3)cube53.Size)
+    );
     Assert.Equal(17, MathF.Round(lo.X));
     Assert.Equal(28, MathF.Round(hi.X));
     Assert.Equal(17, MathF.Round(lo.Y));
@@ -83,7 +108,11 @@ public class GeometryTests {
     Matrix4x4 m = Geometry.WorldMatrices(shape)["P"];
     Vector3[] c = Geometry.Corners(m, (Vector3)shape.Elements[0].Size);
     Vector3 far = c[4]; // x=size, y=0, z=0 corner
-    AssertClose(new Vector3(4 + 1.4f * 0.7071f, 0, 5 - 1.4f * 0.7071f), far, 1e-3f);
+    AssertClose(
+      new Vector3(4 + 1.4f * 0.7071f, 0, 5 - 1.4f * 0.7071f),
+      far,
+      1e-3f
+    );
   }
 
   [Fact]
@@ -97,15 +126,22 @@ public class GeometryTests {
   [Fact]
   public void Touching_tolerance() {
     (Vector3, Vector3) a = (Vector3.Zero, Vector3.One);
-    Assert.True(Geometry.Touching(a, (new Vector3(1.04f, 0, 0), new Vector3(2, 1, 1))));
-    Assert.False(Geometry.Touching(a, (new Vector3(1.06f, 0, 0), new Vector3(2, 1, 1))));
+    Assert.True(
+      Geometry.Touching(a, (new Vector3(1.04f, 0, 0), new Vector3(2, 1, 1)))
+    );
+    Assert.False(
+      Geometry.Touching(a, (new Vector3(1.06f, 0, 0), new Vector3(2, 1, 1)))
+    );
   }
 
   [Fact]
   public void Face_quads_of_a_unit_cube_have_outward_normals() {
     string faces = string.Join(
       ",",
-      Array.ConvertAll(Geometry.Faces, f => $"\"{f}\": {{\"texture\": \"#a\", \"uv\": [0,0,1,1]}}")
+      Array.ConvertAll(
+        Geometry.Faces,
+        f => $"\"{f}\": {{\"texture\": \"#a\", \"uv\": [0,0,1,1]}}"
+      )
     );
     string json =
       "{\"elements\": [{\"name\": \"C\", \"from\": [0,0,0], \"to\": [1,1,1], \"faces\": {"
@@ -116,17 +152,22 @@ public class GeometryTests {
     var quads = Geometry.FaceQuads(el, Matrix4x4.Identity);
     Assert.Equal(6, quads.Count);
     foreach (Geometry.Quad q in quads) {
-      Vector3 centre = (q.Points[0] + q.Points[1] + q.Points[2] + q.Points[3]) / 4f;
+      Vector3 centre =
+        (q.Points[0] + q.Points[1] + q.Points[2] + q.Points[3]) / 4f;
       Assert.True(Vector3.Dot(q.Normal, centre - new Vector3(0.5f)) > 0.49f);
     }
   }
 
   [Fact]
   public void Owner_lathed_cylinder_chords_land_on_the_flats() {
-    LoadedShape shape = ShapeFile.Load(FixturePath.Of("items/machined/item-lathed-cylinder.json"));
+    LoadedShape shape = ShapeFile.Load(
+      FixturePath.Of("items/machined/item-lathed-cylinder.json")
+    );
     var mats = Geometry.WorldMatrices(shape);
     Node target = shape.Find("Cylinder/Cube4/Cube2")!;
-    var (lo, _) = Geometry.Aabb(Geometry.Corners(mats[target.Path], (Vector3)target.Size));
+    var (lo, _) = Geometry.Aabb(
+      Geometry.Corners(mats[target.Path], (Vector3)target.Size)
+    );
     // the north-west chord spans from the west flat (x 4) to the north flat (z 4)
     Assert.True(MathF.Abs(lo.X - 4) < 0.05f);
     Assert.True(MathF.Abs(lo.Z - 4) < 0.05f);
@@ -136,14 +177,22 @@ public class GeometryTests {
   // leaf and quad of a multi-element fixture.
   [Fact]
   public void Public_world_matrices_and_face_quads_agree_with_the_verified_double_chain() {
-    LoadedShape shape = ShapeFile.Load(FixturePath.Of("items/machined/item-shaped-gearpinion.json"));
+    LoadedShape shape = ShapeFile.Load(
+      FixturePath.Of("items/machined/item-shaped-gearpinion.json")
+    );
     Dictionary<string, Matrix4x4> floatMats = Geometry.WorldMatrices(shape);
-    Dictionary<string, Renderer.Mat4d> doubleMats = Renderer.WorldMatricesD(shape, null);
+    Dictionary<string, Renderer.Mat4d> doubleMats = Renderer.WorldMatricesD(
+      shape,
+      null
+    );
 
     foreach (Node leaf in shape.Leaves()) {
       Matrix4x4 fm = floatMats[leaf.Path];
       List<Geometry.Quad> floatQuads = Geometry.FaceQuads(leaf, fm);
-      List<Renderer.QuadD> doubleQuads = Renderer.FaceQuadsD(leaf, doubleMats[leaf.Path]);
+      List<Renderer.QuadD> doubleQuads = Renderer.FaceQuadsD(
+        leaf,
+        doubleMats[leaf.Path]
+      );
       Assert.Equal(doubleQuads.Count, floatQuads.Count);
 
       for (int i = 0; i < floatQuads.Count; i++) {
@@ -152,11 +201,23 @@ public class GeometryTests {
         Assert.Equal(dq.Texture, fq.Texture);
         for (int p = 0; p < 4; p++)
           AssertClose(
-            new Vector3((float)dq.Points[p].X, (float)dq.Points[p].Y, (float)dq.Points[p].Z),
+            new Vector3(
+              (float)dq.Points[p].X,
+              (float)dq.Points[p].Y,
+              (float)dq.Points[p].Z
+            ),
             fq.Points[p],
             1e-3f
           );
-        AssertClose(new Vector3((float)dq.Normal.X, (float)dq.Normal.Y, (float)dq.Normal.Z), fq.Normal, 1e-4f);
+        AssertClose(
+          new Vector3(
+            (float)dq.Normal.X,
+            (float)dq.Normal.Y,
+            (float)dq.Normal.Z
+          ),
+          fq.Normal,
+          1e-4f
+        );
       }
     }
   }
@@ -170,7 +231,11 @@ public class GeometryTests {
       if (Directory.Exists(Path.Combine(candidate, "assets/survival/shapes")))
         game = candidate;
     }
-    Skip.If(game is null && Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == null, "a client install is absent");
+    Skip.If(
+      game is null
+        && Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == null,
+      "a client install is absent"
+    );
     Assert.NotNull(game);
     return game!;
   }
@@ -184,9 +249,17 @@ public class GeometryTests {
   public void The_vanilla_two_dozen_gear_draws_every_tooth_at_its_own_position() {
     string game = RequireClientGame();
     LoadedShape shape = ShapeFile.Load(
-      Path.Combine(game, "assets/survival/shapes/block/machine/jonas/steamengine/gear24.json")
+      Path.Combine(
+        game,
+        "assets/survival/shapes/block/machine/jonas/steamengine/gear24.json"
+      )
     );
-    List<Node> teeth = [.. shape.Leaves().Where(el => el.Name.StartsWith("Tooth", StringComparison.Ordinal))];
+    List<Node> teeth =
+    [
+      .. shape
+        .Leaves()
+        .Where(el => el.Name.StartsWith("Tooth", StringComparison.Ordinal)),
+    ];
     Assert.Equal(24, teeth.Count);
 
     Dictionary<string, Matrix4x4> mats = Geometry.WorldMatrices(shape);
@@ -196,8 +269,13 @@ public class GeometryTests {
 
     HashSet<(int X, int Z)> centres = [];
     foreach (Node tooth in teeth) {
-      Vector3 centre = Vector3.Transform((Vector3)tooth.Size / 2, mats[tooth.Path]);
-      centres.Add(((int)MathF.Round(centre.X * 4), (int)MathF.Round(centre.Z * 4)));
+      Vector3 centre = Vector3.Transform(
+        (Vector3)tooth.Size / 2,
+        mats[tooth.Path]
+      );
+      centres.Add(
+        ((int)MathF.Round(centre.X * 4), (int)MathF.Round(centre.Z * 4))
+      );
     }
     Assert.Equal(24, centres.Count);
   }

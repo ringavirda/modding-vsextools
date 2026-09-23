@@ -11,7 +11,9 @@ namespace ExpandedLib.Shapes.Tests;
 public class ShapeFileTests {
   [Fact]
   public void Load_owner_cylinder_tree() {
-    LoadedShape shape = ShapeFile.Load(FixturePath.Of("items/machined/item-lathed-cylinder.json"));
+    LoadedShape shape = ShapeFile.Load(
+      FixturePath.Of("items/machined/item-lathed-cylinder.json")
+    );
     Assert.Equal(8, shape.Leaves().Count);
     Assert.Equal("Cylinder/Cube4/Cube2", shape.Find("Cube2")!.Path);
     Assert.Equal("Cube2", shape.Find("Cylinder/Cube4/Cube2")!.Name);
@@ -38,6 +40,9 @@ public class ShapeFileTests {
       ["Group/Tooth", "Group/Tooth#2", "Group/Tooth#3"],
       shape.Leaves().Select(el => el.Path)
     );
-    Assert.Equal(["Tooth", "Tooth", "Tooth"], shape.Leaves().Select(el => el.Name));
+    Assert.Equal(
+      ["Tooth", "Tooth", "Tooth"],
+      shape.Leaves().Select(el => el.Name)
+    );
   }
 }

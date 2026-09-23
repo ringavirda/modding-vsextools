@@ -11,10 +11,17 @@ public static class Text {
   public static SKTypeface Face { get; } = Load();
 
   private static SKTypeface Load() {
-    using Stream stream = typeof(Text).Assembly.GetManifestResourceStream("ExpandedLib.Shapes.Fonts.NotoSans")
-      ?? throw new InvalidOperationException("The embedded label font is missing from the assembly.");
+    using Stream stream =
+      typeof(Text).Assembly.GetManifestResourceStream(
+        "ExpandedLib.Shapes.Fonts.NotoSans"
+      )
+      ?? throw new InvalidOperationException(
+        "The embedded label font is missing from the assembly."
+      );
     using SKData data = SKData.Create(stream);
     return SKTypeface.FromData(data)
-      ?? throw new InvalidOperationException("The embedded label font could not be read.");
+      ?? throw new InvalidOperationException(
+        "The embedded label font could not be read."
+      );
   }
 }

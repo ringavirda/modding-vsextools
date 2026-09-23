@@ -26,15 +26,25 @@ public static class Presentation {
 
   // The four horizontal sides with their world normals (x east, z south), north first: the
   // isometric camera stands between two of them, and taking the earlier keeps north up.
-  private static readonly (string Side, int X, int Z)[] Horizontals = [
-    ("north", 0, -1), ("east", 1, 0), ("south", 0, 1), ("west", -1, 0),
+  private static readonly (string Side, int X, int Z)[] Horizontals =
+  [
+    ("north", 0, -1),
+    ("east", 1, 0),
+    ("south", 0, 1),
+    ("west", -1, 0),
   ];
 
-  private static readonly Dictionary<string, string> Opposite = new(StringComparer.Ordinal) {
-    ["north"] = "south", ["n"] = "south",
-    ["east"] = "west", ["e"] = "west",
-    ["south"] = "north", ["s"] = "north",
-    ["west"] = "east", ["w"] = "east",
+  private static readonly Dictionary<string, string> Opposite = new(
+    StringComparer.Ordinal
+  ) {
+    ["north"] = "south",
+    ["n"] = "south",
+    ["east"] = "west",
+    ["e"] = "west",
+    ["south"] = "north",
+    ["s"] = "north",
+    ["west"] = "east",
+    ["w"] = "east",
   };
 
   /// <summary>The side an oriented family is drawn facing by default, as a side word.</summary>
@@ -48,7 +58,8 @@ public static class Presentation {
   /// </summary>
   public static string FacingFor(View view) {
     Vector3 eye = Renderer.Eye(view);
-    double Lean((string Side, int X, int Z) side) => side.X * eye.X + side.Z * eye.Z;
+    double Lean((string Side, int X, int Z) side) =>
+      side.X * eye.X + side.Z * eye.Z;
     double least = Horizontals.Min(Lean);
     return Horizontals.First(side => Lean(side) <= least + 1e-6).Side;
   }
@@ -60,14 +71,19 @@ public static class Presentation {
   /// <returns>The side as a word, or null when <paramref name="side"/> names no horizontal side (a
   /// flywheel's <c>ns</c>/<c>we</c> axis names an axis, not a facing).</returns>
   public static string? Front(string? side) =>
-    side != null && Opposite.TryGetValue(side, out string? front) ? front : null;
+    side != null && Opposite.TryGetValue(side, out string? front)
+      ? front
+      : null;
 
   /// <summary>The side <paramref name="variant"/>'s front looks toward (<see cref="Front"/> of the
   /// facing its <c>side</c> or <c>orientation</c> axis names), or null when its code names no
   /// horizontal facing.</summary>
   public static string? FrontOf(Variant variant) {
     foreach (string axis in new[] { "side", "orientation" })
-      if (variant.States.TryGetValue(axis, out string? state) && Front(state) is { } front)
+      if (
+        variant.States.TryGetValue(axis, out string? state)
+        && Front(state) is { } front
+      )
         return front;
     return null;
   }
@@ -114,19 +130,40 @@ public static class Presentation {
   public static (int Angle, string? Side) AnchorTurn(Layout layout) {
     IReadOnlyList<Offset> reserved = Footprint.Reserved(layout);
     foreach (string side in CameraSides) {
-      int[] reaching = [.. Quarters.Where(angle => OnEdge(reserved, layout.Anchor, angle, side))];
+      int[] reaching =
+      [
+        .. Quarters.Where(angle =>
+          OnEdge(reserved, layout.Anchor, angle, side)
+        ),
+      ];
       if (reaching.Length > 0)
-        return (reaching.OrderByDescending(angle => TowardCamera(reserved, layout.Anchor, angle)).First(), side);
+        return (
+          reaching
+            .OrderByDescending(angle =>
+              TowardCamera(reserved, layout.Anchor, angle)
+            )
+            .First(),
+          side
+        );
     }
     return (0, null);
   }
 
   // Whether the anchor lies on `side`'s edge of the reserved cells once turned by `angle`: their
   // greatest Z for south, their greatest X for east.
-  private static bool OnEdge(IReadOnlyList<Offset> reserved, Offset anchor, int angle, string side) {
+  private static bool OnEdge(
+    IReadOnlyList<Offset> reserved,
+    Offset anchor,
+    int angle,
+    string side
+  ) {
     Offset turned = Layout.RotateOffset(anchor, angle);
-    IEnumerable<Offset> cells = reserved.Select(c => Layout.RotateOffset(c, angle));
-    return side == "south" ? turned.Z == cells.Max(c => c.Z) : turned.X == cells.Max(c => c.X);
+    IEnumerable<Offset> cells = reserved.Select(c =>
+      Layout.RotateOffset(c, angle)
+    );
+    return side == "south"
+      ? turned.Z == cells.Max(c => c.Z)
+      : turned.X == cells.Max(c => c.X);
   }
 
   /// <summary>
@@ -144,8 +181,14 @@ public static class Presentation {
     var area = new Dictionary<string, double>(StringComparer.Ordinal);
     foreach ((Vector3 _, double a, string texture) in faces)
       area[texture] = area.GetValueOrDefault(texture) + a;
-    string body = area.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key, StringComparer.Ordinal).First().Key;
-    List<(Vector3 Normal, double Area, string Texture)> detail = [.. faces.Where(f => f.Texture != body)];
+    string body = area.OrderByDescending(kv => kv.Value)
+      .ThenBy(kv => kv.Key, StringComparer.Ordinal)
+      .First()
+      .Key;
+    List<(Vector3 Normal, double Area, string Texture)> detail =
+    [
+      .. faces.Where(f => f.Texture != body),
+    ];
     if (detail.Count == 0)
       return (0, null);
 
@@ -159,21 +202,48 @@ public static class Presentation {
   }
 
   // Every drawn face of a shape as its world normal, its area and the texture key painting it.
-  private static List<(Vector3 Normal, double Area, string Texture)> Faces(LoadedShape shape) {
-    Dictionary<string, Renderer.Mat4d> mats = Renderer.WorldMatricesD(shape, null);
+  private static List<(Vector3 Normal, double Area, string Texture)> Faces(
+    LoadedShape shape
+  ) {
+    Dictionary<string, Renderer.Mat4d> mats = Renderer.WorldMatricesD(
+      shape,
+      null
+    );
     var faces = new List<(Vector3, double, string)>();
     foreach (Node leaf in shape.Leaves())
       foreach (Renderer.QuadD quad in Renderer.FaceQuadsD(leaf, mats[leaf.Path])) {
-        Vector3[] points = [.. quad.Points.Select(p => new Vector3((float)p.X, (float)p.Y, (float)p.Z))];
-        double a = Vector3.Cross(points[2] - points[0], points[3] - points[1]).Length() / 2;
-        faces.Add((new Vector3((float)quad.Normal.X, (float)quad.Normal.Y, (float)quad.Normal.Z), a, quad.Texture));
+        Vector3[] points =
+        [
+          .. quad.Points.Select(p => new Vector3(
+          (float)p.X,
+          (float)p.Y,
+          (float)p.Z
+        )),
+      ];
+        double a =
+          Vector3.Cross(points[2] - points[0], points[3] - points[1]).Length()
+          / 2;
+        faces.Add(
+          (
+            new Vector3(
+              (float)quad.Normal.X,
+              (float)quad.Normal.Y,
+              (float)quad.Normal.Z
+            ),
+            a,
+            quad.Texture
+          )
+        );
       }
     return faces;
   }
 
   // The detail area the camera sees once the model is turned by `angle`: each face's own area times
   // how squarely it meets the camera, a face turned away counting nothing.
-  private static double Seen(IReadOnlyList<(Vector3 Normal, double Area, string Texture)> detail, int angle) {
+  private static double Seen(
+    IReadOnlyList<(Vector3 Normal, double Area, string Texture)> detail,
+    int angle
+  ) {
     Vector3 eye = Renderer.Eye(Renderer.NamedViews[ViewName]);
     double total = 0;
     foreach ((Vector3 normal, double area, string _) in detail) {
@@ -185,7 +255,10 @@ public static class Presentation {
 
   // The horizontal side the detail the camera sees at `angle` mostly looks toward, or null when
   // none of it faces sideways at all.
-  private static string? DetailSide(IReadOnlyList<(Vector3 Normal, double Area, string Texture)> detail, int angle) {
+  private static string? DetailSide(
+    IReadOnlyList<(Vector3 Normal, double Area, string Texture)> detail,
+    int angle
+  ) {
     Vector3 eye = Renderer.Eye(Renderer.NamedViews[ViewName]);
     var seen = new Dictionary<string, double>(StringComparer.Ordinal);
     foreach ((Vector3 normal, double area, string _) in detail) {
@@ -195,14 +268,22 @@ public static class Presentation {
         continue;
       if (Math.Abs(turned.X) < 1e-6 && Math.Abs(turned.Z) < 1e-6)
         continue;
-      string side = Math.Abs(turned.X) >= Math.Abs(turned.Z)
-        ? turned.X > 0 ? "east" : "west"
-        : turned.Z > 0 ? "south" : "north";
+      string side =
+        Math.Abs(turned.X) >= Math.Abs(turned.Z)
+          ? turned.X > 0
+            ? "east"
+            : "west"
+          : turned.Z > 0
+            ? "south"
+            : "north";
       seen[side] = seen.GetValueOrDefault(side) + lit;
     }
     return seen.Count == 0
       ? null
-      : seen.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key, StringComparer.Ordinal).First().Key;
+      : seen.OrderByDescending(kv => kv.Value)
+        .ThenBy(kv => kv.Key, StringComparer.Ordinal)
+        .First()
+        .Key;
   }
 
   // A direction turned about the y axis by a quarter turn, the same mapping a cell offset takes.
@@ -217,8 +298,15 @@ public static class Presentation {
   // How far the turned anchor stands in front of the turned footprint's centre, along the camera's
   // own direction: a one-cell-deep footprint turned side-on puts its body beside the anchor and
   // scores zero, while the turn that puts the body behind it scores the depth.
-  private static double TowardCamera(IReadOnlyList<Offset> reserved, Offset anchor, int angle) {
-    List<Offset> cells = [.. reserved.Select(c => Layout.RotateOffset(c, angle))];
+  private static double TowardCamera(
+    IReadOnlyList<Offset> reserved,
+    Offset anchor,
+    int angle
+  ) {
+    List<Offset> cells =
+    [
+      .. reserved.Select(c => Layout.RotateOffset(c, angle)),
+    ];
     Offset turned = Layout.RotateOffset(anchor, angle);
     Vector3 eye = Renderer.Eye(Renderer.NamedViews[ViewName]);
     double cx = (cells.Min(c => c.X) + cells.Max(c => c.X)) / 2.0;

@@ -13,18 +13,28 @@ namespace ExpandedLib.Shapes.Tests;
 /// pictures it makes of a real megablock.</summary>
 public class BlockViewsTests {
   private static string DemoRoot => FixturePath.Of("schematic");
+
   private static string Blocktype(string name) =>
     FixturePath.Of($"schematic/mods/demo/assets/demo/blocktypes/{name}.json");
 
   // A fresh directory per fact, beside the test binary.
   private static string OutDir(string name) {
-    string dir = Path.Combine(AppContext.BaseDirectory, "actual", "block", name);
+    string dir = Path.Combine(
+      AppContext.BaseDirectory,
+      "actual",
+      "block",
+      name
+    );
     if (Directory.Exists(dir))
       Directory.Delete(dir, true);
     return dir;
   }
 
-  private static Variant Drawn(BlockIndex index, string file, string? wanted = null) {
+  private static Variant Drawn(
+    BlockIndex index,
+    string file,
+    string? wanted = null
+  ) {
     var variants = index.VariantsOf(file);
     return wanted == null
       ? BlockIndex.Facing(variants, Presentation.Facing) ?? variants[0]
@@ -36,16 +46,28 @@ public class BlockViewsTests {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     string file = Blocktype("mega");
     string outDir = OutDir("mega");
-    JObject manifest = BlockViews.Write(file, Drawn(index, file), index, outDir, ppu: 4);
+    JObject manifest = BlockViews.Write(
+      file,
+      Drawn(index, file),
+      index,
+      outDir,
+      ppu: 4
+    );
 
     Assert.Equal("demo:mega-north", (string)manifest["variant"]!);
     Assert.Equal(
-      [.. BlockViews.DefaultViews.Select(v => $"mega-{v}.png"), "mega-footprint.svg"],
+      [
+        .. BlockViews.DefaultViews.Select(v => $"mega-{v}.png"),
+        "mega-footprint.svg",
+      ],
       manifest["files"]!.Select(f => Path.GetFileName((string)f!))
     );
     foreach (JToken written in (JArray)manifest["files"]!)
       Assert.True(File.Exists((string)written!), (string)written!);
-    Assert.True(File.Exists(Path.Combine(outDir, "mega.json")), "the manifest is written beside the pictures");
+    Assert.True(
+      File.Exists(Path.Combine(outDir, "mega.json")),
+      "the manifest is written beside the pictures"
+    );
     Assert.Empty((JArray)manifest["missingTextures"]!);
     Assert.Empty((JArray)manifest["warnings"]!);
 
@@ -83,15 +105,32 @@ public class BlockViewsTests {
   public void A_block_with_no_footprint_gets_pictures_alone() {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     string file = Blocktype("wall");
-    JObject manifest = BlockViews.Write(file, Drawn(index, file), index, OutDir("wall"), views: ["iso"], ppu: 4);
-    Assert.Equal(["wall-iso.png"], manifest["files"]!.Select(f => Path.GetFileName((string)f!)));
+    JObject manifest = BlockViews.Write(
+      file,
+      Drawn(index, file),
+      index,
+      OutDir("wall"),
+      views: ["iso"],
+      ppu: 4
+    );
+    Assert.Equal(
+      ["wall-iso.png"],
+      manifest["files"]!.Select(f => Path.GetFileName((string)f!))
+    );
   }
 
   [Fact]
   public void A_texture_that_resolves_to_nothing_is_named_apart_from_a_face_assigned_none() {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     string file = Blocktype("rusty");
-    JObject manifest = BlockViews.Write(file, Drawn(index, file), index, OutDir("rusty"), views: ["iso"], ppu: 4);
+    JObject manifest = BlockViews.Write(
+      file,
+      Drawn(index, file),
+      index,
+      OutDir("rusty"),
+      views: ["iso"],
+      ppu: 4
+    );
     // The shape names `rust` a file that is not there and leaves its underside's own key
     // unassigned: one is a broken value, the other a face the block paints with nothing.
     Assert.Equal(
@@ -109,26 +148,53 @@ public class BlockViewsTests {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     string file = Blocktype("tooled");
     string clippedDir = OutDir("tooled");
-    JObject clipped = BlockViews.Write(file, Drawn(index, file), index, clippedDir, views: ["iso"], ppu: 4);
+    JObject clipped = BlockViews.Write(
+      file,
+      Drawn(index, file),
+      index,
+      clippedDir,
+      views: ["iso"],
+      ppu: 4
+    );
     Assert.True((bool)clipped["clipped"]!);
     Assert.Equal(["rabble"], clipped["hidden"]!.Select(h => (string)h!));
 
     string fullDir = OutDir("tooled-full");
-    JObject whole = BlockViews.Write(file, Drawn(index, file), index, fullDir, views: ["iso"], ppu: 4, full: true);
+    JObject whole = BlockViews.Write(
+      file,
+      Drawn(index, file),
+      index,
+      fullDir,
+      views: ["iso"],
+      ppu: 4,
+      full: true
+    );
     Assert.False((bool)whole["clipped"]!);
     Assert.Empty((JArray)whole["hidden"]!);
 
     // The parked bar stands two cells above the block, so keeping it makes a taller picture.
-    using SKBitmap block = SKBitmap.Decode(Path.Combine(clippedDir, "tooled-iso.png"));
-    using SKBitmap all = SKBitmap.Decode(Path.Combine(fullDir, "tooled-iso.png"));
-    Assert.True(all.Height > block.Height, "the parked part is drawn either way");
+    using SKBitmap block = SKBitmap.Decode(
+      Path.Combine(clippedDir, "tooled-iso.png")
+    );
+    using SKBitmap all = SKBitmap.Decode(
+      Path.Combine(fullDir, "tooled-iso.png")
+    );
+    Assert.True(
+      all.Height > block.Height,
+      "the parked part is drawn either way"
+    );
   }
 
   [Fact]
   public void Selective_narrows_the_drawn_elements_with_no_selectiveElements_of_its_own() {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     string file = Blocktype("tooled");
-    BlockViews.Drawing drawn = BlockViews.Draw(file, Drawn(index, file), index, selective: ["body"]);
+    BlockViews.Drawing drawn = BlockViews.Draw(
+      file,
+      Drawn(index, file),
+      index,
+      selective: ["body"]
+    );
     Assert.Equal(["body"], drawn.Shape.Leaves().Select(el => el.Name));
   }
 
@@ -138,10 +204,22 @@ public class BlockViewsTests {
     string file = Blocktype("selective");
     // The blocktype's own list already drops the rabble, keeping body and vice; --selective
     // narrows that to vice alone rather than adding to it.
-    BlockViews.Drawing wholeList = BlockViews.Draw(file, Drawn(index, file), index);
-    Assert.Equal(["body", "vice"], wholeList.Shape.Leaves().Select(el => el.Name));
+    BlockViews.Drawing wholeList = BlockViews.Draw(
+      file,
+      Drawn(index, file),
+      index
+    );
+    Assert.Equal(
+      ["body", "vice"],
+      wholeList.Shape.Leaves().Select(el => el.Name)
+    );
 
-    BlockViews.Drawing narrowed = BlockViews.Draw(file, Drawn(index, file), index, selective: ["vice"]);
+    BlockViews.Drawing narrowed = BlockViews.Draw(
+      file,
+      Drawn(index, file),
+      index,
+      selective: ["vice"]
+    );
     Assert.Equal(["vice"], narrowed.Shape.Leaves().Select(el => el.Name));
   }
 
@@ -158,7 +236,8 @@ public class BlockViewsTests {
 
   // The blocktype trees of the four mods, and whether each is read with the legacy resolution
   // order. Every megablock and structure block of the family lives under one of them.
-  private static readonly (string Tree, bool Legacy)[] FamilyTrees = [
+  private static readonly (string Tree, bool Legacy)[] FamilyTrees =
+  [
     ("exmods-legacy/smex/assets", true),
     ("exmods-legacy/ppex/assets", true),
     ("exmods/mods/iiex/tests/goldens", false),
@@ -169,7 +248,8 @@ public class BlockViewsTests {
   // shaft and the chimney cap's control rod, each moved by an animation of its own shape. The
   // puddling door's tools stay out of its picture through its selectiveElements. Every other block
   // keeps every part, however far it reaches.
-  private static readonly string[] Clipped = [
+  private static readonly string[] Clipped =
+  [
     "iiex:enginempgenerator-n: Shaft1",
     "iiex:furnace-puddlingchimneycap-n: Cube34",
   ];
@@ -181,17 +261,28 @@ public class BlockViewsTests {
     var cut = new List<string>();
     int checkedCount = 0;
     foreach ((string tree, bool legacy) in FamilyTrees) {
-      string root = Path.Combine(Path.GetDirectoryName(exmods!)!, tree.Replace('/', Path.DirectorySeparatorChar));
+      string root = Path.Combine(
+        Path.GetDirectoryName(exmods!)!,
+        tree.Replace('/', Path.DirectorySeparatorChar)
+      );
       Skip.If(!Directory.Exists(root), $"{tree} is absent");
-      BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(root), null, legacy);
+      BlockIndex index = BlockIndex.Build(
+        BlockIndex.DefaultRoots(root),
+        null,
+        legacy
+      );
       foreach (
         string file in Directory
           .EnumerateFiles(root, "*.json", SearchOption.AllDirectories)
-          .Where(f => f.Split(Path.DirectorySeparatorChar).Contains("blocktypes"))
+          .Where(f =>
+            f.Split(Path.DirectorySeparatorChar).Contains("blocktypes")
+          )
           .OrderBy(f => f, StringComparer.Ordinal)
       ) {
         IReadOnlyList<Variant> variants = index.VariantsOf(file);
-        Variant? drawn = BlockIndex.Facing(variants, Presentation.Facing) ?? variants.FirstOrDefault();
+        Variant? drawn =
+          BlockIndex.Facing(variants, Presentation.Facing)
+          ?? variants.FirstOrDefault();
         if (drawn == null)
           continue;
         checkedCount++;
@@ -200,21 +291,40 @@ public class BlockViewsTests {
           cut.Add($"{drawn.Code}: {string.Join(", ", drawing.Hidden)}");
       }
     }
-    Assert.True(checkedCount >= 150, $"only {checkedCount} blocktypes were reached");
-    Assert.Equal<IEnumerable<string>>(Clipped, [.. cut.OrderBy(c => c, StringComparer.Ordinal)]);
+    Assert.True(
+      checkedCount >= 150,
+      $"only {checkedCount} blocktypes were reached"
+    );
+    Assert.Equal<IEnumerable<string>>(
+      Clipped,
+      [.. cut.OrderBy(c => c, StringComparer.Ordinal)]
+    );
   }
 
   [SkippableFact]
   public void The_blast_furnace_door_is_drawn_iron_side_out() {
-    string? file = FixturePath.Workspace("exmods-legacy/smex/assets/smex/blocktypes/blastfurnace/door.json");
+    string? file = FixturePath.Workspace(
+      "exmods-legacy/smex/assets/smex/blocktypes/blastfurnace/door.json"
+    );
     Skip.If(file is null, "the sibling exmods-legacy checkout is absent");
-    BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(file!), null, legacyFirst: true);
+    BlockIndex index = BlockIndex.Build(
+      BlockIndex.DefaultRoots(file!),
+      null,
+      legacyFirst: true
+    );
     IReadOnlyList<Variant> variants = index.VariantsOf(file!);
     // Refractory tiers only: the door's own facing lives in BlockBlastFurnaceDoor, so no variant
     // names it and the art is all the drawing has to go on.
     Assert.Null(BlockIndex.Facing(variants, Presentation.Facing));
 
-    JObject manifest = BlockViews.Write(file!, variants[0], index, OutDir("door"), views: ["iso"], ppu: 4);
+    JObject manifest = BlockViews.Write(
+      file!,
+      variants[0],
+      index,
+      OutDir("door"),
+      views: ["iso"],
+      ppu: 4
+    );
     Assert.Equal("south", (string?)manifest["front"]);
     // The door animates its origin alone, which stands inside the block: a picture of it is the
     // whole door, both rows of brick and both straps.
@@ -226,7 +336,10 @@ public class BlockViewsTests {
     LoadedShape drawn = BlockViews.Draw(file!, variants[0], index).Shape;
     Vector3 toward =
       Middle(drawn, name => !name.StartsWith("brick", StringComparison.Ordinal))
-      - Middle(drawn, name => name.StartsWith("brick", StringComparison.Ordinal));
+      - Middle(
+        drawn,
+        name => name.StartsWith("brick", StringComparison.Ordinal)
+      );
     Vector3 eye = Renderer.Eye(Renderer.NamedViews[Presentation.ViewName]);
     Assert.True(
       toward.X * eye.X + toward.Z * eye.Z > 0,
@@ -237,12 +350,16 @@ public class BlockViewsTests {
   // The mean centre of every drawn element of `shape` whose own name `wanted` accepts.
   private static Vector3 Middle(LoadedShape shape, Func<string, bool> wanted) {
     var mats = Geometry.WorldMatrices(shape);
-    List<Vector3> centres = [
+    List<Vector3> centres =
+    [
       .. shape
         .Leaves()
         .Where(el => wanted(el.Name))
-        .Select(el => {
-          (Vector3 lo, Vector3 hi) = Geometry.Aabb(Geometry.Corners(mats[el.Path], (Vector3)el.Size));
+        .Select(el =>
+        {
+          (Vector3 lo, Vector3 hi) = Geometry.Aabb(
+            Geometry.Corners(mats[el.Path], (Vector3)el.Size)
+          );
           return (lo + hi) / 2;
         }),
     ];
@@ -252,22 +369,40 @@ public class BlockViewsTests {
 
   [SkippableFact]
   public void A_hollow_boiler_tells_its_firebox_end_from_its_flue_end() {
-    string? file = FixturePath.Workspace("exmods/mods/siex/tests/goldens/siex/blocktypes/boiler/lancashire.json");
+    string? file = FixturePath.Workspace(
+      "exmods/mods/siex/tests/goldens/siex/blocktypes/boiler/lancashire.json"
+    );
     Skip.If(file is null, "the sibling exmods checkout is absent");
     BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(file!));
     string outDir = OutDir("lancashire");
-    BlockViews.Write(file!, Drawn(index, file!), index, outDir, views: ["north", "south"], ppu: 4);
+    BlockViews.Write(
+      file!,
+      Drawn(index, file!),
+      index,
+      outDir,
+      views: ["north", "south"],
+      ppu: 4
+    );
 
     // The flue openings are tubes with nothing behind them: drawn as holes they show the paper
     // through to the far end and the two ends read as one picture.
     foreach (string view in new[] { "north", "south" }) {
-      using SKBitmap image = SKBitmap.Decode(Path.Combine(outDir, $"lancashire-{view}.png"));
+      using SKBitmap image = SKBitmap.Decode(
+        Path.Combine(outDir, $"lancashire-{view}.png")
+      );
       Assert.Equal(0, EnclosedPaper(image));
     }
 
-    byte[] north = File.ReadAllBytes(Path.Combine(outDir, "lancashire-north.png"));
-    byte[] south = File.ReadAllBytes(Path.Combine(outDir, "lancashire-south.png"));
-    Assert.False(north.AsSpan().SequenceEqual(south), "the boiler's two ends are drawn identically");
+    byte[] north = File.ReadAllBytes(
+      Path.Combine(outDir, "lancashire-north.png")
+    );
+    byte[] south = File.ReadAllBytes(
+      Path.Combine(outDir, "lancashire-south.png")
+    );
+    Assert.False(
+      north.AsSpan().SequenceEqual(south),
+      "the boiler's two ends are drawn identically"
+    );
   }
 
   // Pixels of the render's own paper that the model encloses - paper the canvas edge cannot be
@@ -278,12 +413,21 @@ public class BlockViewsTests {
     bool IsPaper(int x, int y) => image.GetPixel(x, y) == Renderer.Background;
     bool IsBehind(int x, int y) {
       SKColor pixel = image.GetPixel(x, y);
-      return pixel == Renderer.Background || pixel == Renderer.GridLight || pixel == Renderer.GridDark;
+      return pixel == Renderer.Background
+        || pixel == Renderer.GridLight
+        || pixel == Renderer.GridDark;
     }
     var reached = new bool[image.Height, image.Width];
     var queue = new Queue<(int X, int Y)>();
     void Reach(int x, int y) {
-      if (x < 0 || x >= image.Width || y < 0 || y >= image.Height || reached[y, x] || !IsBehind(x, y))
+      if (
+        x < 0
+        || x >= image.Width
+        || y < 0
+        || y >= image.Height
+        || reached[y, x]
+        || !IsBehind(x, y)
+      )
         return;
       reached[y, x] = true;
       queue.Enqueue((x, y));
@@ -310,14 +454,26 @@ public class BlockViewsTests {
     return enclosed;
   }
 
-
   [SkippableFact]
   public void A_ppex_engine_draws_its_north_variant_over_its_own_footprint() {
-    string? watt = FixturePath.Workspace("exmods-legacy/ppex/assets/ppex/blocktypes/engine/watt.json");
+    string? watt = FixturePath.Workspace(
+      "exmods-legacy/ppex/assets/ppex/blocktypes/engine/watt.json"
+    );
     Skip.If(watt is null, "the sibling exmods-legacy checkout is absent");
-    BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(watt!), null, legacyFirst: true);
+    BlockIndex index = BlockIndex.Build(
+      BlockIndex.DefaultRoots(watt!),
+      null,
+      legacyFirst: true
+    );
     string outDir = OutDir("watt");
-    JObject manifest = BlockViews.Write(watt!, Drawn(index, watt!), index, outDir, views: ["iso"], ppu: 4);
+    JObject manifest = BlockViews.Write(
+      watt!,
+      Drawn(index, watt!),
+      index,
+      outDir,
+      views: ["iso"],
+      ppu: 4
+    );
 
     Assert.Equal("ppex:enginewatt-north", (string)manifest["variant"]!);
     Assert.Empty((JArray)manifest["warnings"]!);

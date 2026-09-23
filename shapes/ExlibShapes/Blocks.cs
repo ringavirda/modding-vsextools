@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
-using Newtonsoft.Json.Linq;
 using ExpandedLib.Assets;
+using Newtonsoft.Json.Linq;
 
 namespace ExpandedLib.Shapes;
 
@@ -82,7 +82,11 @@ public sealed class BlockIndex {
   // Every blocktype file's own convention: the family's per-mod mods/<mod>/ and the published old
   // mods at <root>/<mod>/, or a single-mod repo's src/<project>/ and samples/<project>/ (shipped)
   // and tests/<project>/goldens/ (code-first).
-  private static readonly (string WildcardDir, string[] Literal)[] BlocktypeTrees = [
+  private static readonly (
+    string WildcardDir,
+    string[] Literal
+  )[] BlocktypeTrees =
+  [
     ("mods", ["assets"]),
     ("mods", ["tests", "goldens"]),
     (LegacyTree, ["assets"]),
@@ -99,14 +103,30 @@ public sealed class BlockIndex {
   // A domain can have a root in more than one tree (the old exlib at <root>/exlib/ declares the same
   // domain as the framework's src/), looked up in this order: the current tree answers first and
   // the old one only for a file it alone holds.
-  private static readonly string[] AssetRootTrees = ["mods", "src", "samples", LegacyTree];
-  private static readonly string[] LegacyFirstAssetRootTrees = [LegacyTree, "mods", "src", "samples"];
+  private static readonly string[] AssetRootTrees =
+  [
+    "mods",
+    "src",
+    "samples",
+    LegacyTree,
+  ];
+  private static readonly string[] LegacyFirstAssetRootTrees =
+  [
+    LegacyTree,
+    "mods",
+    "src",
+    "samples",
+  ];
 
-  private readonly Dictionary<string, List<Variant>> _byCode = new(StringComparer.Ordinal);
+  private readonly Dictionary<string, List<Variant>> _byCode = new(
+    StringComparer.Ordinal
+  );
   private readonly List<string> _order = [];
   private readonly Dictionary<string, List<string>> _domainRoots;
   private readonly bool _legacyFirst;
-  private readonly Dictionary<string, List<string>> _ambiguities = new(StringComparer.Ordinal);
+  private readonly Dictionary<string, List<string>> _ambiguities = new(
+    StringComparer.Ordinal
+  );
   private readonly List<string> _parseWarnings;
 
   /// <summary>Selector to every distinct source file its match spanned, sorted - populated as
@@ -114,7 +134,10 @@ public sealed class BlockIndex {
   /// ambiguous selector, so a caller reads this only after resolving every selector it cares
   /// about.</summary>
   public IReadOnlyDictionary<string, IReadOnlyList<string>> Ambiguities =>
-    _ambiguities.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<string>)kv.Value);
+    _ambiguities.ToDictionary(
+      kv => kv.Key,
+      kv => (IReadOnlyList<string>)kv.Value
+    );
 
   /// <summary>One line per blocktype or worldproperties file that failed to parse or carried no
   /// <c>code</c>, naming the path, in the order <see cref="Build"/> encountered them - that file's
@@ -158,15 +181,26 @@ public sealed class BlockIndex {
   /// (<see cref="UnderLegacyTree"/>): a code declared both there and in a current tree then
   /// resolves to the legacy file, and a domain's assets are looked up in the legacy tree first.
   /// False resolves both toward the current trees.</param>
-  public static BlockIndex Build(IReadOnlyList<string> roots, string? gamePath = null, bool legacyFirst = false) {
+  public static BlockIndex Build(
+    IReadOnlyList<string> roots,
+    string? gamePath = null,
+    bool legacyFirst = false
+  ) {
     // An explicit `--game` (a game install directory, the same one GameInstall.Resolve returns)
     // overrides every root's own `.game/<version>` discovery, for both the domain root and the
     // blocktype files it contributes - a caller pointing this index at a different install than
     // whichever one a root's own checkout carries.
-    IReadOnlyList<string>? explicitDirs = gamePath != null ? GameAssetDirs(RealPath(gamePath)) : null;
+    IReadOnlyList<string>? explicitDirs =
+      gamePath != null ? GameAssetDirs(RealPath(gamePath)) : null;
 
-    var domainRoots = new Dictionary<string, List<string>>(StringComparer.Ordinal);
-    foreach (string wildcardDir in legacyFirst ? LegacyFirstAssetRootTrees : AssetRootTrees)
+    var domainRoots = new Dictionary<string, List<string>>(
+      StringComparer.Ordinal
+    );
+    foreach (
+      string wildcardDir in legacyFirst
+        ? LegacyFirstAssetRootTrees
+        : AssetRootTrees
+    )
       foreach (string root in roots)
         foreach ((string domain, string dir) in GlobAssetRoots(root, wildcardDir))
           if (domain != "game")
@@ -180,10 +214,24 @@ public sealed class BlockIndex {
     var parseWarnings = new List<string>();
     foreach (string root in roots) {
       foreach ((string wildcardDir, string[] literal) in BlocktypeTrees)
-        foreach ((string domain, string file) in GlobBlocktypes(root, wildcardDir, literal)) {
+        foreach (
+          (string domain, string file) in GlobBlocktypes(
+            root,
+            wildcardDir,
+            literal
+          )
+        ) {
           if (!seen.Add(file))
             continue;
-          variants.AddRange(Expand(file, domain, domainRoots, parseWarnings, wildcardDir == LegacyTree));
+          variants.AddRange(
+            Expand(
+              file,
+              domain,
+              domainRoots,
+              parseWarnings,
+              wildcardDir == LegacyTree
+            )
+          );
         }
 
       IReadOnlyList<string> gameDirs = explicitDirs ?? GameAssetDirsOf(root);
@@ -193,7 +241,11 @@ public sealed class BlockIndex {
           continue;
         foreach (
           string file in Directory
-            .EnumerateFiles(blocktypesDir, "*.json", SearchOption.AllDirectories)
+            .EnumerateFiles(
+              blocktypesDir,
+              "*.json",
+              SearchOption.AllDirectories
+            )
             .OrderBy(f => f, StringComparer.Ordinal)
         ) {
           if (!seen.Add(file))
@@ -214,11 +266,19 @@ public sealed class BlockIndex {
   public static bool UnderLegacyTree(string file) {
     string full = Path.GetFullPath(file);
     string repo = TextureRoots.Build(null, null, full).RepoPath!;
-    string[] parts = Path.GetRelativePath(repo, full).Split(Path.DirectorySeparatorChar);
-    return parts.Length > 3 && (parts[1] == "assets" || (parts[1] == "tests" && parts[2] == "goldens"));
+    string[] parts = Path.GetRelativePath(repo, full)
+      .Split(Path.DirectorySeparatorChar);
+    return parts.Length > 3
+      && (
+        parts[1] == "assets" || (parts[1] == "tests" && parts[2] == "goldens")
+      );
   }
 
-  private static void AddDomainRoot(Dictionary<string, List<string>> domainRoots, string domain, string dir) {
+  private static void AddDomainRoot(
+    Dictionary<string, List<string>> domainRoots,
+    string domain,
+    string dir
+  ) {
     if (!domainRoots.TryGetValue(domain, out List<string>? dirs)) {
       dirs = [];
       domainRoots[domain] = dirs;
@@ -238,7 +298,10 @@ public sealed class BlockIndex {
       return [];
     List<string> roots = [root];
     string sibling = Path.Combine(Path.GetDirectoryName(root) ?? root, "exlib");
-    if (Directory.Exists(sibling) && !string.Equals(sibling, root, StringComparison.Ordinal))
+    if (
+      Directory.Exists(sibling)
+      && !string.Equals(sibling, root, StringComparison.Ordinal)
+    )
       roots.Add(sibling);
     return roots;
   }
@@ -249,7 +312,9 @@ public sealed class BlockIndex {
   /// <see cref="Optional"/>).
   /// </summary>
   public Variant? Representative(string selector) {
-    foreach ((string domain, string path, bool isRegex) in Alternatives(selector)) {
+    foreach (
+      (string domain, string path, bool isRegex) in Alternatives(selector)
+    ) {
       bool empty = EmptySpace(domain, path, isRegex);
       if (empty && !isRegex && !path.Contains('*'))
         return null;
@@ -272,7 +337,13 @@ public sealed class BlockIndex {
     List<Variant> found = [];
     foreach (string code in _order)
       foreach (Variant v in _byCode[code])
-        if (string.Equals(Path.GetFullPath(v.SourceFile), full, StringComparison.Ordinal))
+        if (
+          string.Equals(
+            Path.GetFullPath(v.SourceFile),
+            full,
+            StringComparison.Ordinal
+          )
+        )
           found.Add(v);
     return found;
   }
@@ -289,7 +360,10 @@ public sealed class BlockIndex {
     string letter = side[..1];
     foreach (Variant v in variants)
       foreach (string axis in new[] { "side", "orientation" })
-        if (v.States.TryGetValue(axis, out string? state) && (state == side || state == letter))
+        if (
+          v.States.TryGetValue(axis, out string? state)
+          && (state == side || state == letter)
+        )
           return v;
     return null;
   }
@@ -297,7 +371,9 @@ public sealed class BlockIndex {
   /// <summary>True when the selector's first-resolving alternative is empty space - drawn as
   /// such, not warned about when nothing else matches.</summary>
   public bool Optional(string selector) {
-    foreach ((string domain, string path, bool isRegex) in Alternatives(selector)) {
+    foreach (
+      (string domain, string path, bool isRegex) in Alternatives(selector)
+    ) {
       bool empty = EmptySpace(domain, path, isRegex);
       if (empty && !isRegex && !path.Contains('*'))
         return true;
@@ -314,9 +390,15 @@ public sealed class BlockIndex {
   private static bool EmptySpace(string domain, string path, bool isRegex) {
     if (domain != "*" && domain != "game")
       return false;
-    if (path == "air" || path.StartsWith("multiblock-monolithic-", StringComparison.Ordinal))
+    if (
+      path == "air"
+      || path.StartsWith("multiblock-monolithic-", StringComparison.Ordinal)
+    )
       return true;
-    Regex? pattern = isRegex ? new Regex("^(?:" + path + ")$") : path.Contains('*') ? GlobRegex(path) : null;
+    Regex? pattern =
+      isRegex ? new Regex("^(?:" + path + ")$")
+      : path.Contains('*') ? GlobRegex(path)
+      : null;
     return pattern != null && pattern.IsMatch("air");
   }
 
@@ -381,9 +463,16 @@ public sealed class BlockIndex {
     return null;
   }
 
-  private Variant? Find(string domain, string path, bool isRegex, string selectorText) {
+  private Variant? Find(
+    string domain,
+    string path,
+    bool isRegex,
+    string selectorText
+  ) {
     if (domain != "*" && !isRegex && !path.Contains('*'))
-      return _byCode.TryGetValue($"{domain}:{path}", out List<Variant>? exact) ? Disambiguate(exact, selectorText) : null;
+      return _byCode.TryGetValue($"{domain}:{path}", out List<Variant>? exact)
+        ? Disambiguate(exact, selectorText)
+        : null;
 
     Regex pattern = isRegex ? new Regex("^(?:" + path + ")$") : GlobRegex(path);
     var matches = new List<Variant>();
@@ -408,8 +497,12 @@ public sealed class BlockIndex {
       return matches[0];
     if (matches.Any(v => v.Legacy) && matches.Any(v => !v.Legacy))
       matches = [.. matches.Where(v => v.Legacy == _legacyFirst)];
-    List<string> files = [
-      .. matches.Select(v => v.SourceFile).Distinct().OrderBy(f => f, StringComparer.Ordinal),
+    List<string> files =
+    [
+      .. matches
+        .Select(v => v.SourceFile)
+        .Distinct()
+        .OrderBy(f => f, StringComparer.Ordinal),
     ];
     if (files.Count == 1)
       return matches[0];
@@ -417,7 +510,12 @@ public sealed class BlockIndex {
     if (!_ambiguities.ContainsKey(selectorText))
       _ambiguities[selectorText] = files;
 
-    List<Variant> exact = [.. matches.Where(v => v.Code == selectorText).OrderBy(v => v.SourceFile, StringComparer.Ordinal)];
+    List<Variant> exact =
+    [
+      .. matches
+        .Where(v => v.Code == selectorText)
+        .OrderBy(v => v.SourceFile, StringComparer.Ordinal),
+    ];
     if (exact.Count > 0)
       return exact[0];
 
@@ -430,9 +528,12 @@ public sealed class BlockIndex {
       // "cobblestone") for what is really a texture reskin of the other, so the file itself - its
       // own name, stripped of ".json" - is what the selector's base code is actually naming.
       string baseName = colon >= 0 ? baseCode[(colon + 1)..] : baseCode;
-      List<Variant> baseMatch = [
+      List<Variant> baseMatch =
+      [
         .. matches
-          .Where(v => Path.GetFileNameWithoutExtension(v.SourceFile) == baseName)
+          .Where(v =>
+            Path.GetFileNameWithoutExtension(v.SourceFile) == baseName
+          )
           .OrderBy(v => v.SourceFile, StringComparer.Ordinal),
       ];
       if (baseMatch.Count > 0)
@@ -443,12 +544,19 @@ public sealed class BlockIndex {
   }
 
   private ResolvedBlock ToBlock(Variant variant) {
-    JObject? shapeEntry = BlockTypeResolution.ByType(variant.Raw, "shape", variant.Path) as JObject;
+    JObject? shapeEntry =
+      BlockTypeResolution.ByType(variant.Raw, "shape", variant.Path) as JObject;
     string? shapeBase = (string?)shapeEntry?["base"];
-    string? shapePath = shapeBase != null ? ShapePath(BlockTypeResolution.Substitute(shapeBase, variant.States)) : null;
+    string? shapePath =
+      shapeBase != null
+        ? ShapePath(BlockTypeResolution.Substitute(shapeBase, variant.States))
+        : null;
 
     var textures = new Dictionary<string, TextureRef>();
-    if (BlockTypeResolution.ByType(variant.Raw, "textures", variant.Path) is JObject texturesJson)
+    if (
+      BlockTypeResolution.ByType(variant.Raw, "textures", variant.Path)
+      is JObject texturesJson
+    )
       foreach (JProperty prop in texturesJson.Properties())
         if (TextureOf(prop.Value, variant) is { } texture)
           textures[prop.Name] = texture;
@@ -469,13 +577,25 @@ public sealed class BlockIndex {
   // spell their variants) and the `overlays` painted over it. Null when the entry names no base.
   internal static TextureRef? TextureOf(JToken entry, Variant variant) {
     if (entry is not JObject obj)
-      return (string?)entry is { } plain ? new TextureRef(BlockTypeResolution.Substitute(plain, variant.States)) : null;
-    if ((string?)BlockTypeResolution.ByType(obj, "base", variant.Path) is not { } value)
+      return (string?)entry is { } plain
+        ? new TextureRef(BlockTypeResolution.Substitute(plain, variant.States))
+        : null;
+    if (
+      (string?)BlockTypeResolution.ByType(obj, "base", variant.Path)
+      is not { } value
+    )
       return null;
-    List<string> overlays = [
-      .. ((JArray?)obj["overlays"])?.Select(o => BlockTypeResolution.Substitute((string)o!, variant.States)) ?? [],
+    List<string> overlays =
+    [
+      .. ((JArray?)obj["overlays"])?.Select(o =>
+        BlockTypeResolution.Substitute((string)o!, variant.States)
+      )
+        ?? [],
     ];
-    return new TextureRef(BlockTypeResolution.Substitute(value, variant.States), overlays);
+    return new TextureRef(
+      BlockTypeResolution.Substitute(value, variant.States),
+      overlays
+    );
   }
 
   // A shape entry's own turn about one axis, read through the same ByType rule the entry itself
@@ -485,7 +605,11 @@ public sealed class BlockIndex {
   // The elements a picture of the finished machine draws: the shape entry's selectiveElements (what
   // the block shows when placed) plus every group a right-click construction stage adds, since the
   // page describes the built machine, not the first course of it.
-  private static IReadOnlyList<string> FinishedSelective(JObject raw, JObject? shapeEntry, string path) {
+  private static IReadOnlyList<string> FinishedSelective(
+    JObject raw,
+    JObject? shapeEntry,
+    string path
+  ) {
     List<string> patterns = [.. Selective(shapeEntry, path)];
     // A definition that spells its turns in shapeByType keeps its selectiveElements on the plain
     // shape entry beside them; that list governs every turn.
@@ -493,10 +617,18 @@ public sealed class BlockIndex {
       patterns = [.. Selective(plain, path)];
     if (patterns.Count == 0)
       return patterns;
-    JArray? behaviors = (raw["entityBehaviors"] ?? raw["entitybehaviors"]) as JArray;
+    JArray? behaviors =
+      (raw["entityBehaviors"] ?? raw["entitybehaviors"]) as JArray;
     foreach (JToken behavior in behaviors ?? [])
-      if (((string?)behavior["name"])?.Contains("RightClickConstructable", StringComparison.Ordinal) == true)
-        foreach (JToken stage in (behavior["properties"]?["stages"] as JArray) ?? [])
+      if (
+        ((string?)behavior["name"])?.Contains(
+          "RightClickConstructable",
+          StringComparison.Ordinal
+        ) == true
+      )
+        foreach (
+          JToken stage in (behavior["properties"]?["stages"] as JArray) ?? []
+        )
           foreach (JToken added in (stage["addElements"] as JArray) ?? [])
             if ((string?)added is { } name)
               patterns.Add(name.Contains('*') ? name : name + "/*");
@@ -504,13 +636,20 @@ public sealed class BlockIndex {
   }
 
   // The entry's selectiveElements, read through the same ByType rule as its turn.
-  private static IReadOnlyList<string> Selective(JObject? shapeEntry, string path) =>
-    shapeEntry != null && BlockTypeResolution.ByType(shapeEntry, "selectiveElements", path) is JArray patterns
+  private static IReadOnlyList<string> Selective(
+    JObject? shapeEntry,
+    string path
+  ) =>
+    shapeEntry != null
+    && BlockTypeResolution.ByType(shapeEntry, "selectiveElements", path)
+      is JArray patterns
       ? [.. patterns.Select(p => (string?)p).OfType<string>()]
       : [];
 
   private static double Spin(JObject? shapeEntry, string key, string path) =>
-    shapeEntry != null && BlockTypeResolution.ByType(shapeEntry, key, path) is JValue value && value.Type != JTokenType.Null
+    shapeEntry != null
+    && BlockTypeResolution.ByType(shapeEntry, key, path) is JValue value
+    && value.Type != JTokenType.Null
       ? (double)value
       : 0.0;
 
@@ -521,7 +660,9 @@ public sealed class BlockIndex {
   // candidate per alternative (regex semantics, since an alternative may itself carry a raw
   // fragment like `hearthmetal-.*`); an alternative naming its own `domain:path` overrides the
   // selector's outer domain.
-  internal static List<(string Domain, string Path, bool IsRegex)> Alternatives(string selector) {
+  internal static List<(string Domain, string Path, bool IsRegex)> Alternatives(
+    string selector
+  ) {
     int colon = selector.IndexOf(':');
     string domain = colon >= 0 ? selector[..colon] : "*";
     string path = colon >= 0 ? selector[(colon + 1)..] : selector;
@@ -535,14 +676,17 @@ public sealed class BlockIndex {
     foreach (string alt in m.Groups[1].Value.Split('|')) {
       int altColon = alt.IndexOf(':');
       outp.Add(
-        altColon >= 0 ? (alt[..altColon], alt[(altColon + 1)..], true) : (domain, prefix + alt + suffix, true)
+        altColon >= 0
+          ? (alt[..altColon], alt[(altColon + 1)..], true)
+          : (domain, prefix + alt + suffix, true)
       );
     }
     return outp;
   }
 
   // A selector's `*` wildcard as a fullmatch regex; every other character is literal.
-  private static Regex GlobRegex(string text) => new("^" + Regex.Escape(text).Replace(@"\*", ".*") + "$");
+  private static Regex GlobRegex(string text) =>
+    new("^" + Regex.Escape(text).Replace(@"\*", ".*") + "$");
 
   private static List<Variant> Expand(
     string path,
@@ -553,7 +697,10 @@ public sealed class BlockIndex {
   ) {
     JObject raw;
     try {
-      if (JToken.Parse(File.ReadAllText(path)) is not JObject parsed || parsed["code"] == null) {
+      if (
+        JToken.Parse(File.ReadAllText(path)) is not JObject parsed
+        || parsed["code"] == null
+      ) {
         warnings.Add($"blocktype file without a code: {path}");
         return [];
       }
@@ -574,13 +721,20 @@ public sealed class BlockIndex {
         } else if ((string?)g["loadFromProperties"] is { } reference) {
           // A group naming only a worldproperties file takes that file's own code as its axis,
           // the way the game does for `{ loadFromProperties: "abstract/horizontalorientation" }`.
-          (string? fileCode, List<string> fileStates) = PropertyStates(reference, domainRoots, warnings);
+          (string? fileCode, List<string> fileStates) = PropertyStates(
+            reference,
+            domainRoots,
+            warnings
+          );
           if ((gcode ?? fileCode) is { } axisCode)
             axes.Add((axisCode, fileStates));
         }
       }
 
-    List<Dictionary<string, string>> combos = [[]];
+    List<Dictionary<string, string>> combos =
+    [
+      [],
+    ];
     foreach ((string acode, List<string> states) in axes) {
       if (states.Count == 0)
         continue;
@@ -591,18 +745,31 @@ public sealed class BlockIndex {
       combos = next;
     }
 
-    List<Regex> skip = [.. ((JArray?)raw["skipVariants"])?.Select(v => GlobRegex((string)v!)) ?? []];
-    List<Regex> allowed = [.. ((JArray?)raw["allowedVariants"])?.Select(v => GlobRegex((string)v!)) ?? []];
+    List<Regex> skip =
+    [
+      .. ((JArray?)raw["skipVariants"])?.Select(v => GlobRegex((string)v!))
+        ?? [],
+    ];
+    List<Regex> allowed =
+    [
+      .. ((JArray?)raw["allowedVariants"])?.Select(v => GlobRegex((string)v!))
+        ?? [],
+    ];
 
     var variants = new List<Variant>();
     foreach (Dictionary<string, string> combo in combos) {
-      string suffix = string.Join('-', axes.Where(a => combo.ContainsKey(a.Code)).Select(a => combo[a.Code]));
+      string suffix = string.Join(
+        '-',
+        axes.Where(a => combo.ContainsKey(a.Code)).Select(a => combo[a.Code])
+      );
       string fullPath = suffix.Length == 0 ? code : $"{code}-{suffix}";
       if (skip.Any(p => p.IsMatch(fullPath)))
         continue;
       if (allowed.Count > 0 && !allowed.Any(p => p.IsMatch(fullPath)))
         continue;
-      variants.Add(new Variant($"{domain}:{fullPath}", domain, raw, combo, path, legacy));
+      variants.Add(
+        new Variant($"{domain}:{fullPath}", domain, raw, combo, path, legacy)
+      );
     }
     return variants;
   }
@@ -627,7 +794,10 @@ public sealed class BlockIndex {
     if (p == null)
       return (null, []);
     try {
-      if (JToken.Parse(File.ReadAllText(p)) is not JObject data || data["variants"] is not JArray variants) {
+      if (
+        JToken.Parse(File.ReadAllText(p)) is not JObject data
+        || data["variants"] is not JArray variants
+      ) {
         warnings.Add($"worldproperties file without a variants array: {p}");
         return (null, []);
       }
@@ -647,15 +817,26 @@ public sealed class BlockIndex {
   // <root>/<wildcardDir>/*/assets/* (mods/*/assets/*, src/*/assets/*), "game" excluded - reserved
   // for the real vanilla install (a mod's own assets/game/ holds compat patches, not the domain's
   // full asset tree).
-  private static IEnumerable<(string Domain, string Root)> GlobAssetRoots(string root, string wildcardDir) {
+  private static IEnumerable<(string Domain, string Root)> GlobAssetRoots(
+    string root,
+    string wildcardDir
+  ) {
     string parent = Path.Combine(root, wildcardDir);
     if (!Directory.Exists(parent))
       yield break;
-    foreach (string modDir in Directory.EnumerateDirectories(parent).OrderBy(d => d, StringComparer.Ordinal)) {
+    foreach (
+      string modDir in Directory
+        .EnumerateDirectories(parent)
+        .OrderBy(d => d, StringComparer.Ordinal)
+    ) {
       string assetsDir = Path.Combine(modDir, "assets");
       if (!Directory.Exists(assetsDir))
         continue;
-      foreach (string domainDir in Directory.EnumerateDirectories(assetsDir).OrderBy(d => d, StringComparer.Ordinal))
+      foreach (
+        string domainDir in Directory
+          .EnumerateDirectories(assetsDir)
+          .OrderBy(d => d, StringComparer.Ordinal)
+      )
         yield return (Path.GetFileName(domainDir), domainDir);
     }
   }
@@ -669,18 +850,30 @@ public sealed class BlockIndex {
     string parent = Path.Combine(root, wildcardDir);
     if (!Directory.Exists(parent))
       yield break;
-    foreach (string modDir in Directory.EnumerateDirectories(parent).OrderBy(d => d, StringComparer.Ordinal)) {
+    foreach (
+      string modDir in Directory
+        .EnumerateDirectories(parent)
+        .OrderBy(d => d, StringComparer.Ordinal)
+    ) {
       string mid = literal.Aggregate(modDir, Path.Combine);
       if (!Directory.Exists(mid))
         continue;
-      foreach (string domainDir in Directory.EnumerateDirectories(mid).OrderBy(d => d, StringComparer.Ordinal)) {
+      foreach (
+        string domainDir in Directory
+          .EnumerateDirectories(mid)
+          .OrderBy(d => d, StringComparer.Ordinal)
+      ) {
         string blocktypesDir = Path.Combine(domainDir, "blocktypes");
         if (!Directory.Exists(blocktypesDir))
           continue;
         string domain = Path.GetFileName(domainDir);
         foreach (
           string file in Directory
-            .EnumerateFiles(blocktypesDir, "*.json", SearchOption.AllDirectories)
+            .EnumerateFiles(
+              blocktypesDir,
+              "*.json",
+              SearchOption.AllDirectories
+            )
             .OrderBy(f => f, StringComparer.Ordinal)
         )
           yield return (domain, file);
@@ -696,10 +889,14 @@ public sealed class BlockIndex {
     if (!Directory.Exists(game))
       return [];
     game = RealPath(game);
-    List<string> versions = [
+    List<string> versions =
+    [
       .. Directory
         .EnumerateDirectories(game)
-        .OrderBy(d => Path.GetFileName(d), Comparer<string>.Create(CompareVersions)),
+        .OrderBy(
+          d => Path.GetFileName(d),
+          Comparer<string>.Create(CompareVersions)
+        ),
     ];
     for (int i = versions.Count - 1; i >= 0; i--)
       if (Directory.Exists(Path.Combine(versions[i], "assets", "survival")))
@@ -710,19 +907,31 @@ public sealed class BlockIndex {
   // An install's assets/survival then assets/game - both the `game` domain, survival holding
   // nearly every block and game the engine's basics (the unit cube shape among them).
   private static IReadOnlyList<string> GameAssetDirs(string install) =>
-    [.. new[] { "survival", "game" }.Select(d => Path.Combine(install, "assets", d)).Where(Directory.Exists)];
+    [
+      .. new[] { "survival", "game" }
+        .Select(d => Path.Combine(install, "assets", d))
+        .Where(Directory.Exists),
+    ];
 
   // The path with every symbolic link along it resolved: the family's checkouts each link .game to
   // one shared install, and only the resolved path lets the same vanilla file reached through two
   // roots dedupe as one entry instead of resolving a selector ambiguously against itself.
   private static string RealPath(string path) {
     string full = Path.GetFullPath(path);
-    string current = Path.GetPathRoot(full) is { Length: > 0 } root ? root : Path.DirectorySeparatorChar.ToString();
+    string current = Path.GetPathRoot(full) is { Length: > 0 } root
+      ? root
+      : Path.DirectorySeparatorChar.ToString();
     foreach (
-      string part in full[current.Length..].Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries)
+      string part in full[current.Length..]
+        .Split(
+          Path.DirectorySeparatorChar,
+          StringSplitOptions.RemoveEmptyEntries
+        )
     ) {
       current = Path.Combine(current, part);
-      FileSystemInfo info = Directory.Exists(current) ? new DirectoryInfo(current) : new FileInfo(current);
+      FileSystemInfo info = Directory.Exists(current)
+        ? new DirectoryInfo(current)
+        : new FileInfo(current);
       if (info.LinkTarget != null && info.ResolveLinkTarget(true) is { } target)
         current = target.FullName;
     }
@@ -757,7 +966,9 @@ public sealed class BlockIndex {
         if (!Directory.Exists(dir))
           continue;
         IEnumerable<string> names = (
-          isLast ? Directory.EnumerateFiles(dir) : Directory.EnumerateDirectories(dir)
+          isLast
+            ? Directory.EnumerateFiles(dir)
+            : Directory.EnumerateDirectories(dir)
         )
           .Select(Path.GetFileName)
           .OfType<string>()
@@ -772,7 +983,10 @@ public sealed class BlockIndex {
   }
 
   private static string? ExistingFile(string root, string relPath) {
-    string p = Path.Combine(root, relPath.Replace('/', Path.DirectorySeparatorChar));
+    string p = Path.Combine(
+      root,
+      relPath.Replace('/', Path.DirectorySeparatorChar)
+    );
     return File.Exists(p) ? p : null;
   }
 }

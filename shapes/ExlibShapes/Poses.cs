@@ -53,7 +53,10 @@ public static class Poses {
   }
 
   /// <summary>Element names that appear in at least one keyframe of <paramref name="clipName"/>.</summary>
-  public static HashSet<string> KeyframedNames(LoadedShape shape, string clipName) {
+  public static HashSet<string> KeyframedNames(
+    LoadedShape shape,
+    string clipName
+  ) {
     var names = new HashSet<string>();
     foreach (AnimationKeyFrame kf in Clip(shape, clipName).KeyFrames ?? [])
       if (kf.Elements != null)
@@ -83,7 +86,11 @@ public static class Poses {
     string name,
     System.Func<AnimationKeyFrameElement, double?> select,
     double fallback
-  ) => kf.Elements!.TryGetValue(name, out AnimationKeyFrameElement? e) && select(e) is { } v ? v : fallback;
+  ) =>
+    kf.Elements!.TryGetValue(name, out AnimationKeyFrameElement? e)
+    && select(e) is { } v
+      ? v
+      : fallback;
 
   // The value of one channel axis on the first (file-order) keyframe naming the element - the
   // close_loop rule for a keyframe whose own value is unset - falling back to the channel's own
@@ -95,7 +102,10 @@ public static class Poses {
     double fallback
   ) {
     foreach (AnimationKeyFrame kf in named)
-      if (kf.Elements != null && kf.Elements.TryGetValue(name, out AnimationKeyFrameElement? e))
+      if (
+        kf.Elements != null
+        && kf.Elements.TryGetValue(name, out AnimationKeyFrameElement? e)
+      )
         return select(e) is { } v ? v : fallback;
     return fallback;
   }
@@ -112,14 +122,24 @@ public static class Poses {
   /// between the last and the first (spanning the wrap) when <paramref name="frame"/> falls
   /// before the first or after the last.
   /// </summary>
-  public static Dictionary<string, Pose> PoseAt(LoadedShape shape, string clipName, double frame) {
+  public static Dictionary<string, Pose> PoseAt(
+    LoadedShape shape,
+    string clipName,
+    double frame
+  ) {
     Animation anim = Clip(shape, clipName);
-    List<AnimationKeyFrame> keyframes = [.. (anim.KeyFrames ?? []).OrderBy(kf => kf.Frame)];
+    List<AnimationKeyFrame> keyframes =
+    [
+      .. (anim.KeyFrames ?? []).OrderBy(kf => kf.Frame),
+    ];
     double quantity = anim.QuantityFrames;
     var poses = new Dictionary<string, Pose>();
 
     foreach (string name in KeyframedNames(shape, clipName)) {
-      List<AnimationKeyFrame> named = [.. keyframes.Where(kf => kf.Elements?.ContainsKey(name) == true)];
+      List<AnimationKeyFrame> named =
+      [
+        .. keyframes.Where(kf => kf.Elements?.ContainsKey(name) == true),
+      ];
       if (named.Count == 0)
         continue;
 
@@ -130,15 +150,24 @@ public static class Poses {
         prev = next = named[0];
         t = 0.0;
       } else {
-        AnimationKeyFrame? prevOpt = named.Where(kf => kf.Frame <= frame).OrderByDescending(kf => kf.Frame).FirstOrDefault();
-        AnimationKeyFrame? nextOpt = named.Where(kf => kf.Frame > frame).OrderBy(kf => kf.Frame).FirstOrDefault();
+        AnimationKeyFrame? prevOpt = named
+          .Where(kf => kf.Frame <= frame)
+          .OrderByDescending(kf => kf.Frame)
+          .FirstOrDefault();
+        AnimationKeyFrame? nextOpt = named
+          .Where(kf => kf.Frame > frame)
+          .OrderBy(kf => kf.Frame)
+          .FirstOrDefault();
         double span;
         if (prevOpt == null) {
           // frame sits before the first named keyframe: wrap back to the last one as "previous".
           prev = named[^1];
           next = nextOpt ?? named[0];
           span = next.Frame + (quantity - prev.Frame);
-          t = span != 0 ? Mod(frame - prev.Frame + quantity, quantity) / span : 0.0;
+          t =
+            span != 0
+              ? Mod(frame - prev.Frame + quantity, quantity) / span
+              : 0.0;
         } else if (nextOpt == null) {
           // frame sits at or after the last named keyframe: wrap forward to the first one.
           prev = prevOpt;
@@ -156,7 +185,12 @@ public static class Poses {
       var comp = new double[3][];
       for (int c = 0; c < Channels.Length; c++) {
         (var selX, var selY, var selZ, double fallback) = Channels[c];
-        System.Func<AnimationKeyFrameElement, double?>[] sel = [selX, selY, selZ];
+        System.Func<AnimationKeyFrameElement, double?>[] sel =
+        [
+          selX,
+          selY,
+          selZ,
+        ];
         comp[c] = new double[3];
         for (int axis = 0; axis < 3; axis++) {
           double earliest = EarliestValue(named, name, sel[axis], fallback);
@@ -167,9 +201,21 @@ public static class Poses {
       }
 
       poses[name] = new Pose {
-        Offset = new Vector3((float)comp[0][0], (float)comp[0][1], (float)comp[0][2]),
-        Rotation = new Vector3((float)comp[1][0], (float)comp[1][1], (float)comp[1][2]),
-        Stretch = new Vector3((float)comp[2][0], (float)comp[2][1], (float)comp[2][2]),
+        Offset = new Vector3(
+          (float)comp[0][0],
+          (float)comp[0][1],
+          (float)comp[0][2]
+        ),
+        Rotation = new Vector3(
+          (float)comp[1][0],
+          (float)comp[1][1],
+          (float)comp[1][2]
+        ),
+        Stretch = new Vector3(
+          (float)comp[2][0],
+          (float)comp[2][1],
+          (float)comp[2][2]
+        ),
       };
     }
     return poses;

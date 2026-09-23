@@ -10,10 +10,21 @@ namespace ExpandedLib.Shapes.Tests;
 /// <summary>Covers Poses' keyframe lookup and interpolation, including a posed render.</summary>
 public class PosesTests {
   private static LoadedShape WattImproved =>
-    ShapeFile.Load(FixturePath.Of("machines/steam/machine-pipe-megablock-engine-watt-improved.json"));
+    ShapeFile.Load(
+      FixturePath.Of(
+        "machines/steam/machine-pipe-megablock-engine-watt-improved.json"
+      )
+    );
 
-  private static AnimationKeyFrame[] PistonKeyframes(LoadedShape shape, string clipName) =>
-    [.. Poses.Clip(shape, clipName).KeyFrames!.Where(kf => kf.Elements?.ContainsKey("Piston") == true)];
+  private static AnimationKeyFrame[] PistonKeyframes(
+    LoadedShape shape,
+    string clipName
+  ) =>
+    [
+      .. Poses
+        .Clip(shape, clipName)
+        .KeyFrames!.Where(kf => kf.Elements?.ContainsKey("Piston") == true),
+    ];
 
   [Fact]
   public void Pose_at_reproduces_authored_offsets() {
@@ -46,7 +57,8 @@ public class PosesTests {
   public void Missing_clip_raises_with_available_names() {
     LoadedShape shape = WattImproved;
     var ex = Assert.Throws<System.Collections.Generic.KeyNotFoundException>(
-      () => Poses.Clip(shape, "no-such-clip")
+      () =>
+        Poses.Clip(shape, "no-such-clip")
     );
     Assert.Contains("cyclepump", ex.Message);
   }
@@ -74,8 +86,16 @@ public class PosesTests {
   public void Posed_render_matches_the_reference_frame() {
     LoadedShape shape = ShapeFile.Load(FixturePath.Of("anim/simple-clip.json"));
     var poses = Poses.PoseAt(shape, "bob", 7.5);
-    using SKBitmap actual = Renderer.Render(shape, Renderer.NamedViews["south"], ppu: 8, poses: poses, grid: false);
-    using SKBitmap expected = SKBitmap.Decode(FixturePath.Expected("simple-clip-south-f7.5.png"));
+    using SKBitmap actual = Renderer.Render(
+      shape,
+      Renderer.NamedViews["south"],
+      ppu: 8,
+      poses: poses,
+      grid: false
+    );
+    using SKBitmap expected = SKBitmap.Decode(
+      FixturePath.Expected("simple-clip-south-f7.5.png")
+    );
 
     PixelCompare.Assert(expected, actual, "simple-clip bob@7.5 south");
   }

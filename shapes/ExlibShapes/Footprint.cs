@@ -49,12 +49,13 @@ public static class Footprint {
   /// cells, each once. <see cref="Layout.Bounds"/> spans the declared offsets alone, which for a
   /// filler-only megablock leave out the block's own cell.
   /// </summary>
-  public static IReadOnlyList<Offset> Reserved(Layout layout) => [
-    .. new[] { layout.Anchor }
-      .Concat(layout.Cells.Select(c => new Offset(c.X, c.Y, c.Z)))
-      .Concat(layout.Fillers)
-      .Distinct(),
-  ];
+  public static IReadOnlyList<Offset> Reserved(Layout layout) =>
+    [
+      .. new[] { layout.Anchor }
+        .Concat(layout.Cells.Select(c => new Offset(c.X, c.Y, c.Z)))
+        .Concat(layout.Fillers)
+        .Distinct(),
+    ];
 
   /// <summary>The box <paramref name="cells"/> span, each cell reaching half a block either side of
   /// its centre. An empty list is the principal's own cell alone.</summary>
@@ -62,8 +63,16 @@ public static class Footprint {
     if (cells.Count == 0)
       return new Box(new Vector3(-0.5f), new Vector3(0.5f));
     return new Box(
-      new Vector3(cells.Min(c => c.X) - 0.5f, cells.Min(c => c.Y) - 0.5f, cells.Min(c => c.Z) - 0.5f),
-      new Vector3(cells.Max(c => c.X) + 0.5f, cells.Max(c => c.Y) + 0.5f, cells.Max(c => c.Z) + 0.5f)
+      new Vector3(
+        cells.Min(c => c.X) - 0.5f,
+        cells.Min(c => c.Y) - 0.5f,
+        cells.Min(c => c.Z) - 0.5f
+      ),
+      new Vector3(
+        cells.Max(c => c.X) + 0.5f,
+        cells.Max(c => c.Y) + 0.5f,
+        cells.Max(c => c.Z) + 0.5f
+      )
     );
   }
 
@@ -75,13 +84,18 @@ public static class Footprint {
     var lo = new Vector3(float.PositiveInfinity);
     var hi = new Vector3(float.NegativeInfinity);
     foreach (Node leaf in shape.Leaves()) {
-      (Vector3 elLo, Vector3 elHi) = Geometry.Aabb(Geometry.Corners(mats[leaf.Path], (Vector3)leaf.Size));
+      (Vector3 elLo, Vector3 elHi) = Geometry.Aabb(
+        Geometry.Corners(mats[leaf.Path], (Vector3)leaf.Size)
+      );
       lo = Vector3.Min(lo, elLo);
       hi = Vector3.Max(hi, elHi);
     }
     if (float.IsInfinity(lo.X))
       return new Box(new Vector3(-0.5f), new Vector3(0.5f));
-    var box = new Box(lo / 16f - new Vector3(0.5f), hi / 16f - new Vector3(0.5f));
+    var box = new Box(
+      lo / 16f - new Vector3(0.5f),
+      hi / 16f - new Vector3(0.5f)
+    );
     return Turned(box, (int)Math.Round(spinY));
   }
 
@@ -99,7 +113,10 @@ public static class Footprint {
         xs.Add((float)rx);
         zs.Add((float)rz);
       }
-    return new Box(new Vector3(xs.Min(), box.Lo.Y, zs.Min()), new Vector3(xs.Max(), box.Hi.Y, zs.Max()));
+    return new Box(
+      new Vector3(xs.Min(), box.Lo.Y, zs.Min()),
+      new Vector3(xs.Max(), box.Hi.Y, zs.Max())
+    );
   }
 
   // ExOrientation.RotateXZ: the continuous twin of Layout.RotateOffset, 90:(z,-x) 180:(-x,-z)
@@ -118,29 +135,49 @@ public static class Footprint {
   /// <paramref name="overhang"/> blocks on every axis.
   /// </summary>
   public static string? Misfit(Box mesh, Box cells, double overhang = Overhang) {
-    foreach ((string axis, float meshLo, float meshHi, float cellLo, float cellHi) in Axes(mesh, cells))
+    foreach (
+      (
+        string axis,
+        float meshLo,
+        float meshHi,
+        float cellLo,
+        float cellHi
+      ) in Axes(mesh, cells)
+    )
       if (meshLo < cellLo - overhang || meshHi > cellHi + overhang)
         return $"draws {axis} over [{F(meshLo)}, {F(meshHi)}] but reserves [{F(cellLo)}, {F(cellHi)}] "
           + $"(blocks from the principal's centre, {F(overhang)} of overhang allowed)";
     return null;
   }
 
-  private static IEnumerable<(string Axis, float MeshLo, float MeshHi, float CellLo, float CellHi)> Axes(
-    Box mesh,
-    Box cells
-  ) {
+  private static IEnumerable<(
+    string Axis,
+    float MeshLo,
+    float MeshHi,
+    float CellLo,
+    float CellHi
+  )> Axes(Box mesh, Box cells) {
     yield return ("x", mesh.Lo.X, mesh.Hi.X, cells.Lo.X, cells.Hi.X);
     yield return ("y", mesh.Lo.Y, mesh.Hi.Y, cells.Lo.Y, cells.Hi.Y);
     yield return ("z", mesh.Lo.Z, mesh.Hi.Z, cells.Lo.Z, cells.Hi.Z);
   }
 
-  private static string F(double v) => v.ToString("0.###", CultureInfo.InvariantCulture);
+  private static string F(double v) =>
+    v.ToString("0.###", CultureInfo.InvariantCulture);
 
   /// <summary>How far past <paramref name="cells"/> <paramref name="mesh"/> reaches, in blocks on
   /// its worst axis; zero when it is inside.</summary>
   public static double Excess(Box mesh, Box cells) {
     double worst = 0;
-    foreach ((string _, float meshLo, float meshHi, float cellLo, float cellHi) in Axes(mesh, cells))
+    foreach (
+      (
+        string _,
+        float meshLo,
+        float meshHi,
+        float cellLo,
+        float cellHi
+      ) in Axes(mesh, cells)
+    )
       worst = Math.Max(worst, Math.Max(cellLo - meshLo, meshHi - cellHi));
     return Math.Max(0, worst);
   }
@@ -153,7 +190,10 @@ public static class Footprint {
   public static IReadOnlyList<int> Frames(Box mesh, Box cells) {
     int[] angles = [0, 90, 180, 270];
     double best = angles.Min(a => Excess(mesh, Turned(cells, a)));
-    return [.. angles.Where(a => Excess(mesh, Turned(cells, a)) <= best + 1e-6)];
+    return
+    [
+      .. angles.Where(a => Excess(mesh, Turned(cells, a)) <= best + 1e-6),
+    ];
   }
 
   /// <summary>
@@ -196,19 +236,27 @@ public static class Footprint {
   /// </summary>
   public static Box? PrincipalMesh(Layout layout, BlockIndex index) {
     string? selector = layout.Principal ?? AnchorSelector(layout);
-    if (selector == null || index.Resolve(selector) is not { ShapePath: { } path } block)
+    if (
+      selector == null
+      || index.Resolve(selector) is not { ShapePath: { } path } block
+    )
       return null;
     try {
       return MeshBox(ShapeFile.Load(path, block.Selective), block.RotateY);
     } catch (Exception e) {
-      Console.Error.WriteLine($"warning: {path}: shape failed to load ({e.Message}); the declared footprint frame is kept");
+      Console.Error.WriteLine(
+        $"warning: {path}: shape failed to load ({e.Message}); the declared footprint frame is kept"
+      );
       return null;
     }
   }
 
   private static string? AnchorSelector(Layout layout) {
     foreach (Cell c in layout.Cells)
-      if (new Offset(c.X, c.Y, c.Z) == layout.Anchor && layout.Numbers.TryGetValue(c.Number, out string? selector))
+      if (
+        new Offset(c.X, c.Y, c.Z) == layout.Anchor
+        && layout.Numbers.TryGetValue(c.Number, out string? selector)
+      )
         return selector;
     return null;
   }

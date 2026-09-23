@@ -16,7 +16,9 @@ public class BlocksTests {
   // The family workspace's sibling checkouts; a fact naming one returns early when it is absent.
   private static string? ExlibRoot => FixturePath.Workspace("exlib");
   private static string? BlastcoreGolden =>
-    FixturePath.Workspace("exmods/mods/iiex/tests/goldens/iiex/blocktypes/furnace/blastcore.json");
+    FixturePath.Workspace(
+      "exmods/mods/iiex/tests/goldens/iiex/blocktypes/furnace/blastcore.json"
+    );
 
   // This checkout's own root; BlockIndex reads .game/<version> under it. Its absence fails
   // rather than skips.
@@ -54,20 +56,38 @@ public class BlocksTests {
   public void A_variant_group_naming_only_a_worldproperties_file_reads_it_from_the_game_domain() {
     // A bare `abstract/horizontalorientation` is the game's file, not one of the mod's own; read
     // against the mod's domain instead, the side axis drops and the block has one variant.
-    BlockIndex index = BlockIndex.Build([DemoRoot], FixturePath.Of("schematic/game"));
-    string file = FixturePath.Of("schematic/mods/demo/assets/demo/blocktypes/vane.json");
+    BlockIndex index = BlockIndex.Build(
+      [DemoRoot],
+      FixturePath.Of("schematic/game")
+    );
+    string file = FixturePath.Of(
+      "schematic/mods/demo/assets/demo/blocktypes/vane.json"
+    );
     Assert.Equal(
-      ["demo:vane-north", "demo:vane-east", "demo:vane-south", "demo:vane-west"],
+      [
+        "demo:vane-north",
+        "demo:vane-east",
+        "demo:vane-south",
+        "demo:vane-west",
+      ],
       index.VariantsOf(file).Select(v => v.Code)
     );
-    Assert.Equal("demo:vane-north", BlockIndex.Facing(index.VariantsOf(file), "north")!.Code);
+    Assert.Equal(
+      "demo:vane-north",
+      BlockIndex.Facing(index.VariantsOf(file), "north")!.Code
+    );
   }
 
   [Fact]
   public void A_family_with_no_facing_has_no_variant_at_a_side() {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
-    string post = FixturePath.Of("schematic/samples/Post/tests/goldens/sample/blocktypes/post.json");
-    Assert.Equal(["sample:post-short", "sample:post-tall"], index.VariantsOf(post).Select(v => v.Code));
+    string post = FixturePath.Of(
+      "schematic/samples/Post/tests/goldens/sample/blocktypes/post.json"
+    );
+    Assert.Equal(
+      ["sample:post-short", "sample:post-tall"],
+      index.VariantsOf(post).Select(v => v.Code)
+    );
     Assert.Null(BlockIndex.Facing(index.VariantsOf(post), "north"));
   }
 
@@ -105,7 +125,10 @@ public class BlocksTests {
 
   [Fact]
   public void A_vanilla_code_resolves_when_the_game_root_is_present() {
-    Assert.True(Directory.Exists(Path.Combine(RootWithGame, ".game")), "the workspace always carries .game; this must fail, not skip");
+    Assert.True(
+      Directory.Exists(Path.Combine(RootWithGame, ".game")),
+      "the workspace always carries .game; this must fail, not skip"
+    );
     BlockIndex index = BlockIndex.Build([RootWithGame]);
     // A plain cube block ships no shape file of its own (the engine draws a default unit cube), so
     // this only pins that the code resolves and carries a texture, not a shape_path.
@@ -116,7 +139,10 @@ public class BlocksTests {
 
   [Fact]
   public void SkipVariants_drops_the_listed_state_from_the_game_index() {
-    Assert.True(Directory.Exists(Path.Combine(RootWithGame, ".game")), "the workspace always carries .game; this must fail, not skip");
+    Assert.True(
+      Directory.Exists(Path.Combine(RootWithGame, ".game")),
+      "the workspace always carries .game; this must fail, not skip"
+    );
     BlockIndex index = BlockIndex.Build([RootWithGame]);
     // mudbrickslab.json declares skipVariants: ["*-up-snow"]; the engine never registers it.
     Assert.Null(index.Resolve("game:mudbrickslab-dark-up-snow"));
@@ -140,7 +166,12 @@ public class BlocksTests {
     ResolvedBlock? repeat = second.Resolve("game:cobblestone-*");
     Assert.Equal(first.Code, repeat!.Code);
 
-    Assert.True(index.Ambiguities.TryGetValue("game:cobblestone-*", out IReadOnlyList<string>? files));
+    Assert.True(
+      index.Ambiguities.TryGetValue(
+        "game:cobblestone-*",
+        out IReadOnlyList<string>? files
+      )
+    );
     Assert.Equal(2, files!.Count);
     Assert.Contains(files, f => f.EndsWith("cobble-coral.json"));
     Assert.Contains(files, f => f.EndsWith("cobble/cobblestone.json"));
@@ -155,7 +186,15 @@ public class BlocksTests {
     ResolvedBlock? gate = index.Resolve("old:gate-shut");
     Assert.NotNull(gate);
     Assert.EndsWith(
-      Path.Combine("schematic", "old", "assets", "old", "shapes", "block", "gate.json"),
+      Path.Combine(
+        "schematic",
+        "old",
+        "assets",
+        "old",
+        "shapes",
+        "block",
+        "gate.json"
+      ),
       gate!.ShapePath
     );
 
@@ -163,15 +202,33 @@ public class BlocksTests {
     Assert.NotNull(post);
     Assert.Equal("sample:post-short", post!.Code);
     Assert.EndsWith(
-      Path.Combine("samples", "Post", "assets", "sample", "shapes", "block", "post.json"),
+      Path.Combine(
+        "samples",
+        "Post",
+        "assets",
+        "sample",
+        "shapes",
+        "block",
+        "post.json"
+      ),
       post.ShapePath
     );
   }
 
   [Fact]
   public void Malformed_blocktype_file_warns_naming_its_path_instead_of_vanishing() {
-    string root = Path.Combine(Path.GetTempPath(), "exlib-shapes-" + Guid.NewGuid().ToString("N"));
-    string blocktypesDir = Path.Combine(root, "mods", "broken", "assets", "broken", "blocktypes");
+    string root = Path.Combine(
+      Path.GetTempPath(),
+      "exlib-shapes-" + Guid.NewGuid().ToString("N")
+    );
+    string blocktypesDir = Path.Combine(
+      root,
+      "mods",
+      "broken",
+      "assets",
+      "broken",
+      "blocktypes"
+    );
     Directory.CreateDirectory(blocktypesDir);
     string brokenFile = Path.Combine(blocktypesDir, "broken.json");
     File.WriteAllText(brokenFile, "{ this is not json");
@@ -202,9 +259,15 @@ public class BlocksTests {
   public void Two_roots_linking_one_install_index_its_files_once() {
     // exlib and exmods each link .game to the workspace's one install; a selector matching a
     // vanilla file must not come out ambiguous between that file's two spellings.
-    string linked = Path.Combine(Path.GetTempPath(), "exlib-shapes-" + Guid.NewGuid().ToString("N"));
+    string linked = Path.Combine(
+      Path.GetTempPath(),
+      "exlib-shapes-" + Guid.NewGuid().ToString("N")
+    );
     Directory.CreateDirectory(linked);
-    Directory.CreateSymbolicLink(Path.Combine(linked, ".game"), Path.Combine(RootWithGame, ".game"));
+    Directory.CreateSymbolicLink(
+      Path.Combine(linked, ".game"),
+      Path.Combine(RootWithGame, ".game")
+    );
     try {
       BlockIndex index = BlockIndex.Build([RootWithGame, linked]);
       Assert.NotNull(index.Resolve("game:cobblestone-andesite"));
@@ -224,20 +287,76 @@ public class BlocksTests {
     BlockIndex current = BlockIndex.Build([DemoRoot]);
     ResolvedBlock? wall = current.Resolve("demo:wall-north");
     Assert.NotNull(wall);
-    Assert.EndsWith(Path.Combine("demo", "shapes", "block", "wall.json"), wall!.ShapePath);
+    Assert.EndsWith(
+      Path.Combine("demo", "shapes", "block", "wall.json"),
+      wall!.ShapePath
+    );
     Assert.Empty(current.Ambiguities);
 
     BlockIndex legacy = BlockIndex.Build([DemoRoot], legacyFirst: true);
     ResolvedBlock? old = legacy.Resolve("demo:wall-north");
     Assert.NotNull(old);
-    Assert.EndsWith(Path.Combine("old", "shapes", "block", "gate.json"), old!.ShapePath);
+    Assert.EndsWith(
+      Path.Combine("old", "shapes", "block", "gate.json"),
+      old!.ShapePath
+    );
     Assert.Empty(legacy.Ambiguities);
 
-    Assert.True(BlockIndex.UnderLegacyTree(Path.Combine(DemoRoot, "old", "assets", "demo", "blocktypes", "wall.json")));
-    Assert.True(BlockIndex.UnderLegacyTree(Path.Combine(DemoRoot, "old", "tests", "goldens", "demo", "blocktypes", "wall.json")));
-    Assert.False(BlockIndex.UnderLegacyTree(Path.Combine(DemoRoot, "old", "tests", "demo", "blocktypes", "wall.json")));
-    Assert.False(BlockIndex.UnderLegacyTree(Path.Combine(DemoRoot, "old", "assets", "wall.json")));
-    Assert.False(BlockIndex.UnderLegacyTree(Path.Combine(DemoRoot, "mods", "demo", "assets", "demo", "blocktypes", "wall.json")));
+    Assert.True(
+      BlockIndex.UnderLegacyTree(
+        Path.Combine(
+          DemoRoot,
+          "old",
+          "assets",
+          "demo",
+          "blocktypes",
+          "wall.json"
+        )
+      )
+    );
+    Assert.True(
+      BlockIndex.UnderLegacyTree(
+        Path.Combine(
+          DemoRoot,
+          "old",
+          "tests",
+          "goldens",
+          "demo",
+          "blocktypes",
+          "wall.json"
+        )
+      )
+    );
+    Assert.False(
+      BlockIndex.UnderLegacyTree(
+        Path.Combine(
+          DemoRoot,
+          "old",
+          "tests",
+          "demo",
+          "blocktypes",
+          "wall.json"
+        )
+      )
+    );
+    Assert.False(
+      BlockIndex.UnderLegacyTree(
+        Path.Combine(DemoRoot, "old", "assets", "wall.json")
+      )
+    );
+    Assert.False(
+      BlockIndex.UnderLegacyTree(
+        Path.Combine(
+          DemoRoot,
+          "mods",
+          "demo",
+          "assets",
+          "demo",
+          "blocktypes",
+          "wall.json"
+        )
+      )
+    );
   }
 
   [Fact]
@@ -245,14 +364,25 @@ public class BlocksTests {
     // ppex's boilers fill with "game:air*", smex's blast furnace door names the block the game
     // creates in code for a door's upper cell; neither has a blocktype file to find.
     BlockIndex index = BlockIndex.Build([RootWithGame]);
-    foreach (string selector in new[] { "game:air*", "game:multiblock-monolithic-0-p1-0", "air" }) {
+    foreach (
+      string selector in new[]
+      {
+        "game:air*",
+        "game:multiblock-monolithic-0-p1-0",
+        "air",
+      }
+    ) {
       Assert.Null(index.Representative(selector));
       Assert.True(index.Optional(selector));
     }
     // Vanilla's stone coffin names the door first: the resolving alternative is a real block,
     // whose orientation axis comes from a variant group naming only its worldproperties file.
-    string coffinDoor = "game:@(irondoor-.*-up-.*|multiblock-monolithic-0-p1-0)";
-    Assert.Equal("game:irondoor-north-up-closed-left", index.Representative(coffinDoor)!.Code);
+    string coffinDoor =
+      "game:@(irondoor-.*-up-.*|multiblock-monolithic-0-p1-0)";
+    Assert.Equal(
+      "game:irondoor-north-up-closed-left",
+      index.Representative(coffinDoor)!.Code
+    );
     Assert.False(index.Optional(coffinDoor));
     Assert.Empty(index.Ambiguities);
   }
@@ -280,7 +410,10 @@ public class BlocksTests {
       ResolvedBlock? block = index.Resolve(selector);
       // Every selector this golden carries names a real block or is explicitly optional (air) -
       // nothing in it is a dangling reference this index cannot find at all.
-      Assert.True(block != null || optional, $"{selector}: neither resolved nor optional");
+      Assert.True(
+        block != null || optional,
+        $"{selector}: neither resolved nor optional"
+      );
     }
   }
 }

@@ -22,7 +22,8 @@ namespace ExpandedLib.Shapes;
 /// <summary>Malformed command-line usage - reported on stderr with exit code 2, not a stack
 /// trace.</summary>
 internal sealed class UsageException : Exception {
-  public UsageException(string message) : base(message) { }
+  public UsageException(string message)
+    : base(message) { }
 }
 
 internal static class Program {
@@ -79,7 +80,8 @@ internal static class Program {
     }
   }
 
-  private const string Usage = "usage: exlib-shapes {render,schematic,block,item,tree,measure} FILE [options]";
+  private const string Usage =
+    "usage: exlib-shapes {render,schematic,block,item,tree,measure} FILE [options]";
 
   private static int Unknown(string command) {
     Console.Error.WriteLine($"exlib-shapes: no such command: {command}");
@@ -98,7 +100,9 @@ internal static class Program {
       if (args[i].StartsWith(prefix, StringComparison.Ordinal))
         return args[i][prefix.Length..];
       if (args[i] == name)
-        return i + 1 < args.Length ? args[i + 1] : throw new UsageException($"{name} needs a value");
+        return i + 1 < args.Length
+          ? args[i + 1]
+          : throw new UsageException($"{name} needs a value");
     }
     return null;
   }
@@ -117,9 +121,14 @@ internal static class Program {
       if (args[i] != name)
         continue;
       int j = i + 1;
-      if (j >= args.Length || args[j].StartsWith("--", StringComparison.Ordinal))
+      if (
+        j >= args.Length
+        || args[j].StartsWith("--", StringComparison.Ordinal)
+      )
         throw new UsageException($"{name} needs a value");
-      while (j < args.Length && !args[j].StartsWith("--", StringComparison.Ordinal))
+      while (
+        j < args.Length && !args[j].StartsWith("--", StringComparison.Ordinal)
+      )
         result.Add(args[j++]);
       i = j - 1;
     }
@@ -132,10 +141,19 @@ internal static class Program {
   // selectiveElements syntax a shape entry's own list uses.
   private static List<string> SelectiveOf(string[] args) =>
     OptOf(args, "--selective") is { } value
-      ? [.. value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)]
+      ?
+      [
+        .. value.Split(
+          ',',
+          StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+        ),
+      ]
       : [];
 
-  private static (string File, string[] Flags) FileAndFlags(string[] args, string usage) {
+  private static (string File, string[] Flags) FileAndFlags(
+    string[] args,
+    string usage
+  ) {
     if (args.Length == 0)
       throw new UsageException(usage);
     return (args[0], args[1..]);
@@ -161,9 +179,13 @@ internal static class Program {
         + "[--only PATH...] [--highlight PATH...] [--selective PATTERN,...] [--no-grid] [--no-edges] "
         + "[--game PATH] [--repo PATH]"
     );
-    string outDir = OptOf(flags, "--out") ?? throw new UsageException("--out is required");
+    string outDir =
+      OptOf(flags, "--out") ?? throw new UsageException("--out is required");
     string views = OptOf(flags, "--views") ?? "iso";
-    int ppu = int.Parse(OptOf(flags, "--ppu") ?? "24", CultureInfo.InvariantCulture);
+    int ppu = int.Parse(
+      OptOf(flags, "--ppu") ?? "24",
+      CultureInfo.InvariantCulture
+    );
     string? anim = OptOf(flags, "--anim");
     string framesArg = OptOf(flags, "--frames") ?? "0";
     List<string> only = OptAllOf(flags, "--only");
@@ -175,12 +197,23 @@ internal static class Program {
     string? repo = OptOf(flags, "--repo");
 
     LoadedShape shape = ShapeFile.Load(file, selective);
-    TextureSet textures = TextureSet.ForShape(shape, TextureRoots.Build(game, repo, file));
+    TextureSet textures = TextureSet.ForShape(
+      shape,
+      TextureRoots.Build(game, repo, file)
+    );
     Directory.CreateDirectory(outDir);
     string stem = Path.GetFileNameWithoutExtension(file);
 
     string[] viewNames = views.Split(',');
-    double[] frames = anim != null ? [.. framesArg.Split(',').Select(f => double.Parse(f, CultureInfo.InvariantCulture))] : [0.0];
+    double[] frames =
+      anim != null
+        ?
+        [
+          .. framesArg
+            .Split(',')
+            .Select(f => double.Parse(f, CultureInfo.InvariantCulture)),
+        ]
+        : [0.0];
     HashSet<string>? highlightSet = highlight.Count > 0 ? [.. highlight] : null;
     HashSet<string>? onlySet = only.Count > 0 ? [.. only] : null;
 
@@ -188,7 +221,8 @@ internal static class Program {
     foreach (string viewName in viewNames) {
       View view = Renderer.NamedViews[viewName];
       foreach (double frame in frames) {
-        Dictionary<string, Pose>? poses = anim != null ? Poses.PoseAt(shape, anim, frame) : null;
+        Dictionary<string, Pose>? poses =
+          anim != null ? Poses.PoseAt(shape, anim, frame) : null;
         using SKBitmap img = Renderer.Render(
           shape,
           view,
@@ -209,7 +243,14 @@ internal static class Program {
 
     foreach (string p in written)
       Console.WriteLine(p);
-    Console.WriteLine("missing textures: [" + string.Join(", ", textures.Missing.OrderBy(m => m, StringComparer.Ordinal)) + "]");
+    Console.WriteLine(
+      "missing textures: ["
+        + string.Join(
+          ", ",
+          textures.Missing.OrderBy(m => m, StringComparer.Ordinal)
+        )
+        + "]"
+    );
     return 0;
   }
 
@@ -219,18 +260,32 @@ internal static class Program {
       "usage: exlib-shapes schematic FILE --out DIR [--views plan,iso] [--angle N] [--layer N|all] "
         + "[--ppu N] [--roots PATH...] [--game PATH]"
     );
-    string outDir = OptOf(flags, "--out") ?? throw new UsageException("--out is required");
+    string outDir =
+      OptOf(flags, "--out") ?? throw new UsageException("--out is required");
     string views = OptOf(flags, "--views") ?? "plan,iso";
-    int angle = int.Parse(OptOf(flags, "--angle") ?? "0", CultureInfo.InvariantCulture);
+    int angle = int.Parse(
+      OptOf(flags, "--angle") ?? "0",
+      CultureInfo.InvariantCulture
+    );
     string? layer = OptOf(flags, "--layer");
-    int ppu = int.Parse(OptOf(flags, "--ppu") ?? "8", CultureInfo.InvariantCulture);
+    int ppu = int.Parse(
+      OptOf(flags, "--ppu") ?? "8",
+      CultureInfo.InvariantCulture
+    );
     List<string> extraRoots = OptAllOf(flags, "--roots");
     string? game = OptOf(flags, "--game");
 
     List<string> roots = [.. extraRoots, .. BlockIndex.DefaultRoots(file)];
-    BlockIndex index = BlockIndex.Build(roots, game, BlockIndex.UnderLegacyTree(file));
+    BlockIndex index = BlockIndex.Build(
+      roots,
+      game,
+      BlockIndex.UnderLegacyTree(file)
+    );
     Variant? drawn = DrawnVariant(index, file, null);
-    Presentation.Staged staged = Presentation.Stage(Footprint.Placed(Layout.Load(file, drawn?.Path), index), drawn);
+    Presentation.Staged staged = Presentation.Stage(
+      Footprint.Placed(Layout.Load(file, drawn?.Path), index),
+      drawn
+    );
     Layout layout = staged.Layout;
     int spin = staged.Angle;
     string? front = staged.Front;
@@ -256,7 +311,10 @@ internal static class Program {
     if (viewSet.Contains("plan"))
       foreach (int y in layout.Layers()) {
         string path = Path.Combine(outDir, $"{stem}-plan-y{y}.svg");
-        File.WriteAllText(path, Schematic.PlanSvg(layout, y, legend, front: front));
+        File.WriteAllText(
+          path,
+          Schematic.PlanSvg(layout, y, legend, front: front)
+        );
         files.Add(path);
         plans.Add((path, y));
       }
@@ -303,7 +361,11 @@ internal static class Program {
       Console.Error.WriteLine($"exlib-shapes: {line}");
     var warnings = (JArray)manifest["warnings"]!;
     if (warnings.Count > 0)
-      Console.WriteLine("warnings: [" + string.Join(", ", warnings.Select(w => (string)w!)) + "]");
+      Console.WriteLine(
+        "warnings: ["
+          + string.Join(", ", warnings.Select(w => (string)w!))
+          + "]"
+      );
     return 0;
   }
 
@@ -314,20 +376,33 @@ internal static class Program {
         + "[--views iso,north,east,south,west,up] [--angle N] [--full] [--ppu N] "
         + "[--selective PATTERN,...] [--roots PATH...] [--game PATH]"
     );
-    string outDir = OptOf(flags, "--out") ?? throw new UsageException("--out is required");
+    string outDir =
+      OptOf(flags, "--out") ?? throw new UsageException("--out is required");
     string? wanted = OptOf(flags, "--variant");
     IReadOnlyList<string>? views = NamedViews(OptOf(flags, "--views"));
-    int? angle = OptOf(flags, "--angle") is { } a ? int.Parse(a, CultureInfo.InvariantCulture) : null;
+    int? angle = OptOf(flags, "--angle") is { } a
+      ? int.Parse(a, CultureInfo.InvariantCulture)
+      : null;
     bool full = FlagOf(flags, "--full");
-    int ppu = int.Parse(OptOf(flags, "--ppu") ?? "24", CultureInfo.InvariantCulture);
+    int ppu = int.Parse(
+      OptOf(flags, "--ppu") ?? "24",
+      CultureInfo.InvariantCulture
+    );
     List<string> selective = SelectiveOf(flags);
     List<string> extraRoots = OptAllOf(flags, "--roots");
     string? game = OptOf(flags, "--game");
 
     List<string> roots = [.. extraRoots, .. BlockIndex.DefaultRoots(file)];
-    BlockIndex index = BlockIndex.Build(roots, game, BlockIndex.UnderLegacyTree(file));
+    BlockIndex index = BlockIndex.Build(
+      roots,
+      game,
+      BlockIndex.UnderLegacyTree(file)
+    );
     Variant variant =
-      DrawnVariant(index, file, wanted) ?? throw new UsageException($"{file}: no blocktype in the index came from it");
+      DrawnVariant(index, file, wanted)
+      ?? throw new UsageException(
+        $"{file}: no blocktype in the index came from it"
+      );
 
     JObject manifest = BlockViews.Write(
       file,
@@ -343,13 +418,29 @@ internal static class Program {
 
     foreach (JToken written in (JArray)manifest["files"]!)
       Console.WriteLine((string)written!);
-    Console.WriteLine(Path.Combine(outDir, Path.GetFileNameWithoutExtension(file) + ".json"));
-    Console.WriteLine("variant: " + (string)manifest["variant"]! + " at " + (int)manifest["angle"]! + " degrees");
     Console.WriteLine(
-      "missing textures: [" + string.Join(", ", ((JArray)manifest["missingTextures"]!).Select(t => (string)t!)) + "]"
+      Path.Combine(outDir, Path.GetFileNameWithoutExtension(file) + ".json")
+    );
+    Console.WriteLine(
+      "variant: "
+        + (string)manifest["variant"]!
+        + " at "
+        + (int)manifest["angle"]!
+        + " degrees"
+    );
+    Console.WriteLine(
+      "missing textures: ["
+        + string.Join(
+          ", ",
+          ((JArray)manifest["missingTextures"]!).Select(t => (string)t!)
+        )
+        + "]"
     );
     if ((JArray)manifest["hidden"]! is { Count: > 0 } hidden)
-      Console.WriteLine("outside the block, not drawn: " + string.Join(", ", hidden.Select(h => (string)h!)));
+      Console.WriteLine(
+        "outside the block, not drawn: "
+          + string.Join(", ", hidden.Select(h => (string)h!))
+      );
     foreach (JToken warning in (JArray)manifest["warnings"]!)
       Console.Error.WriteLine($"exlib-shapes: {(string)warning!}");
     return 0;
@@ -360,32 +451,48 @@ internal static class Program {
       args,
       "usage: exlib-shapes item FILE --out DIR [--variant CODE] [--ppu N] [--roots PATH...] [--game PATH]"
     );
-    string outDir = OptOf(flags, "--out") ?? throw new UsageException("--out is required");
+    string outDir =
+      OptOf(flags, "--out") ?? throw new UsageException("--out is required");
     string? wanted = OptOf(flags, "--variant");
-    int ppu = int.Parse(OptOf(flags, "--ppu") ?? "24", CultureInfo.InvariantCulture);
+    int ppu = int.Parse(
+      OptOf(flags, "--ppu") ?? "24",
+      CultureInfo.InvariantCulture
+    );
     List<string> extraRoots = OptAllOf(flags, "--roots");
     string? game = OptOf(flags, "--game");
 
     List<string> roots = [.. extraRoots, .. BlockIndex.DefaultRoots(file)];
-    BlockIndex index = BlockIndex.Build(roots, game, BlockIndex.UnderLegacyTree(file));
+    BlockIndex index = BlockIndex.Build(
+      roots,
+      game,
+      BlockIndex.UnderLegacyTree(file)
+    );
     IReadOnlyList<Variant> variants = index.ItemVariants(file);
     if (variants.Count == 0)
       throw new UsageException($"{file}: no itemtype expanded from it");
-    Variant variant = wanted == null
-      ? variants[0]
-      : variants.FirstOrDefault(v => v.Code == wanted || v.Path == wanted)
-        ?? throw new UsageException(
-          $"no such variant: {wanted} ({string.Join(", ", variants.Select(v => v.Path))})"
-        );
+    Variant variant =
+      wanted == null
+        ? variants[0]
+        : variants.FirstOrDefault(v => v.Code == wanted || v.Path == wanted)
+          ?? throw new UsageException(
+            $"no such variant: {wanted} ({string.Join(", ", variants.Select(v => v.Path))})"
+          );
 
     JObject manifest = ItemViews.Write(file, variant, index, outDir, ppu);
 
     foreach (JToken written in (JArray)manifest["files"]!)
       Console.WriteLine((string)written!);
-    Console.WriteLine(Path.Combine(outDir, Path.GetFileNameWithoutExtension(file) + ".json"));
+    Console.WriteLine(
+      Path.Combine(outDir, Path.GetFileNameWithoutExtension(file) + ".json")
+    );
     Console.WriteLine("variant: " + (string)manifest["variant"]!);
     Console.WriteLine(
-      "missing textures: [" + string.Join(", ", ((JArray)manifest["missingTextures"]!).Select(t => (string)t!)) + "]"
+      "missing textures: ["
+        + string.Join(
+          ", ",
+          ((JArray)manifest["missingTextures"]!).Select(t => (string)t!)
+        )
+        + "]"
     );
     foreach (JToken warning in (JArray)manifest["warnings"]!)
       Console.Error.WriteLine($"exlib-shapes: {(string)warning!}");
@@ -397,24 +504,34 @@ internal static class Program {
   private static IReadOnlyList<string>? NamedViews(string? views) {
     if (views == null)
       return null;
-    string[] names = views.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    string[] names = views.Split(
+      ',',
+      StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+    );
     foreach (string name in names)
       if (!Renderer.NamedViews.ContainsKey(name))
         throw new UsageException(
           $"no such view: {name} (one of {string.Join(", ", Renderer.NamedViews.Keys)})"
         );
     if (names.Length == 0)
-      throw new UsageException($"--views names no view (one of {string.Join(", ", Renderer.NamedViews.Keys)})");
+      throw new UsageException(
+        $"--views names no view (one of {string.Join(", ", Renderer.NamedViews.Keys)})"
+      );
     return names;
   }
 
   // The variant a picture of FILE's family is drawn for: the one `wanted` names (a full code or a
   // bare path), else the variant facing Presentation.Facing, else its first. Null when the index
   // holds no variant from that file; throws when `wanted` names none of them.
-  private static Variant? DrawnVariant(BlockIndex index, string file, string? wanted) {
+  private static Variant? DrawnVariant(
+    BlockIndex index,
+    string file,
+    string? wanted
+  ) {
     IReadOnlyList<Variant> variants = index.VariantsOf(file);
     if (wanted == null)
-      return BlockIndex.Facing(variants, Presentation.Facing) ?? variants.FirstOrDefault();
+      return BlockIndex.Facing(variants, Presentation.Facing)
+        ?? variants.FirstOrDefault();
     foreach (Variant v in variants)
       if (v.Code == wanted || v.Path == wanted)
         return v;
@@ -424,11 +541,17 @@ internal static class Program {
   }
 
   private static int RunTree(string[] args) {
-    (string file, string[] flags) = FileAndFlags(args, "usage: exlib-shapes tree FILE [--group PREFIX]");
+    (string file, string[] flags) = FileAndFlags(
+      args,
+      "usage: exlib-shapes tree FILE [--group PREFIX]"
+    );
     string? group = OptOf(flags, "--group");
     LoadedShape shape = ShapeFile.Load(file);
 
-    Console.WriteLine("textures: " + string.Join(", ", shape.Textures.Select(kv => $"{kv.Key}={kv.Value}")));
+    Console.WriteLine(
+      "textures: "
+        + string.Join(", ", shape.Textures.Select(kv => $"{kv.Key}={kv.Value}"))
+    );
 
     void Walk(Node el) {
       if (group == null || el.Path.StartsWith(group, StringComparison.Ordinal)) {
@@ -438,7 +561,9 @@ internal static class Program {
           : "";
         string tex = string.Join(
           ",",
-          el.Faces.Values.Select(f => f.Texture ?? "").Distinct().OrderBy(t => t, StringComparer.Ordinal)
+          el.Faces.Values.Select(f => f.Texture ?? "")
+            .Distinct()
+            .OrderBy(t => t, StringComparer.Ordinal)
         );
         Console.WriteLine(
           $"{new string(' ', depth * 2)}{el.Name} ({G(el.From.X)},{G(el.From.Y)},{G(el.From.Z)})"
@@ -458,11 +583,16 @@ internal static class Program {
     return 0;
   }
 
-  private static string G(double v) => v.ToString("G6", CultureInfo.InvariantCulture);
+  private static string G(double v) =>
+    v.ToString("G6", CultureInfo.InvariantCulture);
 
   // One leaf element's world-space axis-aligned bounds, path to (lo, hi).
-  private static Dictionary<string, (Vector3 Lo, Vector3 Hi)> ElementBoxes(LoadedShape shape) {
-    Dictionary<string, System.Numerics.Matrix4x4> mats = Geometry.WorldMatrices(shape);
+  private static Dictionary<string, (Vector3 Lo, Vector3 Hi)> ElementBoxes(
+    LoadedShape shape
+  ) {
+    Dictionary<string, System.Numerics.Matrix4x4> mats = Geometry.WorldMatrices(
+      shape
+    );
     var result = new Dictionary<string, (Vector3, Vector3)>();
     foreach (Node leaf in shape.Leaves()) {
       Vector3[] corners = Geometry.Corners(mats[leaf.Path], (Vector3)leaf.Size);
@@ -472,10 +602,22 @@ internal static class Program {
   }
 
   // The shared volume of two axis-aligned boxes, 0 when they do not overlap on some axis.
-  private static double OverlapVolume((Vector3 Lo, Vector3 Hi) a, (Vector3 Lo, Vector3 Hi) b) {
-    double ox = Math.Max(0, Math.Min(a.Hi.X, b.Hi.X) - Math.Max(a.Lo.X, b.Lo.X));
-    double oy = Math.Max(0, Math.Min(a.Hi.Y, b.Hi.Y) - Math.Max(a.Lo.Y, b.Lo.Y));
-    double oz = Math.Max(0, Math.Min(a.Hi.Z, b.Hi.Z) - Math.Max(a.Lo.Z, b.Lo.Z));
+  private static double OverlapVolume(
+    (Vector3 Lo, Vector3 Hi) a,
+    (Vector3 Lo, Vector3 Hi) b
+  ) {
+    double ox = Math.Max(
+      0,
+      Math.Min(a.Hi.X, b.Hi.X) - Math.Max(a.Lo.X, b.Lo.X)
+    );
+    double oy = Math.Max(
+      0,
+      Math.Min(a.Hi.Y, b.Hi.Y) - Math.Max(a.Lo.Y, b.Lo.Y)
+    );
+    double oz = Math.Max(
+      0,
+      Math.Min(a.Hi.Z, b.Hi.Z) - Math.Max(a.Lo.Z, b.Lo.Z)
+    );
     return ox * oy * oz;
   }
 
@@ -490,14 +632,20 @@ internal static class Program {
     LoadedShape shape = ShapeFile.Load(file);
     Dictionary<string, (Vector3 Lo, Vector3 Hi)> boxes = ElementBoxes(shape);
     if (group != null)
-      boxes = boxes.Where(kv => kv.Key.StartsWith(group, StringComparison.Ordinal)).ToDictionary(kv => kv.Key, kv => kv.Value);
+      boxes = boxes
+        .Where(kv => kv.Key.StartsWith(group, StringComparison.Ordinal))
+        .ToDictionary(kv => kv.Key, kv => kv.Value);
     if (boxes.Count == 0) {
       Console.WriteLine("no elements");
       return 1;
     }
 
-    Vector3 lo = boxes.Values.Select(b => b.Lo).Aggregate((a, b) => Vector3.Min(a, b));
-    Vector3 hi = boxes.Values.Select(b => b.Hi).Aggregate((a, b) => Vector3.Max(a, b));
+    Vector3 lo = boxes
+      .Values.Select(b => b.Lo)
+      .Aggregate((a, b) => Vector3.Min(a, b));
+    Vector3 hi = boxes
+      .Values.Select(b => b.Hi)
+      .Aggregate((a, b) => Vector3.Max(a, b));
     Console.WriteLine($"leaf cubes: {boxes.Count}");
     Console.WriteLine(
       $"extents x {F2(lo.X)}..{F2(hi.X)}  y {F2(lo.Y)}..{F2(hi.Y)}  z {F2(lo.Z)}..{F2(hi.Z)}  "
@@ -509,19 +657,37 @@ internal static class Program {
       string g = p.Split('/')[0];
       groups[g] = groups.GetValueOrDefault(g) + 1;
     }
-    Console.WriteLine("per top-level group: " + string.Join(", ", groups.Select(kv => $"{kv.Key}={kv.Value}")));
+    Console.WriteLine(
+      "per top-level group: "
+        + string.Join(", ", groups.Select(kv => $"{kv.Key}={kv.Value}"))
+    );
 
     if (cellsArg != null)
-      foreach (string cellStr in cellsArg.Split(';', StringSplitOptions.RemoveEmptyEntries)) {
-        int[] c = [.. cellStr.Split(',').Select(v => int.Parse(v, CultureInfo.InvariantCulture))];
+      foreach (
+        string cellStr in cellsArg.Split(
+          ';',
+          StringSplitOptions.RemoveEmptyEntries
+        )
+      ) {
+        int[] c =
+        [
+          .. cellStr
+            .Split(',')
+            .Select(v => int.Parse(v, CultureInfo.InvariantCulture)),
+        ];
         Vector3 clo = new Vector3(c[0], c[1], c[2]) * 16;
         Vector3 chi = clo + new Vector3(16);
         double vol = boxes.Values.Sum(b => OverlapVolume(b, (clo, chi)));
-        Console.WriteLine($"cell ({c[0]},{c[1]},{c[2]}): {F1(100 * vol / 4096)}% of volume covered by element boxes");
+        Console.WriteLine(
+          $"cell ({c[0]},{c[1]},{c[2]}): {F1(100 * vol / 4096)}% of volume covered by element boxes"
+        );
       }
     return 0;
   }
 
-  private static string F2(double v) => v.ToString("F2", CultureInfo.InvariantCulture);
-  private static string F1(double v) => v.ToString("F1", CultureInfo.InvariantCulture);
+  private static string F2(double v) =>
+    v.ToString("F2", CultureInfo.InvariantCulture);
+
+  private static string F1(double v) =>
+    v.ToString("F1", CultureInfo.InvariantCulture);
 }

@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Xunit;
 using Newtonsoft.Json.Linq;
+using Xunit;
 
 namespace ExpandedLib.Shapes.Tests;
 
@@ -21,7 +21,10 @@ public class SelectiveElementsTests {
     """;
 
   private static string Write() {
-    string path = Path.Combine(Path.GetTempPath(), $"selective-{Guid.NewGuid():N}.json");
+    string path = Path.Combine(
+      Path.GetTempPath(),
+      $"selective-{Guid.NewGuid():N}.json"
+    );
     File.WriteAllText(path, Shape);
     return path;
   }

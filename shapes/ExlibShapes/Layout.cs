@@ -12,7 +12,8 @@ namespace ExpandedLib.Shapes;
 public sealed class LayoutError : Exception {
   /// <summary>Wraps <paramref name="message"/> naming the file and which of the two the file
   /// carries neither of.</summary>
-  public LayoutError(string message) : base(message) { }
+  public LayoutError(string message)
+    : base(message) { }
 }
 
 /// <summary>One structure cell: a grid offset and the number its selector resolves through
@@ -112,7 +113,9 @@ public sealed class Layout {
 
     if (structure == null) {
       if (fillers.Count == 0)
-        throw new LayoutError($"{path}: no attributes.multiblockStructure and no fillerOffsets");
+        throw new LayoutError(
+          $"{path}: no attributes.multiblockStructure and no fillerOffsets"
+        );
       return new Layout(
         [],
         new Dictionary<int, string>(),
@@ -133,15 +136,16 @@ public sealed class Layout {
     var cells = new List<Cell>();
     if (structure["offsets"] is JArray offsets)
       foreach (JToken o in offsets)
-        cells.Add(new Cell((int)o["x"]!, (int)o["y"]!, (int)o["z"]!, (int)o["w"]!));
+        cells.Add(
+          new Cell((int)o["x"]!, (int)o["y"]!, (int)o["z"]!, (int)o["w"]!)
+        );
 
     var facings = new Dictionary<string, IReadOnlyList<int>>();
     if (attrs?["multiblockFacings"] is JObject facingsJson)
       foreach (JProperty prop in facingsJson.Properties())
-        facings[prop.Name] =
-          prop.Value is JArray segArray
-            ? [.. segArray.Select(t => (int)t)]
-            : [(int)prop.Value!];
+        facings[prop.Name] = prop.Value is JArray segArray
+          ? [.. segArray.Select(t => (int)t)]
+          : [(int)prop.Value!];
 
     var connectors = new Dictionary<string, IReadOnlyList<Offset>>();
     if (attrs?["multiblockConnectors"] is JObject connectorsJson)
@@ -153,7 +157,16 @@ public sealed class Layout {
       foreach (JProperty prop in rolesJson.Properties())
         roles[prop.Name] = ReadOffsets((JArray)prop.Value!);
 
-    return new Layout(cells, numbers, fillers, facings, connectors, roles, default, PrincipalOf(path, raw, variant));
+    return new Layout(
+      cells,
+      numbers,
+      fillers,
+      facings,
+      connectors,
+      roles,
+      default,
+      PrincipalOf(path, raw, variant)
+    );
   }
 
   // The file's own top-level attributesByType entry (a sibling of "attributes", the same
@@ -163,7 +176,11 @@ public sealed class Layout {
   // flywheel's normal/large sizes); else attributes.fillerOffsets. Checked in that order, matching
   // the game's own <key>ByType convention, where a matching ByType entry REPLACES the plain key
   // for that variant rather than being a fallback for it.
-  private static List<Offset> ReadFillerOffsets(JObject? attrs, JObject raw, string? variant) {
+  private static List<Offset> ReadFillerOffsets(
+    JObject? attrs,
+    JObject raw,
+    string? variant
+  ) {
     if (raw["attributesByType"] is JObject byType) {
       JProperty? chosen = null;
       foreach (JProperty prop in byType.Properties()) {
@@ -196,7 +213,9 @@ public sealed class Layout {
       return null;
     if (variant != null)
       return $"{domain}:{variant}";
-    return raw["variantgroups"] is JArray ? $"{domain}:{code}*" : $"{domain}:{code}";
+    return raw["variantgroups"] is JArray
+      ? $"{domain}:{code}*"
+      : $"{domain}:{code}";
   }
 
   // <...>/<domain>/blocktypes/**/<file>.json - the asset domain every code in that file carries.
@@ -209,7 +228,13 @@ public sealed class Layout {
   }
 
   private static List<Offset> ReadOffsets(JArray array) =>
-    [.. array.Select(o => new Offset((int)o["x"]!, (int)o["y"]!, (int)o["z"]!))];
+    [
+      .. array.Select(o => new Offset(
+        (int)o["x"]!,
+        (int)o["y"]!,
+        (int)o["z"]!
+      )),
+    ];
 
   /// <summary>
   /// This layout turned by <paramref name="angle"/> (0, 90, 180 or 270): every cell, filler,
@@ -224,14 +249,21 @@ public sealed class Layout {
   /// </para>
   /// </summary>
   public Layout Rotated(int angle) {
-    List<Cell> cells = [.. Cells.Select(c => {
-      Offset o = RotateOffset(new Offset(c.X, c.Y, c.Z), angle);
-      return new Cell(o.X, o.Y, o.Z, c.Number);
-    })];
+    List<Cell> cells =
+    [
+      .. Cells.Select(c =>
+      {
+        Offset o = RotateOffset(new Offset(c.X, c.Y, c.Z), angle);
+        return new Cell(o.X, o.Y, o.Z, c.Number);
+      }),
+    ];
     List<Offset> fillers = [.. Fillers.Select(o => RotateOffset(o, angle))];
     var connectors = new Dictionary<string, IReadOnlyList<Offset>>();
     foreach ((string side, IReadOnlyList<Offset> offsets) in Connectors)
-      connectors[RotateSideWord(side, angle)] = [.. offsets.Select(o => RotateOffset(o, angle))];
+      connectors[RotateSideWord(side, angle)] =
+      [
+        .. offsets.Select(o => RotateOffset(o, angle)),
+      ];
     var roles = new Dictionary<string, IReadOnlyList<Offset>>();
     foreach ((string name, IReadOnlyList<Offset> offsets) in Roles)
       roles[name] = [.. offsets.Select(o => RotateOffset(o, angle))];
@@ -247,7 +279,16 @@ public sealed class Layout {
       facings[newSelector] = segments;
     }
 
-    return new Layout(cells, numbers, fillers, facings, connectors, roles, Anchor, Principal);
+    return new Layout(
+      cells,
+      numbers,
+      fillers,
+      facings,
+      connectors,
+      roles,
+      Anchor,
+      Principal
+    );
   }
 
   /// <summary>(lo, hi), inclusive, over every cell and filler offset - a filler-only megablock has
@@ -256,15 +297,23 @@ public sealed class Layout {
     List<int> xs = [.. Cells.Select(c => c.X), .. Fillers.Select(f => f.X)];
     List<int> ys = [.. Cells.Select(c => c.Y), .. Fillers.Select(f => f.Y)];
     List<int> zs = [.. Cells.Select(c => c.Z), .. Fillers.Select(f => f.Z)];
-    return (new Offset(xs.Min(), ys.Min(), zs.Min()), new Offset(xs.Max(), ys.Max(), zs.Max()));
+    return (
+      new Offset(xs.Min(), ys.Min(), zs.Min()),
+      new Offset(xs.Max(), ys.Max(), zs.Max())
+    );
   }
 
   /// <summary>Every distinct Y layer among <see cref="Cells"/> and <see cref="Fillers"/>, ascending
   /// - a filler-only megablock has no <see cref="Cells"/> at all, so its layers come from
   /// <see cref="Fillers"/> alone.</summary>
-  public IReadOnlyList<int> Layers() => [
-    .. Cells.Select(c => c.Y).Concat(Fillers.Select(f => f.Y)).Distinct().OrderBy(y => y),
-  ];
+  public IReadOnlyList<int> Layers() =>
+    [
+      .. Cells
+        .Select(c => c.Y)
+        .Concat(Fillers.Select(f => f.Y))
+        .Distinct()
+        .OrderBy(y => y),
+    ];
 
   // ExOrientation.RotateOffset: (x, z) turns 90:(z,-x) 180:(-x,-z) 270:(-z,x); y is untouched.
   internal static Offset RotateOffset(Offset offset, int angle) {
@@ -279,20 +328,30 @@ public sealed class Layout {
     return new Offset(dx, offset.Y, dz);
   }
 
-  private static readonly Dictionary<string, int> AngleFromSide = new(StringComparer.Ordinal) {
-    ["north"] = 0, ["n"] = 0,
-    ["west"] = 90, ["w"] = 90,
-    ["south"] = 180, ["s"] = 180,
-    ["east"] = 270, ["e"] = 270,
+  private static readonly Dictionary<string, int> AngleFromSide = new(
+    StringComparer.Ordinal
+  ) {
+    ["north"] = 0,
+    ["n"] = 0,
+    ["west"] = 90,
+    ["w"] = 90,
+    ["south"] = 180,
+    ["s"] = 180,
+    ["east"] = 270,
+    ["e"] = 270,
   };
-  private static readonly Dictionary<int, (string Word, string Letter)> SideFromAngle = new() {
+  private static readonly Dictionary<
+    int,
+    (string Word, string Letter)
+  > SideFromAngle = new() {
     [0] = ("north", "n"),
     [90] = ("west", "w"),
     [180] = ("south", "s"),
     [270] = ("east", "e"),
   };
 
-  private static bool IsHorizontalSideWord(string token) => AngleFromSide.ContainsKey(token);
+  private static bool IsHorizontalSideWord(string token) =>
+    AngleFromSide.ContainsKey(token);
 
   private static string SideFromAngleValue(int angle, bool asLetter) {
     (string word, string letter) = SideFromAngle[((angle % 360) + 360) % 360];
@@ -308,14 +367,27 @@ public sealed class Layout {
     return SideFromAngleValue(AngleFromSide[side] + angle, asLetter);
   }
 
-  private static readonly HashSet<string> AxisPairs = ["ns", "sn", "we", "ew", "ud", "du"];
+  private static readonly HashSet<string> AxisPairs =
+  [
+    "ns",
+    "sn",
+    "we",
+    "ew",
+    "ud",
+    "du",
+  ];
   private static readonly Dictionary<char, char> AxisOf = new() {
-    ['n'] = 'n', ['s'] = 'n',
-    ['w'] = 'w', ['e'] = 'w',
-    ['u'] = 'u', ['d'] = 'u',
+    ['n'] = 'n',
+    ['s'] = 'n',
+    ['w'] = 'w',
+    ['e'] = 'w',
+    ['u'] = 'u',
+    ['d'] = 'u',
   };
   private static readonly Dictionary<char, string> CanonicalPair = new() {
-    ['n'] = "ns", ['w'] = "we", ['u'] = "ud",
+    ['n'] = "ns",
+    ['w'] = "we",
+    ['u'] = "ud",
   };
 
   // ExOrientation.IsOrientationToken: a single side, up/down/u/d, or a concatenation of whole axis
@@ -340,7 +412,9 @@ public sealed class Layout {
   }
 
   private static char RotateLetter(char direction, int angle) =>
-    direction is 'u' or 'd' ? direction : RotateSideWord(direction.ToString(), angle)[0];
+    direction is 'u' or 'd'
+      ? direction
+      : RotateSideWord(direction.ToString(), angle)[0];
 
   // ExOrientation.RotateOrientationToken: a network node's multi-direction token rotates letter by
   // letter and comes back in canonical axis order (ns, we, ud), discarding direction; a single side
@@ -348,14 +422,20 @@ public sealed class Layout {
   internal static string RotateOrientationToken(string token, int angle) {
     if (!IsOrientationToken(token))
       return token;
-    if (token.Length > 1 && !IsHorizontalSideWord(token) && token is not ("up" or "down")) {
+    if (
+      token.Length > 1
+      && !IsHorizontalSideWord(token)
+      && token is not ("up" or "down")
+    ) {
       var axes = new List<char>();
       foreach (char c in token) {
         char axis = AxisOf[RotateLetter(c, angle)];
         if (!axes.Contains(axis))
           axes.Add(axis);
       }
-      return string.Concat("nwu".Where(axes.Contains).Select(axis => CanonicalPair[axis]));
+      return string.Concat(
+        "nwu".Where(axes.Contains).Select(axis => CanonicalPair[axis])
+      );
     }
     return RotateSideWord(token, angle);
   }
@@ -363,14 +443,22 @@ public sealed class Layout {
   // MultiblockFacings.RotateSegments: swaps every listed dash-segment of `path` (domain stripped)
   // for its rotated orientation token; null when a segment is out of range or not an orientation
   // token, so the caller keeps the authored selector.
-  internal static string? RotateSegments(string path, IReadOnlyList<int> segments, int angle) {
+  internal static string? RotateSegments(
+    string path,
+    IReadOnlyList<int> segments,
+    int angle
+  ) {
     int colon = path.IndexOf(':');
     string domain = colon >= 0 ? path[..colon] : "";
     string rest = colon >= 0 ? path[(colon + 1)..] : path;
     string prefix = colon >= 0 ? domain + ":" : "";
     string[] parts = rest.Split('-');
     foreach (int segment in segments)
-      if (segment < 0 || segment >= parts.Length || !IsOrientationToken(parts[segment]))
+      if (
+        segment < 0
+        || segment >= parts.Length
+        || !IsOrientationToken(parts[segment])
+      )
         return null;
     foreach (int segment in segments)
       parts[segment] = RotateOrientationToken(parts[segment], angle);

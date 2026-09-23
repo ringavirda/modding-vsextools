@@ -43,9 +43,16 @@ public sealed class TextureRoots {
   /// <see cref="GameInstall.Resolve"/> lazily, the first time a texture reference actually needs
   /// <see cref="GamePath"/>.
   /// </summary>
-  public static TextureRoots Build(string? game, string? repo, string? shapePath) {
+  public static TextureRoots Build(
+    string? game,
+    string? repo,
+    string? shapePath
+  ) {
     string repoPath = repo ?? FindRepoRoot(shapePath);
-    return new TextureRoots(new Lazy<string>(() => GameInstall.Resolve(game)), repoPath);
+    return new TextureRoots(
+      new Lazy<string>(() => GameInstall.Resolve(game)),
+      repoPath
+    );
   }
 
   // A subtree can carry a .game of its own, so .game alone marks a root only when no ancestor holds
@@ -53,7 +60,8 @@ public sealed class TextureRoots {
   private static string FindRepoRoot(string? shapePath) {
     string start =
       shapePath != null
-        ? Path.GetDirectoryName(Path.GetFullPath(shapePath)) ?? Directory.GetCurrentDirectory()
+        ? Path.GetDirectoryName(Path.GetFullPath(shapePath))
+          ?? Directory.GetCurrentDirectory()
         : Directory.GetCurrentDirectory();
     for (DirectoryInfo? dir = new(start); dir != null; dir = dir.Parent)
       if (
@@ -97,7 +105,11 @@ public static class Textures {
   /// A path missing its <c>.png</c> extension has one appended before the existence check, the
   /// same convenience Model Creator's own <c>texturePath</c> field allows.
   /// </summary>
-  public static string? Resolve(string value, string? shapePath, TextureRoots roots) {
+  public static string? Resolve(
+    string value,
+    string? shapePath,
+    TextureRoots roots
+  ) {
     string v = value.Replace('\\', '/');
 
     Match wsl = WslPath.Match(v);
@@ -115,11 +127,15 @@ public static class Textures {
       string name = domain.Groups[1].Value;
       string rel = domain.Groups[2].Value;
       if (name == "game")
-        return Png(Path.Combine(roots.GamePath, "assets", "survival", "textures", rel));
+        return Png(
+          Path.Combine(roots.GamePath, "assets", "survival", "textures", rel)
+        );
       if (roots.RepoPath == null)
         return null;
       foreach (string tree in new[] { "mods", "" })
-        foreach (string texturesDir in DomainTextureDirs(roots.RepoPath, tree, name)) {
+        foreach (
+          string texturesDir in DomainTextureDirs(roots.RepoPath, tree, name)
+        ) {
           string? hit = Png(Path.Combine(texturesDir, rel));
           if (hit != null)
             return hit;
@@ -127,18 +143,26 @@ public static class Textures {
       return null;
     }
 
-    return Png(Path.Combine(roots.GamePath, "assets", "survival", "textures", v));
+    return Png(
+      Path.Combine(roots.GamePath, "assets", "survival", "textures", v)
+    );
   }
 
   // <repo>/<treeRoot>/*/assets/<domain>/textures (<repo>/*/... for an empty treeRoot), in
   // directory-name order - the same tie-break "last loaded wins" would use if two mods shipped the
   // same domain, made deterministic here since only the first hit is taken.
-  private static IEnumerable<string> DomainTextureDirs(string repo, string treeRoot, string domain) {
+  private static IEnumerable<string> DomainTextureDirs(
+    string repo,
+    string treeRoot,
+    string domain
+  ) {
     string parent = Path.Combine(repo, treeRoot);
     if (!Directory.Exists(parent))
       yield break;
     foreach (
-      string modDir in Directory.EnumerateDirectories(parent).OrderBy(d => d, StringComparer.Ordinal)
+      string modDir in Directory
+        .EnumerateDirectories(parent)
+        .OrderBy(d => d, StringComparer.Ordinal)
     ) {
       string textures = Path.Combine(modDir, "assets", domain, "textures");
       if (Directory.Exists(textures))
@@ -163,7 +187,8 @@ public static class Textures {
 /// <param name="Overlays">Value strings painted over <paramref name="Base"/>, first to last.</param>
 public sealed record TextureRef(string Base, IReadOnlyList<string> Overlays) {
   /// <summary>An assignment of <paramref name="value"/> alone, with nothing over it.</summary>
-  public TextureRef(string value) : this(value, []) { }
+  public TextureRef(string value)
+    : this(value, []) { }
 
   /// <summary>Whether the block names no texture for this key, which paints the face with the
   /// placeholder.</summary>
@@ -201,7 +226,10 @@ public sealed class TextureSet {
   /// <summary>Texture keys that could not be resolved to a real file.</summary>
   public IReadOnlySet<string> Missing { get; }
 
-  private TextureSet(Dictionary<string, byte[,,]> arrays, HashSet<string> missing) {
+  private TextureSet(
+    Dictionary<string, byte[,,]> arrays,
+    HashSet<string> missing
+  ) {
     _arrays = arrays;
     Missing = missing;
   }
@@ -273,11 +301,14 @@ public sealed class TextureSet {
     var result = new byte[h, w, 4];
     for (int y = 0; y < h; y++)
       for (int x = 0; x < w; x++) {
-        int uy = y * under.GetLength(0) / h, ux = x * under.GetLength(1) / w;
-        int oy = y * over.GetLength(0) / h, ox = x * over.GetLength(1) / w;
+        int uy = y * under.GetLength(0) / h,
+          ux = x * under.GetLength(1) / w;
+        int oy = y * over.GetLength(0) / h,
+          ox = x * over.GetLength(1) / w;
         double alpha = over[oy, ox, 3] / 255.0;
         for (int c = 0; c < 3; c++)
-          result[y, x, c] = (byte)Math.Round(over[oy, ox, c] * alpha + under[uy, ux, c] * (1 - alpha));
+          result[y, x, c] = (byte)
+            Math.Round(over[oy, ox, c] * alpha + under[uy, ux, c] * (1 - alpha));
         result[y, x, 3] = (byte)Math.Max(under[uy, ux, 3], over[oy, ox, 3]);
       }
     return result;
@@ -285,16 +316,27 @@ public sealed class TextureSet {
 
   /// <summary>The decoded <c>[height, width, 4]</c> RGBA array for <paramref name="key"/>, or
   /// <see cref="MissingImage"/> when the key is not in this set at all.</summary>
-  public byte[,,] Get(string key) => _arrays.TryGetValue(key, out byte[,,]? v) ? v : MissingImage;
+  public byte[,,] Get(string key) =>
+    _arrays.TryGetValue(key, out byte[,,]? v) ? v : MissingImage;
 
   private static byte[,,] Decode(string path) {
-    using SKCodec codec = SKCodec.Create(path) ?? throw new IOException($"{path}: not a decodable image");
+    using SKCodec codec =
+      SKCodec.Create(path)
+      ?? throw new IOException($"{path}: not a decodable image");
     // Decoded straight into unpremultiplied RGBA: SKBitmap.Decode defaults to premultiplied
     // alpha, which darkens every partially transparent texel.
-    var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
+    var info = new SKImageInfo(
+      codec.Info.Width,
+      codec.Info.Height,
+      SKColorType.Rgba8888,
+      SKAlphaType.Unpremul
+    );
     using SKBitmap rgba = new(info);
     SKCodecResult result = codec.GetPixels(info, rgba.GetPixels());
-    if (result != SKCodecResult.Success && result != SKCodecResult.IncompleteInput)
+    if (
+      result != SKCodecResult.Success
+      && result != SKCodecResult.IncompleteInput
+    )
       throw new IOException($"{path}: cannot decode to RGBA ({result})");
     int w = rgba.Width;
     int h = rgba.Height;

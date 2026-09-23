@@ -1,7 +1,7 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 
@@ -37,7 +37,11 @@ public static class SelectiveElements {
   /// <summary>The JSON element tree with every element the patterns do not name left out; a child
   /// is checked under its parent's path, so a kept parent still loses the children no pattern
   /// names.</summary>
-  public static JArray Prune(JArray elements, IReadOnlyList<string> patterns, string prefix = "") {
+  public static JArray Prune(
+    JArray elements,
+    IReadOnlyList<string> patterns,
+    string prefix = ""
+  ) {
     if (patterns.Count == 0)
       return elements;
     var kept = new JArray();
@@ -57,6 +61,11 @@ public static class SelectiveElements {
 
   // One path segment as a regex, `*` standing for any run of characters.
   private static Regex ToRegex(string segment) =>
-    Cache.GetOrAdd(segment, p =>
-      new Regex("^" + string.Join(".*", p.Split('*').Select(Regex.Escape)) + "$", RegexOptions.CultureInvariant));
+    Cache.GetOrAdd(
+      segment,
+      p => new Regex(
+        "^" + string.Join(".*", p.Split('*').Select(Regex.Escape)) + "$",
+        RegexOptions.CultureInvariant
+      )
+    );
 }

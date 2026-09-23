@@ -11,7 +11,9 @@ namespace ExpandedLib.Shapes.Tests;
 /// reference images. A posed render is covered separately, in PosesTests.</summary>
 public class RendererTests {
   private static LoadedShape UnitCubeShape(string face) {
-    string texturePath = FixturePath.Of("textures/repo/workbench/shapes/wsl-target");
+    string texturePath = FixturePath.Of(
+      "textures/repo/workbench/shapes/wsl-target"
+    );
     string json =
       "{\"textures\": {\"a\": \""
       + texturePath
@@ -27,7 +29,11 @@ public class RendererTests {
     for (int y = 0; y < bmp.Height; y++)
       for (int x = 0; x < bmp.Width; x++) {
         SKColor c = bmp.GetPixel(x, y);
-        if (c.Red != Renderer.Background.Red || c.Green != Renderer.Background.Green || c.Blue != Renderer.Background.Blue)
+        if (
+          c.Red != Renderer.Background.Red
+          || c.Green != Renderer.Background.Green
+          || c.Blue != Renderer.Background.Blue
+        )
           return false;
       }
     return true;
@@ -40,7 +46,11 @@ public class RendererTests {
       var projection = new Renderer.Projection(0, 0, 8, view);
       (double col, double row) = projection.Screen(0, 0, 0);
       // A step straight at an orthographic camera lands on the same pixel.
-      (double stepCol, double stepRow) = projection.Screen(eye.X * 40, eye.Y * 40, eye.Z * 40);
+      (double stepCol, double stepRow) = projection.Screen(
+        eye.X * 40,
+        eye.Y * 40,
+        eye.Z * 40
+      );
       Assert.Equal(col, stepCol, 5);
       Assert.Equal(row, stepRow, 5);
       Assert.Equal(1.0, eye.Length(), 5);
@@ -60,17 +70,39 @@ public class RendererTests {
   [Fact]
   public void Cube_up_face_visible_from_up_and_culled_from_down() {
     LoadedShape shape = UnitCubeShape("up");
-    using SKBitmap upImg = Renderer.Render(shape, Renderer.NamedViews["up"], ppu: 8, grid: false);
-    using SKBitmap downImg = Renderer.Render(shape, Renderer.NamedViews["down"], ppu: 8, grid: false);
+    using SKBitmap upImg = Renderer.Render(
+      shape,
+      Renderer.NamedViews["up"],
+      ppu: 8,
+      grid: false
+    );
+    using SKBitmap downImg = Renderer.Render(
+      shape,
+      Renderer.NamedViews["down"],
+      ppu: 8,
+      grid: false
+    );
     Assert.False(AllBackground(upImg));
     Assert.True(AllBackground(downImg));
   }
 
   [Fact]
   public void Strip_sums_widths() {
-    LoadedShape shape = ShapeFile.Load(FixturePath.Of("items/machined/item-shaped-gearpinion.json"));
-    using SKBitmap img1 = Renderer.Render(shape, Renderer.NamedViews["south"], ppu: 16, grid: false);
-    using SKBitmap img2 = Renderer.Render(shape, Renderer.NamedViews["east"], ppu: 16, grid: false);
+    LoadedShape shape = ShapeFile.Load(
+      FixturePath.Of("items/machined/item-shaped-gearpinion.json")
+    );
+    using SKBitmap img1 = Renderer.Render(
+      shape,
+      Renderer.NamedViews["south"],
+      ppu: 16,
+      grid: false
+    );
+    using SKBitmap img2 = Renderer.Render(
+      shape,
+      Renderer.NamedViews["east"],
+      ppu: 16,
+      grid: false
+    );
     using SKBitmap combined = Renderer.Strip([img1, img2], ["south", "east"]);
     Assert.Equal(img1.Width + img2.Width, combined.Width);
     Assert.Equal(Math.Max(img1.Height, img2.Height), combined.Height);
@@ -98,13 +130,21 @@ public class RendererTests {
   [Theory]
   [MemberData(nameof(ReferenceViews))]
   public void Matches_the_reference_render(string viewName) {
-    LoadedShape shape = ShapeFile.Load(FixturePath.Of("items/machined/item-shaped-gearpinion.json"));
-    using SKBitmap actual = Renderer.Render(shape, Renderer.NamedViews[viewName]);
+    LoadedShape shape = ShapeFile.Load(
+      FixturePath.Of("items/machined/item-shaped-gearpinion.json")
+    );
+    using SKBitmap actual = Renderer.Render(
+      shape,
+      Renderer.NamedViews[viewName]
+    );
     using SKBitmap expected = SKBitmap.Decode(
       FixturePath.Expected($"item-shaped-gearpinion-{viewName}.png")
     );
 
-    string actualPath = System.IO.Path.Combine(ActualDir, $"item-shaped-gearpinion-{viewName}.png");
+    string actualPath = System.IO.Path.Combine(
+      ActualDir,
+      $"item-shaped-gearpinion-{viewName}.png"
+    );
     using (var data = actual.Encode(SKEncodedImageFormat.Png, 100))
     using (var file = System.IO.File.OpenWrite(actualPath))
       data.SaveTo(file);
@@ -117,14 +157,26 @@ public class RendererTests {
     // of the same object. Such a flip changes which surface is drawn, never whether one is: a
     // differing pixel is accepted only when both images hold a surface there, and only on the
     // iso view, up to the measured tie count.
-    SKColor background = new(Renderer.Background.Red, Renderer.Background.Green, Renderer.Background.Blue);
-    int differing = PixelCompare.Differing(expected, actual, background, out int backgroundFlips);
+    SKColor background = new(
+      Renderer.Background.Red,
+      Renderer.Background.Green,
+      Renderer.Background.Blue
+    );
+    int differing = PixelCompare.Differing(
+      expected,
+      actual,
+      background,
+      out int backgroundFlips
+    );
 
     int allowed = viewName == "iso" ? 700 : 0;
     System.Console.WriteLine(
       $"{viewName}: {differing} differing pixel(s) beyond tolerance {PixelCompare.Tolerance}, {backgroundFlips} against the background, {allowed} allowed"
     );
     Assert.Equal(0, backgroundFlips);
-    Assert.True(differing <= allowed, $"{differing} differing pixels exceed the tie allowance of {allowed}");
+    Assert.True(
+      differing <= allowed,
+      $"{differing} differing pixels exceed the tie allowance of {allowed}"
+    );
   }
 }

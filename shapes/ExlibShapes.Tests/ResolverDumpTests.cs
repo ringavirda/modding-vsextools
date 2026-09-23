@@ -20,7 +20,8 @@ namespace ExpandedLib.Shapes.Tests;
 /// </summary>
 public class ResolverDumpTests {
   // Relative to the family workspace's own exmods checkout.
-  private static readonly string[] Goldens = [
+  private static readonly string[] Goldens =
+  [
     "mods/iiex/tests/goldens/iiex/blocktypes/furnace/blastcore.json",
     "mods/iiex/tests/goldens/iiex/blocktypes/furnace/puddlingcore.json",
     "mods/iiex/tests/goldens/iiex/blocktypes/furnace/heatingcore.json",
@@ -36,12 +37,18 @@ public class ResolverDumpTests {
   [SkippableFact]
   public void Resolve_matches_the_reference_representative_for_every_selector_of_every_family_golden() {
     string? exmods = FixturePath.Workspace("exmods");
-    Skip.If(exmods is null, "the sibling exmods (and exlib) checkout is absent");
+    Skip.If(
+      exmods is null,
+      "the sibling exmods (and exlib) checkout is absent"
+    );
     string repo = exmods!;
 
     var sb = new StringBuilder();
     foreach (string rel in Goldens) {
-      string golden = Path.Combine(repo, rel.Replace('/', Path.DirectorySeparatorChar));
+      string golden = Path.Combine(
+        repo,
+        rel.Replace('/', Path.DirectorySeparatorChar)
+      );
       IReadOnlyList<string> roots = BlockIndex.DefaultRoots(golden);
       BlockIndex index = BlockIndex.Build(roots);
       string stem = Path.GetFileNameWithoutExtension(golden);
@@ -50,7 +57,10 @@ public class ResolverDumpTests {
         Layout layout = Layout.Load(golden);
         if (angle != 0)
           layout = layout.Rotated(angle);
-        string connectors = string.Join(',', layout.Connectors.Keys.OrderBy(k => k, System.StringComparer.Ordinal));
+        string connectors = string.Join(
+          ',',
+          layout.Connectors.Keys.OrderBy(k => k, System.StringComparer.Ordinal)
+        );
         sb.AppendLine(
           $"== {stem} angle={angle} cells={layout.Cells.Count} fillers={layout.Fillers.Count} connectors={connectors}"
         );
@@ -59,9 +69,14 @@ public class ResolverDumpTests {
           bool optional = index.Optional(selector);
           ResolvedBlock? block = index.Resolve(selector);
           if (block == null) {
-            sb.AppendLine($"{n} {selector} None optional={FixtureText(optional)}");
+            sb.AppendLine(
+              $"{n} {selector} None optional={FixtureText(optional)}"
+            );
           } else {
-            string? shape = block.ShapePath != null ? Path.GetFileName(block.ShapePath) : null;
+            string? shape =
+              block.ShapePath != null
+                ? Path.GetFileName(block.ShapePath)
+                : null;
             sb.AppendLine(
               $"{n} {selector} {block.Code} shape={shape ?? "None"} "
                 + $"rot=({FixtureText(block.RotateX)},{FixtureText(block.RotateY)},{FixtureText(block.RotateZ)}) optional={FixtureText(optional)}"
@@ -74,9 +89,14 @@ public class ResolverDumpTests {
     // The dump this run produced, beside the binary.
     string actualDir = Path.Combine(System.AppContext.BaseDirectory, "actual");
     Directory.CreateDirectory(actualDir);
-    File.WriteAllText(Path.Combine(actualDir, "resolve-dump.txt"), sb.ToString());
+    File.WriteAllText(
+      Path.Combine(actualDir, "resolve-dump.txt"),
+      sb.ToString()
+    );
 
-    string expected = File.ReadAllText(FixturePath.Expected("schematic/resolve-dump.txt"));
+    string expected = File.ReadAllText(
+      FixturePath.Expected("schematic/resolve-dump.txt")
+    );
     Assert.Equal(Normalize(expected), Normalize(sb.ToString()));
   }
 

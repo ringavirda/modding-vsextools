@@ -16,7 +16,8 @@ namespace ExpandedLib.Shapes.Tests;
 public class TexturesTests {
   private static string Repo => FixturePath.Of("textures/repo");
   private static string Game => Path.Combine(Repo, "game");
-  private static string ShapePath => Path.Combine(Repo, "workbench", "shapes", "synthetic.json");
+  private static string ShapePath =>
+    Path.Combine(Repo, "workbench", "shapes", "synthetic.json");
   private static TextureRoots Roots => TextureRoots.From(Game, Repo);
 
   [Fact]
@@ -29,13 +30,21 @@ public class TexturesTests {
 
   [Fact]
   public void Resolve_a_bare_vanilla_path() {
-    string? hit = Textures.Resolve("block/metal/sheet-plain/iron5", ShapePath, Roots);
+    string? hit = Textures.Resolve(
+      "block/metal/sheet-plain/iron5",
+      ShapePath,
+      Roots
+    );
     Assert.Equal("iron5.png", Path.GetFileName(hit));
   }
 
   [Fact]
   public void Resolve_the_game_domain() {
-    string? hit = Textures.Resolve("game:block/metal/sheet-plain/iron5", ShapePath, Roots);
+    string? hit = Textures.Resolve(
+      "game:block/metal/sheet-plain/iron5",
+      ShapePath,
+      Roots
+    );
     Assert.Equal("iron5.png", Path.GetFileName(hit));
   }
 
@@ -63,7 +72,9 @@ public class TexturesTests {
 
   [Fact]
   public void Texture_set_loads_arrays_and_flags_missing() {
-    LoadedShape shape = ShapeFile.Load(FixturePath.Of("items/machined/item-lathed-cylinder.json"));
+    LoadedShape shape = ShapeFile.Load(
+      FixturePath.Of("items/machined/item-lathed-cylinder.json")
+    );
     // cast-iron1 resolves under the "test" domain the fixture shape carries
     // (fixtures/mods/test/assets/test/textures/materials/cast-iron1.png), not the
     // textures/repo tree the domain-resolution facts above use.
@@ -75,13 +86,19 @@ public class TexturesTests {
 
   [Fact]
   public void An_unresolved_key_gets_the_magenta_placeholder() {
-    LoadedShape shape = ShapeFile.Load(FixturePath.Of("items/machined/item-lathed-cylinder.json"));
+    LoadedShape shape = ShapeFile.Load(
+      FixturePath.Of("items/machined/item-lathed-cylinder.json")
+    );
     // Injects a key into the shape's own textures map that names a texture nothing can resolve,
     // rather than querying a key the shape never had (which only exercises TextureSet.Get's
     // fallback, not ForShape's own Missing bookkeeping).
-    var textures = new Dictionary<string, string>(shape.Textures) { ["ghost"] = "block/no/such/texture" };
+    var textures = new Dictionary<string, string>(shape.Textures) {
+      ["ghost"] = "block/no/such/texture",
+    };
     Shape raw = JsonConvert.DeserializeObject<Shape>(
-      File.ReadAllText(FixturePath.Of("items/machined/item-lathed-cylinder.json"))
+      File.ReadAllText(
+        FixturePath.Of("items/machined/item-lathed-cylinder.json")
+      )
     )!;
     LoadedShape ghosted = ShapeFile.FromRaw(raw, shape.Path, textures);
     TextureRoots roots = TextureRoots.From(Game, Repo);
@@ -91,16 +108,24 @@ public class TexturesTests {
     Assert.Equal(0, ts.Get("ghost")[0, 0, 1]);
     Assert.Equal(255, ts.Get("ghost")[0, 0, 2]);
   }
+
   [Fact]
   public void The_repository_root_outranks_a_nested_game_install() {
-    string root = Path.Combine(Path.GetTempPath(), "exlib-shapes-" + Guid.NewGuid().ToString("N"));
+    string root = Path.Combine(
+      Path.GetTempPath(),
+      "exlib-shapes-" + Guid.NewGuid().ToString("N")
+    );
     string shapeDir = Path.Combine(root, "old", "assets", "old", "shapes");
     Directory.CreateDirectory(shapeDir);
     Directory.CreateDirectory(Path.Combine(root, "old", ".game", ".cache"));
     Directory.CreateDirectory(Path.Combine(root, "mods"));
     File.WriteAllText(Path.Combine(root, ".git"), "gitdir: elsewhere");
     try {
-      TextureRoots roots = TextureRoots.Build(null, null, Path.Combine(shapeDir, "thing.json"));
+      TextureRoots roots = TextureRoots.Build(
+        null,
+        null,
+        Path.Combine(shapeDir, "thing.json")
+      );
       Assert.Equal(root, roots.RepoPath);
     } finally {
       Directory.Delete(root, true);

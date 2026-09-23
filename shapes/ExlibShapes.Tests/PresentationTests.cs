@@ -15,14 +15,17 @@ namespace ExpandedLib.Shapes.Tests;
 /// </summary>
 public class PresentationTests {
   private static string DemoRoot => FixturePath.Of("schematic");
-  private static string Mega => FixturePath.Of("schematic/mods/demo/assets/demo/blocktypes/mega.json");
-  private static string Furnace => FixturePath.Of("schematic/mods/demo/assets/demo/blocktypes/furnace.json");
+  private static string Mega =>
+    FixturePath.Of("schematic/mods/demo/assets/demo/blocktypes/mega.json");
+  private static string Furnace =>
+    FixturePath.Of("schematic/mods/demo/assets/demo/blocktypes/furnace.json");
 
   private static readonly string[] Sides = ["north", "east", "south", "west"];
 
   // The four mods' own blocktype trees, and whether each is the published old side of a code the
   // family also declares.
-  private static readonly (string Tree, bool Legacy)[] StructureTrees = [
+  private static readonly (string Tree, bool Legacy)[] StructureTrees =
+  [
     ("exmods-legacy/smex/assets", true),
     ("exmods-legacy/ppex/assets", true),
     ("exmods/mods/iiex/tests/goldens", false),
@@ -37,7 +40,11 @@ public class PresentationTests {
       "east" => new Offset(1, 0, 0),
       "south" => new Offset(0, 0, 1),
       "west" => new Offset(-1, 0, 0),
-      _ => throw new ArgumentOutOfRangeException(nameof(side), side, "not a horizontal side"),
+      _ => throw new ArgumentOutOfRangeException(
+        nameof(side),
+        side,
+        "not a horizontal side"
+      ),
     };
 
   // How far a point on the ground lies toward the camera a page's main picture is drawn from:
@@ -47,7 +54,8 @@ public class PresentationTests {
     return x * eye.X + z * eye.Z;
   }
 
-  private static double TowardTheCamera(Offset cell) => TowardTheCamera(cell.X, cell.Z);
+  private static double TowardTheCamera(Offset cell) =>
+    TowardTheCamera(cell.X, cell.Z);
 
   // The centre of a layout's footprint, over every cell it reserves.
   private static (double X, double Z) Centre(Layout layout) {
@@ -70,7 +78,11 @@ public class PresentationTests {
     foreach (string side in Sides)
       best = Math.Max(best, TowardTheCamera(Step(Presentation.Front(side)!)));
     Assert.True(best > 0, "no facing presents its front to the camera at all");
-    Assert.Equal(best, TowardTheCamera(Step(Presentation.Front(Presentation.Facing)!)), 5);
+    Assert.Equal(
+      best,
+      TowardTheCamera(Step(Presentation.Front(Presentation.Facing)!)),
+      5
+    );
   }
 
   [Fact]
@@ -86,17 +98,26 @@ public class PresentationTests {
   [Fact]
   public void A_megablock_draws_the_variant_that_reserves_its_body_away_from_the_camera() {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
-    Variant drawn = BlockIndex.Facing(index.VariantsOf(Mega), Presentation.Facing)!;
+    Variant drawn = BlockIndex.Facing(
+      index.VariantsOf(Mega),
+      Presentation.Facing
+    )!;
     Assert.Equal("demo:mega-north", drawn.Code);
     string front = Presentation.FrontOf(drawn)!;
     Assert.Equal("south", front);
-    Assert.True(TowardTheCamera(Step(front)) > 0, $"the {front} side is not the camera's");
+    Assert.True(
+      TowardTheCamera(Step(front)) > 0,
+      $"the {front} side is not the camera's"
+    );
 
     // The body reaches one cell past the principal, so the near end of the picture is the
     // principal's own cell - the front. A half turn either way puts the body in front of it.
     Layout placed = Footprint.Placed(Layout.Load(Mega, drawn.Path), index);
     Offset filler = Assert.Single(placed.Fillers);
-    Assert.True(Along(filler, front) < 0, $"the reserved cell {filler} stands between the body and the camera");
+    Assert.True(
+      Along(filler, front) < 0,
+      $"the reserved cell {filler} stands between the body and the camera"
+    );
   }
 
   [Fact]
@@ -124,7 +145,10 @@ public class PresentationTests {
     Layout kiln = Layout.Load(FixturePath.Of("schematic/kiln.json"));
     Assert.Equal((0, null), Presentation.AnchorTurn(kiln));
 
-    Variant mega = BlockIndex.Facing(index.VariantsOf(Mega), Presentation.Facing)!;
+    Variant mega = BlockIndex.Facing(
+      index.VariantsOf(Mega),
+      Presentation.Facing
+    )!;
     Presentation.Staged staged = Presentation.Stage(kiln, mega);
     Assert.Equal(0, staged.Angle);
     Assert.Equal(Presentation.FrontOf(mega), staged.Front);
@@ -140,15 +164,26 @@ public class PresentationTests {
     var behind = new List<string>();
     int checkedCount = 0;
     foreach ((string tree, bool legacy) in StructureTrees) {
-      string root = Path.Combine(Path.GetDirectoryName(exmods!)!, tree.Replace('/', Path.DirectorySeparatorChar));
+      string root = Path.Combine(
+        Path.GetDirectoryName(exmods!)!,
+        tree.Replace('/', Path.DirectorySeparatorChar)
+      );
       Skip.If(!Directory.Exists(root), $"{tree} is absent");
-      BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(root), null, legacy);
+      BlockIndex index = BlockIndex.Build(
+        BlockIndex.DefaultRoots(root),
+        null,
+        legacy
+      );
 
       foreach (string file in Structures(root)) {
         IReadOnlyList<Variant> variants = index.VariantsOf(file);
-        Variant? drawn = BlockIndex.Facing(variants, Presentation.Facing) ?? variants.FirstOrDefault();
-        Presentation.Staged staged =
-          Presentation.Stage(Footprint.Placed(Layout.Load(file, drawn?.Path), index), drawn);
+        Variant? drawn =
+          BlockIndex.Facing(variants, Presentation.Facing)
+          ?? variants.FirstOrDefault();
+        Presentation.Staged staged = Presentation.Stage(
+          Footprint.Placed(Layout.Load(file, drawn?.Path), index),
+          drawn
+        );
         (double cx, double cz) = Centre(staged.Layout);
         double anchor = TowardTheCamera(staged.Layout.Anchor);
         double centre = TowardTheCamera(cx, cz);
@@ -164,23 +199,37 @@ public class PresentationTests {
         if (walled)
           behind.Add(code);
         else
-          failures.Add($"{code} turns {staged.Angle}deg and still stands its anchor behind its own centre");
+          failures.Add(
+            $"{code} turns {staged.Angle}deg and still stands its anchor behind its own centre"
+          );
       }
     }
 
     string actualDir = Path.Combine(AppContext.BaseDirectory, "actual");
     Directory.CreateDirectory(actualDir);
-    File.WriteAllText(Path.Combine(actualDir, "structure-fronts.txt"), report.ToString());
+    File.WriteAllText(
+      Path.Combine(actualDir, "structure-fronts.txt"),
+      report.ToString()
+    );
 
-    Assert.True(checkedCount >= 16, $"only {checkedCount} structures were reached");
+    Assert.True(
+      checkedCount >= 16,
+      $"only {checkedCount} structures were reached"
+    );
     Assert.True(failures.Count == 0, string.Join("\n", failures));
-    Assert.Equal<IEnumerable<string>>(AnchorBehind, [.. behind.OrderBy(c => c, StringComparer.Ordinal)]);
+    Assert.Equal<IEnumerable<string>>(
+      AnchorBehind,
+      [.. behind.OrderBy(c => c, StringComparer.Ordinal)]
+    );
   }
 
   // The one structure whose starter block is walled in on both axes and whose body then leans
   // toward the camera: no turn puts that block in front of its own footprint, so the drawing keeps
   // the variant's own facing. Every other structure stands its starter block nearest the camera.
-  private static readonly string[] AnchorBehind = ["iiex:furnace-cupolacore-tier1-n"];
+  private static readonly string[] AnchorBehind =
+  [
+    "iiex:furnace-cupolacore-tier1-n",
+  ];
 
   // Every blocktype file under `root` that carries a structure table.
   private static IEnumerable<string> Structures(string root) {
@@ -203,47 +252,82 @@ public class PresentationTests {
 
   [SkippableFact]
   public void The_iiex_cornish_boiler_takes_its_front_from_the_frame_that_places_its_cells() {
-    string? file = FixturePath.Workspace("exmods/mods/iiex/tests/goldens/iiex/blocktypes/boiler/cornish.json");
+    string? file = FixturePath.Workspace(
+      "exmods/mods/iiex/tests/goldens/iiex/blocktypes/boiler/cornish.json"
+    );
     Skip.If(file is null, "the sibling exmods checkout is absent");
     BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(file!));
-    Variant drawn = BlockIndex.Facing(index.VariantsOf(file!), Presentation.Facing)!;
+    Variant drawn = BlockIndex.Facing(
+      index.VariantsOf(file!),
+      Presentation.Facing
+    )!;
     Assert.Equal("iiex:boilercornish-n-boilerplate", drawn.Code);
 
     // BlockBoiler's own half turn lands in the frame fit, not in the facing: the facing convention
     // alone answers south while the cells it places run the other way.
     Layout placed = Footprint.Placed(Layout.Load(file!, drawn.Path), index);
     Assert.Equal("south", Presentation.FrontOf(drawn));
-    Assert.All(placed.Fillers, f => Assert.True(f.Z >= 0, $"the body reaches {f}, south of the anchor"));
+    Assert.All(
+      placed.Fillers,
+      f => Assert.True(f.Z >= 0, $"the body reaches {f}, south of the anchor")
+    );
 
     Presentation.Staged staged = Presentation.Stage(placed, drawn);
     Assert.Equal(180, staged.Angle);
     Assert.Equal("south", staged.Front);
     // Drawn that way round the body lies wholly behind the firebox end, which is the picture.
-    Assert.All(staged.Layout.Fillers, f => Assert.True(f.Z <= 0, $"the body reaches {f}, in front of the anchor"));
+    Assert.All(
+      staged.Layout.Fillers,
+      f =>
+        Assert.True(f.Z <= 0, $"the body reaches {f}, in front of the anchor")
+    );
   }
 
   [SkippableFact]
   public void The_cornish_boiler_draws_its_firebox_toward_the_camera() {
-    string? file = FixturePath.Workspace("exmods-legacy/ppex/assets/ppex/blocktypes/boiler/cornish.json");
+    string? file = FixturePath.Workspace(
+      "exmods-legacy/ppex/assets/ppex/blocktypes/boiler/cornish.json"
+    );
     Skip.If(file is null, "the sibling exmods-legacy checkout is absent");
-    BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(file!), null, BlockIndex.UnderLegacyTree(file!));
-    Variant drawn = BlockIndex.Facing(index.VariantsOf(file!), Presentation.Facing)!;
+    BlockIndex index = BlockIndex.Build(
+      BlockIndex.DefaultRoots(file!),
+      null,
+      BlockIndex.UnderLegacyTree(file!)
+    );
+    Variant drawn = BlockIndex.Facing(
+      index.VariantsOf(file!),
+      Presentation.Facing
+    )!;
     Assert.Equal("ppex:boilercornish-north", drawn.Code);
     string front = Presentation.FrontOf(drawn)!;
-    Assert.True(TowardTheCamera(Step(front)) > 0, $"the {front} side is not the camera's");
+    Assert.True(
+      TowardTheCamera(Step(front)) > 0,
+      $"the {front} side is not the camera's"
+    );
 
     // fuelOffset names the firebox cell in the frame the file declares; the drawing turns that
     // frame onto the drawn mesh, which is the half turn BlockBoiler makes in C#.
     Layout layout = Layout.Load(file!, drawn.Path);
     JToken fuel = drawn.Raw["attributes"]!["fuelOffset"]!;
-    var declared = new Offset((int)fuel["x"]!, (int)fuel["y"]!, (int)fuel["z"]!);
-    Offset firebox = Layout.RotateOffset(declared, Footprint.FrameAngle(layout, index));
+    var declared = new Offset(
+      (int)fuel["x"]!,
+      (int)fuel["y"]!,
+      (int)fuel["z"]!
+    );
+    Offset firebox = Layout.RotateOffset(
+      declared,
+      Footprint.FrameAngle(layout, index)
+    );
 
     // The body lies wholly behind the firebox, so the picture is of the firebox end, not the flue.
     Layout placed = Footprint.Placed(layout, index);
     Assert.All(
       placed.Fillers,
-      f => Assert.True(Along(f, front) < Along(firebox, front), $"the body reaches {f}, past the firebox")
+      f =>
+        Assert.True(
+          Along(f, front) < Along(firebox, front),
+          $"the body reaches {f}, past the firebox"
+        )
     );
   }
 }

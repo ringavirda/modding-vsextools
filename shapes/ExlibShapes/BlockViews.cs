@@ -20,7 +20,15 @@ namespace ExpandedLib.Shapes;
 public static class BlockViews {
   /// <summary>The views a page of a block shows: the isometric one and the five faces a reader can
   /// tell apart (a block's underside is not one of them).</summary>
-  public static readonly string[] DefaultViews = ["iso", "north", "east", "south", "west", "up"];
+  public static readonly string[] DefaultViews =
+  [
+    "iso",
+    "north",
+    "east",
+    "south",
+    "west",
+    "up",
+  ];
 
   // The texture and element prefix of the single block being drawn; nothing else shares the
   // composite, so the name only has to be stable for the manifest to report against.
@@ -30,13 +38,23 @@ public static class BlockViews {
   /// (key to the block's own value string) it references. <paramref name="spin"/> turns the model
   /// about its own cell, the machine standing that way round. <paramref name="selective"/> narrows
   /// the shape entry's own <c>selectiveElements</c> further: an element needs both to draw.</summary>
-  public static (JObject Raw, Dictionary<string, TextureRef> TextureValues) Compose(
+  public static (
+    JObject Raw,
+    Dictionary<string, TextureRef> TextureValues
+  ) Compose(
     ResolvedBlock block,
     int spin = 0,
     IReadOnlyList<string>? selective = null
   ) {
-    (JObject group, Dictionary<string, TextureRef> values) = Schematic.WrappedCell(block, default, Prefix, spin, selective);
-    return (new JObject { ["textures"] = new JObject(), ["elements"] = new JArray(group) }, values);
+    (JObject group, Dictionary<string, TextureRef> values) =
+      Schematic.WrappedCell(block, default, Prefix, spin, selective);
+    return (
+      new JObject {
+        ["textures"] = new JObject(),
+        ["elements"] = new JArray(group),
+      },
+      values
+    );
   }
 
   /// <summary>The drawn model of one variant: the shape every picture of it is rendered from, the
@@ -87,8 +105,14 @@ public static class BlockViews {
     IReadOnlyList<string>? selective = null
   ) {
     ResolvedBlock block =
-      index.Resolve(variant.Code) ?? throw new InvalidOperationException($"{variant.Code}: the index cannot resolve it");
-    (JObject rest, Dictionary<string, TextureRef> textureValues) = Compose(block, selective: selective);
+      index.Resolve(variant.Code)
+      ?? throw new InvalidOperationException(
+        $"{variant.Code}: the index cannot resolve it"
+      );
+    (JObject rest, Dictionary<string, TextureRef> textureValues) = Compose(
+      block,
+      selective: selective
+    );
     LoadedShape atRest = Loaded(rest, block, variant);
 
     Layout? placed = FootprintOf(file, variant, index);
@@ -97,7 +121,9 @@ public static class BlockViews {
     if (placed != null) {
       Presentation.Staged staged = Presentation.Stage(placed, variant);
       (spin, front) = (staged.Angle, staged.Front);
-    } else if (BlockIndex.Facing(index.VariantsOf(file), Presentation.Facing) == null) {
+    } else if (
+        BlockIndex.Facing(index.VariantsOf(file), Presentation.Facing) == null
+      ) {
       // No facing variant to choose between: the family's facing lives in its C#, so the art is
       // what says which side a player looks at.
       (spin, front) = Presentation.DetailTurn(atRest);
@@ -105,13 +131,23 @@ public static class BlockViews {
       (spin, front) = (0, Presentation.FrontOf(variant));
     }
     if (angle is { } wanted) {
-      front = front == null ? null : Layout.RotateSideWord(Layout.RotateSideWord(front, -spin), wanted);
+      front =
+        front == null
+          ? null
+          : Layout.RotateSideWord(Layout.RotateSideWord(front, -spin), wanted);
       spin = wanted;
     }
 
-    Layout? footprint = placed == null || spin == 0 ? placed : placed.Rotated(spin);
-    LoadedShape loaded = spin == 0 ? atRest : Loaded(Compose(block, spin, selective).Raw, block, variant);
-    TextureSet textures = TextureSet.FromResolved(textureValues, index.ResolveTexture);
+    Layout? footprint =
+      placed == null || spin == 0 ? placed : placed.Rotated(spin);
+    LoadedShape loaded =
+      spin == 0
+        ? atRest
+        : Loaded(Compose(block, spin, selective).Raw, block, variant);
+    TextureSet textures = TextureSet.FromResolved(
+      textureValues,
+      index.ResolveTexture
+    );
     IReadOnlyList<string> hidden = [];
     if (!full) {
       JObject clipped = (JObject)Compose(block, spin, selective).Raw;
@@ -119,8 +155,18 @@ public static class BlockViews {
       if (hidden.Count > 0)
         loaded = Loaded(clipped, block, variant);
     }
-    (IReadOnlyList<string> missing, IReadOnlyList<string> unpainted) = TextureLines(block, textureValues, textures);
-    return new Drawing(loaded, textures, footprint, spin, front, hidden, missing, unpainted);
+    (IReadOnlyList<string> missing, IReadOnlyList<string> unpainted) =
+      TextureLines(block, textureValues, textures);
+    return new Drawing(
+      loaded,
+      textures,
+      footprint,
+      spin,
+      front,
+      hidden,
+      missing,
+      unpainted
+    );
   }
 
   /// <summary>
@@ -163,7 +209,10 @@ public static class BlockViews {
     IReadOnlyList<string>? selective = null
   ) {
     ResolvedBlock block =
-      index.Resolve(variant.Code) ?? throw new InvalidOperationException($"{variant.Code}: the index cannot resolve it");
+      index.Resolve(variant.Code)
+      ?? throw new InvalidOperationException(
+        $"{variant.Code}: the index cannot resolve it"
+      );
     Drawing drawn = Draw(file, variant, index, angle, full, selective);
     LoadedShape loaded = drawn.Shape;
     Layout? footprint = drawn.Footprint;
@@ -178,8 +227,13 @@ public static class BlockViews {
       // Back faces are drawn as well as front ones: a boiler's flue openings and a hopper's
       // mouth are hollow, and culled they read as holes cut through to the paper.
       using (
-        SKBitmap image =
-          Renderer.Render(loaded, Renderer.NamedViews[view], ppu: ppu, textures: drawn.Textures, cull: false)
+        SKBitmap image = Renderer.Render(
+          loaded,
+          Renderer.NamedViews[view],
+          ppu: ppu,
+          textures: drawn.Textures,
+          cull: false
+        )
       )
       using (SKData data = image.Encode(SKEncodedImageFormat.Png, 100))
       using (FileStream stream = File.Create(path))
@@ -196,8 +250,12 @@ public static class BlockViews {
     var warnings = new List<string>();
     if (block.ShapePath == null)
       warnings.Add($"{block.Code}: no shape file; drawn as a unit cube");
-    foreach ((string selector, IReadOnlyList<string> spanned) in index.Ambiguities)
-      warnings.Add($"{selector}: ambiguous between {string.Join(", ", spanned)}");
+    foreach (
+      (string selector, IReadOnlyList<string> spanned) in index.Ambiguities
+    )
+      warnings.Add(
+        $"{selector}: ambiguous between {string.Join(", ", spanned)}"
+      );
     warnings.AddRange(index.ParseWarnings);
 
     var manifest = new JObject {
@@ -211,14 +269,20 @@ public static class BlockViews {
       ["unpaintedFaces"] = new JArray(drawn.UnpaintedFaces),
       ["warnings"] = new JArray(warnings),
     };
-    File.WriteAllText(Path.Combine(outDir, $"{stem}.json"), manifest.ToString(Formatting.Indented));
+    File.WriteAllText(
+      Path.Combine(outDir, $"{stem}.json"),
+      manifest.ToString(Formatting.Indented)
+    );
     return manifest;
   }
 
   // The lines the manifest reports a texture with, each sorted and each key once: a value naming a
   // file that is not there, and a face key the blocktype assigns nothing. Compose keys every value
   // `block_<key>`.
-  private static (IReadOnlyList<string> Missing, IReadOnlyList<string> Unpainted) TextureLines(
+  private static (
+    IReadOnlyList<string> Missing,
+    IReadOnlyList<string> Unpainted
+  ) TextureLines(
     ResolvedBlock block,
     IReadOnlyDictionary<string, TextureRef> textureValues,
     TextureSet textures
@@ -242,7 +306,9 @@ public static class BlockViews {
     if (block.ShapePath == null)
       return new HashSet<string>(StringComparer.Ordinal);
     try {
-      return Poses.AnimatedNames(ShapeFile.Load(block.ShapePath, block.Selective));
+      return Poses.AnimatedNames(
+        ShapeFile.Load(block.ShapePath, block.Selective)
+      );
     } catch (Exception) {
       return new HashSet<string>(StringComparer.Ordinal);
     }
@@ -262,21 +328,28 @@ public static class BlockViews {
   ) {
     if (moving.Count == 0)
       return [];
-    Footprint.Box cells = Footprint.CellBox(footprint == null ? [] : Footprint.Reserved(footprint));
+    Footprint.Box cells = Footprint.CellBox(
+      footprint == null ? [] : Footprint.Reserved(footprint)
+    );
     // Footprint measures in blocks about the block's own centre; the composed model is drawn in
     // shape units, sixteen to a block, from that cell's own corner. Art may stand the overhang
     // proud of its cells before any of it counts as outside.
-    Vector3 lo = (cells.Lo + new Vector3(0.5f - (float)Footprint.Overhang)) * 16;
-    Vector3 hi = (cells.Hi + new Vector3(0.5f + (float)Footprint.Overhang)) * 16;
+    Vector3 lo =
+      (cells.Lo + new Vector3(0.5f - (float)Footprint.Overhang)) * 16;
+    Vector3 hi =
+      (cells.Hi + new Vector3(0.5f + (float)Footprint.Overhang)) * 16;
 
     Dictionary<string, Matrix4x4> mats = Geometry.WorldMatrices(shape);
     var outside = new HashSet<string>(StringComparer.Ordinal);
     foreach (Node element in shape.Walk()) {
       if (!moving.Contains(element.Name))
         continue;
-      double inside = 0, bulk = 0;
+      double inside = 0,
+        bulk = 0;
       foreach (Node leaf in Drawn(element)) {
-        (Vector3 elLo, Vector3 elHi) = Geometry.Aabb(Geometry.Corners(mats[leaf.Path], (Vector3)leaf.Size));
+        (Vector3 elLo, Vector3 elHi) = Geometry.Aabb(
+          Geometry.Corners(mats[leaf.Path], (Vector3)leaf.Size)
+        );
         // A face-thin element has no volume of its own to weigh; every part is taken half a unit
         // thicker on each axis so a plane inside the cells counts as inside them.
         elLo -= new Vector3(0.5f);
@@ -327,22 +400,41 @@ public static class BlockViews {
     (double)(hi.X - lo.X) * (hi.Y - lo.Y) * (hi.Z - lo.Z);
 
   // The volume two boxes share, zero when they miss each other on any axis.
-  private static double Shared(Vector3 aLo, Vector3 aHi, Vector3 bLo, Vector3 bHi) =>
+  private static double Shared(
+    Vector3 aLo,
+    Vector3 aHi,
+    Vector3 bLo,
+    Vector3 bHi
+  ) =>
     (double)Math.Max(0, Math.Min(aHi.X, bHi.X) - Math.Max(aLo.X, bLo.X))
     * Math.Max(0, Math.Min(aHi.Y, bHi.Y) - Math.Max(aLo.Y, bLo.Y))
     * Math.Max(0, Math.Min(aHi.Z, bHi.Z) - Math.Max(aLo.Z, bLo.Z));
 
   // The composed model as a shape the renderer draws, named for the block it came from.
-  private static LoadedShape Loaded(JObject raw, ResolvedBlock block, Variant variant) {
+  private static LoadedShape Loaded(
+    JObject raw,
+    ResolvedBlock block,
+    Variant variant
+  ) {
     Shape shape =
       JsonConvert.DeserializeObject<Shape>(raw.ToString())
-      ?? throw new JsonException($"{variant.Code}: the composed block shape failed to parse");
-    return ShapeFile.FromRaw(shape, block.ShapePath, new Dictionary<string, string>());
+      ?? throw new JsonException(
+        $"{variant.Code}: the composed block shape failed to parse"
+      );
+    return ShapeFile.FromRaw(
+      shape,
+      block.ShapePath,
+      new Dictionary<string, string>()
+    );
   }
 
   // The block's own reserved footprint, turned into the frame its model is drawn in, or null when
   // the file declares none - a plain block, and a structure whose cells are the player's own blocks.
-  private static Layout? FootprintOf(string file, Variant variant, BlockIndex index) {
+  private static Layout? FootprintOf(
+    string file,
+    Variant variant,
+    BlockIndex index
+  ) {
     Layout layout;
     try {
       layout = Layout.Load(file, variant.Path);

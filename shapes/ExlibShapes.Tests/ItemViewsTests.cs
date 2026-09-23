@@ -11,6 +11,7 @@ namespace ExpandedLib.Shapes.Tests;
 /// the enlarged icon of one that ships a flat texture.</summary>
 public class ItemViewsTests {
   private static string DemoRoot => FixturePath.Of("schematic");
+
   private static string Itemtype(string name) =>
     FixturePath.Of($"schematic/mods/demo/assets/demo/itemtypes/{name}.json");
 
@@ -30,13 +31,21 @@ public class ItemViewsTests {
 
     string outDir = OutDir("token");
     JObject manifest = ItemViews.Write(file, variant, index, outDir);
-    Assert.Equal(["token-icon.png"], manifest["files"]!.Select(f => Path.GetFileName((string)f!)));
+    Assert.Equal(
+      ["token-icon.png"],
+      manifest["files"]!.Select(f => Path.GetFileName((string)f!))
+    );
     Assert.Empty((JArray)manifest["missingTextures"]!);
     Assert.Empty((JArray)manifest["warnings"]!);
-    Assert.True(File.Exists(Path.Combine(outDir, "token.json")), "the manifest is written beside the picture");
+    Assert.True(
+      File.Exists(Path.Combine(outDir, "token.json")),
+      "the manifest is written beside the picture"
+    );
 
     // The fixture's own texture is 16 texels square, drawn four pixels to the texel on paper.
-    using SKBitmap icon = SKBitmap.Decode(Path.Combine(outDir, "token-icon.png"));
+    using SKBitmap icon = SKBitmap.Decode(
+      Path.Combine(outDir, "token-icon.png")
+    );
     Assert.Equal(16 * ItemViews.IconScale + 16, icon.Width);
     Assert.Equal(icon.Width, icon.Height);
     Assert.Equal(Renderer.Background, icon.GetPixel(0, 0));
@@ -49,8 +58,13 @@ public class ItemViewsTests {
     Variant variant = Assert.Single(index.ItemVariants(file));
     string outDir = OutDir("chip");
     JObject manifest = ItemViews.Write(file, variant, index, outDir, ppu: 8);
-    Assert.Equal(["chip-iso.png"], manifest["files"]!.Select(f => Path.GetFileName((string)f!)));
-    using SKBitmap picture = SKBitmap.Decode(Path.Combine(outDir, "chip-iso.png"));
+    Assert.Equal(
+      ["chip-iso.png"],
+      manifest["files"]!.Select(f => Path.GetFileName((string)f!))
+    );
+    using SKBitmap picture = SKBitmap.Decode(
+      Path.Combine(outDir, "chip-iso.png")
+    );
     bool drawn = false;
     for (int y = 0; y < picture.Height && !drawn; y++)
       for (int x = 0; x < picture.Width && !drawn; x++)
@@ -63,39 +77,67 @@ public class ItemViewsTests {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     string file = Itemtype("tool");
     // The file's own variantgroups expand the same way a blocktype's do.
-    Assert.Equal(["demo:tool-iron", "demo:tool-steel"], index.ItemVariants(file).Select(v => v.Code));
+    Assert.Equal(
+      ["demo:tool-iron", "demo:tool-steel"],
+      index.ItemVariants(file).Select(v => v.Code)
+    );
 
     string outDir = OutDir("tool");
-    JObject manifest = ItemViews.Write(file, index.ItemVariants(file)[1], index, outDir, ppu: 8);
+    JObject manifest = ItemViews.Write(
+      file,
+      index.ItemVariants(file)[1],
+      index,
+      outDir,
+      ppu: 8
+    );
     Assert.Equal("demo:tool-steel", (string)manifest["variant"]!);
-    Assert.Equal(["tool-iso.png"], manifest["files"]!.Select(f => Path.GetFileName((string)f!)));
+    Assert.Equal(
+      ["tool-iso.png"],
+      manifest["files"]!.Select(f => Path.GetFileName((string)f!))
+    );
     Assert.Empty((JArray)manifest["missingTextures"]!);
     Assert.Empty((JArray)manifest["warnings"]!);
   }
 
   [SkippableFact]
   public void The_smex_burden_draws_the_shape_it_borrows_from_the_game() {
-    string? file = FixturePath.Workspace("exmods-legacy/smex/assets/smex/itemtypes/burden.json");
+    string? file = FixturePath.Workspace(
+      "exmods-legacy/smex/assets/smex/itemtypes/burden.json"
+    );
     Skip.If(file is null, "the sibling exmods-legacy checkout is absent");
-    BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(file!), null, legacyFirst: true);
+    BlockIndex index = BlockIndex.Build(
+      BlockIndex.DefaultRoots(file!),
+      null,
+      legacyFirst: true
+    );
     Variant variant = Assert.Single(index.ItemVariants(file!));
     Assert.Equal("smex:burden", variant.Code);
 
     string outDir = OutDir("burden");
     JObject manifest = ItemViews.Write(file!, variant, index, outDir, ppu: 8);
-    Assert.Equal(["burden-iso.png"], manifest["files"]!.Select(f => Path.GetFileName((string)f!)));
+    Assert.Equal(
+      ["burden-iso.png"],
+      manifest["files"]!.Select(f => Path.GetFileName((string)f!))
+    );
     Assert.Empty((JArray)manifest["missingTextures"]!);
     Assert.Empty((JArray)manifest["warnings"]!);
 
     // The ore-pile shape it borrows is wider than it is tall, and nothing of it is the placeholder.
-    using SKBitmap iso = SKBitmap.Decode(Path.Combine(outDir, "burden-iso.png"));
-    Assert.True(iso.Width > iso.Height, $"the pile is drawn {iso.Width}x{iso.Height}");
+    using SKBitmap iso = SKBitmap.Decode(
+      Path.Combine(outDir, "burden-iso.png")
+    );
+    Assert.True(
+      iso.Width > iso.Height,
+      $"the pile is drawn {iso.Width}x{iso.Height}"
+    );
     Assert.False(Magenta(iso), "the render paints the magenta placeholder");
   }
 
   [SkippableFact]
   public void An_iiex_item_with_a_shape_is_painted_from_the_itemtype_s_own_map() {
-    string? file = FixturePath.Workspace("exmods/mods/iiex/tests/goldens/iiex/itemtypes/spurgear.json");
+    string? file = FixturePath.Workspace(
+      "exmods/mods/iiex/tests/goldens/iiex/itemtypes/spurgear.json"
+    );
     Skip.If(file is null, "the sibling exmods checkout is absent");
     BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(file!));
     Variant variant = Assert.Single(index.ItemVariants(file!));
@@ -106,9 +148,14 @@ public class ItemViewsTests {
 
     string outDir = OutDir("spurgear");
     JObject manifest = ItemViews.Write(file!, variant, index, outDir, ppu: 8);
-    Assert.Equal(["spurgear-iso.png"], manifest["files"]!.Select(f => Path.GetFileName((string)f!)));
+    Assert.Equal(
+      ["spurgear-iso.png"],
+      manifest["files"]!.Select(f => Path.GetFileName((string)f!))
+    );
     Assert.Empty((JArray)manifest["missingTextures"]!);
-    using SKBitmap iso = SKBitmap.Decode(Path.Combine(outDir, "spurgear-iso.png"));
+    using SKBitmap iso = SKBitmap.Decode(
+      Path.Combine(outDir, "spurgear-iso.png")
+    );
     Assert.False(Magenta(iso), "the render paints the magenta placeholder");
   }
 

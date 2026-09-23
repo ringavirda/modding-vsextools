@@ -63,15 +63,16 @@ public static class Renderer {
   public const int GridCell = 16;
 
   /// <summary>The seven named views a shape is conventionally rendered from.</summary>
-  public static readonly IReadOnlyDictionary<string, View> NamedViews = new Dictionary<string, View> {
-    ["south"] = new(0, 0),
-    ["north"] = new(180, 0),
-    ["east"] = new(-90, 0),
-    ["west"] = new(90, 0),
-    ["up"] = new(0, 90),
-    ["down"] = new(0, -90),
-    ["iso"] = new(-45, 30),
-  };
+  public static readonly IReadOnlyDictionary<string, View> NamedViews =
+    new Dictionary<string, View> {
+      ["south"] = new(0, 0),
+      ["north"] = new(180, 0),
+      ["east"] = new(-90, 0),
+      ["west"] = new(90, 0),
+      ["up"] = new(0, 90),
+      ["down"] = new(0, -90),
+      ["iso"] = new(-45, 30),
+    };
 
   /// <summary>
   /// The unit world direction <paramref name="view"/>'s camera stands in, looking back at the
@@ -80,7 +81,8 @@ public static class Renderer {
   /// an isometric picture shows a block's south face on the left and its east face on the right.
   /// </summary>
   public static Vector3 Eye(View view) {
-    double yaw = view.Yaw * Math.PI / 180, pitch = view.Pitch * Math.PI / 180;
+    double yaw = view.Yaw * Math.PI / 180,
+      pitch = view.Pitch * Math.PI / 180;
     return new Vector3(
       (float)(-Math.Sin(yaw) * Math.Cos(pitch)),
       (float)Math.Sin(pitch),
@@ -92,27 +94,49 @@ public static class Renderer {
   // System.Numerics matrices: the view transform never needs a translation row, so there is
   // nothing to gain from Geometry's row-vector convention here.
   private readonly struct Mat3 {
-    private readonly double _00, _01, _02, _10, _11, _12, _20, _21, _22;
+    private readonly double _00,
+      _01,
+      _02,
+      _10,
+      _11,
+      _12,
+      _20,
+      _21,
+      _22;
 
     public Mat3(
-      double m00, double m01, double m02,
-      double m10, double m11, double m12,
-      double m20, double m21, double m22
+      double m00,
+      double m01,
+      double m02,
+      double m10,
+      double m11,
+      double m12,
+      double m20,
+      double m21,
+      double m22
     ) {
-      _00 = m00; _01 = m01; _02 = m02;
-      _10 = m10; _11 = m11; _12 = m12;
-      _20 = m20; _21 = m21; _22 = m22;
+      _00 = m00;
+      _01 = m01;
+      _02 = m02;
+      _10 = m10;
+      _11 = m11;
+      _12 = m12;
+      _20 = m20;
+      _21 = m21;
+      _22 = m22;
     }
 
     public static Mat3 RotateX(double deg) {
       double r = deg * Math.PI / 180.0;
-      double s = Math.Sin(r), c = Math.Cos(r);
+      double s = Math.Sin(r),
+        c = Math.Cos(r);
       return new Mat3(1, 0, 0, 0, c, -s, 0, s, c);
     }
 
     public static Mat3 RotateY(double deg) {
       double r = deg * Math.PI / 180.0;
-      double s = Math.Sin(r), c = Math.Cos(r);
+      double s = Math.Sin(r),
+        c = Math.Cos(r);
       return new Mat3(c, 0, s, 0, 1, 0, -s, 0, c);
     }
 
@@ -130,7 +154,11 @@ public static class Renderer {
       );
 
     public (double X, double Y, double Z) Mul(double x, double y, double z) =>
-      (_00 * x + _01 * y + _02 * z, _10 * x + _11 * y + _12 * z, _20 * x + _21 * y + _22 * z);
+      (
+        _00 * x + _01 * y + _02 * z,
+        _10 * x + _11 * y + _12 * z,
+        _20 * x + _21 * y + _22 * z
+      );
 
     public (double X, double Y, double Z) Mul(Vector3 v) => Mul(v.X, v.Y, v.Z);
   }
@@ -160,13 +188,22 @@ public static class Renderer {
 
     // Mat4f.RotateByXYZ, column-vector convention.
     public static Mat4d RotateByXyz(double rx, double ry, double rz) {
-      double sx = Math.Sin(rx * Math.PI / 180), cx = Math.Cos(rx * Math.PI / 180);
-      double sy = Math.Sin(ry * Math.PI / 180), cy = Math.Cos(ry * Math.PI / 180);
-      double sz = Math.Sin(rz * Math.PI / 180), cz = Math.Cos(rz * Math.PI / 180);
+      double sx = Math.Sin(rx * Math.PI / 180),
+        cx = Math.Cos(rx * Math.PI / 180);
+      double sy = Math.Sin(ry * Math.PI / 180),
+        cy = Math.Cos(ry * Math.PI / 180);
+      double sz = Math.Sin(rz * Math.PI / 180),
+        cz = Math.Cos(rz * Math.PI / 180);
       double[] m = Identity._m.ToArray();
-      m[0] = cy * cz; m[1] = -cy * sz; m[2] = sy;
-      m[4] = sx * sy * cz + cx * sz; m[5] = cx * cz - sx * sy * sz; m[6] = -sx * cy;
-      m[8] = -cx * sy * cz + sx * sz; m[9] = sx * cz + cx * sy * sz; m[10] = cx * cy;
+      m[0] = cy * cz;
+      m[1] = -cy * sz;
+      m[2] = sy;
+      m[4] = sx * sy * cz + cx * sz;
+      m[5] = cx * cz - sx * sy * sz;
+      m[6] = -sx * cy;
+      m[8] = -cx * sy * cz + sx * sz;
+      m[9] = sx * cz + cx * sy * sz;
+      m[10] = cx * cy;
       return new Mat4d(m);
     }
 
@@ -191,13 +228,19 @@ public static class Renderer {
       return (r[0], r[1], r[2]);
     }
 
-    public (double X, double Y, double Z) Mul((double X, double Y, double Z) v) => Mul(v.X, v.Y, v.Z);
+    public (double X, double Y, double Z) Mul(
+      (double X, double Y, double Z) v
+    ) => Mul(v.X, v.Y, v.Z);
 
     // The upper-left 3x3 applied to a direction: computed straight from the
     // matrix's own linear entries, not by subtracting two transformed points - that subtraction
     // rounds differently at the ULP level, enough to matter at an exactly grazing face (view-space
     // normal.z essentially 0) the cull test is deciding.
-    public (double X, double Y, double Z) MulLinear(double x, double y, double z) =>
+    public (double X, double Y, double Z) MulLinear(
+      double x,
+      double y,
+      double z
+    ) =>
       (
         _m[0] * x + _m[1] * y + _m[2] * z,
         _m[4] * x + _m[5] * y + _m[6] * z,
@@ -209,9 +252,17 @@ public static class Renderer {
     (double X, double Y, double Z) rot =
       pose == null
         ? (el.Rotation.X, el.Rotation.Y, el.Rotation.Z)
-        : (el.Rotation.X + pose.Rotation.X, el.Rotation.Y + pose.Rotation.Y, el.Rotation.Z + pose.Rotation.Z);
-    (double X, double Y, double Z) offset = pose == null ? (0, 0, 0) : (pose.Offset.X, pose.Offset.Y, pose.Offset.Z);
-    (double X, double Y, double Z) stretch = pose == null ? (1, 1, 1) : (pose.Stretch.X, pose.Stretch.Y, pose.Stretch.Z);
+        : (
+          el.Rotation.X + pose.Rotation.X,
+          el.Rotation.Y + pose.Rotation.Y,
+          el.Rotation.Z + pose.Rotation.Z
+        );
+    (double X, double Y, double Z) offset =
+      pose == null ? (0, 0, 0) : (pose.Offset.X, pose.Offset.Y, pose.Offset.Z);
+    (double X, double Y, double Z) stretch =
+      pose == null
+        ? (1, 1, 1)
+        : (pose.Stretch.X, pose.Stretch.Y, pose.Stretch.Z);
     return Mat4d.Translate(el.Origin.X, el.Origin.Y, el.Origin.Z)
       * Mat4d.RotateByXyz(rot.X, rot.Y, rot.Z)
       * Mat4d.Scale(stretch.X, stretch.Y, stretch.Z)
@@ -222,7 +273,10 @@ public static class Renderer {
       );
   }
 
-  internal static Dictionary<string, Mat4d> WorldMatricesD(LoadedShape shape, IReadOnlyDictionary<string, Pose>? poses) {
+  internal static Dictionary<string, Mat4d> WorldMatricesD(
+    LoadedShape shape,
+    IReadOnlyDictionary<string, Pose>? poses
+  ) {
     var outp = new Dictionary<string, Mat4d>();
     void Rec(Node el, Mat4d parentM) {
       Pose? pose = null;
@@ -249,8 +303,15 @@ public static class Renderer {
   internal static List<QuadD> FaceQuadsD(Node el, Mat4d m) {
     var outp = new List<QuadD>();
     (double X, double Y, double Z) size = (el.Size.X, el.Size.Y, el.Size.Z);
-    foreach ((string face, Vintagestory.API.Common.ShapeElementFace spec) in el.Faces) {
-      if (!Geometry.FaceCorners.TryGetValue(face, out (int X, int Y, int Z)[]? corners))
+    foreach (
+      (string face, Vintagestory.API.Common.ShapeElementFace spec) in el.Faces
+    ) {
+      if (
+        !Geometry.FaceCorners.TryGetValue(
+          face,
+          out (int X, int Y, int Z)[]? corners
+        )
+      )
         continue;
       var pts = new (double, double, double)[4];
       for (int i = 0; i < 4; i++) {
@@ -263,10 +324,9 @@ public static class Renderer {
       if (len > 0)
         n = (n.X / len, n.Y / len, n.Z / len);
       (int ua, int va) = Geometry.FaceUvAxes[face];
-      float[] uv =
-        spec.Uv is { Length: >= 4 }
-          ? [spec.Uv[0], spec.Uv[1], spec.Uv[2], spec.Uv[3]]
-          : [0f, 0f, (float)AxisD(size, ua), (float)AxisD(size, va)];
+      float[] uv = spec.Uv is { Length: >= 4 }
+        ? [spec.Uv[0], spec.Uv[1], spec.Uv[2], spec.Uv[3]]
+        : [0f, 0f, (float)AxisD(size, ua), (float)AxisD(size, va)];
       outp.Add(
         new QuadD {
           Points = pts,
@@ -281,17 +341,29 @@ public static class Renderer {
     return outp;
   }
 
-  private static double AxisD((double X, double Y, double Z) v, int i) => i switch { 0 => v.X, 1 => v.Y, _ => v.Z };
+  private static double AxisD((double X, double Y, double Z) v, int i) =>
+    i switch {
+      0 => v.X,
+      1 => v.Y,
+      _ => v.Z,
+    };
 
   /// <summary>Face shading factor from the dominant axis of a world-space normal (up 1.0, down
   /// 0.45, x-facing 0.75, z-facing 0.6). Ties (equal magnitude on two axes) keep x, then y, then
   /// z's factor.</summary>
   private static double Shading((double X, double Y, double Z) normal) {
-    double ax = Math.Abs(normal.X), ay = Math.Abs(normal.Y), az = Math.Abs(normal.Z);
+    double ax = Math.Abs(normal.X),
+      ay = Math.Abs(normal.Y),
+      az = Math.Abs(normal.Z);
     int axis = 0;
     double best = ax;
-    if (ay > best) { axis = 1; best = ay; }
-    if (az > best) { axis = 2; }
+    if (ay > best) {
+      axis = 1;
+      best = ay;
+    }
+    if (az > best) {
+      axis = 2;
+    }
     if (axis == 1)
       return normal.Y > 0 ? 1.0 : 0.45;
     if (axis == 0)
@@ -301,8 +373,14 @@ public static class Renderer {
 
   // UV assigned to each quad corner [BR, TR, TL, BL], texture rotated clockwise by `rotation`
   // degrees.
-  private static (double U, double V)[] RotateUvCorners(float[] uv, int rotation) {
-    double u1 = uv[0], v1 = uv[1], u2 = uv[2], v2 = uv[3];
+  private static (double U, double V)[] RotateUvCorners(
+    float[] uv,
+    int rotation
+  ) {
+    double u1 = uv[0],
+      v1 = uv[1],
+      u2 = uv[2],
+      v2 = uv[3];
     (double, double)[] baseCorners = [(u2, v2), (u2, v1), (u1, v1), (u1, v2)];
     int k = ((rotation / 90) % 4 + 4) % 4;
     var outp = new (double, double)[4];
@@ -313,9 +391,14 @@ public static class Renderer {
 
   // Barycentric weights of grid point (px, py) with respect to triangle a, b, c.
   private static bool Barycentric(
-    double px, double py,
-    (double X, double Y) a, (double X, double Y) b, (double X, double Y) c,
-    out double w0, out double w1, out double w2
+    double px,
+    double py,
+    (double X, double Y) a,
+    (double X, double Y) b,
+    (double X, double Y) c,
+    out double w0,
+    out double w1,
+    out double w2
   ) {
     double denom = (b.Y - c.Y) * (a.X - c.X) + (c.X - b.X) * (a.Y - c.Y);
     if (denom == 0) {
@@ -334,11 +417,16 @@ public static class Renderer {
   private static void RasterizeTriangle(
     double[,,] colorBuf,
     double[,] zBuf,
-    ScreenPoint p0, ScreenPoint p1, ScreenPoint p2,
-    (double U, double V) uv0, (double U, double V) uv1, (double U, double V) uv2,
+    ScreenPoint p0,
+    ScreenPoint p1,
+    ScreenPoint p2,
+    (double U, double V) uv0,
+    (double U, double V) uv1,
+    (double U, double V) uv2,
     double shade,
     byte[,,] texture,
-    int width, int height
+    int width,
+    int height
   ) {
     double xmin = Math.Min(p0.Col, Math.Min(p1.Col, p2.Col));
     double xmax = Math.Max(p0.Col, Math.Max(p1.Col, p2.Col));
@@ -361,7 +449,18 @@ public static class Renderer {
       double py = row + 0.5;
       for (int col = x0; col <= x1; col++) {
         double px = col + 0.5;
-        if (!Barycentric(px, py, a, b, c, out double w0, out double w1, out double w2))
+        if (
+          !Barycentric(
+            px,
+            py,
+            a,
+            b,
+            c,
+            out double w0,
+            out double w1,
+            out double w2
+          )
+        )
           continue;
         if (w0 < 0 || w1 < 0 || w2 < 0)
           continue;
@@ -378,9 +477,21 @@ public static class Renderer {
         if (alpha < 128)
           continue;
         zBuf[row, col] = z;
-        colorBuf[row, col, 0] = Math.Clamp(texture[texRow, texCol, 0] * shade, 0, 255);
-        colorBuf[row, col, 1] = Math.Clamp(texture[texRow, texCol, 1] * shade, 0, 255);
-        colorBuf[row, col, 2] = Math.Clamp(texture[texRow, texCol, 2] * shade, 0, 255);
+        colorBuf[row, col, 0] = Math.Clamp(
+          texture[texRow, texCol, 0] * shade,
+          0,
+          255
+        );
+        colorBuf[row, col, 1] = Math.Clamp(
+          texture[texRow, texCol, 1] * shade,
+          0,
+          255
+        );
+        colorBuf[row, col, 2] = Math.Clamp(
+          texture[texRow, texCol, 2] * shade,
+          0,
+          255
+        );
       }
     }
   }
@@ -392,13 +503,21 @@ public static class Renderer {
   private static void DrawLine(
     double[,,] colorBuf,
     double[,] zBuf,
-    ScreenPoint p0, ScreenPoint p1,
+    ScreenPoint p0,
+    ScreenPoint p1,
     SKColor? color,
-    int width, int height,
+    int width,
+    int height,
     bool zTest,
     double? mul = null
   ) {
-    int steps = Math.Max(2, (int)Math.Ceiling(Math.Max(Math.Abs(p1.Col - p0.Col), Math.Abs(p1.Row - p0.Row))) + 1);
+    int steps = Math.Max(
+      2,
+      (int)
+        Math.Ceiling(
+          Math.Max(Math.Abs(p1.Col - p0.Col), Math.Abs(p1.Row - p0.Row))
+        ) + 1
+    );
     // Collected, then applied once per distinct pixel: the reference reads/writes the whole line
     // as one gather-scatter over its (possibly repeating, for a short line with many steps) pixel
     // list, so a pixel the line crosses twice darkens once, not mul-squared - an in-place multiply
@@ -435,11 +554,18 @@ public static class Renderer {
   /// Where <see cref="Render"/> lays a world point on the canvas it produces: the view-space
   /// extents it fitted the shape into, at <see cref="Ppu"/> pixels per world unit.
   /// </summary>
-  public readonly record struct Projection(double XMin, double YMax, int Ppu, View View) {
+  public readonly record struct Projection(
+    double XMin,
+    double YMax,
+    int Ppu,
+    View View
+  ) {
     /// <summary>The (column, row) a world point falls on, in pixels from the canvas's top left.
     /// Points outside the rendered shape project outside the canvas.</summary>
     public (double Col, double Row) Screen(double x, double y, double z) {
-      (double vx, double vy, double _) = (Mat3.RotateX(View.Pitch) * Mat3.RotateY(View.Yaw)).Mul(x, y, z);
+      (double vx, double vy, double _) = (
+        Mat3.RotateX(View.Pitch) * Mat3.RotateY(View.Yaw)
+      ).Mul(x, y, z);
       return ((vx - XMin) * Ppu, (YMax - vy) * Ppu);
     }
   }
@@ -458,8 +584,16 @@ public static class Renderer {
     IReadOnlyDictionary<string, Pose>? poses = null
   ) {
     Mat3 viewRot = Mat3.RotateX(view.Pitch) * Mat3.RotateY(view.Yaw);
-    double xmin = double.PositiveInfinity, ymax = double.NegativeInfinity;
-    foreach ((double X, double Y, double Z) p in ViewPoints(shape, viewRot, only, poses)) {
+    double xmin = double.PositiveInfinity,
+      ymax = double.NegativeInfinity;
+    foreach (
+      (double X, double Y, double Z) p in ViewPoints(
+        shape,
+        viewRot,
+        only,
+        poses
+      )
+    ) {
       xmin = Math.Min(xmin, p.X);
       ymax = Math.Max(ymax, p.Y);
     }
@@ -478,7 +612,10 @@ public static class Renderer {
   ) {
     Dictionary<string, Mat4d> mats = WorldMatricesD(shape, poses);
     foreach (Node el in shape.Leaves()) {
-      if (only != null && !only.Any(p => el.Path.StartsWith(p, StringComparison.Ordinal)))
+      if (
+        only != null
+        && !only.Any(p => el.Path.StartsWith(p, StringComparison.Ordinal))
+      )
         continue;
       foreach (QuadD q in FaceQuadsD(el, mats[el.Path]))
         foreach ((double X, double Y, double Z) p in q.Points)
@@ -510,27 +647,51 @@ public static class Renderer {
     int margin = 2,
     bool edges = true
   ) {
-    textures ??= TextureSet.ForShape(shape, TextureRoots.Build(null, null, shape.Path));
+    textures ??= TextureSet.ForShape(
+      shape,
+      TextureRoots.Build(null, null, shape.Path)
+    );
     Dictionary<string, Mat4d> mats = WorldMatricesD(shape, poses);
     List<Node> leaves =
-      [.. shape.Leaves().Where(el => only == null || only.Any(p => el.Path.StartsWith(p, StringComparison.Ordinal)))];
+    [
+      .. shape
+        .Leaves()
+        .Where(el =>
+          only == null
+          || only.Any(p => el.Path.StartsWith(p, StringComparison.Ordinal))
+        ),
+    ];
 
     Mat3 viewRot = Mat3.RotateX(view.Pitch) * Mat3.RotateY(view.Yaw);
 
-    var quads = new List<(QuadD Quad, (double X, double Y, double Z)[] PtsView, (double X, double Y, double Z) NormalView)>();
+    var quads =
+      new List<(
+        QuadD Quad,
+        (double X, double Y, double Z)[] PtsView,
+        (double X, double Y, double Z) NormalView
+      )>();
     foreach (Node el in leaves) {
       Mat4d m = mats[el.Path];
       foreach (QuadD q in FaceQuadsD(el, m)) {
         var ptsView = new (double, double, double)[4];
         for (int i = 0; i < 4; i++)
           ptsView[i] = viewRot.Mul(q.Points[i].X, q.Points[i].Y, q.Points[i].Z);
-        (double, double, double) normalView = viewRot.Mul(q.Normal.X, q.Normal.Y, q.Normal.Z);
+        (double, double, double) normalView = viewRot.Mul(
+          q.Normal.X,
+          q.Normal.Y,
+          q.Normal.Z
+        );
         quads.Add((q, ptsView, normalView));
       }
     }
 
     if (quads.Count == 0) {
-      var empty = new SKBitmap(16, 16, SKColorType.Rgba8888, SKAlphaType.Unpremul);
+      var empty = new SKBitmap(
+        16,
+        16,
+        SKColorType.Rgba8888,
+        SKAlphaType.Unpremul
+      );
       using (var canvas = new SKCanvas(empty))
         canvas.Clear(Background);
       return empty;
@@ -539,7 +700,8 @@ public static class Renderer {
     // The canvas's own origin comes from Project, so a caller annotating the result afterwards
     // measures with the very numbers this render laid the shape out on.
     Projection projection = Project(shape, view, ppu, margin, only, poses);
-    double xmin = projection.XMin, ymax = projection.YMax;
+    double xmin = projection.XMin,
+      ymax = projection.YMax;
     double xmax = quads.SelectMany(q => q.PtsView).Max(p => p.Item1) + margin;
     double ymin = quads.SelectMany(q => q.PtsView).Min(p => p.Item2) - margin;
 
@@ -563,7 +725,13 @@ public static class Renderer {
 
     var highlightQuads = new List<(QuadD Quad, ScreenPoint[] Screen)>();
     var drawn = new List<ScreenPoint[]>();
-    foreach ((QuadD q, (double, double, double)[] ptsView, (double, double, double) normalView) in quads) {
+    foreach (
+      (
+        QuadD q,
+        (double, double, double)[] ptsView,
+        (double, double, double) normalView
+      ) in quads
+    ) {
       if (highlight != null && highlight.Contains(q.Path))
         highlightQuads.Add((q, [.. ptsView.Select(ToScreen)]));
       if (cull && normalView.Item3 <= 0)
@@ -575,10 +743,18 @@ public static class Renderer {
       double shade = Shading(q.Normal);
       foreach ((int a, int b, int c) in new[] { (0, 1, 2), (0, 2, 3) })
         RasterizeTriangle(
-          colorBuf, zBuf,
-          screen[a], screen[b], screen[c],
-          uvCorners[a], uvCorners[b], uvCorners[c],
-          shade, tex, width, height
+          colorBuf,
+          zBuf,
+          screen[a],
+          screen[b],
+          screen[c],
+          uvCorners[a],
+          uvCorners[b],
+          uvCorners[c],
+          shade,
+          tex,
+          width,
+          height
         );
     }
 
@@ -590,22 +766,44 @@ public static class Renderer {
       foreach (ScreenPoint[] screen in drawn)
         for (int i = 0; i < 4; i++) {
           ScreenPoint a = screen[i] with { Z = screen[i].Z + EdgeBias };
-          ScreenPoint b = screen[(i + 1) % 4] with { Z = screen[(i + 1) % 4].Z + EdgeBias };
-          DrawLine(colorBuf, zBuf, a, b, null, width, height, zTest: true, mul: EdgeMul);
+          ScreenPoint b = screen[(i + 1) % 4] with {
+            Z = screen[(i + 1) % 4].Z + EdgeBias,
+          };
+          DrawLine(
+            colorBuf,
+            zBuf,
+            a,
+            b,
+            null,
+            width,
+            height,
+            zTest: true,
+            mul: EdgeMul
+          );
         }
 
     if (grid) {
-      Dictionary<string, ((double X, double Y, double Z) Lo, (double X, double Y, double Z) Hi)> boxes =
-        ElementBoxesD(shape, mats);
+      Dictionary<
+        string,
+        ((double X, double Y, double Z) Lo, (double X, double Y, double Z) Hi)
+      > boxes = ElementBoxesD(shape, mats);
       if (boxes.Count > 0) {
-        (double X, double Y, double Z) lo = boxes.Values
-          .Select(b => b.Lo)
-          .Aggregate((a, b) => (Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Min(a.Z, b.Z)));
-        (double X, double Y, double Z) hi = boxes.Values
-          .Select(b => b.Hi)
-          .Aggregate((a, b) => (Math.Max(a.X, b.X), Math.Max(a.Y, b.Y), Math.Max(a.Z, b.Z)));
-        int x0 = (int)Math.Floor(lo.X), x1 = (int)Math.Ceiling(hi.X);
-        int z0 = (int)Math.Floor(lo.Z), z1 = (int)Math.Ceiling(hi.Z);
+        (double X, double Y, double Z) lo = boxes
+          .Values.Select(b => b.Lo)
+          .Aggregate(
+            (a, b) =>
+              (Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Min(a.Z, b.Z))
+          );
+        (double X, double Y, double Z) hi = boxes
+          .Values.Select(b => b.Hi)
+          .Aggregate(
+            (a, b) =>
+              (Math.Max(a.X, b.X), Math.Max(a.Y, b.Y), Math.Max(a.Z, b.Z))
+          );
+        int x0 = (int)Math.Floor(lo.X),
+          x1 = (int)Math.Ceiling(hi.X);
+        int z0 = (int)Math.Floor(lo.Z),
+          z1 = (int)Math.Ceiling(hi.Z);
         for (int x = x0; x <= x1; x++) {
           ScreenPoint a = ToScreen(viewRot.Mul(x, 0.0, z0));
           ScreenPoint b = ToScreen(viewRot.Mul(x, 0.0, z1));
@@ -623,13 +821,28 @@ public static class Renderer {
 
     foreach ((QuadD _, ScreenPoint[] screen) in highlightQuads)
       for (int i = 0; i < 4; i++)
-        DrawLine(colorBuf, zBuf, screen[i], screen[(i + 1) % 4], HighlightColor, width, height, zTest: false);
+        DrawLine(
+          colorBuf,
+          zBuf,
+          screen[i],
+          screen[(i + 1) % 4],
+          HighlightColor,
+          width,
+          height,
+          zTest: false
+        );
 
-    var bmp = new SKBitmap(width, height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
+    var bmp = new SKBitmap(
+      width,
+      height,
+      SKColorType.Rgba8888,
+      SKAlphaType.Unpremul
+    );
     for (int y = 0; y < height; y++)
       for (int x = 0; x < width; x++)
         bmp.SetPixel(
-          x, y,
+          x,
+          y,
           new SKColor(
             (byte)Math.Clamp((int)colorBuf[y, x, 0], 0, 255),
             (byte)Math.Clamp((int)colorBuf[y, x, 1], 0, 255),
@@ -643,11 +856,23 @@ public static class Renderer {
   // depth, so nothing is drawn behind it: an opening a view looks straight through - a flue, a
   // hopper's mouth - otherwise shows the paper and reads as a gap in the model rather than a hole
   // in it. Enclosed means not reachable from the canvas edge across uncovered pixels, four ways.
-  private static void FillHoles(double[,,] colorBuf, double[,] zBuf, int width, int height) {
+  private static void FillHoles(
+    double[,,] colorBuf,
+    double[,] zBuf,
+    int width,
+    int height
+  ) {
     var open = new bool[height, width];
     var queue = new Queue<(int Y, int X)>();
     void Reach(int y, int x) {
-      if (y < 0 || y >= height || x < 0 || x >= width || open[y, x] || !double.IsNegativeInfinity(zBuf[y, x]))
+      if (
+        y < 0
+        || y >= height
+        || x < 0
+        || x >= width
+        || open[y, x]
+        || !double.IsNegativeInfinity(zBuf[y, x])
+      )
         return;
       open[y, x] = true;
       queue.Enqueue((y, x));
@@ -680,19 +905,36 @@ public static class Renderer {
   }
 
   // World AABB per leaf element path, double precision.
-  private static Dictionary<string, ((double X, double Y, double Z) Lo, (double X, double Y, double Z) Hi)> ElementBoxesD(
-    LoadedShape shape, Dictionary<string, Mat4d> mats
-  ) {
-    var outp = new Dictionary<string, ((double, double, double), (double, double, double))>();
+  private static Dictionary<
+    string,
+    ((double X, double Y, double Z) Lo, (double X, double Y, double Z) Hi)
+  > ElementBoxesD(LoadedShape shape, Dictionary<string, Mat4d> mats) {
+    var outp =
+      new Dictionary<
+        string,
+        ((double, double, double), (double, double, double))
+      >();
     foreach (Node el in shape.Leaves()) {
       Mat4d m = mats[el.Path];
       (double X, double Y, double Z) size = (el.Size.X, el.Size.Y, el.Size.Z);
-      (double X, double Y, double Z) lo = (double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity);
-      (double X, double Y, double Z) hi = (double.NegativeInfinity, double.NegativeInfinity, double.NegativeInfinity);
+      (double X, double Y, double Z) lo = (
+        double.PositiveInfinity,
+        double.PositiveInfinity,
+        double.PositiveInfinity
+      );
+      (double X, double Y, double Z) hi = (
+        double.NegativeInfinity,
+        double.NegativeInfinity,
+        double.NegativeInfinity
+      );
       for (int x = 0; x <= 1; x++)
         for (int y = 0; y <= 1; y++)
           for (int z = 0; z <= 1; z++) {
-            (double X, double Y, double Z) p = m.Mul(x * size.X, y * size.Y, z * size.Z);
+            (double X, double Y, double Z) p = m.Mul(
+              x * size.X,
+              y * size.Y,
+              z * size.Z
+            );
             lo = (Math.Min(lo.X, p.X), Math.Min(lo.Y, p.Y), Math.Min(lo.Z, p.Z));
             hi = (Math.Max(hi.X, p.X), Math.Max(hi.Y, p.Y), Math.Max(hi.Z, p.Z));
           }
@@ -703,10 +945,18 @@ public static class Renderer {
 
   /// <summary>Places <paramref name="images"/> side by side, each labelled top-left with the
   /// matching entry of <paramref name="labels"/>.</summary>
-  public static SKBitmap Strip(IReadOnlyList<SKBitmap> images, IReadOnlyList<string> labels) {
+  public static SKBitmap Strip(
+    IReadOnlyList<SKBitmap> images,
+    IReadOnlyList<string> labels
+  ) {
     int height = images.Max(im => im.Height);
     int width = images.Sum(im => im.Width);
-    var outBmp = new SKBitmap(width, height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
+    var outBmp = new SKBitmap(
+      width,
+      height,
+      SKColorType.Rgba8888,
+      SKAlphaType.Unpremul
+    );
     using var canvas = new SKCanvas(outBmp);
     canvas.Clear(Background);
     using var paint = new SKPaint { Color = SKColors.Black };

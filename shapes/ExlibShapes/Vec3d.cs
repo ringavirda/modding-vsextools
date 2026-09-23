@@ -32,11 +32,14 @@ public readonly struct Vec3d {
   public static Vec3d Zero => new(0, 0, 0);
 
   /// <summary>Component-wise subtraction.</summary>
-  public static Vec3d operator -(Vec3d a, Vec3d b) => new(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
+  public static Vec3d operator -(Vec3d a, Vec3d b) =>
+    new(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
 
   /// <summary>Component-wise addition.</summary>
-  public static Vec3d operator +(Vec3d a, Vec3d b) => new(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
+  public static Vec3d operator +(Vec3d a, Vec3d b) =>
+    new(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
 
   /// <summary>Narrows to <see cref="System.Numerics.Vector3"/> for Geometry's float32 API.</summary>
-  public static explicit operator Vector3(Vec3d v) => new((float)v.X, (float)v.Y, (float)v.Z);
+  public static explicit operator Vector3(Vec3d v) =>
+    new((float)v.X, (float)v.Y, (float)v.Z);
 }

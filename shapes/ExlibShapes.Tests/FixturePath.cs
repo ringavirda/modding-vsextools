@@ -20,7 +20,8 @@ internal static class FixturePath {
         return Path.Combine(dir.FullName, "fixtures", rel);
     }
     throw new DirectoryNotFoundException(
-      "Could not find ExlibShapes.Tests.csproj above " + AppContext.BaseDirectory
+      "Could not find ExlibShapes.Tests.csproj above "
+        + AppContext.BaseDirectory
     );
   }
 
@@ -36,7 +37,8 @@ internal static class FixturePath {
         return Path.Combine(dir.FullName, "expected", rel);
     }
     throw new DirectoryNotFoundException(
-      "Could not find ExlibShapes.Tests.csproj above " + AppContext.BaseDirectory
+      "Could not find ExlibShapes.Tests.csproj above "
+        + AppContext.BaseDirectory
     );
   }
 
@@ -55,7 +57,8 @@ internal static class FixturePath {
           return dir.Parent!.Parent!.FullName;
       }
       throw new DirectoryNotFoundException(
-        "Could not find ExlibShapes.Tests.csproj above " + AppContext.BaseDirectory
+        "Could not find ExlibShapes.Tests.csproj above "
+          + AppContext.BaseDirectory
       );
     }
   }
@@ -73,7 +76,9 @@ internal static class FixturePath {
       if (!Directory.Exists(Path.Combine(dir.FullName, first)))
         continue;
       string candidate = Path.Combine(dir.FullName, relativePath);
-      return File.Exists(candidate) || Directory.Exists(candidate) ? candidate : null;
+      return File.Exists(candidate) || Directory.Exists(candidate)
+        ? candidate
+        : null;
     }
     return null;
   }

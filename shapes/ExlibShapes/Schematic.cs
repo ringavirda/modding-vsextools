@@ -42,10 +42,20 @@ public sealed class LegendEntry {
 /// any other shape.
 /// </summary>
 public static class Schematic {
-  private static readonly string[] Palette = [
-    "#4C72B0", "#DD8452", "#55A868", "#C44E52", "#8172B2",
-    "#937860", "#DA8BC3", "#8C8C8C", "#CCB974", "#64B5CD",
+  private static readonly string[] Palette =
+  [
+    "#4C72B0",
+    "#DD8452",
+    "#55A868",
+    "#C44E52",
+    "#8172B2",
+    "#937860",
+    "#DA8BC3",
+    "#8C8C8C",
+    "#CCB974",
+    "#64B5CD",
   ];
+
   /// <summary>The point size every label in a plan or footprint SVG is drawn at.</summary>
   public const int FontSize = 10;
 
@@ -54,7 +64,8 @@ public static class Schematic {
   /// <see cref="FontSize"/> averages a little over half the point size, and a canvas sized to the
   /// grid alone clips the caption at both ends.
   /// </summary>
-  public static int CaptionWidth(string text) => (int)Math.Ceiling(0.55 * FontSize * text.Length);
+  public static int CaptionWidth(string text) =>
+    (int)Math.Ceiling(0.55 * FontSize * text.Length);
 
   private const string FillerColor = "#BFBFBF";
   private const string FillerTextureKey = "__filler";
@@ -65,8 +76,13 @@ public static class Schematic {
   public const string PrincipalPrefix = "principal";
 
   // Vintage Story facing normals in the XZ plane: north -Z, south +Z, east +X, west -X.
-  private static readonly Dictionary<string, (int Dx, int Dz)> ArrowDir = new(StringComparer.Ordinal) {
-    ["n"] = (0, -1), ["s"] = (0, 1), ["e"] = (1, 0), ["w"] = (-1, 0),
+  private static readonly Dictionary<string, (int Dx, int Dz)> ArrowDir = new(
+    StringComparer.Ordinal
+  ) {
+    ["n"] = (0, -1),
+    ["s"] = (0, 1),
+    ["e"] = (1, 0),
+    ["w"] = (-1, 0),
   };
 
   // The fixed palette for the first ten numbers; past that, a hue spaced by the golden ratio so
@@ -87,7 +103,11 @@ public static class Schematic {
   }
 
   // HSV to RGB, the standard six-sector conversion.
-  private static (double R, double G, double B) HsvToRgb(double h, double s, double v) {
+  private static (double R, double G, double B) HsvToRgb(
+    double h,
+    double s,
+    double v
+  ) {
     if (s == 0.0)
       return (v, v, v);
     int i = (int)(h * 6.0);
@@ -137,14 +157,24 @@ public static class Schematic {
     int cell = 32,
     string? front = null
   ) {
-    List<int> allX = [.. layout.Cells.Select(c => c.X), .. layout.Fillers.Select(o => o.X)];
-    List<int> allZ = [.. layout.Cells.Select(c => c.Z), .. layout.Fillers.Select(o => o.Z)];
+    List<int> allX =
+    [
+      .. layout.Cells.Select(c => c.X),
+      .. layout.Fillers.Select(o => o.X),
+    ];
+    List<int> allZ =
+    [
+      .. layout.Cells.Select(c => c.Z),
+      .. layout.Fillers.Select(o => o.Z),
+    ];
     foreach (IReadOnlyList<Offset> offsets in layout.Connectors.Values) {
       allX.AddRange(offsets.Select(o => o.X));
       allZ.AddRange(offsets.Select(o => o.Z));
     }
-    int x0 = allX.Min(), x1 = allX.Max();
-    int z0 = allZ.Min(), z1 = allZ.Max();
+    int x0 = allX.Min(),
+      x1 = allX.Max();
+    int z0 = allZ.Min(),
+      z1 = allZ.Max();
     int width = (x1 - x0 + 1) * cell;
     int height = (z1 - z0 + 1) * cell;
 
@@ -176,7 +206,8 @@ public static class Schematic {
       bool optional = row?.Optional == true;
       string color = row?.Color ?? "#999999";
       bool isAnchor = new Offset(c.X, c.Y, c.Z) == layout.Anchor;
-      string cls = (optional ? "cell optional" : "cell") + (isAnchor ? " anchor" : "");
+      string cls =
+        (optional ? "cell optional" : "cell") + (isAnchor ? " anchor" : "");
       int strokeWidth = isAnchor ? 3 : 1;
       // An optional cell is air the player may leave filled; it is outlined and hatched rather
       // than painted, so the legend's row is on the picture as well as in the key.
@@ -195,7 +226,8 @@ public static class Schematic {
     foreach (Offset f in layout.Fillers) {
       if (f.Y != y)
         continue;
-      int fx = Px(f.X), fz = Pz(f.Z);
+      int fx = Px(f.X),
+        fz = Pz(f.Z);
       sb.Append(
         $"<line class=\"filler\" x1=\"{fx}\" y1=\"{fz}\" x2=\"{fx + cell}\" y2=\"{fz + cell}\" stroke=\"black\" />"
       );
@@ -236,8 +268,8 @@ public static class Schematic {
   // A light diagonal hatch over the paper, the fill of a cell the player may leave as air.
   private const string Hatch =
     "<pattern id=\"hatch\" width=\"6\" height=\"6\" patternUnits=\"userSpaceOnUse\" "
-      + "patternTransform=\"rotate(45)\">"
-      + "<line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"6\" stroke=\"#999999\" stroke-width=\"1\" /></pattern>";
+    + "patternTransform=\"rotate(45)\">"
+    + "<line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"6\" stroke=\"#999999\" stroke-width=\"1\" /></pattern>";
 
   // Black on a light fill, white on a dark one, by the fill's own luminance.
   private static string Ink(string color) {
@@ -250,7 +282,12 @@ public static class Schematic {
   // The edges named for the machine rather than the compass: the side a player stands at is the
   // front, the one opposite it the back, each written against its own edge. North is the top of
   // every grid and is marked there in small text unless the back already stands for it.
-  private static void Edges(StringBuilder sb, int width, int height, string? front) {
+  private static void Edges(
+    StringBuilder sb,
+    int width,
+    int height,
+    string? front
+  ) {
     void Label(string text, double x, double y, string anchor, int size) =>
       sb.Append(
         $"<text class=\"edge\" x=\"{Svg(x)}\" y=\"{Svg(y)}\" text-anchor=\"{anchor}\""
@@ -258,14 +295,19 @@ public static class Schematic {
       );
 
     // The four edges of the grid with the point each label hangs from.
-    (string Side, double X, double Y, string Anchor)[] edges = [
+    (string Side, double X, double Y, string Anchor)[] edges =
+    [
       ("north", width / 2.0, -10, "middle"),
       ("south", width / 2.0, height + 12, "middle"),
       ("east", width + 4.0, height / 2.0, "start"),
       ("west", -4.0, height / 2.0, "end"),
     ];
     foreach ((string side, double x, double yy, string anchor) in edges) {
-      string? text = front == null ? null : front == side ? "front" : Presentation.Front(side) == front ? "back" : null;
+      string? text =
+        front == null ? null
+        : front == side ? "front"
+        : Presentation.Front(side) == front ? "back"
+        : null;
       if (text != null)
         Label(text, x, yy, anchor, FontSize);
     }
@@ -274,7 +316,8 @@ public static class Schematic {
   }
 
   /// <summary>The caption every footprint plan carries under its grid.</summary>
-  public const string FootprintCaption = "Footprint, the block's own cell marked";
+  public const string FootprintCaption =
+    "Footprint, the block's own cell marked";
 
   /// <summary>The caption a plan of Y layer <paramref name="y"/> carries: the starter block stands
   /// on layer 0, and every other layer is named by its signed distance from it.</summary>
@@ -292,11 +335,24 @@ public static class Schematic {
   /// (<c>class="anchor"</c>). The grid is drawn in the machine's own frame, smaller Z nearer the
   /// top; <paramref name="front"/> names the side a player stands at, which labels the edges.
   /// </summary>
-  public static string FootprintSvg(Layout layout, int cell = 32, string? front = null) {
+  public static string FootprintSvg(
+    Layout layout,
+    int cell = 32,
+    string? front = null
+  ) {
     IReadOnlyList<Offset> cells = Footprint.Cells(layout);
-    List<(int X, int Z)> columns = [.. cells.Select(c => (c.X, c.Z)).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X)];
-    int x0 = columns.Min(c => c.X), x1 = columns.Max(c => c.X);
-    int z0 = columns.Min(c => c.Z), z1 = columns.Max(c => c.Z);
+    List<(int X, int Z)> columns =
+    [
+      .. cells
+        .Select(c => (c.X, c.Z))
+        .Distinct()
+        .OrderBy(c => c.Z)
+        .ThenBy(c => c.X),
+    ];
+    int x0 = columns.Min(c => c.X),
+      x1 = columns.Max(c => c.X);
+    int z0 = columns.Min(c => c.Z),
+      z1 = columns.Max(c => c.Z);
     int width = (x1 - x0 + 1) * cell;
     int height = (z1 - z0 + 1) * cell;
 
@@ -364,23 +420,28 @@ public static class Schematic {
   // synthetic full unit cube (textured from whichever of all/up/north the blocktype declares) when
   // it ships no shape file - most vanilla and family blocks draw the engine's default cube rather
   // than an authored one.
-  private static (JArray Elements, Dictionary<string, TextureRef> Textures) BlockElements(
-    ResolvedBlock block,
-    IReadOnlyList<string>? selective
-  ) {
+  private static (
+    JArray Elements,
+    Dictionary<string, TextureRef> Textures
+  ) BlockElements(ResolvedBlock block, IReadOnlyList<string>? selective) {
     if (block.ShapePath != null) {
       JObject? raw = null;
       try {
         raw = JToken.Parse(File.ReadAllText(block.ShapePath)) as JObject;
       } catch (Exception e) {
-        Console.Error.WriteLine($"warning: {block.ShapePath}: shape failed to parse ({e.Message}); drawing a unit cube");
+        Console.Error.WriteLine(
+          $"warning: {block.ShapePath}: shape failed to parse ({e.Message}); drawing a unit cube"
+        );
       }
       if (raw?["elements"] is JArray elements && elements.Count > 0) {
         var shapeTextures = new Dictionary<string, TextureRef>();
         if (raw["textures"] is JObject texturesJson)
           foreach (JProperty prop in texturesJson.Properties())
             shapeTextures[prop.Name] = new TextureRef((string)prop.Value!);
-        JArray pruned = SelectiveElements.Prune((JArray)elements.DeepClone(), block.Selective);
+        JArray pruned = SelectiveElements.Prune(
+          (JArray)elements.DeepClone(),
+          block.Selective
+        );
         // `--selective` narrows further, on top of the shape entry's own list: an element must
         // survive both to be drawn.
         if (selective is { Count: > 0 })
@@ -390,8 +451,9 @@ public static class Schematic {
     }
 
     string? key =
-      new[] { "all", "up", "north" }.FirstOrDefault(k => block.Textures.ContainsKey(k))
-      ?? block.Textures.Keys.FirstOrDefault();
+      new[] { "all", "up", "north" }.FirstOrDefault(k =>
+        block.Textures.ContainsKey(k)
+      ) ?? block.Textures.Keys.FirstOrDefault();
     var faces = new JObject();
     if (key != null)
       foreach (string face in Geometry.Faces)
@@ -410,16 +472,23 @@ public static class Schematic {
   // (the shape's own map overridden by the blocktype's, keyed with the same prefix). A blocktype
   // names whole sets of faces at once as well as single keys, which is how vanilla's slabs paint a
   // shape whose faces they never name one by one.
-  internal static (JObject Group, Dictionary<string, TextureRef> Textures) WrappedCell(
+  internal static (
+    JObject Group,
+    Dictionary<string, TextureRef> Textures
+  ) WrappedCell(
     ResolvedBlock block,
     Offset offset,
     string prefix,
     int spin = 0,
     IReadOnlyList<string>? selective = null
   ) {
-    (JArray elements, Dictionary<string, TextureRef> shapeTextures) = BlockElements(block, selective);
+    (JArray elements, Dictionary<string, TextureRef> shapeTextures) =
+      BlockElements(block, selective);
     var textures = new Dictionary<string, TextureRef>(shapeTextures);
-    List<string> keys = [.. shapeTextures.Keys.Concat(FaceTextureKeys(elements)).Distinct()];
+    List<string> keys =
+    [
+      .. shapeTextures.Keys.Concat(FaceTextureKeys(elements)).Distinct(),
+    ];
     foreach ((string shorthand, IReadOnlyList<string>? faces) in Shorthands)
       if (block.Textures.TryGetValue(shorthand, out TextureRef? stands))
         foreach (string key in faces == null ? keys : keys.Intersect(faces))
@@ -434,7 +503,9 @@ public static class Schematic {
       if (key != "null" && !textures.ContainsKey(key))
         textures[key] = new TextureRef("");
 
-    int ox = offset.X * 16, oy = offset.Y * 16, oz = offset.Z * 16;
+    int ox = offset.X * 16,
+      oy = offset.Y * 16,
+      oz = offset.Z * 16;
     var group = new JObject {
       ["name"] = prefix,
       ["from"] = new JArray(ox, oy, oz),
@@ -445,13 +516,20 @@ public static class Schematic {
       ["rotationZ"] = block.RotateZ,
       ["children"] = Namespaced(elements, prefix),
     };
-    Dictionary<string, TextureRef> prefixed = textures.ToDictionary(kv => $"{prefix}_{kv.Key}", kv => kv.Value);
+    Dictionary<string, TextureRef> prefixed = textures.ToDictionary(
+      kv => $"{prefix}_{kv.Key}",
+      kv => kv.Value
+    );
     return (group, prefixed);
   }
 
   // The game's shorthand texture keys and the face keys each stands in for; a null list stands in
   // for every key the shape declares or its faces use, and a longer list wins over a shorter one.
-  private static readonly (string Key, IReadOnlyList<string>? Faces)[] Shorthands = [
+  private static readonly (
+    string Key,
+    IReadOnlyList<string>? Faces
+  )[] Shorthands =
+  [
     ("all", null),
     ("sides", null),
     ("horizontals", new[] { "north", "east", "south", "west" }),
@@ -472,7 +550,9 @@ public static class Schematic {
   }
 
   private static JObject FillerBox(Offset offset, string name) {
-    int ox = offset.X * 16, oy = offset.Y * 16, oz = offset.Z * 16;
+    int ox = offset.X * 16,
+      oy = offset.Y * 16,
+      oz = offset.Z * 16;
     var faces = new JObject();
     foreach (string face in Geometry.Faces)
       faces[face] = new JObject { ["texture"] = $"#{FillerTextureKey}" };
@@ -487,9 +567,17 @@ public static class Schematic {
   // One footprint column's ground outline: four bars a unit thick around the cell's edges, laid in
   // the unit of floor just below the lowest layer the footprint reaches, so a megablock's own body
   // is drawn over its reserved cells instead of inside a stack of grey boxes.
-  private static IEnumerable<JObject> OutlineRing(int x, int z, int y, string name) {
-    int ox = x * 16, oy = y * 16 - 1, oz = z * 16;
-    (int X0, int Z0, int X1, int Z1)[] bars = [
+  private static IEnumerable<JObject> OutlineRing(
+    int x,
+    int z,
+    int y,
+    string name
+  ) {
+    int ox = x * 16,
+      oy = y * 16 - 1,
+      oz = z * 16;
+    (int X0, int Z0, int X1, int Z1)[] bars =
+    [
       (0, 0, 16, 1),
       (0, 15, 16, 16),
       (0, 0, 1, 16),
@@ -528,19 +616,20 @@ public static class Schematic {
   /// rotated variant, and keeps its own rotation.
   /// </para>
   /// </summary>
-  public static (JObject Raw, Dictionary<string, TextureRef> TextureValues) Compose(
-    Layout layout,
-    BlockIndex index,
-    int? cutAt = null,
-    int spin = 0
-  ) {
+  public static (
+    JObject Raw,
+    Dictionary<string, TextureRef> TextureValues
+  ) Compose(Layout layout, BlockIndex index, int? cutAt = null, int spin = 0) {
     var elements = new JArray();
     var textureValues = new Dictionary<string, TextureRef>();
     for (int i = 0; i < layout.Cells.Count; i++) {
       Cell c = layout.Cells[i];
       if (cutAt != null && c.Y > cutAt)
         continue;
-      if (!layout.Numbers.TryGetValue(c.Number, out string? selector) || index.Optional(selector))
+      if (
+        !layout.Numbers.TryGetValue(c.Number, out string? selector)
+        || index.Optional(selector)
+      )
         continue;
       ResolvedBlock? block = index.Resolve(selector);
       if (block == null)
@@ -578,7 +667,8 @@ public static class Schematic {
     // structure table is all body, whatever shape it ships; elsewhere the mesh's own box decides,
     // and a cell the model does not reach keeps its box.
     Footprint.Box? body =
-      layout.Cells.Count == 0 || Footprint.PrincipalMesh(layout, index) is not { } mesh
+      layout.Cells.Count == 0
+      || Footprint.PrincipalMesh(layout, index) is not { } mesh
         ? null
         : Footprint.Turned(mesh, spin);
     var outlined = new List<Offset> { layout.Anchor };
@@ -595,12 +685,21 @@ public static class Schematic {
     if (outlined.Count > 1) {
       int floor = outlined.Min(c => c.Y);
       int column = 0;
-      foreach ((int x, int z) in outlined.Select(c => (c.X, c.Z)).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X))
+      foreach (
+        (int x, int z) in outlined
+          .Select(c => (c.X, c.Z))
+          .Distinct()
+          .OrderBy(c => c.Z)
+          .ThenBy(c => c.X)
+      )
         foreach (JObject bar in OutlineRing(x, z, floor, $"footprint{column++}"))
           elements.Add(bar);
     }
 
-    var raw = new JObject { ["textures"] = new JObject(), ["elements"] = elements };
+    var raw = new JObject {
+      ["textures"] = new JObject(),
+      ["elements"] = elements,
+    };
     return (raw, textureValues);
   }
 
@@ -615,9 +714,12 @@ public static class Schematic {
   // A cell's own centre (in blocks from the principal's centre, the frame Footprint measures in)
   // within a mesh box.
   private static bool Inside(Footprint.Box box, Offset cell) =>
-    cell.X >= box.Lo.X && cell.X <= box.Hi.X
-    && cell.Y >= box.Lo.Y && cell.Y <= box.Hi.Y
-    && cell.Z >= box.Lo.Z && cell.Z <= box.Hi.Z;
+    cell.X >= box.Lo.X
+    && cell.X <= box.Hi.X
+    && cell.Y >= box.Lo.Y
+    && cell.Y <= box.Hi.Y
+    && cell.Z >= box.Lo.Z
+    && cell.Z <= box.Hi.Z;
 
   /// <summary>
   /// One line per texture value of <paramref name="layout"/>'s composite whose file
@@ -625,8 +727,10 @@ public static class Schematic {
   /// ({value}) not found</c>, sorted, each block and key once. Empty when every value a block
   /// assigns resolves; a face assigned nothing at all is <see cref="UnpaintedFaces"/>.
   /// </summary>
-  public static IReadOnlyList<string> MissingTextures(Layout layout, BlockIndex index) =>
-    TextureLines(layout, index, unassigned: false);
+  public static IReadOnlyList<string> MissingTextures(
+    Layout layout,
+    BlockIndex index
+  ) => TextureLines(layout, index, unassigned: false);
 
   /// <summary>
   /// One line per face key of <paramref name="layout"/>'s composite that its own block assigns no
@@ -634,10 +738,16 @@ public static class Schematic {
   /// key once. Such a face is drawn with the magenta placeholder wherever the picture shows it,
   /// which for an interior face of a structure is nowhere.
   /// </summary>
-  public static IReadOnlyList<string> UnpaintedFaces(Layout layout, BlockIndex index) =>
-    TextureLines(layout, index, unassigned: true);
+  public static IReadOnlyList<string> UnpaintedFaces(
+    Layout layout,
+    BlockIndex index
+  ) => TextureLines(layout, index, unassigned: true);
 
-  private static IReadOnlyList<string> TextureLines(Layout layout, BlockIndex index, bool unassigned) {
+  private static IReadOnlyList<string> TextureLines(
+    Layout layout,
+    BlockIndex index,
+    bool unassigned
+  ) {
     (_, Dictionary<string, TextureRef> textureValues) = Compose(layout, index);
     var lines = new SortedSet<string>(StringComparer.Ordinal);
     foreach ((string prefixed, TextureRef value) in textureValues) {
@@ -651,10 +761,17 @@ public static class Schematic {
       string? selector =
         owner == PrincipalPrefix
           ? layout.Principal
-          : layout.Numbers[layout.Cells[int.Parse(owner[1..], CultureInfo.InvariantCulture)].Number];
-      string code = (selector != null ? index.Resolve(selector)?.Code : null) ?? "?";
+          : layout.Numbers[
+            layout
+              .Cells[int.Parse(owner[1..], CultureInfo.InvariantCulture)]
+              .Number
+          ];
+      string code =
+        (selector != null ? index.Resolve(selector)?.Code : null) ?? "?";
       lines.Add(
-        unassigned ? $"{code}: face texture {key} is assigned nothing" : $"{code}: texture {key} ({value}) not found"
+        unassigned
+          ? $"{code}: face texture {key} is assigned nothing"
+          : $"{code}: texture {key} ({value}) not found"
       );
     }
     return [.. lines];
@@ -669,19 +786,44 @@ public static class Schematic {
   /// at. <paramref name="spin"/> turns every drawn mesh, as
   /// <see cref="Compose"/> means it.
   /// </summary>
-  public static SKBitmap IsoPng(Layout layout, BlockIndex index, int ppu = 8, int? cutAt = null, int spin = 0) {
-    (JObject raw, Dictionary<string, TextureRef> textureValues) = Compose(layout, index, cutAt, spin);
+  public static SKBitmap IsoPng(
+    Layout layout,
+    BlockIndex index,
+    int ppu = 8,
+    int? cutAt = null,
+    int spin = 0
+  ) {
+    (JObject raw, Dictionary<string, TextureRef> textureValues) = Compose(
+      layout,
+      index,
+      cutAt,
+      spin
+    );
     Shape shape =
       JsonConvert.DeserializeObject<Shape>(raw.ToString())
-      ?? throw new JsonException("the composed schematic shape failed to parse");
-    LoadedShape loaded = ShapeFile.FromRaw(shape, null, new Dictionary<string, string>());
+      ?? throw new JsonException(
+        "the composed schematic shape failed to parse"
+      );
+    LoadedShape loaded = ShapeFile.FromRaw(
+      shape,
+      null,
+      new Dictionary<string, string>()
+    );
 
     var extra = new Dictionary<string, byte[,,]>();
-    foreach ((string prefix, string key, byte level) in new[] {
-      ("filler", FillerTextureKey, (byte)190),
-      ("footprint", OutlineTextureKey, (byte)130),
-    }) {
-      if (!raw["elements"]!.Any(el => ((string?)el["name"])?.StartsWith(prefix, StringComparison.Ordinal) == true))
+    foreach (
+      (string prefix, string key, byte level) in new[]
+      {
+        ("filler", FillerTextureKey, (byte)190),
+        ("footprint", OutlineTextureKey, (byte)130),
+      }
+    ) {
+      if (
+        !raw["elements"]!.Any(el =>
+          ((string?)el["name"])?.StartsWith(prefix, StringComparison.Ordinal)
+          == true
+        )
+      )
         continue;
       var grey = new byte[16, 16, 4];
       for (int y = 0; y < 16; y++)
@@ -694,10 +836,24 @@ public static class Schematic {
       extra[key] = grey;
     }
 
-    TextureSet textures = TextureSet.FromResolved(textureValues, index.ResolveTexture, extra);
+    TextureSet textures = TextureSet.FromResolved(
+      textureValues,
+      index.ResolveTexture,
+      extra
+    );
     View iso = Renderer.NamedViews["iso"];
-    using SKBitmap drawing = Renderer.Render(loaded, iso, ppu: ppu, textures: textures);
-    return WithLayerScale(drawing, Renderer.Project(loaded, iso, ppu), layout, cutAt);
+    using SKBitmap drawing = Renderer.Render(
+      loaded,
+      iso,
+      ppu: ppu,
+      textures: textures
+    );
+    return WithLayerScale(
+      drawing,
+      Renderer.Project(loaded, iso, ppu),
+      layout,
+      cutAt
+    );
   }
 
   // Pixels reserved left of the drawing for the layer scale: a two-character label, its tick and
@@ -722,7 +878,8 @@ public static class Schematic {
     IReadOnlyList<Offset> cells = Footprint.Reserved(layout);
     int x = (cells.Max(c => c.X) + 1) * 16;
     int z = (cells.Max(c => c.Z) + 1) * 16;
-    return [
+    return
+    [
       .. layout
         .Layers()
         .Where(y => cutAt == null || y <= cutAt)
@@ -732,18 +889,40 @@ public static class Schematic {
 
   // The drawing moved right by ScalePad, with a tick and a faint guide across the picture per drawn
   // Y layer, at the row that layer reads at on the plane nearest the camera (ScaleRows).
-  private static SKBitmap WithLayerScale(SKBitmap drawing, Renderer.Projection projection, Layout layout, int? cutAt) {
-    IReadOnlyList<(int Layer, double Row)> ticks = ScaleRows(projection, layout, cutAt);
+  private static SKBitmap WithLayerScale(
+    SKBitmap drawing,
+    Renderer.Projection projection,
+    Layout layout,
+    int? cutAt
+  ) {
+    IReadOnlyList<(int Layer, double Row)> ticks = ScaleRows(
+      projection,
+      layout,
+      cutAt
+    );
     if (ticks.Count == 0)
       return drawing.Copy();
 
-    var scaled = new SKBitmap(drawing.Width + ScalePad, drawing.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
+    var scaled = new SKBitmap(
+      drawing.Width + ScalePad,
+      drawing.Height,
+      SKColorType.Rgba8888,
+      SKAlphaType.Unpremul
+    );
     using var canvas = new SKCanvas(scaled);
     canvas.Clear(Renderer.Background);
     canvas.DrawBitmap(drawing, ScalePad, 0);
 
-    using var paint = new SKPaint { Color = SKColors.Black, IsAntialias = false, StrokeWidth = 1 };
-    using var guide = new SKPaint { Color = new SKColor(0, 0, 0, 40), IsAntialias = false, StrokeWidth = 1 };
+    using var paint = new SKPaint {
+      Color = SKColors.Black,
+      IsAntialias = false,
+      StrokeWidth = 1,
+    };
+    using var guide = new SKPaint {
+      Color = new SKColor(0, 0, 0, 40),
+      IsAntialias = false,
+      StrokeWidth = 1,
+    };
     using var font = new SKFont(Text.Face, 10);
     var rows = new List<float>();
     foreach ((int y, double value) in ticks) {
@@ -751,8 +930,17 @@ public static class Schematic {
       rows.Add(row);
       canvas.DrawLine(ScalePad, row, scaled.Width, row, guide);
       canvas.DrawLine(ScalePad - 9, row, ScalePad - 1, row, paint);
-      string label = y == 0 ? "0" : y > 0 ? $"+{y}" : y.ToString(CultureInfo.InvariantCulture);
-      canvas.DrawText(label, ScalePad - 12 - font.MeasureText(label), row + 3.5f, font, paint);
+      string label =
+        y == 0 ? "0"
+        : y > 0 ? $"+{y}"
+        : y.ToString(CultureInfo.InvariantCulture);
+      canvas.DrawText(
+        label,
+        ScalePad - 12 - font.MeasureText(label),
+        row + 3.5f,
+        font,
+        paint
+      );
     }
     canvas.DrawLine(ScalePad - 5, rows.Min(), ScalePad - 5, rows.Max(), paint);
     return scaled;
@@ -796,8 +984,13 @@ public static class Schematic {
       bool optional = row?.Optional ?? false;
       if (representative == null && !optional)
         warnings.Add(selector);
-      if (ambiguities != null && ambiguities.TryGetValue(selector, out IReadOnlyList<string>? spanned))
-        warnings.Add($"{selector}: ambiguous between {string.Join(", ", spanned)}");
+      if (
+        ambiguities != null
+        && ambiguities.TryGetValue(selector, out IReadOnlyList<string>? spanned)
+      )
+        warnings.Add(
+          $"{selector}: ambiguous between {string.Join(", ", spanned)}"
+        );
       rows.Add(
         new JObject {
           ["number"] = n,
@@ -805,7 +998,8 @@ public static class Schematic {
           ["selector"] = selector,
           // A null string assigns as JTokenType.String with a null value, not JTokenType.Null;
           // JValue.CreateNull() is needed for the field to serialize as JSON null.
-          ["representative"] = representative == null ? JValue.CreateNull() : representative,
+          ["representative"] =
+            representative == null ? JValue.CreateNull() : representative,
           ["color"] = row?.Color == null ? JValue.CreateNull() : row.Color,
           ["optional"] = optional,
         }

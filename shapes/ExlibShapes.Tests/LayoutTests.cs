@@ -13,14 +13,19 @@ public class LayoutTests {
   // The family workspace's own exmods checkout; the two facts naming it skip (an early return)
   // when it is absent.
   private static string? Flywheel =>
-    FixturePath.Workspace("exmods/mods/iiex/tests/goldens/iiex/blocktypes/mpenergy/flywheel.json");
+    FixturePath.Workspace(
+      "exmods/mods/iiex/tests/goldens/iiex/blocktypes/mpenergy/flywheel.json"
+    );
 
   [Fact]
   public void Load_reads_cells_numbers_fillers_and_anchor() {
     Layout layout = Layout.Load(Fixture);
     Assert.Equal(18, layout.Cells.Count);
     Assert.Equal(
-      new Dictionary<int, string> { [1] = "game:claybricks-fire-*", [2] = "game:brickslabs-fire-south-free" },
+      new Dictionary<int, string> {
+        [1] = "game:claybricks-fire-*",
+        [2] = "game:brickslabs-fire-south-free",
+      },
       layout.Numbers
     );
     Assert.Equal(
@@ -28,7 +33,9 @@ public class LayoutTests {
       new HashSet<Offset>(layout.Fillers)
     );
     Assert.Equal(new Offset(0, 0, 0), layout.Anchor);
-    Cell anchorCell = layout.Cells.First(c => new Offset(c.X, c.Y, c.Z) == layout.Anchor);
+    Cell anchorCell = layout.Cells.First(c =>
+      new Offset(c.X, c.Y, c.Z) == layout.Anchor
+    );
     Assert.Equal(2, anchorCell.Number);
   }
 
@@ -36,7 +43,9 @@ public class LayoutTests {
   public void Load_reads_roles() {
     Layout layout = Layout.Load(Fixture);
     Assert.Equal(
-      new Dictionary<string, IReadOnlyList<Offset>> { ["chamber"] = [new(0, 1, 1)] },
+      new Dictionary<string, IReadOnlyList<Offset>> {
+        ["chamber"] = [new(0, 1, 1)],
+      },
       layout.Roles
     );
   }
@@ -50,7 +59,10 @@ public class LayoutTests {
     for (int i = 0; i < layout.Cells.Count; i++) {
       Cell original = layout.Cells[i];
       Cell turned = rotated.Cells[i];
-      Assert.Equal((original.Z, original.Y, -original.X), (turned.X, turned.Y, turned.Z));
+      Assert.Equal(
+        (original.Z, original.Y, -original.X),
+        (turned.X, turned.Y, turned.Z)
+      );
       Assert.Equal(original.Number, turned.Number);
     }
   }
@@ -94,14 +106,19 @@ public class LayoutTests {
     Layout layout = Layout.Load(Fixture);
     Layout rotated = layout.Rotated(90);
     Assert.Equal(
-      new Dictionary<string, IReadOnlyList<Offset>> { ["chamber"] = [new(1, 1, 0)] },
+      new Dictionary<string, IReadOnlyList<Offset>> {
+        ["chamber"] = [new(1, 1, 0)],
+      },
       rotated.Roles
     );
   }
 
   [Fact]
   public void Load_without_the_attribute_or_fillers_raises_layout_error() {
-    string bad = Path.Combine(Path.GetTempPath(), "nostructure-" + Path.GetRandomFileName() + ".json");
+    string bad = Path.Combine(
+      Path.GetTempPath(),
+      "nostructure-" + Path.GetRandomFileName() + ".json"
+    );
     File.WriteAllText(bad, "{\"code\": \"empty\", \"attributes\": {}}");
     try {
       LayoutError ex = Assert.Throws<LayoutError>(() => Layout.Load(bad));
