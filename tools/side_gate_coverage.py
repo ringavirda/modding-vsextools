@@ -15,13 +15,18 @@ A client block is one of:
 - the body of an `if` whose condition holds only on the client: `Side == EnumAppSide.Client`,
   `Side != EnumAppSide.Server`, `x.IsClient()`, `x.IsClient`, `!x.IsServer()`, `!x.IsServer`, alone
   or as a term of a top-level `&&` or `||`;
-- the rest of the enclosing block after `if (<server test>) return ...;`, where a server test is
+- the rest of the enclosing block after `if (<server test>) <exit>;`, where the exit is `break`,
+  `continue`, or `return` of nothing, a literal, a name or a tuple of them, and a server test is
   `Side == EnumAppSide.Server`, `Side != EnumAppSide.Client`, `x.IsServer()`, `!x.IsClient()` and
   their property forms, alone or as a term of a top-level `||`;
 - the `else` of an `if` whose condition holds only on the server.
-A body that is a single `break`, `continue` or `return` of nothing, a literal, a name or a tuple of
-them is an exit, not client work, and is skipped.
-Ternaries and `is ICoreClientAPI` type tests are not read.
+The type tests count as side tests: `x is ICoreClientAPI [name]` and `x is not ICoreServerAPI` hold
+only on the client, `x is ICoreServerAPI [name]` and `x is not ICoreClientAPI [name]` only on the
+server.
+A client body that is only `return;`, `break;` or `continue;` does no client work and is skipped;
+a client body returning a value is an answer the engine acts on and counts.
+Ternaries, property patterns (`is { Side: ... }`) and a bool local holding a side test are not
+read.
 
 A block is covered when any line strictly inside it has hits > 0. A block whose first line is also
 the last line of its condition cannot be told apart from the condition and fails as unmappable.
@@ -30,7 +35,8 @@ allowlist.json is {"entries": [{"file": "<repo-relative path>", "member": "<Type
 "reason": "..."}]}; an entry allows every uncovered client block of that member. An entry with an
 empty reason, or one that allows no uncovered block, fails the gate.
 
-Exit 0 when every block is covered or allowed, 1 otherwise, 2 on a usage error.
+Exit 0 when every block is covered or allowed, 1 otherwise, 2 on a usage error. A gated source
+file outside obj/ missing from disk, or a corpus with no client block, is a failure.
 """
 
 import json
@@ -40,17 +46,22 @@ import sys
 import xml.etree.ElementTree as ET
 
 SIDE = r"[\w.?()\[\]]*Side"
+OPERAND = r"[\w.?()\[\]]*"
 CLIENT_TERMS = [
     re.compile(rf"^{SIDE}\s*==\s*EnumAppSide\.Client$"),
     re.compile(rf"^{SIDE}\s*!=\s*EnumAppSide\.Server$"),
-    re.compile(r"^[\w.?()\[\]]*\.IsClient(\(\))?$"),
-    re.compile(r"^!\s*[\w.?()\[\]]*\.IsServer(\(\))?$"),
+    re.compile(rf"^{OPERAND}\.IsClient(\(\))?$"),
+    re.compile(rf"^!\s*{OPERAND}\.IsServer(\(\))?$"),
+    re.compile(rf"^{OPERAND}\s+is\s+ICoreClientAPI(\s+\w+)?$"),
+    re.compile(rf"^{OPERAND}\s+is\s+not\s+ICoreServerAPI(\s+\w+)?$"),
 ]
 SERVER_TERMS = [
     re.compile(rf"^{SIDE}\s*==\s*EnumAppSide\.Server$"),
     re.compile(rf"^{SIDE}\s*!=\s*EnumAppSide\.Client$"),
-    re.compile(r"^[\w.?()\[\]]*\.IsServer(\(\))?$"),
-    re.compile(r"^!\s*[\w.?()\[\]]*\.IsClient(\(\))?$"),
+    re.compile(rf"^{OPERAND}\.IsServer(\(\))?$"),
+    re.compile(rf"^!\s*{OPERAND}\.IsClient(\(\))?$"),
+    re.compile(rf"^{OPERAND}\s+is\s+ICoreServerAPI(\s+\w+)?$"),
+    re.compile(rf"^{OPERAND}\s+is\s+not\s+ICoreClientAPI(\s+\w+)?$"),
 ]
 TYPE_HEADER = re.compile(r"\b(class|struct|record|interface)\s+(\w+)")
 MEMBER_CALL = re.compile(r"(\w+)\s*(<[^<>]*>)?\s*\(")
@@ -98,6 +109,7 @@ def mask(text):
             i = j
         elif c == '"' or (c in "$@" and re.match(r"[$@]{1,3}\"", text[i:i + 4])):
             m = re.match(r"([$@]*)(\"+)", text[i:])
+            assert m
             prefix, quotes = m.group(1), m.group(2)
             start = i + len(prefix)
             if len(quotes) >= 3:
@@ -292,13 +304,25 @@ def classify(cond):
     return None, False
 
 
-def is_exit(src, start, end):
+def body_of(src, start, end):
     body = src.text[start:end + 1].strip()
     if body.startswith("{") and body.endswith("}"):
         body = body[1:-1].strip()
+    return body
+
+
+def is_bare_exit(src, start, end):
+    """A client body that does no client work: only `return;`, `break;` or `continue;`."""
+    return bool(re.fullmatch(r"(return|break|continue)\s*;", body_of(src, start, end)))
+
+
+def is_exit(src, start, end):
+    """A server body that leaves the block: `break`, `continue`, or `return` of nothing, a literal,
+    a name or a tuple of them."""
     value = r"(true|false|null|default|[\w.]+|-?\d+)"
     return bool(re.fullmatch(
-        rf"(return(\s+{value}|\s*\(\s*{value}(\s*,\s*{value})*\s*\))?|break|continue)\s*;", body))
+        rf"(return(\s+{value}|\s*\(\s*{value}(\s*,\s*{value})*\s*\))?|break|continue)\s*;",
+        body_of(src, start, end)))
 
 
 def span(src, start, end):
@@ -329,7 +353,7 @@ def find_blocks(text):
         body_end = src.statement_end(body)
         cond_line = src.line(close)
         found = []
-        if side == "client" and not is_exit(src, body, body_end):
+        if side == "client" and not is_bare_exit(src, body, body_end):
             found.append(("then", body, body_end))
         if side == "server":
             if is_exit(src, body, body_end):
@@ -360,6 +384,7 @@ def load_hits(path, packages):
     """{source filename: {line: max hits}} over the classes of the named packages."""
     hits = {}
     current = None
+    file_hits = {}
     for event, el in ET.iterparse(path, events=("start", "end")):
         if event == "start":
             if el.tag == "package":
@@ -401,6 +426,8 @@ def main(cov_path, floors_path, allow_path):
     total = covered = allowed = 0
     for filename in sorted(hits):
         if not os.path.exists(filename):
+            if "/obj/" not in filename.replace(os.sep, "/"):
+                failures.append(f"{display(filename)}: in the report but not on disk")
             continue
         with open(filename, encoding="utf-8-sig") as f:
             blocks = find_blocks(f.read())
@@ -429,6 +456,8 @@ def main(cov_path, floors_path, allow_path):
         if used[k] == 0:
             failures.append(f"allowlist entry {e.get('file')} {e.get('member')} allows no uncovered client block")
 
+    if total == 0:
+        failures.append("no client blocks found - the report names no gated source on disk")
     print(f"side gates: {total} client blocks, {covered} covered, {allowed} allowed")
     if failures:
         print("\nSIDE GATE FAILED:")

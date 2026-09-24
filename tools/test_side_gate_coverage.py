@@ -43,24 +43,61 @@ class FinderTests(unittest.TestCase):
             """)
         self.assertEqual([("then", 4, 5)], [(b["form"], b["first"], b["last"]) for b in found])
 
-    def test_a_server_only_guard_is_not_a_block(self):
+    def test_a_bare_client_exit_is_not_a_block(self):
         found = blocks("""\
             if (world.Side != EnumAppSide.Server)
-              return true;
-            if (api == null || api.Side != EnumAppSide.Server)
-              return (null, null);
+              return;
+            foreach (var slot in slots) {
+              if (Api.Side == EnumAppSide.Client) { continue; }
+              if (Api.IsClient()) break;
+            }
             Work();
             """)
         self.assertEqual([], found)
 
-    def test_a_client_exit_is_not_a_block_but_a_client_answer_is(self):
+    def test_a_client_answer_is_a_block_whatever_it_returns(self):
         found = blocks("""\
             if (Api.Side == EnumAppSide.Client)
               return true;
+            if (api == null || api.Side != EnumAppSide.Server)
+              return (null, null);
             if (Api.Side == EnumAppSide.Client)
               return StateOf(slot) == Sand;
             """)
-        self.assertEqual([6], [b["first"] for b in found])
+        self.assertEqual([4, 6, 8], [b["first"] for b in found])
+
+    def test_a_server_exit_returning_a_value_still_leaves_the_client_behind(self):
+        found = blocks("""\
+            if (world.Side == EnumAppSide.Server)
+              return true;
+            Play();
+            return true;
+            """)
+        self.assertEqual([("rest", 5, 6)], [(b["form"], b["first"], b["last"]) for b in found])
+
+    def test_a_client_type_test_body_is_a_block(self):
+        found = blocks("""\
+            if (Api is ICoreClientAPI capi) {
+              Report(capi);
+            }
+            if (api is not ICoreServerAPI && ready)
+              Draw();
+            """)
+        self.assertEqual([("then", 4, 4), ("then", 7, 7)],
+                         [(b["form"], b["first"], b["last"]) for b in found])
+
+    def test_a_server_type_test_leaves_its_rest_and_else_to_the_client(self):
+        found = blocks("""\
+            if (sapi is ICoreServerAPI s)
+              Tick(s);
+            else
+              Draw();
+            if (_be.Api is not ICoreClientAPI || _animatable == null)
+              return;
+            Animate();
+            """)
+        self.assertEqual([("else", 6, 6), ("rest", 9, 9)],
+                         [(b["form"], b["first"], b["last"]) for b in found])
 
     def test_the_rest_after_a_server_exit_is_a_block(self):
         found = blocks("""\
@@ -121,7 +158,7 @@ SOURCE = """class T {
 
 
 class GateTests(unittest.TestCase):
-    def run_gate(self, hits, entries=None, source=SOURCE):
+    def run_gate(self, hits, entries=None, source=SOURCE, missing=None):
         with tempfile.TemporaryDirectory() as d:
             src = os.path.join(d, "T.cs")
             with open(src, "w") as f:
@@ -131,8 +168,15 @@ class GateTests(unittest.TestCase):
                 f.write(SOURCE)
             cov = os.path.join(d, "coverage.xml")
             lines = "".join(f'<line number="{n}" hits="{h}" />' for n, h in hits.items())
+            report = REPORT.format(src=src, other=other, lines=lines)
+            if missing is not None:
+                gone = os.path.join(d, missing)
+                report = report.replace("  </classes></package>\n  <package name=\"other\">",
+                                        f'    <class name="G" filename="{gone}"><lines>'
+                                        '<line number="1" hits="1" /></lines></class>\n'
+                                        '  </classes></package>\n  <package name="other">')
             with open(cov, "w") as f:
-                f.write(REPORT.format(src=src, other=other, lines=lines))
+                f.write(report)
             floors = os.path.join(d, "floors.json")
             with open(floors, "w") as f:
                 json.dump({"assemblies": {"mod": {}}}, f)
@@ -175,6 +219,18 @@ class GateTests(unittest.TestCase):
         code, out = self.run_gate({3: 1}, source=source)
         self.assertEqual(1, code)
         self.assertIn("unmappable", out)
+
+    def test_a_gated_source_missing_from_disk_fails_unless_it_is_generated(self):
+        code, out = self.run_gate({3: 1, 4: 2}, missing="Gone.cs")
+        self.assertEqual(1, code)
+        self.assertIn("Gone.cs: in the report but not on disk", out)
+        self.assertEqual(0, self.run_gate({3: 1, 4: 2}, missing="obj/Gen.g.cs")[0])
+
+    def test_a_corpus_with_no_client_block_fails(self):
+        code, out = self.run_gate({3: 1}, source="class T {\n  void M() {\n    Work();\n  }\n}\n")
+        self.assertEqual(1, code)
+        self.assertIn("side gates: 0 client blocks", out)
+        self.assertIn("no client blocks found", out)
 
 
 if __name__ == "__main__":
