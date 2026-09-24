@@ -229,9 +229,12 @@ class ProvisionDefaultsTests(unittest.TestCase):
         self.assertIn(f"Vintage Story 1.22.7 (server) already provisioned at {foreign}-server", said)
 
 
+# Stubs the interop check off, so a run inside WSL takes the Linux client and store too.
+NO_INTEROP = "function Test-WslInterop { $false }; "
+
 # Stubs the install, staging and dotnet lookup of `client` and prints the arguments it would launch
 # the game with, one per line, as a JSON array.
-CLIENT = ("function Find-UsableGameInstall { '/game' }; function Publish-RunMods { '/mods' }; "
+CLIENT = (NO_INTEROP + "function Find-UsableGameInstall { '/game' }; function Publish-RunMods { '/mods' }; "
           "function Resolve-DotnetHost { 'Show-Args' }; "
           "function Show-Args { ConvertTo-Json -Compress @($args) }; "
           "Invoke-Client @('-NoBuild')")
@@ -256,7 +259,7 @@ class ClientAndLogsTests(unittest.TestCase):
                           "--logPath", os.path.join(self.data, "Logs", "exmods"), "--addModPath", "/mods"], got)
 
     def logs(self):
-        return run(self.repo, "$said = @(Invoke-Logs @('client', '-Lines', '1') 6>&1 | ForEach-Object { \"$_\" }); "
+        return run(self.repo, NO_INTEROP + "$said = @(Invoke-Logs @('client', '-Lines', '1') 6>&1 | ForEach-Object { \"$_\" }); "
                               "ConvertTo-Json -Compress $said", self.home)
 
     def test_logs_reads_the_repository_folder_when_it_exists(self):
