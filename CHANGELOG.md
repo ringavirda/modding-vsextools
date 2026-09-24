@@ -9,6 +9,13 @@
   assembly that discovers no tests or counts fewer than the census holds, naming the assembly and
   both counts; `-AcceptDrop` records the lower count, and `exmod check -AcceptDrop` passes it to the
   test step. A `-Filter` run neither reads nor writes the census.
+- `exmod test -Coverage` runs a side gate after the coverage floors: every block guarded by a
+  client-side test (`Side == EnumAppSide.Client`, `Side != EnumAppSide.Server` with client work in
+  its body, `IsClient`, and the code after a server-side early return) in the gated assemblies needs
+  a covered line in `coverage.xml` or an entry in `side-gate-allowlist.json` beside the floors file,
+  naming its file, member and reason. It prints `side gates: N client blocks, C covered, A allowed`
+  and fails naming each uncovered block's file and member, an entry with no reason, and an entry
+  that allows nothing.
 
 ### Changed
 

@@ -255,7 +255,16 @@ function Invoke-Test([string[]]$Argv) {
       return
     }
     & $py.Source (Join-Path $ToolsRoot 'tools/coverage_gate.py') $cov $floors
-    if ($LASTEXITCODE -ne 0) { throw "Coverage gate failed." }
+    $floorsOk = ($LASTEXITCODE -eq 0)
+    # Every client-guarded block needs a covered line or an entry in the allowlist beside the floors.
+    Write-Host ""
+    Push-Location $RepoRoot
+    try {
+      & $py.Source (Join-Path $ToolsRoot 'tools/side_gate_coverage.py') $cov $floors (Join-Path (Split-Path $floors -Parent) 'side-gate-allowlist.json')
+      $sideOk = ($LASTEXITCODE -eq 0)
+    } finally { Pop-Location }
+    if (-not $floorsOk) { throw "Coverage gate failed." }
+    if (-not $sideOk) { throw "Side gate failed." }
     Write-Host "Coverage gate passed."
     return
   }
@@ -393,7 +402,9 @@ projects and building them at once races on the same intermediate assemblies.
   -Throttle   lanes to run at once; the default is all of them
   -Coverage   instead of the lanes, collect cobertura over the solution and ratchet it against
               the manifest's coverageFloors file, else tests/ or infra/test/coverage-floors.json;
-              no floors file, no gate - the same gate CI runs
+              no floors file, no gate - the same gate CI runs. The side gate follows: every
+              client-guarded block needs a covered line or an entry in side-gate-allowlist.json
+              beside the floors file
   -AcceptDrop record a test count below the census instead of failing on it
 
 The census, .exmod/census/<branch>.json, holds each assembly's last green test count per series.

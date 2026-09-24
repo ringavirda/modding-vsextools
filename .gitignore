@@ -11,3 +11,5 @@
 /.compat
 .build.lock
 /.exmod
+
+__pycache__/

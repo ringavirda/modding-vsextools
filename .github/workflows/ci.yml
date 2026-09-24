@@ -28,6 +28,8 @@ jobs:
           if ($errors -gt 0) { exit 1 }
       - name: Every command is listed
         run: bash scripts/exmod.sh help
+      - name: Test the Python tools
+        run: python3 -m unittest discover -s tools -p 'test_*.py'
 
   tools:
     runs-on: ubuntu-latest
