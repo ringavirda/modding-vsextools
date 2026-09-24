@@ -269,46 +269,6 @@ function ConvertTo-StarterTestCsproj([string]$Text, [string]$Label) {
 # quoted string, or the raw `{ "kind": ..., "isDefault": ... }` shape "Test: all" needs).
 # A task runs the repository's own launcher, which finds pwsh or installs it into .dotnet/tools:
 # bash scripts/exmod.sh on Linux and macOS, pwsh scripts/exmod.ps1 on Windows.
-# The task that fetches a series' client for the launch configuration. Each platform keeps its own
-# slot, .game/<series>-<platform> on Linux and macOS and %LOCALAPPDATA%\exmod\game\<series> on
-# Windows (a native library does not load from a network share, and a checkout under
-# \\wsl.localhost is one), so a checkout shared between Windows and WSL holds both clients.
-function New-VsCodeProvisionTask([string]$Label, [string]$Version, [string]$Slug) {
-  $common = @('provision', 'game', '-Version', $Version, '-Kind', 'client', '-Dest')
-  $lines = { param([string[]]$Items, [string]$Indent) (@($Items) | ForEach-Object { "$Indent`"$_`"" }) -join ",`
-" }
-  return @"
-    {
-      "label": "$Label",
-      "type": "process",
-      "command": "bash",
-      "args": [
-        "`${workspaceFolder}/scripts/exmod.sh",
-$(& $lines ($common + ".game/$Slug-linux") '        ')
-      ],
-      "osx": {
-        "command": "bash",
-        "args": [
-          "`${workspaceFolder}/scripts/exmod.sh",
-$(& $lines ($common + ".game/$Slug-macos") '          ')
-        ]
-      },
-      "windows": {
-        "command": "pwsh",
-        "args": [
-          "-NoProfile",
-          "-ExecutionPolicy",
-          "Bypass",
-          "-File",
-          "`${workspaceFolder}/scripts/exmod.ps1",
-$(& $lines ($common + "`${env:LOCALAPPDATA}/exmod/game/$Slug") '          ')
-        ]
-      },
-      "problemMatcher": []
-    }
-"@
-}
-
 function New-VsCodeTask([string]$Label, [string[]]$TaskArgs, [string]$Group = $null) {
   $argLines = (@($TaskArgs) | ForEach-Object { "        `"$_`"" }) -join ",`n"
   $winArgLines = (@($TaskArgs) | ForEach-Object { "          `"$_`"" }) -join ",`n"
@@ -353,6 +313,66 @@ $depLines
 "@
 }
 
+# One launch configuration running series $Slug's client from the user store of the OS VS Code
+# runs on (the Windows apphost, so a GPU preference registered for it applies), with data in the
+# store's data/<workspace folder name>, logs in its Logs/<workspace folder name> and the mods staged
+# in $ModsDir. $Legacy sets DOTNET_ROOT to the checkout's .dotnet. Sources built with the
+# /exmod/<workspace folder name>/ path map resolve through sourceFileMap.
+function New-VsCodeLaunchConfig([string]$Name, [string]$PreLaunchTask, [string]$Slug, [string]$ModsDir, [bool]$Legacy) {
+  $stores = [ordered]@{
+    linux   = '${env:HOME}/.local/share/exmod'
+    osx     = '${env:HOME}/Library/Application Support/exmod'
+    windows = '${env:LOCALAPPDATA}/exmod'
+  }
+  $argLines = {
+    param([string]$Store, [string]$Indent)
+    $items = @('--tracelog', '--dataPath', "$Store/data/`${workspaceFolderBasename}",
+      '--logPath', "$Store/data/`${workspaceFolderBasename}/Logs/`${workspaceFolderBasename}",
+      '--addModPath', "`${workspaceFolder}/$ModsDir")
+    (@($items) | ForEach-Object { "$Indent`"$_`"" }) -join ",`n"
+  }
+  $envLines = if ($Legacy) {
+    @"
+      "env": { "DOTNET_ROOT": "`${workspaceFolder}/.dotnet" },
+      "linux": { "env": { "DOTNET_ROOT": "`${workspaceFolder}/.dotnet", "WAYLAND_DISPLAY": "none" } },
+"@
+  } else {
+    @"
+      "linux": { "env": { "WAYLAND_DISPLAY": "none" } },
+"@
+  }
+  return @"
+    {
+      "name": "$Name",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "$PreLaunchTask",
+      "program": "$($stores.linux)/game/$Slug/Vintagestory.dll",
+      "args": [
+$(& $argLines $stores.linux '        ')
+      ],
+      "cwd": "`${workspaceFolder}",
+$envLines
+      "osx": {
+        "program": "$($stores.osx)/game/$Slug/Vintagestory.dll",
+        "args": [
+$(& $argLines $stores.osx '          ')
+        ]
+      },
+      "windows": {
+        "program": "$($stores.windows)/game/$Slug/Vintagestory.exe",
+        "args": [
+$(& $argLines $stores.windows '          ')
+        ]
+      },
+      "sourceFileMap": { "/exmod/`${workspaceFolderBasename}/": "`${workspaceFolder}/" },
+      "stopAtEntry": false,
+      "console": "internalConsole",
+      "requireExactSource": false
+    }
+"@
+}
+
 # .vscode/tasks.json and launch.json for a generated repository, in the shape every family repo
 # hand-carries (see exmods/.vscode): a build/pack/test task per game series in $Series, the
 # launch-prep composites (provision-game + stage-mods) each feeds, and one launch configuration per
@@ -381,7 +401,7 @@ function Write-ExmodVsCode([string]$Dest, [string]$RepoName, [string[]]$Series) 
     $tasks.Add((New-VsCodeTask "Test: $s (legacy)" @('test', $s) '"test"'))
   }
   $tasks.Add((New-VsCodeTask 'Test: all versions (parallel)' @('test', 'all') '{ "kind": "test", "isDefault": true }'))
-  $tasks.Add((New-VsCodeProvisionTask "provision-game ($latest)" $latest $latest))
+  $tasks.Add((New-VsCodeTask "provision-game ($latest)" @('provision', 'game', '-Version', $latest, '-Kind', 'client')))
 
   if ($legacy.Count -gt 0) {
     $legacyComment = @'
@@ -392,7 +412,7 @@ function Write-ExmodVsCode([string]$Dest, [string]$RepoName, [string[]]$Series) 
     // ----------------------------------------------------------------------------------------
 '@
     $legacyTasks = [System.Collections.Generic.List[string]]::new()
-    foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeProvisionTask "provision-game ($s)" "$s.0" $s)) }
+    foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeTask "provision-game ($s)" @('provision', 'game', '-Version', "$s.0", '-Kind', 'client'))) }
     foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeTask "provision-dotnet ($s)" @('provision', 'dotnet', '-Version', $s))) }
     foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeDependsTask "launch-prep ($s)" @("provision-dotnet ($s)", "provision-game ($s)", "stage-mods ($s)"))) }
     foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeTask "stage-mods ($s)" @('stage', '-Version', $s))) }
@@ -411,72 +431,9 @@ $($tasks -join ",`n")
 "@ | Set-Content (Join-Path $vscodeDir 'tasks.json') -NoNewline
 
   $configs = [System.Collections.Generic.List[string]]::new()
-  $configs.Add(@"
-    {
-      "name": "$RepoName (latest)",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "launch-prep (latest)",
-      "program": "`${workspaceFolder}/.game/$latest-linux/Vintagestory.dll",
-      "args": [
-        "--tracelog",
-        "--dataPath",
-        "`${workspaceFolder}/.gamedata",
-        "--addModPath",
-        "`${workspaceFolder}/bin/Mods"
-      ],
-      "cwd": "`${workspaceFolder}",
-      "linux": { "env": { "WAYLAND_DISPLAY": "none" } },
-      "osx": { "program": "`${workspaceFolder}/.game/$latest-macos/Vintagestory.dll" },
-      "windows": {
-        "program": "`${env:LOCALAPPDATA}/exmod/game/$latest/Vintagestory.dll",
-        "args": [
-          "--tracelog",
-          "--dataPath",
-          "`${env:LOCALAPPDATA}/exmod/data/$RepoName",
-          "--addModPath",
-          "`${workspaceFolder}/bin/Mods"
-        ]
-      },
-      "stopAtEntry": false,
-      "console": "internalConsole",
-      "requireExactSource": false
-    }
-"@)
+  $configs.Add((New-VsCodeLaunchConfig "$RepoName (latest)" 'launch-prep (latest)' $latest 'bin/Mods' $false))
   foreach ($s in $legacy) {
-    $configs.Add(@"
-    {
-      "name": "$RepoName ($s)",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "launch-prep ($s)",
-      "program": "`${workspaceFolder}/.game/$s-linux/Vintagestory.dll",
-      "args": [
-        "--tracelog",
-        "--dataPath",
-        "`${workspaceFolder}/.gamedata",
-        "--addModPath",
-        "`${workspaceFolder}/bin/Mods-$s"
-      ],
-      "cwd": "`${workspaceFolder}",
-      "env": { "DOTNET_ROOT": "`${workspaceFolder}/.dotnet" },
-      "linux": { "env": { "DOTNET_ROOT": "`${workspaceFolder}/.dotnet", "WAYLAND_DISPLAY": "none" } },
-      "osx": { "program": "`${workspaceFolder}/.game/$s-macos/Vintagestory.dll" },
-      "windows": {
-        "program": "`${env:LOCALAPPDATA}/exmod/game/$s/Vintagestory.dll",
-        "args": [
-          "--tracelog",
-          "--dataPath",
-          "`${env:LOCALAPPDATA}/exmod/data/$RepoName",
-          "--addModPath",
-          "`${workspaceFolder}/bin/Mods-$s"
-        ]
-      },
-      "stopAtEntry": false,
-      "console": "internalConsole",
-      "requireExactSource": false
-    }
-"@)
+    $configs.Add((New-VsCodeLaunchConfig "$RepoName ($s)" "launch-prep ($s)" $s "bin/Mods-$s" $true))
   }
 
   @"
@@ -707,7 +664,7 @@ Needs the .NET 10 SDK on PATH, and network access to cdn.vintagestory.at (setup 
 
 The first `setup` takes a few minutes - it is fetching a game install and a mod release, not just restoring packages - and prints its own progress under `==` headers (`.NET`, `Vintage Story`, `Restore`, `Dependency mods`) before ending on `Ready.` and a short list of what to run next.
 
-Plain `setup` provisions the dedicated server only, which is every assembly the build, the tests and `smoke` need. The client the launch configurations point at (`.game/<series>/Vintagestory.dll`) is a separate, far larger download and no part of it: F5's launch-prep task fetches one, as do `setup <series> -Kind client` and `exmod client -Provision` (plain `exmod client` prints the command rather than downloading a gigabyte unasked).
+Plain `setup` provisions the dedicated server only, which is every assembly the build, the tests and `smoke` need. The client the launch configurations point at (`game/<series>` in the user store: `%LOCALAPPDATA%\exmod` on Windows, `~/.local/share/exmod` on Linux, `~/Library/Application Support/exmod` on macOS) is a separate, far larger download and no part of it: F5's launch-prep task fetches one, as do `setup <series> -Kind client` and `exmod client -Provision` (plain `exmod client` prints the command rather than downloading a gigabyte unasked).
 
 ## Using it
 
@@ -742,11 +699,12 @@ from exlib's own templates - `exmod help scaffold` lists every kind.
 ## Running it in VS Code
 
 `.vscode/tasks.json` and `launch.json` carry a build/pack/test task per game series this repo
-supports, launch-prep composites that provision the client build (`.game/<series>-<platform>/`
-on Linux and macOS, `%LOCALAPPDATA%\exmod\game\<series>` on Windows, where a client on a network
-share such as a WSL checkout cannot load its native libraries, with its data beside it under
-`%LOCALAPPDATA%\exmod\data\<repo>` because SQLite cannot lock a save over a share; plain `setup`
-does not fetch it) and stage the mods first, and one launch configuration per series that
+supports, launch-prep composites that provision the client build into the user store's
+`game/<series>` (`%LOCALAPPDATA%\exmod` on Windows, where a client on a network share such as a WSL
+checkout cannot load its native libraries; `~/.local/share/exmod` on Linux;
+`~/Library/Application Support/exmod` on macOS), with its data beside it under
+`data/<repo folder>` because SQLite cannot lock a save over a share; plain `setup` does not fetch
+it) and stage the mods first, and one launch configuration per series that
 boots the game with them loaded - opening this repo in VS Code and hitting F5 does the same thing
 `bash scripts/exmod.sh build latest && exmod stage && exmod client` would, with the game's own log
 in the debug console. On Linux the game runs on X11 (GLFW's Wayland backend cannot place the

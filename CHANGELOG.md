@@ -56,6 +56,14 @@
   `client` runs the Windows client from Windows' store with Windows' dotnet, `-Provision` installs
   it through Windows' `pwsh.exe`, and `logs client` reads Windows' store; `-Linux` keeps the Linux
   client. `client -DryRun` prints the program, arguments and environment it would launch with.
+- Generated launch configurations run the client from the user store on every OS (the
+  `Vintagestory.exe` apphost on Windows) with `--dataPath` in the store's
+  `data/<workspace folder name>` and `--logPath` in its `Logs/<workspace folder name>`, and map
+  `/exmod/<workspace folder name>/` back to the workspace folder through `sourceFileMap`. The
+  provision tasks run `provision game -Kind client` without `-Dest` on every OS.
+- `scripts/exmod.sh` looks for pwsh in the repository's `.dotnet/tools`, then in the workspace
+  root's, and installs it into the workspace root's when an `exmod.workspace.json` is above the
+  repository.
 
 ## [0.3.4] - 2026-09-15
 
