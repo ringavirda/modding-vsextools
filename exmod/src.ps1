@@ -721,7 +721,9 @@ function Invoke-Check([string[]]$Argv) {
   $coverage = Get-Flag $Argv '-Coverage'
   $noFormat = Get-Flag $Argv '-NoFormat'
 
-  $results = [ordered]@{ format = 'PENDING'; build = 'PENDING'; verify = 'PENDING'; test = 'PENDING' }
+  $results = [ordered]@{
+    format = 'PENDING'; build = 'PENDING'; verify = 'PENDING'; test = 'PENDING'; smoke = 'PENDING'
+  }
   $stop = $false
 
   Write-Step 'format'
@@ -761,6 +763,21 @@ function Invoke-Check([string[]]$Argv) {
     catch { Write-Host $_.Exception.Message -ForegroundColor Red; $results.test = 'FAIL'; $stop = $true }
   } else { $results.test = 'SKIPPED' }
 
+  # Smoke loads the current series' build output (Get-BuiltModDirs), so it runs on that series
+  # alone, and only when this check built it.
+  if (-not $stop) {
+    Write-Step 'smoke'
+    if ((Resolve-GameVersions $version) -notcontains $CurrentGameVersion) {
+      Write-Host "Skipped: smoke runs on $CurrentGameVersion only, which this check did not build."
+      $results.smoke = 'SKIPPED'
+    }
+    else {
+      if ($version -eq 'all') { Write-Host "Smoke runs once, on ${CurrentGameVersion}: the only series it loads a build of." }
+      try { Invoke-Smoke @('-Version', $CurrentGameVersion); $results.smoke = 'PASS' }
+      catch { Write-Host $_.Exception.Message -ForegroundColor Red; $results.smoke = 'FAIL'; $stop = $true }
+    }
+  } else { $results.smoke = 'SKIPPED' }
+
   Write-Host ''
   Write-Host '===== check summary =====' -ForegroundColor Cyan
   foreach ($step in $results.Keys) { Write-Host ("{0,-8} {1}" -f $step, $results[$step]) }
@@ -770,17 +787,20 @@ function Invoke-Check([string[]]$Argv) {
 }
 
 
-Add-ExmodCommand -Group source -Name check -Summary 'the gate: format, build, verify, test' -Action {
+Add-ExmodCommand -Group source -Name check -Summary 'the gate: format, build, verify, test, smoke' -Action {
   param([string[]]$Argv) Invoke-Check $Argv
 } -Detail @'
 exmod check [latest|all|1.22|1.21|1.20] [-Coverage] [-NoFormat] [-AcceptDrop]
 
-One command that answers "is this tree good". Runs format -Check, build, verify, then test, in
+One command that answers "is this tree good". Runs format -Check, build, verify, test, then smoke
+(a dedicated server boots the built mods and runs /exmod verify, the loaded checks among them), in
 that order, stopping at the first failing step. Ends with a PASS/FAIL/SKIPPED summary of every
 step and exits nonzero if any of them did.
 
-  latest      1.22 only (the default), for the build and test steps
-  all         every supported series, for the build and test steps
+  latest      1.22 only (the default), for the build, test and smoke steps
+  all         every supported series, for the build and test steps; smoke runs once, on 1.22, the
+              only series whose build it loads
+  1.21, 1.20  that series for the build and test steps; smoke is skipped
   -Coverage   passed through to the test step, in place of its own per-version lanes
   -AcceptDrop passed through to the test step, which records a count below the census
   -NoFormat   skip the format step outright. It is also skipped, for a different reason, when

@@ -48,7 +48,7 @@ source
 | `format` | rewrite with CSharpier, then dotnet format |
 | `verify` | headless-check shipped assets, no game running |
 | `codes` | regenerate a mod's block-code table |
-| `check` | the gate: format, build, verify, test |
+| `check` | the gate: format, build, verify, test, smoke |
 | `clean` | delete build output (bin/obj, TestResults) |
 | `render` | render a shape file to textured views or animation frames |
 | `schematic` | render a multiblock/megablock layout to a build schematic |

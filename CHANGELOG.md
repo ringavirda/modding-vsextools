@@ -28,6 +28,10 @@
 
 ### Changed
 
+- `exmod check` runs `exmod smoke` after the tests, so the loaded checks `/exmod verify` runs in a
+  booted server are part of the gate. Smoke runs on the current series (1.22) for `check` and
+  `check latest`, once on 1.22 for `check all`, and is skipped for `check 1.21` or `check 1.20`; the
+  summary lists it as its own step.
 - The published old mods are read from a repository whose root holds each mod's folder
   (`<root>/<mod>/assets`, the exmods-legacy layout) instead of a `legacy/` subtree: blocktypes,
   asset roots and `domain:` textures resolve there, and a block in such a folder settles a code
