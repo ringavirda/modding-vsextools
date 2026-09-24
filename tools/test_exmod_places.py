@@ -12,7 +12,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from exmod_harness import PWSH, ROOT, exmod_script, touch  # noqa: E402
+from exmod_harness import PWSH, exmod_env, exmod_script, touch  # noqa: E402
 
 
 def make_repo(path):
@@ -20,15 +20,17 @@ def make_repo(path):
     return path
 
 
-def run(repo, body, home, xdg=None):
+def run(repo, body, home, xdg=None, extra_env=None):
     """Runs `body` after exmod.ps1 and the prelude (exmod_script) against `repo` and returns the last
-    line of its stdout parsed as JSON. HOME is `home`; XDG_DATA_HOME is `xdg`, or unset when None."""
+    line of its stdout parsed as JSON. HOME is `home`, LOCALAPPDATA `home`/local; XDG_DATA_HOME is
+    `xdg`, or unset when None; `extra_env` goes over all three."""
     assert PWSH
     script = exmod_script(body)
-    env = dict(os.environ, EXTOOLS_ROOT=ROOT, TEST_REPO=repo, HOME=home)
+    env = exmod_env(os.path.join(home, "local"), TEST_REPO=repo, HOME=home)
     env.pop("XDG_DATA_HOME", None)
     if xdg is not None:
         env["XDG_DATA_HOME"] = xdg
+    env.update(extra_env or {})
     out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script],
                          env=env, capture_output=True, text=True)
     if out.returncode != 0 and not out.stdout.strip():
@@ -152,13 +154,10 @@ class PlacesTests(unittest.TestCase):
         override = os.path.join(self.tmp, "vs override")
         touch(os.path.join(self.ws, ".game", "1.22-server", "VintagestoryServer.dll"))
         body = "function Invoke-ProvisionGame { throw 'provisioned' }; ConvertTo-Json -Compress @(Resolve-SmokeServer '1.22')"
-        os.environ["VINTAGE_STORY"] = override
-        try:
-            self.assertEqual([os.path.join(self.ws, ".game", "1.22-server")], run(repo, body, self.home))
-            touch(os.path.join(override, "VintagestoryServer.dll"))
-            self.assertEqual([override], run(repo, body, self.home))
-        finally:
-            del os.environ["VINTAGE_STORY"]
+        env = {"VINTAGE_STORY": override}
+        self.assertEqual([os.path.join(self.ws, ".game", "1.22-server")], run(repo, body, self.home, extra_env=env))
+        touch(os.path.join(override, "VintagestoryServer.dll"))
+        self.assertEqual([override], run(repo, body, self.home, extra_env=env))
 
     def test_the_store_is_under_home_whatever_xdg_data_home_holds(self):
         # Fails if XDG_DATA_HOME is read, or the store is anywhere but ~/.local/share/exmod.
@@ -228,11 +227,7 @@ class ProvisionDefaultsTests(unittest.TestCase):
         self.repo = make_repo(os.path.join(self.ws, "exlib"))
 
     def provision(self, kind):
-        os.environ["TEST_KIND"] = kind
-        try:
-            return run(self.repo, PROVISION, self.home)
-        finally:
-            del os.environ["TEST_KIND"]
+        return run(self.repo, PROVISION, self.home, extra_env={"TEST_KIND": kind})
 
     def test_a_server_defaults_to_the_workspace_game_folder_and_cache(self):
         # Fails if the default -Dest or the cache stays under $RepoRoot.
@@ -264,14 +259,10 @@ class ProvisionDefaultsTests(unittest.TestCase):
         # throws.
         name = "exmod-dest-" + os.path.basename(self.tmp)
         seed_install(os.path.join(self.repo, name), client=False)
-        os.environ["TEST_DEST"] = "\\" + name
-        try:
-            said = run(self.repo, "function Publicize-GameApi { }; "
-                                  "function Invoke-WebRequest { throw 'downloaded' }; "
-                                  "$said = @(Invoke-ProvisionGame @('-Version', '1.22.7', '-Dest', $env:TEST_DEST) 6>&1 | "
-                                  "ForEach-Object { \"$_\" }); ConvertTo-Json -Compress $said", self.home)
-        finally:
-            del os.environ["TEST_DEST"]
+        said = run(self.repo, "function Publicize-GameApi { }; "
+                              "$said = @(Invoke-ProvisionGame @('-Version', '1.22.7', '-Dest', $env:TEST_DEST) 6>&1 | "
+                              "ForEach-Object { \"$_\" }); ConvertTo-Json -Compress $said",
+                   self.home, extra_env={"TEST_DEST": "\\" + name})
         self.assertIn(f"Vintage Story 1.22.7 (server) already provisioned at \\{name}", said)
 
 
@@ -305,12 +296,8 @@ class ProvisionGpuTests(unittest.TestCase):
         self.exe = os.path.join(self.slot, "Vintagestory.exe")
 
     def provision(self, kind):
-        os.environ.update(TEST_KIND=kind, LOCALAPPDATA=os.path.join(self.tmp, "local"))
-        try:
-            return run(self.repo, ON_WINDOWS, self.tmp)
-        finally:
-            del os.environ["TEST_KIND"]
-            del os.environ["LOCALAPPDATA"]
+        return run(self.repo, ON_WINDOWS, self.tmp,
+                   extra_env={"TEST_KIND": kind, "LOCALAPPDATA": os.path.join(self.tmp, "local")})
 
     def test_installing_a_windows_client_registers_its_exe_after_the_install(self):
         # Fails if a fresh Windows client install registers no GPU preference, or registers it
@@ -352,6 +339,7 @@ class ClientAndLogsTests(unittest.TestCase):
         self.repo = make_repo(os.path.join(self.ws, "exmods"))
         self.data = os.path.join(self.home, ".local", "share", "exmod", "data", "default")
 
+    @unittest.skipIf(sys.platform == "win32", "on Windows Invoke-Client launches Vintagestory.exe, not the dotnet host CLIENT stubs")
     def test_client_passes_the_store_data_path_and_the_repository_log_path(self):
         # Fails if --logPath is dropped or --dataPath is not the store's profile.
         got = run(self.repo, CLIENT, self.home)

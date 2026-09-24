@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from exmod_harness import PWSH, ROOT, exmod_script  # noqa: E402
+from exmod_harness import PWSH, ROOT, exmod_env, exmod_script  # noqa: E402
 
 STORES = {
     "linux": "${env:HOME}/.local/share/exmod",
@@ -52,7 +52,7 @@ class TemplateTests(unittest.TestCase):
         cls.tmp = os.path.realpath(tempfile.mkdtemp())
         touch(os.path.join(cls.tmp, "exmod.json"), "{}")
         script = exmod_script("Write-ExmodVsCode -Dest $env:TEST_REPO -RepoName 'demo' -Series @('1.22', '1.21')")
-        env = dict(os.environ, EXTOOLS_ROOT=ROOT, TEST_REPO=cls.tmp)
+        env = exmod_env(os.path.join(cls.tmp, "local"), TEST_REPO=cls.tmp)
         out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script],
                              env=env, capture_output=True, text=True)
         if out.returncode != 0:

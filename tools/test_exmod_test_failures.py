@@ -12,7 +12,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from exmod_harness import PWSH, ROOT, exmod_script, touch  # noqa: E402
+from exmod_harness import PWSH, ROOT, exmod_env, exmod_script, touch  # noqa: E402
 
 
 def failures(lines):
@@ -85,8 +85,8 @@ class CoverageRunTests(unittest.TestCase):
             touch(stub, '#!/bin/sh\nfor a in "$@"; do echo "coverage-arg: $a"; done\nexit 1\n')
             os.chmod(stub, os.stat(stub).st_mode | stat.S_IEXEC)
             out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", exmod_script(COVERAGE)],
-                                 env=dict(os.environ, EXTOOLS_ROOT=ROOT, TEST_REPO=repo,
-                                          TEST_DOTNET=os.path.join(d, "dotnet")),
+                                 env=exmod_env(os.path.join(d, "local"), TEST_REPO=repo,
+                                               TEST_DOTNET=os.path.join(d, "dotnet")),
                                  capture_output=True, text=True).stdout
         args = [l[len("coverage-arg: "):] for l in out.splitlines() if l.startswith("coverage-arg: ")]
         self.assertEqual(["collect", "-f", "cobertura", "-o", os.path.join(repo, "coverage.xml"),

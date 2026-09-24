@@ -13,15 +13,16 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from exmod_harness import PWSH, ROOT, exmod_script, touch  # noqa: E402
+from exmod_harness import PWSH, ROOT, exmod_env, exmod_script, touch  # noqa: E402
 
 
 def run(repo, body, home, extra_env=None, stub_gpu=True):
     """Runs `body` after exmod.ps1 and the prelude (exmod_script, stub_gpu passed on) against `repo`
-    and returns (exit code, stdout lines). HOME is `home`."""
+    and returns (exit code, stdout lines). HOME is `home`, LOCALAPPDATA `home`/local; `extra_env`
+    goes over both."""
     assert PWSH
     script = exmod_script(body, stub_gpu)
-    env = dict(os.environ, EXTOOLS_ROOT=ROOT, TEST_REPO=repo, HOME=home, **(extra_env or {}))
+    env = exmod_env(os.path.join(home, "local"), TEST_REPO=repo, HOME=home, **(extra_env or {}))
     out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script],
                          env=env, capture_output=True, text=True)
     return out.returncode, out.stdout.splitlines()
