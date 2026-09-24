@@ -171,9 +171,7 @@ function Invoke-ProvisionGame([string[]]$Argv) {
   if (-not $dest) {
     $dest = if ($kind -eq 'client') { Get-ClientSlot $slug } else { Join-Path (Get-ExmodProvisionRoot) ".game/$slug" }
   }
-  # A fully qualified -Dest is used as given; Join-Path would otherwise concatenate it onto the repo
-  # root. A Windows path rooted on the current drive (\x) or relative to a drive (C:x) is not fully
-  # qualified and lands under the repo root.
+  # A fully qualified -Dest is used as given; any other path is joined onto the repo root.
   $destFull = if ([System.IO.Path]::IsPathFullyQualified($dest)) { $dest } else { Join-Path $RepoRoot $dest }
   $cacheDir = Find-ExmodAbove '.game/.cache'
   if (-not $cacheDir) { $cacheDir = Join-Path (Get-ExmodProvisionRoot) '.game/.cache' }

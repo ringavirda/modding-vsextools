@@ -76,8 +76,8 @@
   provision tasks run `provision game -Kind client` without `-Dest` on every OS.
 - `exmod test -Coverage` builds with `-p:ExmodMapSourcePaths=false`, so the Debug path map exlib's
   build targets apply stays off and `coverage.xml` names source files that exist.
-- `provision game -Dest` takes a path as given only when it is fully qualified; a Windows path
-  rooted on the current drive (`\x`) or relative to a drive (`C:x`) lands under the repository.
+- `provision game -Dest` takes a path as given only when it is fully qualified, and joins any other
+  path onto the repository root.
 - `scripts/exmod.sh` looks for pwsh in the repository's `.dotnet/tools`, then in the workspace
   root's, and installs it into the workspace root's when an `exmod.workspace.json` is above the
   repository.

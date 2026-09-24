@@ -23,6 +23,7 @@ class HarnessTests(unittest.TestCase):
         self.local = os.path.join(self.tmp, "local")
 
     def run_body(self, body):
+        assert PWSH
         out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", exmod_script(body)],
                              env=exmod_env(self.local, TEST_REPO=self.repo), capture_output=True, text=True)
         return out.stdout.splitlines()
