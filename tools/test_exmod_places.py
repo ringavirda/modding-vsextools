@@ -23,6 +23,7 @@ def make_repo(path):
 def run(repo, body, home, xdg=None):
     """Runs `body` after exmod.ps1 and the prelude (exmod_script) against `repo` and returns the last
     line of its stdout parsed as JSON. HOME is `home`; XDG_DATA_HOME is `xdg`, or unset when None."""
+    assert PWSH
     script = exmod_script(body)
     env = dict(os.environ, EXTOOLS_ROOT=ROOT, TEST_REPO=repo, HOME=home)
     env.pop("XDG_DATA_HOME", None)
@@ -55,20 +56,20 @@ class PlacesTests(unittest.TestCase):
         self.ws = os.path.join(self.tmp, "ws")
         touch(os.path.join(self.ws, "exmod.workspace.json"), "{}")
 
-    def test_a_marker_two_levels_up_is_the_workspace_and_names_the_profile(self):
-        # Fails if the walk stops at the parent.
+    def test_a_marker_two_levels_up_is_the_workspace_and_leaves_the_profile_default(self):
+        # Fails if the walk stops at the parent, or the profile is named for the workspace folder.
         repo = make_repo(os.path.join(self.ws, "lines", "exmods"))
         got = places(repo, self.home)
         self.assertEqual(self.ws, got["Workspace"])
-        self.assertEqual("ws", got["Profile"])
+        self.assertEqual("default", got["Profile"])
         self.assertEqual(self.ws, got["ProvisionRoot"])
 
-    def test_no_marker_gives_no_workspace_and_the_repository_as_profile_and_provision_root(self):
-        # Fails if the profile defaults to the store name, or the provision root to the parent.
+    def test_no_marker_gives_no_workspace_the_default_profile_and_the_repository_as_provision_root(self):
+        # Fails if the profile is named for the repository folder, or the provision root is the parent.
         repo = make_repo(os.path.join(self.tmp, "alone", "starter"))
         got = places(repo, self.home)
         self.assertIsNone(got["Workspace"])
-        self.assertEqual("starter", got["Profile"])
+        self.assertEqual("default", got["Profile"])
         self.assertEqual(repo, got["ProvisionRoot"])
 
     def test_a_marker_in_the_repository_itself_is_not_a_workspace(self):
@@ -159,25 +160,21 @@ class PlacesTests(unittest.TestCase):
         finally:
             del os.environ["VINTAGE_STORY"]
 
-    def test_the_store_follows_xdg_data_home_when_set(self):
-        # Fails if XDG_DATA_HOME is ignored.
+    def test_the_store_is_under_home_whatever_xdg_data_home_holds(self):
+        # Fails if XDG_DATA_HOME is read, or the store is anywhere but ~/.local/share/exmod.
         repo = make_repo(os.path.join(self.ws, "exlib"))
-        xdg = os.path.join(self.tmp, "xdg data")
-        self.assertEqual(os.path.join(xdg, "exmod"), places(repo, self.home, xdg)["Store"])
-
-    def test_the_store_is_under_home_when_xdg_data_home_is_unset(self):
-        # Fails if the fallback is anything but ~/.local/share.
-        repo = make_repo(os.path.join(self.ws, "exlib"))
-        self.assertEqual(os.path.join(self.home, ".local", "share", "exmod"), places(repo, self.home)["Store"])
+        store = os.path.join(self.home, ".local", "share", "exmod")
+        self.assertEqual(store, places(repo, self.home)["Store"])
+        self.assertEqual(store, places(repo, self.home, os.path.join(self.tmp, "xdg data"))["Store"])
 
     def test_slot_data_and_log_paths_are_under_the_store_by_series_profile_and_repository(self):
-        # Fails if the log folder is named for the profile, or the data folder for the repository.
+        # Fails if the log folder is named for the profile, or the data folder for the workspace.
         repo = make_repo(os.path.join(self.ws, "exmods-legacy"))
-        store = os.path.join(self.tmp, "xdg", "exmod")
-        got = places(repo, self.home, os.path.join(self.tmp, "xdg"))
+        store = os.path.join(self.home, ".local", "share", "exmod")
+        got = places(repo, self.home)
         self.assertEqual(os.path.join(store, "game", "1.22"), got["Slot"])
-        self.assertEqual(os.path.join(store, "data", "ws"), got["Data"])
-        self.assertEqual(os.path.join(store, "data", "ws", "Logs", "exmods-legacy"), got["Log"])
+        self.assertEqual(os.path.join(store, "data", "default"), got["Data"])
+        self.assertEqual(os.path.join(store, "data", "default", "Logs", "exmods-legacy"), got["Log"])
 
     def test_dotnet_is_the_nearest_one_holding_a_muxer_else_under_the_provision_root(self):
         # Fails if .dotnet stays pinned to $RepoRoot, or a .dotnet with no muxer is taken (the dotnet
@@ -260,6 +257,23 @@ class ProvisionDefaultsTests(unittest.TestCase):
         said = self.provision("server")
         self.assertIn(f"Vintage Story 1.22.7 (server) already provisioned at {foreign}-server", said)
 
+    @unittest.skipUnless(sys.platform == "win32", "only Windows has paths rooted but not fully qualified")
+    def test_a_dest_rooted_on_the_current_drive_lands_under_the_repository(self):
+        # Fails if -Dest is taken as given when rooted but not fully qualified (IsPathRooted): the
+        # install then goes to <current drive>:\<name>, which holds none, and the stubbed download
+        # throws.
+        name = "exmod-dest-" + os.path.basename(self.tmp)
+        seed_install(os.path.join(self.repo, name), client=False)
+        os.environ["TEST_DEST"] = "\\" + name
+        try:
+            said = run(self.repo, "function Publicize-GameApi { }; "
+                                  "function Invoke-WebRequest { throw 'downloaded' }; "
+                                  "$said = @(Invoke-ProvisionGame @('-Version', '1.22.7', '-Dest', $env:TEST_DEST) 6>&1 | "
+                                  "ForEach-Object { \"$_\" }); ConvertTo-Json -Compress $said", self.home)
+        finally:
+            del os.environ["TEST_DEST"]
+        self.assertIn(f"Vintage Story 1.22.7 (server) already provisioned at \\{name}", said)
+
 
 # provision game as Windows runs it, with the download, the installer and reg stubbed: the installer
 # fills the folder its /DIR= names with a client, and the uninstall entry is never found.
@@ -336,7 +350,7 @@ class ClientAndLogsTests(unittest.TestCase):
         self.ws = os.path.join(self.tmp, "ws")
         touch(os.path.join(self.ws, "exmod.workspace.json"), "{}")
         self.repo = make_repo(os.path.join(self.ws, "exmods"))
-        self.data = os.path.join(self.home, ".local", "share", "exmod", "data", "ws")
+        self.data = os.path.join(self.home, ".local", "share", "exmod", "data", "default")
 
     def test_client_passes_the_store_data_path_and_the_repository_log_path(self):
         # Fails if --logPath is dropped or --dataPath is not the store's profile.

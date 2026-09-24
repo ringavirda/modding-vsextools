@@ -140,13 +140,13 @@ function Stop-Client([string]$Message) {
 }
 
 # `client` from a WSL distro with interop: the Windows client's Vintagestory.exe from Windows' user
-# store, on Windows' .NET runtime, on data and logs in that store's profile, with the mods built and
-# staged on the Linux side and passed as their \\wsl.localhost path. Registers the high-performance
-# GPU for that exe before the launch (Register-ClientGpuPreference). Stops with one line when Windows
-# has no readable %LOCALAPPDATA%, no dotnet, or no client and -Provision is not given; with
-# -Provision a missing client is installed by this tools checkout's provision game run in Windows'
-# pwsh.exe, and a missing pwsh.exe stops it the same way. $DataOpt is a Windows path or a Linux one.
-# Exits with the game's exit code; returns after printing under -DryRun.
+# store, on Windows' .NET runtime, on data and logs in that store's data/default, with the mods
+# built and staged on the Linux side and passed as their \\wsl.localhost path. Registers the
+# high-performance GPU for that exe before the launch (Register-ClientGpuPreference). Stops with one
+# line when Windows has no readable %LOCALAPPDATA%, no dotnet, or no client and -Provision is not
+# given; with -Provision a missing client is installed by this tools checkout's provision game run
+# in Windows' pwsh.exe, and a missing pwsh.exe stops it the same way. $DataOpt is a Windows path or
+# a Linux one. Exits with the game's exit code; returns after printing under -DryRun.
 function Invoke-WindowsClientFromWsl([string]$Version, [string]$Configuration, [string]$ModsOpt,
   [bool]$NoBuild, [string]$DataOpt, [bool]$Provision, [bool]$DryRun) {
   $store = Get-WindowsUserStore
@@ -320,13 +320,12 @@ client on its own - the archive is about a gigabyte - unless -Provision is given
 prints the exact `exmod provision game` command to run and exits 1.
 
 The client and its data live in the user store: %LOCALAPPDATA%\exmod on Windows,
-~/Library/Application Support/exmod on macOS, $XDG_DATA_HOME/exmod (default ~/.local/share/exmod) on
-Linux. The client is the folder the series' override variable names (VINTAGE_STORY,
-VINTAGE_STORY_121, VINTAGE_STORY_120), else the store's game/<series>, else the nearest
-.game/<series>-client, .game/<series>-<platform> or .game/<series> from the checkout upward. The
-data path is the store's data/<profile>, the profile being the name of the workspace folder (the
-nearest one above the checkout holding exmod.workspace.json), else of the checkout's folder. Logs go
-to <data path>/Logs/<checkout folder>, so two repositories sharing a profile keep separate logs.
+~/Library/Application Support/exmod on macOS, ~/.local/share/exmod on Linux. The client is the
+folder the series' override variable names (VINTAGE_STORY, VINTAGE_STORY_121, VINTAGE_STORY_120),
+else the store's game/<series>, else the nearest .game/<series>-client, .game/<series>-<platform>
+or .game/<series> from the checkout upward. The data path is the store's data/default, shared by
+every checkout and every generated launch configuration. Logs go to <data path>/Logs/<checkout
+folder>, so two repositories keep separate logs.
 
 In WSL with interop, the Windows client runs: the Vintagestory.exe in
 %LOCALAPPDATA%\exmod\game\<series> on Windows' .NET runtime, data and logs in Windows' store, and the
@@ -346,7 +345,7 @@ client runs from the store's game/<series> only, on Windows' own .NET runtime.
   -Mods       mod folder(s), or folder(s) of mod folders, instead of every built mod in the checkout
               and its resolved dependencies
   -NoBuild    skip the build step; the mods must already be built (on a WSL share: already staged)
-  -DataPath   client data path (default: <store>/data/<profile>)
+  -DataPath   client data path (default: <store>/data/default)
   -Provision  fetch a client install for this series into the store, if none is usable yet
   -Software   Mesa's software renderer, for a GPU driver that hangs the game
   -Linux      in WSL, run the Linux client instead of the Windows one
@@ -697,7 +696,7 @@ exmod logs [client|server] [-Kind main|debug|audit|chat|crash|build] [-Lines <n>
 
 Prints the tail of one log. Client logs live at <dataPath>/Logs/<checkout folder>/client-<kind>.log,
 or <dataPath>/Logs/client-<kind>.log when that folder does not exist; the default data path is the
-one `exmod client` uses, <store>/data/<profile> (see `exmod help client`), which in WSL with interop
+one `exmod client` uses, <store>/data/default (see `exmod help client`), which in WSL with interop
 is Windows' store unless -Linux is given. Server logs live at
 <dataPath>/Logs/server-<kind>.log (default: .gamedata/server, the same default `exmod server` uses).
 Fails with the list of logs that do exist when the one asked for is not among them.

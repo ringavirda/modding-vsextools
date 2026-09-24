@@ -18,10 +18,10 @@ from exmod_harness import PWSH, ROOT, exmod_script, touch  # noqa: E402
 
 def run(repo, body, home, extra_env=None, stub_gpu=True):
     """Runs `body` after exmod.ps1 and the prelude (exmod_script, stub_gpu passed on) against `repo`
-    and returns (exit code, stdout lines). HOME is `home`; XDG_DATA_HOME is unset."""
+    and returns (exit code, stdout lines). HOME is `home`."""
+    assert PWSH
     script = exmod_script(body, stub_gpu)
     env = dict(os.environ, EXTOOLS_ROOT=ROOT, TEST_REPO=repo, HOME=home, **(extra_env or {}))
-    env.pop("XDG_DATA_HOME", None)
     out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script],
                          env=env, capture_output=True, text=True)
     return out.returncode, out.stdout.splitlines()
@@ -63,6 +63,14 @@ class ShareAndSideTests(unittest.TestCase):
                         "(Test-ExmodWindowsSideCommand 'provision' @('game', '-Version', '1.22')), "
                         "(Test-ExmodWindowsSideCommand 'stage' @()), (Test-ExmodWindowsSideCommand 'build' @()))")
         self.assertEqual([True, True, True, True, False, False, False, False], got)
+
+    def test_the_hand_over_passes_every_argument_through_wsl_exec_unchanged(self):
+        # Fails if the hand-over uses `--` instead of `--exec`, or drops an empty argument.
+        got = self.json("function wsl.exe { $global:said = @($args); $global:LASTEXITCODE = 0 }; "
+                        "$null = Invoke-ExmodInWsl 'arch' '/src/x y' @('stage', 'x$HOME', 'C:\\a b\\c', 'q\"z', ''); "
+                        "ConvertTo-Json -Compress $said")
+        self.assertEqual(["-d", "arch", "--cd", "/src/x y", "--exec", "bash", "scripts/exmod.sh",
+                          "stage", "x$HOME", "C:\\a b\\c", 'q"z', ""], got)
 
 
 # Stubs every Windows and interop lookup for the WSL-to-Windows client. The Windows store and dotnet
@@ -132,7 +140,7 @@ class WindowsClientFromWslTests(unittest.TestCase):
         self.seed_windows_client()
         code, lines = self.client(["-NoBuild", "-DryRun"])
         self.assertEqual(0, code, lines)
-        data = self.win_store + r"\data\ws"
+        data = self.win_store + r"\data\default"
         self.assertEqual([
             f"program: {self.slot}/Vintagestory.exe",
             "arg: --tracelog", "arg: --dataPath", f"arg: {data}",
@@ -213,7 +221,7 @@ class WindowsClientFromWslTests(unittest.TestCase):
         self.assertIn(gpu, lines)
         self.assertLess(lines.index(gpu), lines.index("exe ran"), lines)
         self.assertIn("staged", lines)
-        data = os.path.join(self.c, "Users", "A B", "AppData", "Local", "exmod", "data", "ws")
+        data = os.path.join(self.c, "Users", "A B", "AppData", "Local", "exmod", "data", "default")
         self.assertTrue(os.path.isfile(os.path.join(data, "clientsettings.json")))
 
     def test_an_unreadable_windows_store_stops_pointing_at_linux(self):
@@ -237,9 +245,9 @@ class WindowsClientFromWslTests(unittest.TestCase):
 
     def test_logs_reads_the_windows_store_under_interop(self):
         # Fails if logs client ignores the interop check or -Linux, or reads on past an unreadable store.
-        data = os.path.join(self.c, "Users", "A B", "AppData", "Local", "exmod", "data", "ws")
+        data = os.path.join(self.c, "Users", "A B", "AppData", "Local", "exmod", "data", "default")
         touch(os.path.join(data, "Logs", "exmods", "client-main.log"), "windows\n")
-        touch(os.path.join(self.home, ".local", "share", "exmod", "data", "ws", "Logs", "exmods", "client-main.log"), "linux\n")
+        touch(os.path.join(self.home, ".local", "share", "exmod", "data", "default", "Logs", "exmods", "client-main.log"), "linux\n")
         code, lines = run(self.repo, STUBS + "Invoke-Logs @('client', '-Lines', '1')", self.home, {"TEST_C": self.c})
         self.assertEqual(0, code, lines)
         self.assertEqual("windows", lines[-1])

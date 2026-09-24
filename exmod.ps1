@@ -3,7 +3,9 @@
 # testing, running the game, and packaging a release. Runs on Windows, Linux and macOS under
 # PowerShell 7; the platform differences live in $OnWindows branches rather than in a second copy of
 # each script that has to be kept in step. exmod.sh is a launcher for POSIX shells, not a second
-# implementation - it finds pwsh (bootstrapping it into .dotnet/tools if absent) and forwards here.
+# implementation - it finds pwsh (bootstrapping it, when absent, into the .dotnet/tools of the
+# workspace root when an exmod.workspace.json is above the checkout, else of the checkout) and
+# forwards here.
 #
 # This file is the dispatcher: the argument helpers and resolvers every command shares, and the
 # registry they register themselves in. The commands live one file per stage under scripts/exmod/ -
@@ -53,7 +55,7 @@ $ExeSuffix = if ($OnWindows) { '.exe' } else { '' }
 $PlatformSlot = if ($OnWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } else { 'linux' }
 
 # The nearest directory strictly above $RepoRoot holding exmod.workspace.json, the marker of a
-# workspace whose sibling repositories share one .game, one .dotnet and one data profile. $null for
+# workspace whose sibling repositories share one .game and one .dotnet. $null for
 # a standalone clone; a marker in $RepoRoot itself does not count.
 function Get-ExmodWorkspaceRoot {
   $dir = Split-Path $RepoRoot -Parent
@@ -91,20 +93,18 @@ function Get-ExmodProvisionRoot {
 # The per-user folder holding the runnable client and the game data, outside every checkout: a
 # native library does not load from a network share, SQLite cannot lock a save on one, and a
 # checkout under \\wsl.localhost is one. %LOCALAPPDATA%\exmod on Windows,
-# ~/Library/Application Support/exmod on macOS, $XDG_DATA_HOME/exmod on Linux, or
-# ~/.local/share/exmod when XDG_DATA_HOME is unset or empty.
+# ~/Library/Application Support/exmod on macOS, ~/.local/share/exmod on Linux. XDG_DATA_HOME is not
+# read; the generated launch configurations name this same folder.
 function Get-ExmodUserStore {
   if ($OnWindows) { return Join-Path $env:LOCALAPPDATA 'exmod' }
   if ($IsMacOS) { return Join-Path $HOME 'Library/Application Support/exmod' }
-  $base = if ($env:XDG_DATA_HOME) { $env:XDG_DATA_HOME } else { Join-Path $HOME '.local/share' }
-  return Join-Path $base 'exmod'
+  return Join-Path $HOME '.local/share/exmod'
 }
 
-# The data profile's name: the workspace folder's name inside a workspace, so every repository and
-# worktree in it shares settings, saves and mod configs; else $RepoRoot's folder name.
+# The data profile's name: 'default' for every checkout, in a workspace or not, so `exmod client`
+# and every generated launch configuration share one set of settings, saves and mod configs.
 function Get-ExmodProfile {
-  $workspace = Get-ExmodWorkspaceRoot
-  return Split-Path ($workspace ? $workspace : $RepoRoot) -Leaf
+  return 'default'
 }
 
 # This OS's runnable client for series $Slug: <user store>/game/<slug>. The folder may not exist.
@@ -822,10 +822,11 @@ function Test-ExmodWindowsSideCommand([string]$Command, [string[]]$Argv = @()) {
 }
 
 # Runs `bash scripts/exmod.sh <Argv>` inside WSL distro $Distro with $LinuxPath as the working
-# directory, its output passed to the host, and returns its exit code. Windows only; the checkout's
-# own launcher picks the tools and pwsh on the Linux side.
+# directory, its output passed to the host, and returns its exit code. The arguments reach bash
+# through wsl.exe --exec, so no shell expands or splits them. Windows only; the checkout's own
+# launcher picks the tools and pwsh on the Linux side.
 function Invoke-ExmodInWsl([string]$Distro, [string]$LinuxPath, [string[]]$Argv) {
-  & wsl.exe -d $Distro --cd $LinuxPath -- bash scripts/exmod.sh @Argv | Out-Host
+  & wsl.exe -d $Distro --cd $LinuxPath --exec bash scripts/exmod.sh @Argv | Out-Host
   return $LASTEXITCODE
 }
 

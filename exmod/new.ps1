@@ -315,8 +315,8 @@ $depLines
 
 # One launch configuration running series $Slug's client from the user store of the OS VS Code
 # runs on (the Windows apphost, so a GPU preference registered for it applies), with data in the
-# store's data/<workspace folder name>, logs in its Logs/<workspace folder name> and the mods staged
-# in $ModsDir. $Legacy sets DOTNET_ROOT to the checkout's .dotnet on Linux and macOS only: the
+# store's data/default (the profile `exmod client` uses), logs in its Logs/<workspace folder name>
+# and the mods staged in $ModsDir. $Legacy sets DOTNET_ROOT to the checkout's .dotnet on Linux and macOS only: the
 # Windows apphost reads DOTNET_ROOT too, and fails on a folder holding another OS's .NET. Sources
 # built with the /exmod/<workspace folder name>/ path map resolve through sourceFileMap.
 function New-VsCodeLaunchConfig([string]$Name, [string]$PreLaunchTask, [string]$Slug, [string]$ModsDir, [bool]$Legacy) {
@@ -327,8 +327,8 @@ function New-VsCodeLaunchConfig([string]$Name, [string]$PreLaunchTask, [string]$
   }
   $argLines = {
     param([string]$Store, [string]$Indent)
-    $items = @('--tracelog', '--dataPath', "$Store/data/`${workspaceFolderBasename}",
-      '--logPath', "$Store/data/`${workspaceFolderBasename}/Logs/`${workspaceFolderBasename}",
+    $items = @('--tracelog', '--dataPath', "$Store/data/default",
+      '--logPath', "$Store/data/default/Logs/`${workspaceFolderBasename}",
       '--addModPath', "`${workspaceFolder}/$ModsDir")
     (@($items) | ForEach-Object { "$Indent`"$_`"" }) -join ",`n"
   }
@@ -704,7 +704,7 @@ supports, launch-prep composites that provision the client build into the user s
 `game/<series>` (`%LOCALAPPDATA%\exmod` on Windows, where a client on a network share such as a WSL
 checkout cannot load its native libraries; `~/.local/share/exmod` on Linux;
 `~/Library/Application Support/exmod` on macOS), with its data beside it under
-`data/<repo folder>` because SQLite cannot lock a save over a share; plain `setup` does not fetch
+`data/default` because SQLite cannot lock a save over a share; plain `setup` does not fetch
 it) and stage the mods first, and one launch configuration per series that
 boots the game with them loaded - opening this repo in VS Code and hitting F5 does the same thing
 `bash scripts/exmod.sh build latest && exmod stage && exmod client` would, with the game's own log

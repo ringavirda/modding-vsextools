@@ -146,6 +146,7 @@ editing its own `"tools"` pin.
 `bash scripts/exmod.sh test latest` builds and tests the verify and shapes tools against a
 provisioned game install (`bash scripts/exmod.sh provision game -Kind server` fetches the
 dedicated-server archive, which needs no licence). The scripts are PowerShell 7; `exmod.sh`
-installs `pwsh` into `.dotnet/tools` when the machine has none.
+installs `pwsh` when the machine has none, into the workspace root's `.dotnet/tools` when an
+`exmod.workspace.json` is above the checkout, else into the checkout's own.
 
 MIT licensed.

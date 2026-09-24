@@ -48,6 +48,7 @@ def os_view(config, name):
 class TemplateTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        assert PWSH
         cls.tmp = os.path.realpath(tempfile.mkdtemp())
         touch(os.path.join(cls.tmp, "exmod.json"), "{}")
         script = exmod_script("Write-ExmodVsCode -Dest $env:TEST_REPO -RepoName 'demo' -Series @('1.22', '1.21')")
@@ -78,7 +79,8 @@ class TemplateTests(unittest.TestCase):
 
     def test_each_os_runs_its_store_client_with_store_data_logs_and_the_staged_mods(self):
         # Fails if an OS block reads another OS's store, Windows runs Vintagestory.dll instead of the
-        # apphost, or the log path drops its repository folder.
+        # apphost, the data folder is named for the workspace folder, or the log path drops its
+        # repository folder.
         for label, slug, mods in [("demo (latest)", "1.22", "bin/Mods"), ("demo (1.21)", "1.21", "bin/Mods-1.21")]:
             config = self.configs()[label]
             for name, store in STORES.items():
@@ -86,8 +88,8 @@ class TemplateTests(unittest.TestCase):
                 self.assertEqual(f"{store}/game/{slug}/{ENTRY[name]}", program, (label, name))
                 self.assertEqual([
                     "--tracelog",
-                    "--dataPath", f"{store}/data/${{workspaceFolderBasename}}",
-                    "--logPath", f"{store}/data/${{workspaceFolderBasename}}/Logs/${{workspaceFolderBasename}}",
+                    "--dataPath", f"{store}/data/default",
+                    "--logPath", f"{store}/data/default/Logs/${{workspaceFolderBasename}}",
                     "--addModPath", f"${{workspaceFolder}}/{mods}",
                 ], args, (label, name))
 
@@ -148,11 +150,13 @@ class WrapperTests(unittest.TestCase):
         wrapper and the stubs call are linked."""
         for tool in ("bash", "sh", "sed", "head", "dirname", "mkdir", "chmod"):
             link = os.path.join(self.bin, tool)
+            found = shutil.which(tool)
+            assert found, tool
             if not os.path.exists(link):
-                os.symlink(shutil.which(tool), link)
+                os.symlink(found, link)
         env = dict(os.environ, EXTOOLS_HOME=ROOT, PATH=self.bin)
         env.pop("PWSH", None)
-        out = subprocess.run([shutil.which("bash"), "scripts/exmod.sh", "help"], cwd=self.repo, env=env,
+        out = subprocess.run([os.path.join(self.bin, "bash"), "scripts/exmod.sh", "help"], cwd=self.repo, env=env,
                              capture_output=True, text=True)
         return out.stdout.strip(), out.stderr
 

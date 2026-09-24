@@ -239,7 +239,8 @@ function Invoke-Test([string[]]$Argv) {
     $dc = Join-Path $toolsDir "dotnet-coverage$ExeSuffix"
     $cov = Join-Path $RepoRoot 'coverage.xml'
     Write-Host "Collecting coverage over the latest suite..."
-    & $dc collect -f cobertura -o $cov "$dotnet test `"$(Get-ExmodSolution)`" -c Debug --nologo" 2>&1 |
+    # Source paths stay unmapped (ExpandedLib.targets' PathMap) so cobertura names files on disk.
+    & $dc collect -f cobertura -o $cov "$dotnet test `"$(Get-ExmodSolution)`" -c Debug --nologo -p:ExmodMapSourcePaths=false" 2>&1 |
       Tee-Object -Variable collected | Out-Host
     $collectOk = ($LASTEXITCODE -eq 0)
 

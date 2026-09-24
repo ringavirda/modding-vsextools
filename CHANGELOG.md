@@ -39,13 +39,13 @@
   asset roots and `domain:` textures resolve there, and a block in such a folder settles a code
   both sides declare toward the old side.
 - The client and its data live in the user store on every OS: `%LOCALAPPDATA%\exmod` on Windows,
-  `~/Library/Application Support/exmod` on macOS, `$XDG_DATA_HOME/exmod` (default
-  `~/.local/share/exmod`) on Linux. `exmod client` looks for the client in the store's
-  `game/<series>` before any `.game`, and runs it with data in `data/<profile>` and logs in
-  `data/<profile>/Logs/<repository folder>`, which `exmod logs client` reads;
+  `~/Library/Application Support/exmod` on macOS, `~/.local/share/exmod` on Linux (XDG_DATA_HOME
+  is not read). `exmod client` looks for the client in the store's `game/<series>` before any
+  `.game`, and runs it with data in `data/default` and logs in
+  `data/default/Logs/<repository folder>`, which `exmod logs client` reads;
   `provision game -Kind client` installs there by default.
-- An `exmod.workspace.json` above a repository marks a workspace: its folder name is the data
-  profile, and a `.game` or `.dotnet` is provisioned at its root. Installs and `.game/.cache` are
+- An `exmod.workspace.json` above a repository marks a workspace: a `.game` or `.dotnet` is
+  provisioned at its root. Installs and `.game/.cache` are
   found in the nearest folder from the repository upward that holds them, so sibling repositories
   share them without symlinks. `.dotnet` is the repository's, else the workspace root's, and counts
   only when it holds the dotnet muxer.
@@ -54,7 +54,8 @@
   `bundle` and the shape renders take it first.
 - WSL in both directions. On Windows, a checkout under `\\wsl.localhost\<distro>\` or
   `\\wsl$\<distro>\` runs every command but `client`, `logs`, `help`, the machine commands and
-  `provision game -Kind client` inside that distro through `wsl.exe`, and `client` stages there and
+  `provision game -Kind client` inside that distro through `wsl.exe --exec`, so no shell reads the
+  arguments, and `client` stages there and
   runs the Windows client from the store on the staged folder's share path. In WSL with interop,
   `client` runs the Windows client from Windows' store on Windows' .NET, `-Provision` installs
   it through Windows' `pwsh.exe`, and `logs client` reads Windows' store; `-Linux` keeps the Linux
@@ -68,10 +69,14 @@
   Windows renders the game on the GPU driving the display. `client -DryRun` prints the exe's
   preference, or the one it would register, as a `gpu:` line.
 - Generated launch configurations run the client from the user store on every OS (the
-  `Vintagestory.exe` apphost on Windows) with `--dataPath` in the store's
-  `data/<workspace folder name>` and `--logPath` in its `Logs/<workspace folder name>`, and map
+  `Vintagestory.exe` apphost on Windows) with `--dataPath` in the store's `data/default` and
+  `--logPath` in its `Logs/<workspace folder name>`, and map
   `/exmod/<workspace folder name>/` back to the workspace folder through `sourceFileMap`. The
   provision tasks run `provision game -Kind client` without `-Dest` on every OS.
+- `exmod test -Coverage` builds with `-p:ExmodMapSourcePaths=false`, so the Debug path map exlib's
+  build targets apply stays off and `coverage.xml` names source files that exist.
+- `provision game -Dest` takes a path as given only when it is fully qualified; a Windows path
+  rooted on the current drive (`\x`) or relative to a drive (`C:x`) lands under the repository.
 - `scripts/exmod.sh` looks for pwsh in the repository's `.dotnet/tools`, then in the workspace
   root's, and installs it into the workspace root's when an `exmod.workspace.json` is above the
   repository.

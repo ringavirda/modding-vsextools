@@ -9,8 +9,9 @@
 #region provision dotnet
 
 # Builds a self-contained .NET in Get-ExmodDotnetDir (the repository's or the workspace root's
-# .dotnet holding a muxer, else one under the provision root) so a fresh clone can run the tests without the modder hand-installing .NET 7/8/10. Each Vintage Story version pins one major (net10=1.22, net8=1.21,
-# net7=1.20) and will not roll forward across majors.
+# .dotnet holding a muxer, else one under the provision root) so a fresh clone can run the tests
+# without the modder hand-installing .NET 7/8/10. Each Vintage Story version pins one major
+# (net10=1.22, net8=1.21, net7=1.20) and will not roll forward across majors.
 #
 # The global dotnet muxer ignores DOTNET_ROOT, so extra runtimes are only visible when invoked through
 # this install's own muxer (.dotnet/dotnet). That is why a full SDK is installed here too.
@@ -170,9 +171,10 @@ function Invoke-ProvisionGame([string[]]$Argv) {
   if (-not $dest) {
     $dest = if ($kind -eq 'client') { Get-ClientSlot $slug } else { Join-Path (Get-ExmodProvisionRoot) ".game/$slug" }
   }
-  # An absolute -Dest is used as given; Join-Path would otherwise concatenate it onto the repo root
-  # (an absolute second segment does not make Join-Path treat it as rooted).
-  $destFull = if ([System.IO.Path]::IsPathRooted($dest)) { $dest } else { Join-Path $RepoRoot $dest }
+  # A fully qualified -Dest is used as given; Join-Path would otherwise concatenate it onto the repo
+  # root. A Windows path rooted on the current drive (\x) or relative to a drive (C:x) is not fully
+  # qualified and lands under the repo root.
+  $destFull = if ([System.IO.Path]::IsPathFullyQualified($dest)) { $dest } else { Join-Path $RepoRoot $dest }
   $cacheDir = Find-ExmodAbove '.game/.cache'
   if (-not $cacheDir) { $cacheDir = Join-Path (Get-ExmodProvisionRoot) '.game/.cache' }
   New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
@@ -373,8 +375,8 @@ the nearest folder above the checkout holding exmod.workspace.json, else the che
   dotnet   a self-contained SDK plus every runtime major the requested series need (net10 for 1.22,
            net8 for 1.21, net7 for 1.20) in the checkout's .dotnet/, else the workspace root's,
            whichever holds a dotnet muxer, else in a new one under the provision root. Commands
-           that need those runtimes drive .dotnet/dotnet,
-           because the global muxer ignores DOTNET_ROOT and cannot see them.
+           that need those runtimes drive .dotnet/dotnet, because the global muxer ignores
+           DOTNET_ROOT and cannot see them.
 
   game     a Vintage Story install. -Kind server (the default) takes the dedicated-server archive,
            which carries every assembly the build and the tests need and needs no game licence, into
@@ -382,7 +384,8 @@ the nearest folder above the checkout holding exmod.workspace.json, else the che
            another platform is left alone, the server landing in .game/<series>-server beside it.
            -Kind client takes the full client, to play in, into the user store's game/<series>:
            %LOCALAPPDATA%\exmod on Windows, ~/Library/Application Support/exmod on macOS,
-           $XDG_DATA_HOME/exmod (default ~/.local/share/exmod) on Linux. -Dest names another folder.
+           ~/.local/share/exmod on Linux. -Dest names another folder, taken as given when fully
+           qualified, else under the checkout.
            On Windows it registers the high-performance GPU for the client's Vintagestory.exe
            (GpuPreference=2; under HKCU\Software\Microsoft\DirectX\UserGpuPreferences), also for a
            client already in place, unless a value for that exe exists.
