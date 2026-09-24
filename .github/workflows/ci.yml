@@ -47,8 +47,9 @@ jobs:
             !.game/.cache
           key: vs-game-client-${{ env.VS_VERSION }}
       # The client, not the server: the shapes tests paint real blocks with the game's own
-      # textures, which only the client archive ships.
+      # textures, which only the client archive ships. -Dest keeps it in the checkout's .game, where
+      # the build and the cache above look; a client without it goes to the user store.
       - name: Provision Vintage Story (client assets)
-        run: bash scripts/exmod.sh provision game -Version "$VS_VERSION" -Kind client
+        run: bash scripts/exmod.sh provision game -Version "$VS_VERSION" -Kind client -Dest ".game/$VS_VERSION"
       - name: Test the verify and shapes tools
         run: bash scripts/exmod.sh test latest
