@@ -103,6 +103,15 @@ class TemplateTests(unittest.TestCase):
         for config in self.launch["configurations"]:
             self.assertEqual("none", config["linux"]["env"]["WAYLAND_DISPLAY"], config["name"])
 
+    def test_dotnet_root_reaches_only_the_linux_and_osx_launches_of_a_legacy_series(self):
+        # Fails if the legacy configuration keeps a top-level env, which the Windows apphost inherits.
+        legacy = self.configs()["demo (1.21)"]
+        self.assertNotIn("env", legacy)
+        self.assertNotIn("env", legacy["windows"])
+        for name in ("linux", "osx"):
+            self.assertEqual("${workspaceFolder}/.dotnet", legacy[name]["env"]["DOTNET_ROOT"], name)
+        self.assertNotIn("DOTNET_ROOT", self.configs()["demo (latest)"]["linux"]["env"])
+
     def test_the_provision_tasks_install_a_client_into_the_store_on_every_os(self):
         # Fails if a provision task passes -Dest, or keeps an osx block with its own arguments.
         tasks = {t["label"]: t for t in self.tasks["tasks"]}

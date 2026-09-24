@@ -140,6 +140,32 @@ class PlacesTests(unittest.TestCase):
         self.assertEqual(slot, got["Client"])
         self.assertEqual(os.path.join(self.ws, ".game", "1.22-server"), got["Smoke"])
 
+    def test_the_series_override_variable_is_the_first_install_candidate(self):
+        # Fails if Get-GameInstallCandidates ignores the override, or reads another series' variable.
+        repo = make_repo(os.path.join(self.ws, "exlib"))
+        got = run(repo, "$env:VINTAGE_STORY_121 = '/override 121'; $env:VINTAGE_STORY = '/override'; "
+                        "ConvertTo-Json -Compress @{ S121 = @(Get-GameInstallCandidates '1.21' 'server'); "
+                        "S122 = @(Get-GameInstallCandidates '1.22' 'client'); S120 = @(Get-GameInstallCandidates '1.20' 'client') }",
+                  self.home)
+        store = os.path.join(self.home, ".local", "share", "exmod", "game")
+        self.assertEqual(["/override 121", os.path.join(store, "1.21")], got["S121"])
+        self.assertEqual(["/override", os.path.join(store, "1.22")], got["S122"])
+        self.assertEqual([os.path.join(store, "1.20")], got["S120"])
+
+    def test_the_smoke_server_takes_the_override_before_the_workspaces_install(self):
+        # Fails if Resolve-SmokeServer ignores the override, or takes one that holds no server.
+        repo = make_repo(os.path.join(self.ws, "exlib"))
+        override = os.path.join(self.tmp, "vs override")
+        touch(os.path.join(self.ws, ".game", "1.22-server", "VintagestoryServer.dll"))
+        body = "function Invoke-ProvisionGame { throw 'provisioned' }; ConvertTo-Json -Compress @(Resolve-SmokeServer '1.22')"
+        os.environ["VINTAGE_STORY"] = override
+        try:
+            self.assertEqual([os.path.join(self.ws, ".game", "1.22-server")], run(repo, body, self.home))
+            touch(os.path.join(override, "VintagestoryServer.dll"))
+            self.assertEqual([override], run(repo, body, self.home))
+        finally:
+            del os.environ["VINTAGE_STORY"]
+
     def test_the_store_follows_xdg_data_home_when_set(self):
         # Fails if XDG_DATA_HOME is ignored.
         repo = make_repo(os.path.join(self.ws, "exlib"))
@@ -170,6 +196,19 @@ class PlacesTests(unittest.TestCase):
         self.assertEqual(os.path.join(self.ws, ".dotnet"), places(repo, self.home)["Dotnet"])
         touch(os.path.join(repo, ".dotnet", "dotnet"))
         self.assertEqual(os.path.join(repo, ".dotnet"), places(repo, self.home)["Dotnet"])
+
+    def test_dotnet_outside_a_workspace_is_never_taken_from_above_the_repository(self):
+        # Fails if the search climbs past $RepoRoot without a marker (a home ~/.dotnet holding the
+        # user's own dotnet would be taken).
+        touch(os.path.join(self.home, ".dotnet", "dotnet"))
+        repo = make_repo(os.path.join(self.home, "src", "starter"))
+        self.assertEqual(os.path.join(repo, ".dotnet"), places(repo, self.home)["Dotnet"])
+
+    def test_dotnet_inside_a_workspace_is_never_taken_from_above_the_workspace_root(self):
+        # Fails if the search climbs past the workspace root.
+        touch(os.path.join(self.tmp, ".dotnet", "dotnet"))
+        repo = make_repo(os.path.join(self.ws, "exlib"))
+        self.assertEqual(os.path.join(self.ws, ".dotnet"), places(repo, self.home)["Dotnet"])
 
 
 # Stubs the api patch step of provision game. With an install already in place the call downloads
@@ -257,6 +296,17 @@ class ClientAndLogsTests(unittest.TestCase):
         got = run(self.repo, CLIENT, self.home)
         self.assertEqual(["/game/Vintagestory.dll", "--tracelog", "--dataPath", self.data,
                           "--logPath", os.path.join(self.data, "Logs", "exmods"), "--addModPath", "/mods"], got)
+
+    def test_a_dry_run_prints_the_local_dotnet_without_provisioning_it(self):
+        # Fails if -DryRun still lets Resolve-DotnetHost provision (the stub then throws).
+        got = run(self.repo, NO_INTEROP + "function dotnet { }; function Invoke-ProvisionDotnet { throw 'provisioned' }; "
+                                          "function Find-UsableGameInstall { '/game' }; "
+                                          "$said = @(Invoke-Client @('1.21', '-NoBuild', '-DryRun') 6>&1 | ForEach-Object { \"$_\" }); "
+                                          "ConvertTo-Json -Compress $said", self.home)
+        muxer = os.path.join(self.ws, ".dotnet", "dotnet")
+        self.assertIn(f"program: {muxer}", got)
+        self.assertIn(f"env: DOTNET_ROOT={os.path.join(self.ws, '.dotnet')}", got)
+        self.assertFalse(os.path.exists(os.path.join(self.ws, ".dotnet")))
 
     def logs(self):
         return run(self.repo, NO_INTEROP + "$said = @(Invoke-Logs @('client', '-Lines', '1') 6>&1 | ForEach-Object { \"$_\" }); "

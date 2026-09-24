@@ -198,12 +198,13 @@ function Invoke-WindowsClientFromWsl([string]$Version, [string]$Configuration, [
 # code straight through. Builds and stages first unless -NoBuild. Never provisions a client on its
 # own - the archive is about a gigabyte - unless -Provision is given; otherwise it prints the exact
 # command to fetch one and exits 1. -DryRun prints the launch (Write-ClientLaunch) and returns
-# without building, staging, seeding settings or starting anything.
+# without building, staging, seeding settings, provisioning .NET or starting anything; a series
+# whose runtime the system dotnet lacks prints the .dotnet muxer it would provision.
 #
 # In WSL with interop and without -Linux, the Windows client runs (Invoke-WindowsClientFromWsl). On
 # Windows, a checkout on a WSL share (Get-WslShare) stages inside the distro unless -NoBuild,
 # -DryRun or -Mods, and runs the client from the user store's slot on the staged folder's share
-# path.
+# path with the system dotnet; when that lacks the series' runtime it stops with one line.
 function Invoke-Client([string[]]$Argv) {
   $positional = @(Get-Positional $Argv @('-Configuration', '-Mods', '-DataPath') @('-NoBuild', '-Provision', '-Software', '-DryRun', '-Linux'))
   $versionArg = if ($positional.Count -gt 0) { $positional[0] } else { 'latest' }
@@ -254,9 +255,16 @@ function Invoke-Client([string[]]$Argv) {
   else { $modsDest = Publish-RunMods $version $configuration $modsOpt $noBuild }
 
   $launchEnv = [ordered]@{}
+  if ($share) {
+    # The share's .dotnet belongs to the distro, so nothing is provisioned into it for Windows.
+    $missing = @(Get-MissingRuntimeMajors @($version))
+    if ($missing.Count -gt 0) {
+      Stop-Client "exmod: Windows has no .NET $($missing -join ', ') runtime; install it for Windows (https://dot.net)."
+    }
+  }
   # The system dotnet muxer ignores DOTNET_ROOT; the game only sees .dotnet's runtimes when both the
   # host and this variable point there, same as .vscode/launch.json sets it for the debugger.
-  $dotnet = Resolve-DotnetHost @($version)
+  $dotnet = Resolve-DotnetHost @($version) -NoProvision:$dryRun
   $dotnetDir = Get-ExmodDotnetDir
   if ($dotnet -eq (Join-Path $dotnetDir "dotnet$ExeSuffix")) {
     $launchEnv['DOTNET_ROOT'] = $dotnetDir
@@ -299,11 +307,12 @@ prints the exact `exmod provision game` command to run and exits 1.
 
 The client and its data live in the user store: %LOCALAPPDATA%\exmod on Windows,
 ~/Library/Application Support/exmod on macOS, $XDG_DATA_HOME/exmod (default ~/.local/share/exmod) on
-Linux. The client is the store's game/<series>, else the nearest .game/<series>-client,
-.game/<series>-<platform> or .game/<series> from the checkout upward. The data path is the store's
-data/<profile>, the profile being the name of the workspace folder (the nearest one above the
-checkout holding exmod.workspace.json), else of the checkout's folder. Logs go to
-<data path>/Logs/<checkout folder>, so two repositories sharing a profile keep separate logs.
+Linux. The client is the folder the series' override variable names (VINTAGE_STORY,
+VINTAGE_STORY_121, VINTAGE_STORY_120), else the store's game/<series>, else the nearest
+.game/<series>-client, .game/<series>-<platform> or .game/<series> from the checkout upward. The
+data path is the store's data/<profile>, the profile being the name of the workspace folder (the
+nearest one above the checkout holding exmod.workspace.json), else of the checkout's folder. Logs go
+to <data path>/Logs/<checkout folder>, so two repositories sharing a profile keep separate logs.
 
 In WSL with interop, the Windows client runs: Windows' dotnet, the client in
 %LOCALAPPDATA%\exmod\game\<series>, data and logs in Windows' store, and the mods built and staged in
@@ -312,7 +321,7 @@ Windows' pwsh.exe. Without interop, or with -Linux, the Linux client runs.
 
 On Windows, a checkout on a WSL share (\\wsl.localhost\<distro>\... or \\wsl$\<distro>\...) is
 built and staged inside that distro (`exmod stage` there, unless -NoBuild, -DryRun or -Mods), and the
-client runs from the store's game/<series> only.
+client runs from the store's game/<series> only, on Windows' own .NET runtime.
 
   -Mods       mod folder(s), or folder(s) of mod folders, instead of every built mod in the checkout
               and its resolved dependencies
@@ -322,7 +331,8 @@ client runs from the store's game/<series> only.
   -Software   Mesa's software renderer, for a GPU driver that hangs the game
   -Linux      in WSL, run the Linux client instead of the Windows one
   -DryRun     print the program, its arguments and the environment it would set, one per line
-              (program: , arg: , env: ), and exit 0 without building, staging or launching
+              (program: , arg: , env: ), and exit 0 without building, staging, provisioning
+              .NET or launching
 
 Without -Mods, this repo's runtime dependency mods (see `exmod provision mods`) are staged after
 its own, built or fetched first if needed.
@@ -386,15 +396,18 @@ its own, built or fetched first if needed.
 # with it.
 $SmokePort = 42499
 
-# Finds a working dedicated-server install for $version's slug, the nearest from $RepoRoot upward
-# (".game/<slug>-server" first, since that is where Invoke-ProvisionGame redirects a server request
+# Finds a working dedicated-server install for $version's slug: the series' override variable
+# (Get-GameInstallOverride) when it names a folder holding VintagestoryServer.dll, else the nearest
+# from $RepoRoot upward (".game/<slug>-server" first, since that is where Invoke-ProvisionGame redirects a server request
 # away from an existing client that cannot serve it - see its header comment - then the plain
 # ".game/<slug>"), provisioning one if neither is present. Returns the full path to the install
 # directory.
 function Resolve-SmokeServer([string]$version) {
   $slug = ($version -split '\.')[0..1] -join '.'
   $candidates = @(".game/$slug-server", ".game/$slug")
+  $override = Get-GameInstallOverride $slug
   $find = {
+    if ($override -and (Test-Path (Join-Path $override 'VintagestoryServer.dll'))) { return $override }
     foreach ($c in $candidates) {
       $hit = Find-ExmodAbove "$c/VintagestoryServer.dll"
       if ($hit) { return Split-Path $hit -Parent }

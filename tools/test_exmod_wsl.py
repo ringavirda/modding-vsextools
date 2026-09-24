@@ -8,6 +8,7 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -75,7 +76,7 @@ class ShareAndSideTests(unittest.TestCase):
 # carry spaces; a Windows path C:\... maps to $env:TEST_C/... and a Linux path to
 # \\wsl.localhost\test<path>. $env:TEST_INTEROP, $env:TEST_STORE, $env:TEST_DOTNET and $env:TEST_PWSH
 # switch the interop check, the store and the two programs off when set to 0. The build and the stage return the stage
-# folder without touching it.
+# folder without touching it. A launch of the Linux client prints its arguments instead of running.
 STUBS = r"""
 function Test-WslInterop { $env:TEST_INTEROP -ne '0' }
 function Get-WindowsUserStore { if ($env:TEST_STORE -ne '0') { 'C:\Users\A B\AppData\Local\exmod' } }
@@ -89,7 +90,8 @@ function Convert-WslPath([string]$Path, [switch]$ToWindows) {
   return $env:TEST_C + $Path.Substring(2).Replace('\', '/')
 }
 function Publish-RunMods { Write-Host 'staged'; Get-StageDest $args[0] }
-function Resolve-DotnetHost { 'dotnet' }
+function Resolve-DotnetHost { 'Show-Args' }
+function Show-Args { Write-Host "launch: $($args -join ' ')" }
 """
 
 
@@ -99,6 +101,7 @@ def executable(path, text):
 
 
 @unittest.skipUnless(PWSH, "pwsh not found")
+@unittest.skipIf(sys.platform == "win32", "on Windows Invoke-Client takes the Windows launch, not the WSL one")
 class WindowsClientFromWslTests(unittest.TestCase):
     def setUp(self):
         self.tmp = os.path.realpath(tempfile.mkdtemp())
@@ -123,7 +126,7 @@ class WindowsClientFromWslTests(unittest.TestCase):
         touch(os.path.join(self.linux_slot, "Lib", "libe_sqlite3.so"))
 
     def client(self, args, **env):
-        base = {"TEST_C": self.c, "WSL_DISTRO_NAME": "test"}
+        base = {"TEST_C": self.c, "WSL_DISTRO_NAME": "test", "LOCALAPPDATA": os.path.join(self.tmp, "local")}
         base.update(env)
         argv = ", ".join(f"'{a}'" for a in args)
         return run(self.repo, STUBS + f"Invoke-Client @({argv})", self.home, base)
@@ -151,7 +154,7 @@ class WindowsClientFromWslTests(unittest.TestCase):
         code, lines = self.client(["-NoBuild", "-DryRun"], TEST_INTEROP="0")
         self.assertEqual(0, code, lines)
         self.assertIn("WSL interop is off (no /proc/sys/fs/binfmt_misc/WSLInterop), so the Linux client runs.", lines)
-        self.assertIn("program: dotnet", lines)
+        self.assertIn("program: Show-Args", lines)
         self.assertIn(f"arg: {os.path.join(self.linux_slot, 'Vintagestory.dll')}", lines)
         self.assertIn("env: WAYLAND_DISPLAY=none", lines)
 
@@ -256,6 +259,8 @@ function Get-WslShare { [pscustomobject]@{ Distro = 'arch'; LinuxPath = '/src/re
 function Invoke-ExmodInWsl([string]$Distro, [string]$LinuxPath, [string[]]$Argv) { Write-Host "wsl: $Distro $LinuxPath $($Argv -join ' ')"; 0 }
 function Find-UsableGameInstall([string]$Version, [string]$Kind, [switch]$SlotOnly) { if ($SlotOnly) { '/slot' } else { '/tree' } }
 function Publish-RunMods { Write-Host 'staged on windows'; '/windows-stage' }
+function Get-MissingRuntimeMajors { @($env:TEST_MISSING -split ',' | Where-Object { $_ }) }
+function Invoke-ProvisionDotnet { throw 'provisioned' }
 function Resolve-DotnetHost { 'Show-Args' }
 function Show-Args { Write-Host "launch: $($args -join ' ')" }
 """
@@ -269,11 +274,11 @@ class ClientOnWslShareTests(unittest.TestCase):
         self.repo = os.path.join(self.tmp, "repo")
         touch(os.path.join(self.repo, "exmod.json"), "{}")
 
-    def client(self, args):
+    def client(self, args, missing="", want_code=0):
         argv = ", ".join(f"'{a}'" for a in args)
         code, lines = run(self.repo, ON_SHARE + f"Invoke-Client @({argv})", self.tmp,
-                          {"LOCALAPPDATA": os.path.join(self.tmp, "local")})
-        self.assertEqual(0, code, lines)
+                          {"LOCALAPPDATA": os.path.join(self.tmp, "local"), "TEST_MISSING": missing})
+        self.assertEqual(want_code, code, lines)
         return lines
 
     def test_client_stages_inside_wsl_and_runs_the_store_client_on_the_stage_folder(self):
@@ -292,6 +297,12 @@ class ClientOnWslShareTests(unittest.TestCase):
         lines = self.client(["-NoBuild"])
         self.assertFalse([l for l in lines if l.startswith("wsl: ")], lines)
         self.assertNotIn("staged on windows", lines)
+
+    def test_a_missing_windows_runtime_stops_naming_it_without_provisioning(self):
+        # Fails if a checkout on a share provisions .NET into the share's .dotnet (the stub then
+        # throws) instead of stopping with one line.
+        lines = self.client(["-NoBuild", "-DryRun"], missing="10", want_code=1)
+        self.assertEqual(["exmod: Windows has no .NET 10 runtime; install it for Windows (https://dot.net)."], lines)
 
 
 if __name__ == "__main__":

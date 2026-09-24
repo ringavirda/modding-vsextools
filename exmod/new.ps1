@@ -316,8 +316,9 @@ $depLines
 # One launch configuration running series $Slug's client from the user store of the OS VS Code
 # runs on (the Windows apphost, so a GPU preference registered for it applies), with data in the
 # store's data/<workspace folder name>, logs in its Logs/<workspace folder name> and the mods staged
-# in $ModsDir. $Legacy sets DOTNET_ROOT to the checkout's .dotnet. Sources built with the
-# /exmod/<workspace folder name>/ path map resolve through sourceFileMap.
+# in $ModsDir. $Legacy sets DOTNET_ROOT to the checkout's .dotnet on Linux and macOS only: the
+# Windows apphost reads DOTNET_ROOT too, and fails on a folder holding another OS's .NET. Sources
+# built with the /exmod/<workspace folder name>/ path map resolve through sourceFileMap.
 function New-VsCodeLaunchConfig([string]$Name, [string]$PreLaunchTask, [string]$Slug, [string]$ModsDir, [bool]$Legacy) {
   $stores = [ordered]@{
     linux   = '${env:HOME}/.local/share/exmod'
@@ -333,7 +334,6 @@ function New-VsCodeLaunchConfig([string]$Name, [string]$PreLaunchTask, [string]$
   }
   $envLines = if ($Legacy) {
     @"
-      "env": { "DOTNET_ROOT": "`${workspaceFolder}/.dotnet" },
       "linux": { "env": { "DOTNET_ROOT": "`${workspaceFolder}/.dotnet", "WAYLAND_DISPLAY": "none" } },
 "@
   } else {
@@ -341,6 +341,7 @@ function New-VsCodeLaunchConfig([string]$Name, [string]$PreLaunchTask, [string]$
       "linux": { "env": { "WAYLAND_DISPLAY": "none" } },
 "@
   }
+  $osxEnvLine = if ($Legacy) { "        `"env`": { `"DOTNET_ROOT`": `"`${workspaceFolder}/.dotnet`" },`n" } else { '' }
   return @"
     {
       "name": "$Name",
@@ -354,7 +355,7 @@ $(& $argLines $stores.linux '        ')
       "cwd": "`${workspaceFolder}",
 $envLines
       "osx": {
-        "program": "$($stores.osx)/game/$Slug/Vintagestory.dll",
+$osxEnvLine        "program": "$($stores.osx)/game/$Slug/Vintagestory.dll",
         "args": [
 $(& $argLines $stores.osx '          ')
         ]

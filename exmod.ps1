@@ -124,12 +124,16 @@ function Get-ClientLogPath([string]$DataPath) {
   return Join-Path $DataPath "Logs/$(Split-Path $RepoRoot -Leaf)"
 }
 
-# The .dotnet folder to use and provision into: the nearest one from $RepoRoot upward holding a
-# dotnet muxer, else <provision root>/.dotnet, which may not exist yet. A .dotnet without the muxer
-# is passed over: the dotnet CLI keeps one of its own in the home folder and in the temp folder.
+# The .dotnet folder to use and provision into: $RepoRoot/.dotnet when it holds a dotnet muxer, else
+# the workspace root's when it holds one, else <provision root>/.dotnet, which may not exist yet.
+# No folder above the workspace root, or above $RepoRoot outside a workspace, is searched: the
+# home folder's .dotnet is the user's own dotnet or the CLI's global-tools folder.
 function Get-ExmodDotnetDir {
-  $found = Find-ExmodAbove ".dotnet/dotnet$ExeSuffix"
-  if ($found) { return Split-Path $found -Parent }
+  $roots = @($RepoRoot, (Get-ExmodWorkspaceRoot)) | Where-Object { $_ }
+  foreach ($root in $roots) {
+    $dir = Join-Path $root '.dotnet'
+    if (Test-Path -LiteralPath (Join-Path $dir "dotnet$ExeSuffix") -PathType Leaf) { return $dir }
+  }
   return Join-Path (Get-ExmodProvisionRoot) '.dotnet'
 }
 
@@ -422,27 +426,48 @@ function Resolve-GameVersions([string]$Spec) {
   }
 }
 
+# The .NET runtime majors $Versions need that the system dotnet muxer does not have, as an array;
+# empty when it has them all. A machine without a dotnet on PATH lacks every one.
+function Get-MissingRuntimeMajors([string[]]$Versions) {
+  $needed = @($Versions | ForEach-Object { $GameRuntimeMajors[$_] } | Select-Object -Unique)
+  $sysRuntimes = try { (& dotnet --list-runtimes 2>$null) -join "`n" } catch { '' }
+  return @($needed | Where-Object { $sysRuntimes -notmatch "Microsoft\.NETCore\.App $([regex]::Escape($_))\." })
+}
+
 # The dotnet muxer to drive for $Versions: the system one when it already has every runtime major
 # they need, otherwise the one in Get-ExmodDotnetDir, provisioned first. The global muxer ignores
 # DOTNET_ROOT, so runtimes provisioned into .dotnet are only visible through .dotnet/dotnet - which
 # is what lets a machine with only .NET 10 installed still run the 1.21 and 1.20 lanes.
-function Resolve-DotnetHost([string[]]$Versions) {
-  $needed = @($Versions | ForEach-Object { $GameRuntimeMajors[$_] } | Select-Object -Unique)
-  $sysRuntimes = try { (& dotnet --list-runtimes 2>$null) -join "`n" } catch { '' }
-  $missing = @($needed | Where-Object { $sysRuntimes -notmatch "Microsoft\.NETCore\.App $([regex]::Escape($_))\." })
+# -NoProvision returns that local muxer's path without provisioning; it may not exist.
+function Resolve-DotnetHost([string[]]$Versions, [switch]$NoProvision) {
+  $missing = @(Get-MissingRuntimeMajors $Versions)
   if ($missing.Count -eq 0) { return 'dotnet' }
+  if ($NoProvision) { return (Join-Path (Get-ExmodDotnetDir) "dotnet$ExeSuffix") }
   Write-Host "Missing .NET runtime major(s) system-wide: $($missing -join ', ') - provisioning a local .dotnet..."
   Invoke-ProvisionDotnet @('-Version', ($Versions.Count -eq 1 ? $Versions[0] : 'all'))
   return (Join-Path (Get-ExmodDotnetDir) "dotnet$ExeSuffix")
 }
 
-# Every folder that may hold a $Kind install of series $Slug, in the order they are tried: this OS's
-# client slot in the user store, then the nearest .game/<slug>-<kind>, .game/<slug>-<platform> and
-# .game/<slug> holding the kind's entry assembly, each searched from $RepoRoot upward. A name found
-# nowhere is left out; the client slot is always listed, whether or not it exists.
+# The install the series' override variable names (VINTAGE_STORY for 1.22, VINTAGE_STORY_121,
+# VINTAGE_STORY_120), the one the builds take before any lookup; $null when it is unset or empty.
+# The folder may not exist.
+function Get-GameInstallOverride([string]$Slug) {
+  $name = if ($Slug -eq '1.22') { 'VINTAGE_STORY' } else { "VINTAGE_STORY_$($Slug.Replace('.', ''))" }
+  $value = [Environment]::GetEnvironmentVariable($name)
+  if ($value) { return $value }
+  return $null
+}
+
+# Every folder that may hold a $Kind install of series $Slug, in the order they are tried: the
+# series' override variable (Get-GameInstallOverride) when set, this OS's client slot in the user
+# store, then the nearest .game/<slug>-<kind>, .game/<slug>-<platform> and .game/<slug> holding the
+# kind's entry assembly, each searched from $RepoRoot upward. A name found nowhere is left out; the
+# client slot is always listed, whether or not it exists.
 function Get-GameInstallCandidates([string]$Slug, [string]$Kind) {
   $entry = if ($Kind -eq 'server') { 'VintagestoryServer.dll' } else { 'Vintagestory.dll' }
   $out = @(Get-ClientSlot $Slug)
+  $override = Get-GameInstallOverride $Slug
+  if ($override) { $out = @($override) + $out }
   foreach ($name in @("$Slug-$Kind", "$Slug-$PlatformSlot", $Slug)) {
     $hit = Find-ExmodAbove ".game/$name/$entry"
     if ($hit) { $out += Split-Path $hit -Parent }
