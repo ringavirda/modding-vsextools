@@ -771,6 +771,81 @@ function Show-ExmodHelp([string]$Name) {
 
 #endregion
 
+#region WSL
+
+# The distro and Linux path behind a Windows path into a WSL share, \\wsl.localhost\<distro>\... or
+# \\wsl$\<distro>\... in either slash direction and any case, as @{ Distro; LinuxPath }. The share's
+# root, with or without a trailing slash, is LinuxPath '/'. $null for any other path.
+function Get-WslShare([string]$Path) {
+  if ($Path -notmatch '^[\\/]{2}wsl(\.localhost|\$)[\\/]([^\\/]+)([\\/].*)?$') { return $null }
+  $linux = "$($Matches[3])".Replace('\', '/').TrimEnd('/')
+  return [pscustomobject]@{ Distro = $Matches[2]; LinuxPath = ($linux ? $linux : '/') }
+}
+
+# Whether $Command with $Argv runs on Windows for a checkout on a WSL share instead of being handed
+# to the distro: client, logs, help, every machine-group command, and provision game -Kind client,
+# which installs into the Windows user store. Aliases resolve to their command first.
+function Test-ExmodWindowsSideCommand([string]$Command, [string[]]$Argv = @()) {
+  $cmd = Resolve-ExmodCommand $Command
+  $name = if ($cmd) { $cmd.Name } else { $Command }
+  if ($name -in @('client', 'logs', 'help')) { return $true }
+  if ($cmd -and $cmd.Group -eq 'machine') { return $true }
+  if ($name -eq 'provision') {
+    return (@($Argv)[0] -eq 'game') -and ((Get-Opt $Argv '-Kind' 'server') -eq 'client')
+  }
+  return $false
+}
+
+# Runs `bash scripts/exmod.sh <Argv>` inside WSL distro $Distro with $LinuxPath as the working
+# directory, its output passed to the host, and returns its exit code. Windows only; the checkout's
+# own launcher picks the tools and pwsh on the Linux side.
+function Invoke-ExmodInWsl([string]$Distro, [string]$LinuxPath, [string[]]$Argv) {
+  & wsl.exe -d $Distro --cd $LinuxPath -- bash scripts/exmod.sh @Argv | Out-Host
+  return $LASTEXITCODE
+}
+
+# Whether this is a WSL distro that can start Windows programs: Linux with the WSLInterop or
+# WSLInterop-late binfmt handler registered. $false on Windows and macOS.
+function Test-WslInterop {
+  if ($OnWindows -or $IsMacOS) { return $false }
+  return (Test-Path '/proc/sys/fs/binfmt_misc/WSLInterop') -or (Test-Path '/proc/sys/fs/binfmt_misc/WSLInterop-late')
+}
+
+# $Path converted by wslpath: to its Windows form with -ToWindows (a distro path becomes
+# \\wsl.localhost\<distro>\...), else a Windows path to the form Linux reaches it by (/mnt/c/...).
+# The path need not exist. Throws when wslpath fails. WSL only.
+function Convert-WslPath([string]$Path, [switch]$ToWindows) {
+  $out = & wslpath ($ToWindows ? '-w' : '-u') $Path
+  if ($LASTEXITCODE -ne 0 -or -not $out) { throw "wslpath could not convert '$Path'." }
+  return "$out".Trim()
+}
+
+# The first line cmd.exe prints for $Line on Windows, CR trimmed, or $null when it prints nothing,
+# fails, or cmd.exe cannot be started. cmd.exe's warning about a Linux working directory goes to
+# stderr and is dropped. WSL only.
+function Invoke-WindowsCmd([string]$Line) {
+  $out = @(try { & cmd.exe /c $Line 2>$null } catch { })
+  if ($LASTEXITCODE -ne 0 -or -not $out) { return $null }
+  $first = "$($out[0])".TrimEnd("`r").Trim()
+  return ($first ? $first : $null)
+}
+
+# Windows' user store, %LOCALAPPDATA%\exmod as a Windows path, read through cmd.exe; $null when
+# %LOCALAPPDATA% cannot be read. WSL only.
+function Get-WindowsUserStore {
+  $local = Invoke-WindowsCmd 'echo %LOCALAPPDATA%'
+  if (-not $local -or $local -eq '%LOCALAPPDATA%') { return $null }
+  return "$local\exmod"
+}
+
+# The Windows path of the first $Name on Windows' PATH (`where <name>`), or $null when there is
+# none. WSL only.
+function Get-WindowsProgram([string]$Name) {
+  return Invoke-WindowsCmd "where $Name"
+}
+
+#endregion
+
 # The commands themselves, one file per stage. Dot-sourced, so everything above is in scope for them
 # and their Add-ExmodCommand calls run before dispatch. A file that is not there is skipped rather
 # than fatal: another repo copies this dispatcher with only the stages it wants (see
@@ -791,5 +866,10 @@ if (-not $resolved) {
   Write-Host "exmod: no such command: $Command" -ForegroundColor Red
   Show-ExmodHelp
   exit 1
+}
+$wslShare = if ($OnWindows) { Get-WslShare $RepoRoot } else { $null }
+if ($wslShare -and -not (Test-ExmodWindowsSideCommand $resolved.Name $Arguments)) {
+  Write-Host "Running '$Command' inside WSL ($($wslShare.Distro)): $($wslShare.LinuxPath)"
+  exit (Invoke-ExmodInWsl $wslShare.Distro $wslShare.LinuxPath (@($Command) + $Arguments))
 }
 & $resolved.Action $Arguments

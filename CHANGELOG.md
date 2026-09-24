@@ -49,6 +49,13 @@
   `.game/.cache` are found in the nearest folder from the repository upward that holds them, so
   sibling repositories share them without symlinks. A `.dotnet` counts only when it holds the
   dotnet muxer.
+- WSL in both directions. On Windows, a checkout under `\\wsl.localhost\<distro>\` or
+  `\\wsl$\<distro>\` runs every command but `client`, `logs`, `help`, the machine commands and
+  `provision game -Kind client` inside that distro through `wsl.exe`, and `client` stages there and
+  runs the Windows client from the store on the staged folder's share path. In WSL with interop,
+  `client` runs the Windows client from Windows' store with Windows' dotnet, `-Provision` installs
+  it through Windows' `pwsh.exe`, and `logs client` reads Windows' store; `-Linux` keeps the Linux
+  client. `client -DryRun` prints the program, arguments and environment it would launch with.
 
 ## [0.3.4] - 2026-09-15
 

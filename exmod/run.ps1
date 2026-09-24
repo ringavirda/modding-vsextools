@@ -102,21 +102,19 @@ function Resolve-RunVersion([string]$Spec) {
 # The first usable $Kind install for $Version among Get-GameInstallCandidates (exmod.ps1), or $null,
 # without provisioning one - the same test Resolve-GameInstall applies, duplicated here because
 # `client` must never let that helper's own auto-provisioning reach the network before -Provision
-# says so.
-function Find-UsableGameInstall([string]$Version, [string]$Kind) {
+# says so. -SlotOnly looks in the user store's client slot alone, for a checkout on a network share
+# whose in-tree installs cannot run from there.
+function Find-UsableGameInstall([string]$Version, [string]$Kind, [switch]$SlotOnly) {
   $slug = ($Version -split '\.')[0..1] -join '.'
   $entry = if ($Kind -eq 'server') { 'VintagestoryServer.dll' } else { 'Vintagestory.dll' }
-  foreach ($c in (Get-GameInstallCandidates $slug $Kind)) {
+  $candidates = if ($SlotOnly) { @(Get-ClientSlot $slug) } else { Get-GameInstallCandidates $slug $Kind }
+  foreach ($c in $candidates) {
     if (-not (Test-Path (Join-Path $c $entry))) { continue }
     if (Test-Path (Get-NativeMarker $c)) { return $c }
   }
   return $null
 }
 
-# Launches the real client in the foreground with this checkout's mods loaded, passing its exit
-# code straight through. Builds and stages first unless -NoBuild. Never provisions a client on its
-# own - the archive is about a gigabyte - unless -Provision is given; otherwise it prints the exact
-# command to fetch one and exits 1.
 # A data folder the game has never written starts fullscreen. A fresh folder gets a windowed,
 # vsync-off settings file, so a debug session keeps the editor in reach; the game fills in every
 # other setting itself and an existing file is never touched.
@@ -127,55 +125,163 @@ function Initialize-ClientSettings([string]$DataPath) {
   Set-Content -Path $settings -Value '{ "intSettings": { "gameWindowMode": 0, "vsyncMode": 0 } }'
 }
 
+# What `client -DryRun` prints: the program, each argument, then each environment variable the
+# launch would set as NAME=value, one per line.
+function Write-ClientLaunch([string]$Program, [string[]]$Arguments, [System.Collections.IDictionary]$Environment) {
+  Write-Host "program: $Program"
+  foreach ($a in $Arguments) { Write-Host "arg: $a" }
+  foreach ($k in $Environment.Keys) { Write-Host "env: $k=$($Environment[$k])" }
+}
+
+# Prints $Message as one red line and exits 1.
+function Stop-Client([string]$Message) {
+  Write-Host $Message -ForegroundColor Red
+  exit 1
+}
+
+# `client` from a WSL distro with interop: the Windows client from Windows' user store, run by
+# Windows' dotnet, on data and logs in that store's profile, with the mods built and staged on the
+# Linux side and passed as their \\wsl.localhost path. Stops with one line when Windows has no
+# readable %LOCALAPPDATA%, no dotnet, or no client and -Provision is not given; with -Provision a
+# missing client is installed by this tools checkout's provision game run in Windows' pwsh.exe, and
+# a missing pwsh.exe stops it the same way. $DataOpt is a Windows path or a Linux one. Exits with
+# the game's exit code; returns after printing under -DryRun.
+function Invoke-WindowsClientFromWsl([string]$Version, [string]$Configuration, [string]$ModsOpt,
+  [bool]$NoBuild, [string]$DataOpt, [bool]$Provision, [bool]$DryRun) {
+  $store = Get-WindowsUserStore
+  if (-not $store) { Stop-Client 'exmod: Windows %LOCALAPPDATA% could not be read through cmd.exe; pass -Linux to run the Linux client.' }
+  $dotnetWin = Get-WindowsProgram 'dotnet'
+  if (-not $dotnetWin) {
+    Stop-Client "exmod: Windows has no dotnet on its PATH; install the .NET $($GameRuntimeMajors[$Version]) runtime for Windows (https://dot.net), or pass -Linux."
+  }
+
+  $slot = "$store\game\$Version"
+  $slotLinux = Convert-WslPath $slot
+  $usable = { (Test-Path (Join-Path $slotLinux 'Vintagestory.dll')) -and (Test-Path (Join-Path $slotLinux 'Lib/e_sqlite3.dll')) }
+  if (-not (& $usable)) {
+    $script = Convert-WslPath -ToWindows (Join-Path $ToolsRoot 'exmod.ps1')
+    $repo = Convert-WslPath -ToWindows $RepoRoot
+    $provisionArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $script, '-RepoRoot', $repo,
+      'provision', 'game', '-Version', $Version, '-Kind', 'client')
+    if (-not $Provision -or $DryRun) {
+      Stop-Client "exmod: no Windows client for $Version in $slot. Provision one with: exmod client -Provision, or on Windows: pwsh.exe -NoProfile -ExecutionPolicy Bypass -File '$script' -RepoRoot '$repo' provision game -Version $Version -Kind client"
+    }
+    $pwshWin = Get-WindowsProgram 'pwsh.exe'
+    if (-not $pwshWin) {
+      Stop-Client 'exmod: Windows has no pwsh.exe on its PATH; install PowerShell 7 for Windows (winget install Microsoft.PowerShell) to provision the Windows client.'
+    }
+    Write-Host "Provisioning a Windows client install for $Version ..."
+    & (Convert-WslPath $pwshWin) @provisionArgs | Out-Host
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    if (-not (& $usable)) { Stop-Client "exmod: provisioning completed but no usable Windows client was found in $slot." }
+  }
+
+  $modsDest = if ($DryRun) { Get-StageDest $Version } else { Publish-RunMods $Version $Configuration $ModsOpt $NoBuild }
+  $dataWin = if (-not $DataOpt) { "$store\data\$(Get-ExmodProfile)" }
+  elseif ($DataOpt -match '^[A-Za-z]:[\\/]') { $DataOpt }
+  else { Convert-WslPath -ToWindows $DataOpt }
+  if (-not $DryRun) { Initialize-ClientSettings (Convert-WslPath $dataWin) }
+
+  $program = Convert-WslPath $dotnetWin
+  $gameArgs = @("$slot\Vintagestory.dll", '--tracelog', '--dataPath', $dataWin,
+    '--logPath', "$dataWin\Logs\$(Split-Path $RepoRoot -Leaf)", '--addModPath', (Convert-WslPath -ToWindows $modsDest))
+  if ($DryRun) {
+    Write-ClientLaunch $program $gameArgs @{}
+    return
+  }
+  Write-Step "Launching the Windows client ($Version)"
+  & $program @gameArgs
+  exit $LASTEXITCODE
+}
+
+# Launches the real client in the foreground with this checkout's mods loaded, passing its exit
+# code straight through. Builds and stages first unless -NoBuild. Never provisions a client on its
+# own - the archive is about a gigabyte - unless -Provision is given; otherwise it prints the exact
+# command to fetch one and exits 1. -DryRun prints the launch (Write-ClientLaunch) and returns
+# without building, staging, seeding settings or starting anything.
+#
+# In WSL with interop and without -Linux, the Windows client runs (Invoke-WindowsClientFromWsl). On
+# Windows, a checkout on a WSL share (Get-WslShare) stages inside the distro unless -NoBuild,
+# -DryRun or -Mods, and runs the client from the user store's slot on the staged folder's share
+# path.
 function Invoke-Client([string[]]$Argv) {
-  $positional = @(Get-Positional $Argv @('-Configuration', '-Mods', '-DataPath') @('-NoBuild', '-Provision', '-Software'))
+  $positional = @(Get-Positional $Argv @('-Configuration', '-Mods', '-DataPath') @('-NoBuild', '-Provision', '-Software', '-DryRun', '-Linux'))
   $versionArg = if ($positional.Count -gt 0) { $positional[0] } else { 'latest' }
   $version = Resolve-RunVersion $versionArg
 
   $configuration = Get-Opt $Argv '-Configuration' 'Debug'
   $modsOpt = Get-Opt $Argv '-Mods' $null
   $noBuild = Get-Flag $Argv '-NoBuild'
-  $dataPath = Get-Opt $Argv '-DataPath' (Get-ClientDataPath)
-  Initialize-ClientSettings $dataPath
+  $dataOpt = Get-Opt $Argv '-DataPath' $null
   $provision = Get-Flag $Argv '-Provision'
   $software = Get-Flag $Argv '-Software'
+  $dryRun = Get-Flag $Argv '-DryRun'
+  $linux = Get-Flag $Argv '-Linux'
 
-  $install = Find-UsableGameInstall $version 'client'
+  if (-not $OnWindows -and -not $IsMacOS -and -not $linux) {
+    if (Test-WslInterop) {
+      Invoke-WindowsClientFromWsl $version $configuration $modsOpt $noBuild $dataOpt $provision $dryRun
+      return
+    }
+    if ($env:WSL_DISTRO_NAME) {
+      Write-Host 'WSL interop is off (no /proc/sys/fs/binfmt_misc/WSLInterop), so the Linux client runs.'
+    }
+  }
+
+  $dataPath = if ($dataOpt) { $dataOpt } else { Get-ClientDataPath }
+  if (-not $dryRun) { Initialize-ClientSettings $dataPath }
+  $share = if ($OnWindows) { Get-WslShare $RepoRoot } else { $null }
+
+  $install = Find-UsableGameInstall $version 'client' -SlotOnly:([bool]$share)
   if (-not $install) {
     $provisionCmd = "exmod provision game -Version $version -Kind client"
-    if (-not $provision) {
+    if (-not $provision -or $dryRun) {
       throw "No usable client install for $version on this platform.`nProvision one with: $provisionCmd`n(or pass -Provision to fetch it here now - it is about a gigabyte)."
     }
     Write-Host "Provisioning a client install for $version ..."
     Invoke-ProvisionGame @('-Version', $version, '-Kind', 'client')
-    $install = Find-UsableGameInstall $version 'client'
+    $install = Find-UsableGameInstall $version 'client' -SlotOnly:([bool]$share)
     if (-not $install) { throw "Provisioning completed but no usable client install was found for $version." }
   }
 
-  $modsDest = Publish-RunMods $version $configuration $modsOpt $noBuild
+  if ($dryRun -or ($share -and -not $modsOpt)) {
+    if ($share -and -not $modsOpt -and -not $noBuild -and -not $dryRun) {
+      $code = Invoke-ExmodInWsl $share.Distro $share.LinuxPath @('stage', '-Version', $version, '-Configuration', $configuration)
+      if ($code -ne 0) { exit $code }
+    }
+    $modsDest = Get-StageDest $version
+  }
+  else { $modsDest = Publish-RunMods $version $configuration $modsOpt $noBuild }
 
+  $launchEnv = [ordered]@{}
   # The system dotnet muxer ignores DOTNET_ROOT; the game only sees .dotnet's runtimes when both the
   # host and this variable point there, same as .vscode/launch.json sets it for the debugger.
   $dotnet = Resolve-DotnetHost @($version)
   $dotnetDir = Get-ExmodDotnetDir
   if ($dotnet -eq (Join-Path $dotnetDir "dotnet$ExeSuffix")) {
-    $env:DOTNET_ROOT = $dotnetDir
+    $launchEnv['DOTNET_ROOT'] = $dotnetDir
   }
-
   if (-not $OnWindows -and -not $IsMacOS) {
     # GLFW's Wayland backend cannot place the cursor, which mouse look needs; a display name no
     # compositor answers to sends GLFW to X11, which XWayland serves.
-    $env:WAYLAND_DISPLAY = 'none'
+    $launchEnv['WAYLAND_DISPLAY'] = 'none'
   }
   if ($software) {
     # Mesa's software rasterizer, for a GPU driver that hangs the game (WSLg's D3D12 layer in Mesa
     # 26.2 locks up on the first settings screen).
-    $env:LIBGL_ALWAYS_SOFTWARE = '1'
-    $env:GALLIUM_DRIVER = 'llvmpipe'
+    $launchEnv['LIBGL_ALWAYS_SOFTWARE'] = '1'
+    $launchEnv['GALLIUM_DRIVER'] = 'llvmpipe'
   }
 
+  $gameArgs = @((Join-Path $install 'Vintagestory.dll'), '--tracelog', '--dataPath', $dataPath,
+    '--logPath', (Get-ClientLogPath $dataPath), '--addModPath', $modsDest)
+  if ($dryRun) {
+    Write-ClientLaunch $dotnet $gameArgs $launchEnv
+    return
+  }
+  foreach ($k in $launchEnv.Keys) { Set-Item "env:$k" $launchEnv[$k] }
   Write-Step "Launching the client ($version)"
-  & $dotnet (Join-Path $install 'Vintagestory.dll') --tracelog --dataPath $dataPath --logPath (Get-ClientLogPath $dataPath) --addModPath $modsDest
+  & $dotnet @gameArgs
   exit $LASTEXITCODE
 }
 
@@ -184,7 +290,7 @@ Add-ExmodCommand -Group run -Name client -Summary 'build, stage and launch the c
   param([string[]]$Argv) Invoke-Client $Argv
 } -Detail @'
 exmod client [latest|1.22|1.21|1.20] [-Configuration Debug] [-Mods <dir>[,...]] [-NoBuild]
-             [-DataPath <path>] [-Provision]
+             [-DataPath <path>] [-Provision] [-Software] [-Linux] [-DryRun]
 
 Builds this checkout's mods for the series (unless -NoBuild), stages them the way `exmod stage`
 would, and runs the real client in the foreground, passing its exit code through. Never downloads a
@@ -199,11 +305,24 @@ data/<profile>, the profile being the name of the workspace folder (the nearest 
 checkout holding exmod.workspace.json), else of the checkout's folder. Logs go to
 <data path>/Logs/<checkout folder>, so two repositories sharing a profile keep separate logs.
 
+In WSL with interop, the Windows client runs: Windows' dotnet, the client in
+%LOCALAPPDATA%\exmod\game\<series>, data and logs in Windows' store, and the mods built and staged in
+WSL, passed by their \\wsl.localhost path. -Provision installs a missing Windows client through
+Windows' pwsh.exe. Without interop, or with -Linux, the Linux client runs.
+
+On Windows, a checkout on a WSL share (\\wsl.localhost\<distro>\... or \\wsl$\<distro>\...) is
+built and staged inside that distro (`exmod stage` there, unless -NoBuild, -DryRun or -Mods), and the
+client runs from the store's game/<series> only.
+
   -Mods       mod folder(s), or folder(s) of mod folders, instead of every built mod in the checkout
               and its resolved dependencies
-  -NoBuild    skip the build step; the mods must already be built
+  -NoBuild    skip the build step; the mods must already be built (on a WSL share: already staged)
   -DataPath   client data path (default: <store>/data/<profile>)
   -Provision  fetch a client install for this series into the store, if none is usable yet
+  -Software   Mesa's software renderer, for a GPU driver that hangs the game
+  -Linux      in WSL, run the Linux client instead of the Windows one
+  -DryRun     print the program, its arguments and the environment it would set, one per line
+              (program: , arg: , env: ), and exit 0 without building, staging or launching
 
 Without -Mods, this repo's runtime dependency mods (see `exmod provision mods`) are staged after
 its own, built or fetched first if needed.
@@ -491,17 +610,27 @@ those sources under those names, unbuilt, into exactly that folder - the same as
 
 # Prints the tail of one client or server log. Fails with the list of logs that do exist when the
 # one asked for is not among them - more useful than "file not found" when, say, a fresh server
-# that has never crashed is asked for its crash log.
+# that has never crashed is asked for its crash log. In WSL with interop and without -Linux, the
+# client's default data path is Windows' store, the one `client` runs the Windows client on, read
+# through its /mnt path.
 function Invoke-Logs([string[]]$Argv) {
-  $positional = @(Get-Positional $Argv @('-Kind', '-Lines', '-DataPath') @('-Follow'))
+  $positional = @(Get-Positional $Argv @('-Kind', '-Lines', '-DataPath') @('-Follow', '-Linux'))
   $target = if ($positional.Count -gt 0) { $positional[0] } else { 'client' }
   if ($target -notin @('client', 'server')) { throw "logs needs 'client' or 'server', got '$target'." }
 
   $kind = Get-Opt $Argv '-Kind' 'main'
   $lines = [int](Get-Opt $Argv '-Lines' 200)
   $follow = Get-Flag $Argv '-Follow'
-  $defaultDataPath = if ($target -eq 'client') { Get-ClientDataPath } else { Join-Path $RepoRoot '.gamedata/server' }
-  $dataPath = Get-Opt $Argv '-DataPath' $defaultDataPath
+  $dataPath = Get-Opt $Argv '-DataPath' $null
+  if (-not $dataPath) {
+    $dataPath = if ($target -eq 'server') { Join-Path $RepoRoot '.gamedata/server' }
+    elseif (-not (Get-Flag $Argv '-Linux') -and (Test-WslInterop)) {
+      $store = Get-WindowsUserStore
+      if (-not $store) { throw 'Windows %LOCALAPPDATA% could not be read through cmd.exe; pass -Linux for the Linux client''s logs.' }
+      Convert-WslPath "$store\data\$(Get-ExmodProfile)"
+    }
+    else { Get-ClientDataPath }
+  }
   Initialize-ClientSettings $dataPath
 
   # A client run logs into its repository's own folder under Logs; a data path the client last ran
@@ -530,11 +659,12 @@ Add-ExmodCommand -Group run -Name logs -Summary 'tail a client or server log' -A
   param([string[]]$Argv) Invoke-Logs $Argv
 } -Detail @'
 exmod logs [client|server] [-Kind main|debug|audit|chat|crash|build] [-Lines <n>] [-Follow]
-           [-DataPath <path>]
+           [-DataPath <path>] [-Linux]
 
 Prints the tail of one log. Client logs live at <dataPath>/Logs/<checkout folder>/client-<kind>.log,
 or <dataPath>/Logs/client-<kind>.log when that folder does not exist; the default data path is the
-one `exmod client` uses, <store>/data/<profile> (see `exmod help client`). Server logs live at
+one `exmod client` uses, <store>/data/<profile> (see `exmod help client`), which in WSL with interop
+is Windows' store unless -Linux is given. Server logs live at
 <dataPath>/Logs/server-<kind>.log (default: .gamedata/server, the same default `exmod server` uses).
 Fails with the list of logs that do exist when the one asked for is not among them.
 
@@ -542,6 +672,7 @@ Fails with the list of logs that do exist when the one asked for is not among th
   -Lines     lines to print from the end (default: 200)
   -Follow    keep tailing it live, like tail -f
   -DataPath  data path to read from instead of the default for client/server
+  -Linux     in WSL, read the Linux client's logs instead of the Windows one's
 '@
 
 #endregion
