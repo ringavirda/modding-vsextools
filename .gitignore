@@ -10,3 +10,4 @@
 .idea/
 /.compat
 .build.lock
+/.exmod
