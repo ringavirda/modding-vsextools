@@ -45,17 +45,22 @@
   `data/<profile>/Logs/<repository folder>`, which `exmod logs client` reads;
   `provision game -Kind client` installs there by default.
 - An `exmod.workspace.json` above a repository marks a workspace: its folder name is the data
-  profile, and a `.game` or `.dotnet` is provisioned at its root. Installs, `.dotnet` and
-  `.game/.cache` are found in the nearest folder from the repository upward that holds them, so
-  sibling repositories share them without symlinks. A `.dotnet` counts only when it holds the
-  dotnet muxer.
+  profile, and a `.game` or `.dotnet` is provisioned at its root. Installs and `.game/.cache` are
+  found in the nearest folder from the repository upward that holds them, so sibling repositories
+  share them without symlinks. `.dotnet` is the repository's, else the workspace root's, and counts
+  only when it holds the dotnet muxer.
+- `VINTAGE_STORY`, `VINTAGE_STORY_121` and `VINTAGE_STORY_120` name the install extools uses for
+  their series before any lookup, as the builds already did: `client`, `verify`, `smoke`, `pack`,
+  `bundle` and the shape renders take it first.
 - WSL in both directions. On Windows, a checkout under `\\wsl.localhost\<distro>\` or
   `\\wsl$\<distro>\` runs every command but `client`, `logs`, `help`, the machine commands and
   `provision game -Kind client` inside that distro through `wsl.exe`, and `client` stages there and
   runs the Windows client from the store on the staged folder's share path. In WSL with interop,
   `client` runs the Windows client from Windows' store with Windows' dotnet, `-Provision` installs
   it through Windows' `pwsh.exe`, and `logs client` reads Windows' store; `-Linux` keeps the Linux
-  client. `client -DryRun` prints the program, arguments and environment it would launch with.
+  client. `client -DryRun` prints the program, arguments and environment it would launch with,
+  and provisions nothing. On Windows, `client` for a checkout on a WSL share runs on Windows' own
+  .NET and stops naming the runtime when it is missing.
 - Generated launch configurations run the client from the user store on every OS (the
   `Vintagestory.exe` apphost on Windows) with `--dataPath` in the store's
   `data/<workspace folder name>` and `--logPath` in its `Logs/<workspace folder name>`, and map
