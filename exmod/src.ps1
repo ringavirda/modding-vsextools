@@ -121,19 +121,81 @@ share intermediate assemblies, and building two of them at once races on the sam
 
 #region test
 
+# The census file: the last green test count per series and test assembly on this branch, a flat
+# JSON object keyed "<series>/<assembly>" in .exmod/census/<branch>.json. exmods-legacy's run-tests
+# scripts write the same format.
+function Get-ExmodCensusPath {
+  $branch = & git -C $RepoRoot rev-parse --abbrev-ref HEAD 2>$null
+  if (-not $branch) { $branch = 'detached' }
+  return Join-Path $RepoRoot ".exmod/census/$($branch -replace '/', '-').json"
+}
+
+# Compares each result carrying a Total against the census, prints one census line per result, and
+# returns the names whose count fell below the recorded one; with $AcceptDrop a fall is printed as
+# accepted and not returned. Reads the file only.
+function Compare-ExmodCensus($Results, [string]$Census, [bool]$AcceptDrop) {
+  $recorded = Read-ExmodCensus $Census
+  $drops = @()
+  foreach ($r in $Results | Where-Object { $null -ne $_.Total } | Sort-Object Name) {
+    $was = $recorded[$r.Name]
+    $note = if ($null -eq $was) { 'new' }
+    elseif ($r.Total -ge $was) { "was $was" }
+    elseif ($AcceptDrop) { "was $was, drop accepted" }
+    else { $drops += "$($r.Name) ($($r.Total), was $was)"; "was $was, a drop" }
+    Write-Host ("census  {0,-40} {1} ({2})" -f $r.Name, $r.Total, $note)
+  }
+  return $drops
+}
+
+function Read-ExmodCensus([string]$Census) {
+  $recorded = [ordered]@{}
+  if (Test-Path $Census) {
+    (Get-Content $Census -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $recorded[$_.Name] = [int]$_.Value }
+  }
+  return $recorded
+}
+
+# Records each result's Total over the census, keeping the entries this run did not count (other
+# series, other assemblies).
+function Write-ExmodCensus($Results, [string]$Census) {
+  $recorded = Read-ExmodCensus $Census
+  foreach ($r in $Results) { $recorded[$r.Name] = $r.Total }
+  $sorted = [ordered]@{}
+  foreach ($k in $recorded.Keys | Sort-Object) { $sorted[$k] = $recorded[$k] }
+  New-Item -ItemType Directory -Force -Path (Split-Path $Census) | Out-Null
+  $sorted | ConvertTo-Json | Set-Content -Path $Census
+}
+
+# Throws naming the failed runs and the census drops, when there are any. $Drops is what
+# Compare-ExmodCensus returned.
+function Assert-ExmodTestRun($Results, $Drops, [string]$Census) {
+  $failed = @($Results | Where-Object { -not $_.Ok })
+  if (-not $failed -and -not $Drops) { return }
+  $reasons = @()
+  if ($failed) { $reasons += "$($failed.Count) test run(s) failed: $($failed.Name -join ', ')" }
+  if ($Drops) { $reasons += "$(@($Drops).Count) test count(s) fell below ${Census}: $($Drops -join ', '); -AcceptDrop records them" }
+  throw ($reasons -join '; ')
+}
+
 # Runs the suite per game version, each version's projects in parallel. The mods stay single-target;
 # legacy versions are tested by building the test projects with -p:Legacy=true against that version's
 # TFM. Each build auto-provisions its game version on demand (Directory.Build.props), so a clean
 # checkout just works.
+#
+# Every unfiltered run, -Coverage included, checks each assembly's test count against the census and
+# fails on a count below the recorded one; only an unfiltered run with every assembly green writes
+# the census. A -Filter run neither reads nor writes it: its counts are a subset.
 function Invoke-Test([string[]]$Argv) {
-  $positional = @(Get-Positional $Argv @('-Throttle', '-Filter') @('-Coverage'))
+  $positional = @(Get-Positional $Argv @('-Throttle', '-Filter') @('-Coverage', '-AcceptDrop'))
   $version = if ($positional.Count -gt 0) { $positional[0] } else { 'latest' }
   $throttle = [int](Get-Opt $Argv '-Throttle' 0)
   $coverage = Get-Flag $Argv '-Coverage'
+  $acceptDrop = Get-Flag $Argv '-AcceptDrop'
   # Passed straight to `dotnet test --filter`, so it takes that expression grammar
   # (`FullyQualifiedName~Boiler`, `Name=X|Name=Y`). A bare class name works because the runner treats
   # an unqualified term as a substring match on the fully qualified name.
   $filter = Get-Opt $Argv '-Filter' ''
+  $census = Get-ExmodCensusPath
 
   # Dependency order and project paths come from Get-ExmodTestProjects, shared with
   # `build -Tests` so the two commands can't drift on what "every test project" means.
@@ -145,14 +207,46 @@ function Invoke-Test([string[]]$Argv) {
 
   # Mirrors .github/workflows/tests.yml: collect cobertura over the solution and ratchet against
   # coverage_gate.py. The gate floors track the current build, so this always uses the latest version.
+  # -Filter does not apply here; the solution run is always whole.
   if ($coverage) {
     $toolsDir = Join-Path $RepoRoot '.dotnet/tools'
     & $dotnet tool install dotnet-coverage --tool-path $toolsDir 2>$null | Out-Null
     $dc = Join-Path $toolsDir "dotnet-coverage$ExeSuffix"
     $cov = Join-Path $RepoRoot 'coverage.xml'
     Write-Host "Collecting coverage over the latest suite..."
-    & $dc collect -f cobertura -o $cov "$dotnet test `"$(Get-ExmodSolution)`" -c Debug --nologo"
-    if ($LASTEXITCODE -ne 0) { throw "Coverage collection failed." }
+    & $dc collect -f cobertura -o $cov "$dotnet test `"$(Get-ExmodSolution)`" -c Debug --nologo" 2>&1 |
+      Tee-Object -Variable collected | Out-Host
+    $collectOk = ($LASTEXITCODE -eq 0)
+
+    # One VSTest summary per assembly: "Passed!  - Failed: 0, Passed: 12, Skipped: 0, Total: 12,
+    # Duration: 3 s - ExpandedLib.Tests.dll (net10.0)". A latest-series test project with no such
+    # line discovered no tests.
+    $series = $CurrentGameVersion
+    $counted = @{}
+    foreach ($line in $collected) {
+      if ("$line" -match '(Passed|Failed)!.*Total:\s*(\d+).*\s-\s+(\S+)\.dll\b') {
+        $counted["$series/$($Matches[3])"] = [pscustomobject]@{
+          Name = "$series/$($Matches[3])"; Ok = ($Matches[1] -eq 'Passed' -and [int]$Matches[2] -gt 0); Total = [int]$Matches[2]
+        }
+      }
+    }
+    foreach ($p in $projects.Values | Where-Object { $series -in $_.Series }) {
+      $name = "$series/$($p.Project)"
+      if (-not $counted.Contains($name)) { $counted[$name] = [pscustomobject]@{ Name = $name; Ok = $false; Total = $null } }
+    }
+    $results = @($counted.Values | Sort-Object Name)
+    Write-Host ""
+    foreach ($r in $results | Where-Object { $null -eq $_.Total }) {
+      Write-Host ("FAIL  {0,-40} NO TEST SUMMARY - the assembly discovered no tests" -f $r.Name)
+    }
+    foreach ($r in $results | Where-Object { $_.Total -eq 0 }) {
+      Write-Host ("FAIL  {0,-40} zero tests discovered" -f $r.Name)
+    }
+    $drops = Compare-ExmodCensus $results $census $acceptDrop
+    if (-not $collectOk) { throw "Coverage collection failed." }
+    Assert-ExmodTestRun $results $drops $census
+    Write-ExmodCensus $results $census
+
     $py = (Get-Command python -ErrorAction SilentlyContinue) ?? (Get-Command python3 -ErrorAction SilentlyContinue)
     if (-not $py) { throw "Python is required for the coverage gate but was not found (coverage.xml was still written)." }
     $floors = Get-ExmodCoverageFloors
@@ -200,7 +294,7 @@ function Invoke-Test([string[]]$Argv) {
     $filter = $using:filter
     $item = $_
     if (-not $item.BuildOk) {
-      return [pscustomobject]@{ Name = "$($item.Version)/$($item.Project)"; Ok = $false; Line = 'build failed' }
+      return [pscustomobject]@{ Name = "$($item.Version)/$($item.Project)"; Ok = $false; Line = 'build failed'; Total = $null }
     }
     $testArgs = @('test', $item.Proj, '-f', $item.Tfm, '--no-build', '--nologo')
     if ($filter) { $testArgs += @('--filter', $filter) }
@@ -229,6 +323,10 @@ function Invoke-Test([string[]]$Argv) {
         'discovery does this and still exits 0).'
       }
     }
+    elseif (-not $filter -and [int]$total.Groups[1].Value -eq 0) {
+      $ok = $false
+      $line = 'zero tests discovered'
+    }
 
     # Pulled from the console logger's own failure block, so the summary can name what failed
     # without anyone re-running dotnet test by hand: "  Failed <FQ test name> [duration]" followed,
@@ -249,7 +347,10 @@ function Invoke-Test([string[]]$Argv) {
       }
     }
 
-    [pscustomobject]@{ Name = "$($item.Version)/$($item.Project)"; Ok = $ok; Line = $line; Failures = $failures }
+    [pscustomobject]@{
+      Name = "$($item.Version)/$($item.Project)"; Ok = $ok; Line = $line; Failures = $failures
+      Total = if ($total) { [int]$total.Groups[1].Value } else { $null }
+    }
   }
 
   Write-Host ""
@@ -262,8 +363,15 @@ function Invoke-Test([string[]]$Argv) {
     }
   }
 
-  $failed = @($results | Where-Object { -not $_.Ok })
-  if ($failed) { throw "$($failed.Count) test run(s) failed: $($failed.Name -join ', ')" }
+  if ($filter) {
+    Write-Host "Census not read or written: -Filter counts a subset."
+    Assert-ExmodTestRun $results @() $census
+  }
+  else {
+    $drops = Compare-ExmodCensus $results $census $acceptDrop
+    Assert-ExmodTestRun $results $drops $census
+    Write-ExmodCensus $results $census
+  }
   Write-Host "All $($results.Count) test run(s) passed."
 }
 
@@ -271,7 +379,7 @@ function Invoke-Test([string[]]$Argv) {
 Add-ExmodCommand -Group source -Name test -Summary 'run the test suites, one lane per game version' -Action {
   param([string[]]$Argv) Invoke-Test $Argv
 } -Detail @'
-exmod test [latest|all|1.22|1.21|1.20] [-Filter <expr>] [-Throttle <n>] [-Coverage]
+exmod test [latest|all|1.22|1.21|1.20] [-Filter <expr>] [-Throttle <n>] [-Coverage] [-AcceptDrop]
 
 Builds every test project for the requested series, then runs the suites in parallel - one lane per
 (series, project). Missing runtimes and game binaries are provisioned on demand, so a fresh clone
@@ -286,6 +394,11 @@ projects and building them at once races on the same intermediate assemblies.
   -Coverage   instead of the lanes, collect cobertura over the solution and ratchet it against
               the manifest's coverageFloors file, else tests/ or infra/test/coverage-floors.json;
               no floors file, no gate - the same gate CI runs
+  -AcceptDrop record a test count below the census instead of failing on it
+
+The census, .exmod/census/<branch>.json, holds each assembly's last green test count per series.
+An unfiltered run fails on an assembly that discovers no tests and on a count below the census, and
+writes the census when every assembly passed; a -Filter run neither reads nor writes it.
 '@
 
 #endregion
@@ -581,7 +694,7 @@ trait - none of the samples do today, so `codes <sample>` reports it has nothing
 # this whole process down with it before the summary below ever printed) so its result is read
 # back the ordinary way, from $LASTEXITCODE.
 function Invoke-Check([string[]]$Argv) {
-  $positional = @(Get-Positional $Argv @() @('-Coverage', '-NoFormat'))
+  $positional = @(Get-Positional $Argv @() @('-Coverage', '-NoFormat', '-AcceptDrop'))
   $version = if ($positional.Count -gt 0) { $positional[0] } else { 'latest' }
   $coverage = Get-Flag $Argv '-Coverage'
   $noFormat = Get-Flag $Argv '-NoFormat'
@@ -621,6 +734,7 @@ function Invoke-Check([string[]]$Argv) {
     Write-Step 'test'
     $testArgv = @($version)
     if ($coverage) { $testArgv += '-Coverage' }
+    if (Get-Flag $Argv '-AcceptDrop') { $testArgv += '-AcceptDrop' }
     try { Invoke-Test $testArgv; $results.test = 'PASS' }
     catch { Write-Host $_.Exception.Message -ForegroundColor Red; $results.test = 'FAIL'; $stop = $true }
   } else { $results.test = 'SKIPPED' }
@@ -637,7 +751,7 @@ function Invoke-Check([string[]]$Argv) {
 Add-ExmodCommand -Group source -Name check -Summary 'the gate: format, build, verify, test' -Action {
   param([string[]]$Argv) Invoke-Check $Argv
 } -Detail @'
-exmod check [latest|all|1.22|1.21|1.20] [-Coverage] [-NoFormat]
+exmod check [latest|all|1.22|1.21|1.20] [-Coverage] [-NoFormat] [-AcceptDrop]
 
 One command that answers "is this tree good". Runs format -Check, build, verify, then test, in
 that order, stopping at the first failing step. Ends with a PASS/FAIL/SKIPPED summary of every
@@ -646,6 +760,7 @@ step and exits nonzero if any of them did.
   latest      1.22 only (the default), for the build and test steps
   all         every supported series, for the build and test steps
   -Coverage   passed through to the test step, in place of its own per-version lanes
+  -AcceptDrop passed through to the test step, which records a count below the census
   -NoFormat   skip the format step outright. It is also skipped, for a different reason, when
               mods/ or infra/ already has uncommitted changes - the format gate compares against
               git, so on a dirty tree every finding would be one of your own edits, not a real one.

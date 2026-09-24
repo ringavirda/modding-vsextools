@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `exmod test` keeps a census of each test assembly's last green count per series in
+  `.exmod/census/<branch>.json`, in the lanes and under `-Coverage`. An unfiltered run fails on an
+  assembly that discovers no tests or counts fewer than the census holds, naming the assembly and
+  both counts; `-AcceptDrop` records the lower count, and `exmod check -AcceptDrop` passes it to the
+  test step. A `-Filter` run neither reads nor writes the census.
+
 ### Changed
 
 - The published old mods are read from a repository whose root holds each mod's folder
