@@ -43,8 +43,7 @@ internal static class FixturePath {
   }
 
   /// <summary>This checkout's own root (the directory holding <c>exmod.json</c>, two levels above
-  /// <c>ExlibShapes.Tests.csproj</c>) - where CI and every contributor's own clone provisions
-  /// <c>.game</c>, so a test naming only <c>.game</c> can assert it exists rather than skip.</summary>
+  /// <c>ExlibShapes.Tests.csproj</c>).</summary>
   public static string RepoRoot {
     get {
       for (
@@ -61,6 +60,39 @@ internal static class FixturePath {
           + AppContext.BaseDirectory
       );
     }
+  }
+
+  /// <summary>
+  /// The 1.22 client install a fact reading vanilla assets runs against: the nearest
+  /// <c>.game/1.22-client</c> or <c>.game/1.22</c> (in that order within one <c>.game</c>) from
+  /// <see cref="RepoRoot"/> upward that holds <paramref name="assetDir"/>, else the user store's
+  /// client slot (<c>%LOCALAPPDATA%/exmod/game/1.22</c> on Windows,
+  /// <c>~/Library/Application Support/exmod/game/1.22</c> on macOS,
+  /// <c>~/.local/share/exmod/game/1.22</c> elsewhere) when it holds it. Null when none does.
+  /// </summary>
+  /// <param name="assetDir">A folder the install must hold, relative to its root (e.g.
+  /// <c>"assets/game/textures/block"</c>). A dedicated-server install sits under the same slugs and
+  /// ships no textures or shapes, so this is what tells a client apart.</param>
+  public static string? ClientGame(string assetDir) {
+    for (DirectoryInfo? dir = new(RepoRoot); dir != null; dir = dir.Parent) {
+      foreach (string slug in new[] { "1.22-client", "1.22" }) {
+        string candidate = Path.Combine(dir.FullName, ".game", slug);
+        if (Directory.Exists(Path.Combine(candidate, assetDir)))
+          return candidate;
+      }
+    }
+    string? store = OperatingSystem.IsWindows()
+      ? Environment.GetEnvironmentVariable("LOCALAPPDATA")
+      : Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        OperatingSystem.IsMacOS()
+          ? "Library/Application Support"
+          : ".local/share"
+      );
+    if (string.IsNullOrEmpty(store))
+      return null;
+    string slot = Path.Combine(store, "exmod", "game", "1.22");
+    return Directory.Exists(Path.Combine(slot, assetDir)) ? slot : null;
   }
 
   /// <summary>

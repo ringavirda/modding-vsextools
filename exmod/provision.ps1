@@ -109,9 +109,10 @@ function Publicize-GameApi([string]$ApiDll) {
   if (-not (Test-Path $patcher) -or -not (Test-Path $ApiDll)) { return }
   # Run from a scratch copy, never from tools/ in place: a file-based `dotnet run` searches upward
   # for Directory.Build.props from the .cs file's own directory, and this checkout's own props (the
-  # one every other tool project here builds against) demands a game install under ITS OWN .game/ -
-  # something a consumer clone of extools never has. The patcher needs no such install; it only
-  # touches the dll path it is given, so running it clear of that props file is enough.
+  # one every other tool project here builds against) demands a game install in a .game/ at or
+  # above the checkout, which a consumer clone of extools need not have. The patcher needs no such
+  # install; it only touches the dll path it is given, so running it clear of that props file is
+  # enough.
   $scratch = Join-Path ([System.IO.Path]::GetTempPath()) "patch-api-$([guid]::NewGuid().ToString('N'))"
   New-Item -ItemType Directory -Force -Path $scratch | Out-Null
   try {

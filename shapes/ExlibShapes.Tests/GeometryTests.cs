@@ -225,12 +225,7 @@ public class GeometryTests {
   // The client install the vanilla gear fact needs. CI provisions one (.github/workflows/ci.yml),
   // so its absence there fails rather than skipping and leaving the regression unguarded.
   private static string RequireClientGame() {
-    string? game = null;
-    foreach (string slug in new[] { "1.22-client", "1.22" }) {
-      string candidate = Path.Combine(FixturePath.RepoRoot, ".game", slug);
-      if (Directory.Exists(Path.Combine(candidate, "assets/survival/shapes")))
-        game = candidate;
-    }
+    string? game = FixturePath.ClientGame("assets/survival/shapes");
     Skip.If(
       game is null
         && Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == null,

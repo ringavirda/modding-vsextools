@@ -20,9 +20,22 @@ public class BlocksTests {
       "exmods/mods/iiex/tests/goldens/iiex/blocktypes/furnace/blastcore.json"
     );
 
-  // This checkout's own root; BlockIndex reads .game/<version> under it. Its absence fails
-  // rather than skips.
+  // This checkout's own root; BlockIndex reads .game/<version> from the nearest .game above it,
+  // GameDir. Its absence fails rather than skips.
   private static string RootWithGame => FixturePath.RepoRoot;
+
+  private static string? GameDir {
+    get {
+      for (
+        DirectoryInfo? dir = new(RootWithGame);
+        dir != null;
+        dir = dir.Parent
+      )
+        if (Directory.Exists(Path.Combine(dir.FullName, ".game")))
+          return Path.Combine(dir.FullName, ".game");
+      return null;
+    }
+  }
 
   [Fact]
   public void Demo_wall_north_resolves_with_its_shapeByType_rotation() {
@@ -126,7 +139,7 @@ public class BlocksTests {
   [Fact]
   public void A_vanilla_code_resolves_when_the_game_root_is_present() {
     Assert.True(
-      Directory.Exists(Path.Combine(RootWithGame, ".game")),
+      GameDir != null,
       "the workspace always carries .game; this must fail, not skip"
     );
     BlockIndex index = BlockIndex.Build([RootWithGame]);
@@ -140,7 +153,7 @@ public class BlocksTests {
   [Fact]
   public void SkipVariants_drops_the_listed_state_from_the_game_index() {
     Assert.True(
-      Directory.Exists(Path.Combine(RootWithGame, ".game")),
+      GameDir != null,
       "the workspace always carries .game; this must fail, not skip"
     );
     BlockIndex index = BlockIndex.Build([RootWithGame]);
@@ -256,18 +269,47 @@ public class BlocksTests {
   }
 
   [Fact]
+  public void A_root_reads_the_game_from_the_nearest_dot_game_above_it_holding_an_install() {
+    // The root has no .game and its parent's holds only a download cache; the install is one
+    // level further up. Fails if the index reads only the root's own .game, or stops at the first
+    // .game it meets.
+    string ws = Path.Combine(
+      Path.GetTempPath(),
+      "exlib-shapes-" + Guid.NewGuid().ToString("N")
+    );
+    string root = Path.Combine(ws, "mid", "repo");
+    Directory.CreateDirectory(root);
+    Directory.CreateDirectory(Path.Combine(ws, "mid", ".game", ".cache"));
+    string blocktypes = Path.Combine(
+      ws,
+      ".game",
+      "1.22",
+      "assets",
+      "survival",
+      "blocktypes"
+    );
+    Directory.CreateDirectory(blocktypes);
+    File.WriteAllText(
+      Path.Combine(blocktypes, "marker.json"),
+      """{ "code": "marker" }"""
+    );
+    try {
+      Assert.NotNull(BlockIndex.Build([root]).Resolve("game:marker"));
+    } finally {
+      Directory.Delete(ws, true);
+    }
+  }
+
+  [Fact]
   public void Two_roots_linking_one_install_index_its_files_once() {
-    // exlib and exmods each link .game to the workspace's one install; a selector matching a
-    // vanilla file must not come out ambiguous between that file's two spellings.
+    // A checkout linking .game to the workspace's one install reaches it by a second spelling; a
+    // selector matching a vanilla file must not come out ambiguous between the two.
     string linked = Path.Combine(
       Path.GetTempPath(),
       "exlib-shapes-" + Guid.NewGuid().ToString("N")
     );
     Directory.CreateDirectory(linked);
-    Directory.CreateSymbolicLink(
-      Path.Combine(linked, ".game"),
-      Path.Combine(RootWithGame, ".game")
-    );
+    Directory.CreateSymbolicLink(Path.Combine(linked, ".game"), GameDir!);
     try {
       BlockIndex index = BlockIndex.Build([RootWithGame, linked]);
       Assert.NotNull(index.Resolve("game:cobblestone-andesite"));

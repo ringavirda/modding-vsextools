@@ -14,7 +14,7 @@
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageVersion Include="NuGet.Packaging" Version="7.3.1" />
     <PackageVersion Include="NuGet.Protocol" Version="7.3.1" />
-    <!-- Pinned to the versions the game itself ships (.game/1.22-client/Lib), so exlib-shapes and
+    <!-- Pinned to the versions the game itself ships (the game's Lib folder), so exlib-shapes and
          exlib-verify bundle their own copies rather than the game's. -->
     <PackageVersion Include="SkiaSharp" Version="3.119.1" />
     <!-- SkiaSharp itself only pulls in the macOS and Windows natives; Linux needs this one named

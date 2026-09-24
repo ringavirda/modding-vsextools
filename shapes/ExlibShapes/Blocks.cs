@@ -169,13 +169,14 @@ public sealed class BlockIndex {
   /// two under the root's own <c>*</c>, <c>src/*/assets/*/blocktypes/**</c>,
   /// <c>samples/*/assets/*/blocktypes/**</c>, <c>samples/*/tests/goldens/*/blocktypes/**</c> and
   /// <c>tests/*/goldens/*/blocktypes/**</c>), plus the game install's own
-  /// <c>assets/survival/blocktypes/**</c> and <c>assets/game/blocktypes/**</c> under each root's
-  /// <c>.game/&lt;version&gt;</c> (the latest version present); both folders are the <c>game</c>
-  /// domain, survival looked up first. Symbolic links along a <c>.game</c> path are resolved
-  /// first, so two roots linking the same install contribute its files once.
+  /// <c>assets/survival/blocktypes/**</c> and <c>assets/game/blocktypes/**</c> under the
+  /// <c>.game/&lt;version&gt;</c> nearest each root from the root upward (the latest version
+  /// present); both folders are the <c>game</c> domain, survival looked up first. Symbolic links
+  /// along a <c>.game</c> path are resolved first, so two roots reaching the same install
+  /// contribute its files once.
   /// </summary>
   /// <param name="roots">Repository checkouts to scan; see <see cref="DefaultRoots"/>.</param>
-  /// <param name="gamePath">A game install directory that replaces every root's own
+  /// <param name="gamePath">A game install directory that replaces every root's nearest
   /// <c>.game/&lt;version&gt;</c>, or null to discover one per root.</param>
   /// <param name="legacyFirst">True when the index serves a block of a legacy mod
   /// (<see cref="UnderLegacyTree"/>): a code declared both there and in a current tree then
@@ -187,9 +188,9 @@ public sealed class BlockIndex {
     bool legacyFirst = false
   ) {
     // An explicit `--game` (a game install directory, the same one GameInstall.Resolve returns)
-    // overrides every root's own `.game/<version>` discovery, for both the domain root and the
+    // overrides every root's nearest `.game/<version>` discovery, for both the domain root and the
     // blocktype files it contributes - a caller pointing this index at a different install than
-    // whichever one a root's own checkout carries.
+    // whichever one sits above a root.
     IReadOnlyList<string>? explicitDirs =
       gamePath != null ? GameAssetDirs(RealPath(gamePath)) : null;
 
@@ -881,26 +882,32 @@ public sealed class BlockIndex {
     }
   }
 
-  // The `game` domain's asset folders of the latest version under <root>/.game (the one holding
-  // assets/survival), the same folders the game's own blocktypes, shapes and worldproperties ship
-  // from; empty when the root carries no install.
+  // The `game` domain's asset folders of the latest version (the one holding assets/survival) in
+  // the nearest .game from <root> upward that holds one, the same folders the game's own
+  // blocktypes, shapes and worldproperties ship from; empty when no .game above does.
   private static IReadOnlyList<string> GameAssetDirsOf(string root) {
-    string game = Path.Combine(root, ".game");
-    if (!Directory.Exists(game))
-      return [];
-    game = RealPath(game);
-    List<string> versions =
-    [
-      .. Directory
-        .EnumerateDirectories(game)
-        .OrderBy(
-          d => Path.GetFileName(d),
-          Comparer<string>.Create(CompareVersions)
-        ),
-    ];
-    for (int i = versions.Count - 1; i >= 0; i--)
-      if (Directory.Exists(Path.Combine(versions[i], "assets", "survival")))
-        return GameAssetDirs(versions[i]);
+    for (
+      DirectoryInfo? dir = new(Path.GetFullPath(root));
+      dir != null;
+      dir = dir.Parent
+    ) {
+      string game = Path.Combine(dir.FullName, ".game");
+      if (!Directory.Exists(game))
+        continue;
+      game = RealPath(game);
+      List<string> versions =
+      [
+        .. Directory
+          .EnumerateDirectories(game)
+          .OrderBy(
+            d => Path.GetFileName(d),
+            Comparer<string>.Create(CompareVersions)
+          ),
+      ];
+      for (int i = versions.Count - 1; i >= 0; i--)
+        if (Directory.Exists(Path.Combine(versions[i], "assets", "survival")))
+          return GameAssetDirs(versions[i]);
+    }
     return [];
   }
 
@@ -913,8 +920,8 @@ public sealed class BlockIndex {
         .Where(Directory.Exists),
     ];
 
-  // The path with every symbolic link along it resolved: the family's checkouts each link .game to
-  // one shared install, and only the resolved path lets the same vanilla file reached through two
+  // The path with every symbolic link along it resolved: a checkout can link its .game to one
+  // shared install, and only the resolved path lets the same vanilla file reached through two
   // roots dedupe as one entry instead of resolving a selector ambiguously against itself.
   private static string RealPath(string path) {
     string full = Path.GetFullPath(path);

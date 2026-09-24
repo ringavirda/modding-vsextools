@@ -51,7 +51,8 @@
 - An `exmod.workspace.json` above a repository marks a workspace: a `.game` or `.dotnet` is
   provisioned at its root. Installs and `.game/.cache` are
   found in the nearest folder from the repository upward that holds them, so sibling repositories
-  share them without symlinks. `.dotnet` is the repository's, else the workspace root's, and counts
+  share them without symlinks; extools' own build and the vanilla blocktypes `exlib-shapes` indexes
+  for each root are found the same way. `.dotnet` is the repository's, else the workspace root's, and counts
   only when it holds the dotnet muxer.
 - `VINTAGE_STORY`, `VINTAGE_STORY_121` and `VINTAGE_STORY_120` name the install extools uses for
   their series before any lookup, as the builds already did: `client`, `verify`, `smoke`, `pack`,

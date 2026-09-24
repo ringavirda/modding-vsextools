@@ -16,34 +16,17 @@ public class SchematicTests {
   private static string Fixture => FixturePath.Of("schematic/kiln.json");
   private static string DemoRoot => FixturePath.Of("schematic");
 
-  // The family workspace's own exmods checkout and this checkout's own client game install; the
-  // facts naming them Skip.If (rather than run against nothing) when either is absent.
+  // The family workspace's own exmods checkout; the facts naming it Skip.If (rather than run
+  // against nothing) when it is absent.
   private static string? BlastcoreGolden =>
     FixturePath.Workspace(
       "exmods/mods/iiex/tests/goldens/iiex/blocktypes/furnace/blastcore.json"
     );
-  private static string? ClientGame {
-    get {
-      foreach (string slug in new[] { "1.22-client", "1.22" }) {
-        string candidate = Path.Combine(FixturePath.RepoRoot, ".game", slug);
-        // A dedicated-server install lands at this same path (Invoke-ProvisionGame's "-server"
-        // suffix is only added once a client is already there), and ships no textures at all -
-        // Vintagestory.dll alone does not tell the two apart.
-        if (
-          Directory.Exists(
-            Path.Combine(candidate, "assets/game/textures/block")
-          )
-        )
-          return candidate;
-      }
-      return null;
-    }
-  }
 
   // The client install the texture facts need. CI provisions one (.github/workflows/ci.yml), so
   // its absence there fails rather than skipping and leaving the placeholder regression unguarded.
   private static string RequireClientGame() {
-    string? game = ClientGame;
+    string? game = FixturePath.ClientGame("assets/game/textures/block");
     Skip.If(
       game is null
         && Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == null,
