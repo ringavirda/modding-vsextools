@@ -4,7 +4,6 @@ skipped when no pwsh is found."""
 
 import json
 import os
-import shutil
 import stat
 import subprocess
 import sys

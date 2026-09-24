@@ -879,25 +879,34 @@ function Get-WindowsProgram([string]$Name) {
 $GpuPreferencesKey = 'HKCU\Software\Microsoft\DirectX\UserGpuPreferences'
 $HighPerformanceGpu = 'GpuPreference=2;'
 
-# Registers $HighPerformanceGpu for the program at $ExePath, a full Windows path such as a client
-# slot's Vintagestory.exe, under $GpuPreferencesKey, unless a value for that path already exists,
-# whatever it holds. Reads and writes through the HKCU: drive on Windows and through reg.exe from WSL
-# with interop. Prints one line when it registers; a registry that cannot be read or written prints
-# a warning and returns, since the game still runs without a preference. -DryRun writes nothing and
-# prints `gpu: <existing value>` or `gpu: none, would register GpuPreference=2;`.
+# Gives the program at $ExePath, a full Windows path such as a client slot's Vintagestory.exe, the
+# high-performance GPU under $GpuPreferencesKey. A value for that path exists when `reg query`
+# exits 0 (WSL) or GetValue returns non-null (Windows). No value: writes $HighPerformanceGpu. A
+# string value (REG_SZ, REG_EXPAND_SZ) with a `GpuPreference=` entry is the user's choice and is
+# kept; one without gets $HighPerformanceGpu appended, its other entries kept and a `;` put before
+# it when the value lacks a trailing one, and is written back as REG_SZ. A value of another type is
+# kept with one warning. Reads and writes through the HKCU: drive on Windows and through reg.exe
+# from WSL with interop. Prints one line when it writes; a registry that cannot be read or written
+# prints a warning and returns, since the game still runs without a preference. -DryRun writes
+# nothing and prints `gpu: <value>` when the value holds a preference, `gpu: <value>, would append
+# GpuPreference=2;` when it does not, and `gpu: none, would register GpuPreference=2;` when there
+# is none.
 function Register-ClientGpuPreference([string]$ExePath, [switch]$DryRun) {
   $drivePath = "HKCU:\$($GpuPreferencesKey.Substring(5))"
+  $exists = $false
   $current = $null
   try {
     if ($OnWindows) {
       $key = Get-Item -LiteralPath $drivePath -ErrorAction SilentlyContinue
       if ($key) { $current = $key.GetValue($ExePath) }
+      $exists = $null -ne $current
     }
     else {
       $out = @(& reg.exe query $GpuPreferencesKey /v $ExePath 2>$null)
-      if ($LASTEXITCODE -eq 0) {
-        $line = $out | Where-Object { "$_" -match '\sREG_SZ\s' } | Select-Object -First 1
-        if ("$line" -match '\sREG_SZ\s+(.*)$') { $current = $Matches[1] }
+      $exists = $LASTEXITCODE -eq 0
+      if ($exists) {
+        $line = $out | Where-Object { "$_" -match '\s{4}REG_[A-Z_]+' } | Select-Object -First 1
+        if ("$line" -match '\s{4}(REG_(?:EXPAND_)?SZ)(?:\s{4}(.*))?$') { $current = "$($Matches[2])" }
       }
     }
   }
@@ -906,18 +915,26 @@ function Register-ClientGpuPreference([string]$ExePath, [switch]$DryRun) {
     return
   }
 
-  if ($DryRun) {
-    Write-Host ($current ? "gpu: $current" : "gpu: none, would register $HighPerformanceGpu")
+  if ($exists -and $current -isnot [string]) {
+    Write-Warning "The GPU preference value for $ExePath is not a string; left as it is."
     return
   }
-  if ($current) { return }
+  if ($exists -and $current -match '(^|;)\s*GpuPreference=') {
+    if ($DryRun) { Write-Host "gpu: $current" }
+    return
+  }
+  if ($DryRun) {
+    Write-Host ($exists ? "gpu: $current, would append $HighPerformanceGpu" : "gpu: none, would register $HighPerformanceGpu")
+    return
+  }
+  $value = if ($exists -and $current -and -not $current.TrimEnd().EndsWith(';')) { "$current;$HighPerformanceGpu" } else { "$current$HighPerformanceGpu" }
   try {
     if ($OnWindows) {
       if (-not (Test-Path -LiteralPath $drivePath)) { New-Item -Path $drivePath -Force | Out-Null }
-      New-ItemProperty -LiteralPath $drivePath -Name $ExePath -Value $HighPerformanceGpu -PropertyType String -Force | Out-Null
+      New-ItemProperty -LiteralPath $drivePath -Name $ExePath -Value $value -PropertyType String -Force | Out-Null
     }
     else {
-      & reg.exe add $GpuPreferencesKey /v $ExePath /t REG_SZ /d $HighPerformanceGpu /f *> $null
+      & reg.exe add $GpuPreferencesKey /v $ExePath /t REG_SZ /d $value /f *> $null
       if ($LASTEXITCODE -ne 0) { throw "reg.exe add exited with $LASTEXITCODE." }
     }
   }

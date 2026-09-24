@@ -313,12 +313,12 @@ $depLines
 "@
 }
 
-# One launch configuration running series $Slug's client from the user store of the OS VS Code
-# runs on (the Windows apphost, so a GPU preference registered for it applies), with data in the
-# store's data/default (the profile `exmod client` uses), logs in its Logs/<workspace folder name>
-# and the mods staged in $ModsDir. $Legacy sets DOTNET_ROOT to the checkout's .dotnet on Linux and macOS only: the
-# Windows apphost reads DOTNET_ROOT too, and fails on a folder holding another OS's .NET. Sources
-# built with the /exmod/<workspace folder name>/ path map resolve through sourceFileMap.
+# One launch configuration running series $Slug's client from the user store of the OS VS Code runs
+# on (the Windows apphost, so a GPU preference registered for it applies), with data in the store's
+# data/default (the profile `exmod client` uses), logs in its Logs/<workspace folder name> and the
+# mods staged in $ModsDir. $Legacy sets DOTNET_ROOT to the checkout's .dotnet on Linux and macOS
+# only: the Windows apphost reads DOTNET_ROOT too, and fails on a folder holding another OS's .NET.
+# Sources built with the /exmod/<workspace folder name>/ path map resolve through sourceFileMap.
 function New-VsCodeLaunchConfig([string]$Name, [string]$PreLaunchTask, [string]$Slug, [string]$ModsDir, [bool]$Legacy) {
   $stores = [ordered]@{
     linux   = '${env:HOME}/.local/share/exmod'

@@ -388,7 +388,8 @@ the nearest folder above the checkout holding exmod.workspace.json, else the che
            qualified, else under the checkout.
            On Windows it registers the high-performance GPU for the client's Vintagestory.exe
            (GpuPreference=2; under HKCU\Software\Microsoft\DirectX\UserGpuPreferences), also for a
-           client already in place, unless a value for that exe exists.
+           client already in place: appended to a text value for that exe without a GpuPreference=
+           entry, and never changing a value that has one or is not text.
            -Version takes a full patch (1.22.3) or a series (1.22, its latest patch). Downloads are
            cached in the nearest .game/.cache, else <provision root>/.game/.cache.
 

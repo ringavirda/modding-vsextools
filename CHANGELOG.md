@@ -63,11 +63,12 @@
   and provisions nothing. On Windows, `client` for a checkout on a WSL share runs on Windows' own
   .NET and stops naming the runtime when it is missing.
 - The Windows client runs on the high-performance GPU. On Windows and from WSL, `client` starts the
-  install's `Vintagestory.exe` instead of `dotnet Vintagestory.dll`, and `client` and
-  `provision game -Kind client` register `GpuPreference=2;` for that exe under
-  `HKCU\Software\Microsoft\DirectX\UserGpuPreferences` unless a value for it exists. Without one,
-  Windows renders the game on the GPU driving the display. `client -DryRun` prints the exe's
-  preference, or the one it would register, as a `gpu:` line.
+  install's `Vintagestory.exe` instead of `dotnet Vintagestory.dll` and registers `GpuPreference=2;`
+  for that exe under `HKCU\Software\Microsoft\DirectX\UserGpuPreferences`, as does
+  `provision game -Kind client` on Windows: written when the exe has no value there, appended to a
+  string value without a `GpuPreference=` entry, and never changing a value that has one or is not a
+  string. Without a preference, Windows renders the game on the GPU driving the display.
+  `client -DryRun` prints what it finds and would do as a `gpu:` line.
 - Generated launch configurations run the client from the user store on every OS (the
   `Vintagestory.exe` apphost on Windows) with `--dataPath` in the store's `data/default` and
   `--logPath` in its `Logs/<workspace folder name>`, and map

@@ -136,8 +136,8 @@ class WindowsClientFromWslTests(unittest.TestCase):
     def test_dry_run_with_interop_prints_the_windows_client_with_spaces_unsplit(self):
         # Fails if a Windows path is split at its space, the program is dotnet or not the slot exe's
         # Linux view, a slot holding the exe but no Vintagestory.dll is not usable, the GPU
-        # preference is not printed for the slot's exe or registered for real, or a dry run stages or
-        # seeds settings.
+        # preference is not printed for the slot's exe or registered for real, or a dry run stages
+        # or seeds settings.
         self.seed_windows_client()
         code, lines = self.client(["-NoBuild", "-DryRun"])
         self.assertEqual(0, code, lines)
@@ -197,9 +197,10 @@ class WindowsClientFromWslTests(unittest.TestCase):
                           "(winget install Microsoft.PowerShell) to provision the Windows client."], lines)
 
     def test_provision_runs_windows_pwsh_then_launches_with_settings_seeded(self):
-        # Fails if -Provision does not run this tools checkout's provision game in Windows' pwsh, the
-        # launch runs dotnet instead of the slot's exe or registers no GPU preference for it first,
-        # or the launch does not seed settings through the Linux view of the Windows data path.
+        # Fails if -Provision does not run this tools checkout's provision game in Windows' pwsh,
+        # the launch runs dotnet instead of the slot's exe or registers no GPU preference for it
+        # first, or the launch does not seed settings through the Linux view of the Windows data
+        # path.
         record = os.path.join(self.tmp, "calls.txt")
         pwsh = os.path.join(self.c, "Program Files", "PowerShell", "7", "pwsh.exe")
         executable(pwsh, f'printf "pwsh:%s\\n" "$@" >> "{record}"\n'
@@ -313,8 +314,8 @@ class ClientOnWslShareTests(unittest.TestCase):
         self.assertLess(lines.index(gpu), lines.index(launch[0]), lines)
 
     def test_a_windows_dry_run_prints_the_apphost_and_its_gpu_preference_last(self):
-        # Fails if the Windows client runs dotnet on Vintagestory.dll instead of the slot's exe, or a
-        # dry run registers the preference for real or does not print it.
+        # Fails if the Windows client runs dotnet on Vintagestory.dll instead of the slot's exe, or
+        # a dry run registers the preference for real or does not print it.
         lines = self.client(["-NoBuild", "-DryRun"])
         self.assertEqual(f"program: {os.path.join(self.slot, 'Vintagestory.exe')}", lines[0])
         self.assertEqual("arg: --tracelog", lines[1])
@@ -335,18 +336,21 @@ class ClientOnWslShareTests(unittest.TestCase):
 
 
 # Stubs reg.exe for Register-ClientGpuPreference from WSL: each call's arguments are kept, joined by
-# '|', in $global:RegCalls; a query answers with reg.exe's own layout when $env:TEST_VALUE is set and
-# exits 1 otherwise; an add exits with $env:TEST_ADD_EXIT, 0 when unset.
+# '|', in $global:RegCalls; a query answers with reg.exe's own layout when $env:TEST_VALUE or
+# $env:TEST_EMPTY is set, typed $env:TEST_TYPE (REG_SZ when unset) and holding $env:TEST_VALUE or,
+# under TEST_EMPTY, nothing, and exits 1 otherwise; an add exits with $env:TEST_ADD_EXIT, 0 when
+# unset.
 REG_EXE = r"""
 $OnWindows = $false
 $global:RegCalls = @()
 function reg.exe {
   $global:RegCalls += ,($args -join '|')
   if ($args[0] -eq 'query') {
-    if (-not $env:TEST_VALUE) { $global:LASTEXITCODE = 1; return }
+    if (-not $env:TEST_VALUE -and -not $env:TEST_EMPTY) { $global:LASTEXITCODE = 1; return }
     $global:LASTEXITCODE = 0
+    $type = $env:TEST_TYPE ? $env:TEST_TYPE : 'REG_SZ'
     ''; 'HKEY_CURRENT_USER\Software\Microsoft\DirectX\UserGpuPreferences'
-    "    $($args[3])    REG_SZ    $env:TEST_VALUE"; ''
+    "    $($args[3])    $type    $env:TEST_VALUE"; ''
     return
   }
   $global:LASTEXITCODE = [int]$env:TEST_ADD_EXIT
@@ -354,15 +358,21 @@ function reg.exe {
 """
 
 # Stubs the registry cmdlets for Register-ClientGpuPreference on Windows: the key exists when
-# $env:TEST_KEY is set and holds $env:TEST_VALUE under any name; New-Item and New-ItemProperty are
-# kept in $global:RegCalls as their parameters joined by '|'.
+# $env:TEST_KEY is set and holds, under any name, the string $env:TEST_VALUE, an empty string under
+# $env:TEST_EMPTY, or the DWORD 1 under $env:TEST_DWORD; New-Item and New-ItemProperty are kept in
+# $global:RegCalls as their parameters joined by '|'.
 HKCU_DRIVE = r"""
 $OnWindows = $true
 $global:RegCalls = @()
 function Test-Path { [bool]$env:TEST_KEY }
 function Get-Item {
   if (-not $env:TEST_KEY) { return $null }
-  [pscustomobject]@{} | Add-Member -MemberType ScriptMethod -Name GetValue -Value { param($n) $env:TEST_VALUE } -PassThru
+  [pscustomobject]@{} | Add-Member -MemberType ScriptMethod -Name GetValue -Value {
+    param($n)
+    if ($env:TEST_DWORD) { return [int]1 }
+    if ($env:TEST_EMPTY) { return '' }
+    $env:TEST_VALUE
+  } -PassThru
 }
 function New-Item([string]$Path, [switch]$Force) { $global:RegCalls += ,"New-Item|$Path" }
 function New-ItemProperty([string]$LiteralPath, [string]$Name, [string]$Value, [string]$PropertyType, [switch]$Force) {
@@ -383,7 +393,8 @@ class GpuPreferenceTests(unittest.TestCase):
         touch(os.path.join(self.repo, "exmod.json"), "{}")
 
     def register(self, stubs, dry_run=False, **env):
-        """(stdout lines, recorded registry calls) of one real Register-ClientGpuPreference for EXE."""
+        """(stdout lines, recorded registry calls) of one real Register-ClientGpuPreference for
+        EXE."""
         body = (stubs + f"Register-ClientGpuPreference '{EXE}'{' -DryRun' if dry_run else ''} 3>&1 | "
                 "ForEach-Object { Write-Host \"$_\" }; $global:RegCalls | ForEach-Object { Write-Host \"call: $_\" }")
         code, lines = run(self.repo, body, self.tmp, env, stub_gpu=False)
@@ -405,14 +416,40 @@ class GpuPreferenceTests(unittest.TestCase):
         self.assertEqual([f"query|{KEY}|/v|{EXE}"], calls)
         self.assertEqual([], said)
 
-    def test_from_wsl_a_dry_run_prints_the_value_or_what_it_would_register_and_writes_nothing(self):
-        # Fails if a dry run writes, prints nothing, or reads the value with reg.exe's column padding
-        # left on.
+    def test_from_wsl_a_value_without_a_preference_gets_it_appended(self):
+        # Fails if a value without a GpuPreference= entry is kept as it is, its other entries are
+        # dropped, or no ';' goes between them and the preference.
+        said, calls = self.register(REG_EXE, TEST_VALUE="AutoHDREnable=2097;")
+        self.assertEqual(f"add|{KEY}|/v|{EXE}|/t|REG_SZ|/d|AutoHDREnable=2097;GpuPreference=2;|/f", calls[-1])
+        self.assertEqual([f"Registered GpuPreference=2; (the high-performance GPU) for {EXE}"], said)
+        _, calls = self.register(REG_EXE, TEST_VALUE="AppStatus=0")
+        self.assertEqual(f"add|{KEY}|/v|{EXE}|/t|REG_SZ|/d|AppStatus=0;GpuPreference=2;|/f", calls[-1])
+
+    def test_from_wsl_an_empty_value_is_a_value_and_gets_the_preference_alone(self):
+        # Fails if an empty value is read as no value (the dry run then says none), or a ';' is put
+        # before the preference in an empty value.
+        said, calls = self.register(REG_EXE, TEST_EMPTY="1")
+        self.assertEqual(f"add|{KEY}|/v|{EXE}|/t|REG_SZ|/d|GpuPreference=2;|/f", calls[-1])
+        said, _ = self.register(REG_EXE, dry_run=True, TEST_EMPTY="1")
+        self.assertEqual(["gpu: , would append GpuPreference=2;"], said)
+
+    def test_from_wsl_a_value_that_is_not_a_string_is_kept_with_a_warning(self):
+        # Fails if a value of another type is overwritten or read as no value.
+        said, calls = self.register(REG_EXE, TEST_TYPE="REG_DWORD", TEST_VALUE="0x1")
+        self.assertEqual([f"query|{KEY}|/v|{EXE}"], calls)
+        self.assertEqual([f"The GPU preference value for {EXE} is not a string; left as it is."], said)
+
+    def test_from_wsl_a_dry_run_prints_the_value_or_what_it_would_do_and_writes_nothing(self):
+        # Fails if a dry run writes, prints nothing, reads the value with reg.exe's column padding
+        # left on, or prints a value without a preference as if it held one.
         said, calls = self.register(REG_EXE, dry_run=True, TEST_VALUE="AppStatus=1;GpuPreference=1;")
         self.assertEqual(["gpu: AppStatus=1;GpuPreference=1;"], said)
         self.assertEqual([f"query|{KEY}|/v|{EXE}"], calls)
         said, calls = self.register(REG_EXE, dry_run=True)
         self.assertEqual(["gpu: none, would register GpuPreference=2;"], said)
+        self.assertEqual([f"query|{KEY}|/v|{EXE}"], calls)
+        said, calls = self.register(REG_EXE, dry_run=True, TEST_VALUE="AppStatus=0;")
+        self.assertEqual(["gpu: AppStatus=0;, would append GpuPreference=2;"], said)
         self.assertEqual([f"query|{KEY}|/v|{EXE}"], calls)
 
     def test_from_wsl_a_failed_write_warns_instead_of_claiming_it_registered(self):
@@ -439,6 +476,26 @@ class GpuPreferenceTests(unittest.TestCase):
         said, calls = self.register(HKCU_DRIVE, dry_run=True)
         self.assertEqual((["gpu: none, would register GpuPreference=2;"], []), (said, calls))
 
+
+    def test_on_windows_a_value_without_a_preference_gets_it_appended(self):
+        # Fails if the Windows branch keeps a value without a GpuPreference= entry, drops its other
+        # entries, or its dry run prints the value alone.
+        drive = "HKCU:\\Software\\Microsoft\\DirectX\\UserGpuPreferences"
+        said, calls = self.register(HKCU_DRIVE, TEST_KEY="1", TEST_VALUE="AppStatus=0")
+        self.assertEqual([f"New-ItemProperty|{drive}|{EXE}|AppStatus=0;GpuPreference=2;|String"], calls)
+        self.assertEqual([f"Registered GpuPreference=2; (the high-performance GPU) for {EXE}"], said)
+        said, calls = self.register(HKCU_DRIVE, dry_run=True, TEST_KEY="1", TEST_VALUE="AppStatus=0")
+        self.assertEqual((["gpu: AppStatus=0, would append GpuPreference=2;"], []), (said, calls))
+
+    def test_on_windows_an_empty_value_is_a_value(self):
+        # Fails if the Windows branch reads an empty string as no value.
+        said, calls = self.register(HKCU_DRIVE, dry_run=True, TEST_KEY="1", TEST_EMPTY="1")
+        self.assertEqual((["gpu: , would append GpuPreference=2;"], []), (said, calls))
+
+    def test_on_windows_a_value_that_is_not_a_string_is_kept_with_a_warning(self):
+        # Fails if the Windows branch overwrites a value of another type.
+        said, calls = self.register(HKCU_DRIVE, TEST_KEY="1", TEST_DWORD="1")
+        self.assertEqual(([f"The GPU preference value for {EXE} is not a string; left as it is."], []), (said, calls))
 
 if __name__ == "__main__":
     unittest.main()

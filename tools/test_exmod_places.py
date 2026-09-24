@@ -21,9 +21,9 @@ def make_repo(path):
 
 
 def run(repo, body, home, xdg=None, extra_env=None):
-    """Runs `body` after exmod.ps1 and the prelude (exmod_script) against `repo` and returns the last
-    line of its stdout parsed as JSON. HOME is `home`, LOCALAPPDATA `home`/local; XDG_DATA_HOME is
-    `xdg`, or unset when None; `extra_env` goes over all three."""
+    """Runs `body` after exmod.ps1 and the prelude (exmod_script) against `repo` and returns the
+    last line of its stdout parsed as JSON. HOME is `home`, LOCALAPPDATA `home`/local; XDG_DATA_HOME
+    is `xdg`, or unset when None; `extra_env` goes over all three."""
     assert PWSH
     script = exmod_script(body)
     env = exmod_env(os.path.join(home, "local"), TEST_REPO=repo, HOME=home)
@@ -67,7 +67,8 @@ class PlacesTests(unittest.TestCase):
         self.assertEqual(self.ws, got["ProvisionRoot"])
 
     def test_no_marker_gives_no_workspace_the_default_profile_and_the_repository_as_provision_root(self):
-        # Fails if the profile is named for the repository folder, or the provision root is the parent.
+        # Fails if the profile is named for the repository folder, or the provision root is the
+        # parent.
         repo = make_repo(os.path.join(self.tmp, "alone", "starter"))
         got = places(repo, self.home)
         self.assertIsNone(got["Workspace"])

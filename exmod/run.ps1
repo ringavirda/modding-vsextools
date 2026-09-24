@@ -206,11 +206,11 @@ function Invoke-WindowsClientFromWsl([string]$Version, [string]$Configuration, [
 # whose runtime the system dotnet lacks prints the .dotnet muxer it would provision.
 #
 # In WSL with interop and without -Linux, the Windows client runs (Invoke-WindowsClientFromWsl). On
-# Windows the program is the install's Vintagestory.exe, the game's apphost, with the high-performance
-# GPU registered for it first (Register-ClientGpuPreference). A checkout on a WSL share
-# (Get-WslShare) stages inside the distro unless -NoBuild, -DryRun or -Mods, and runs the client from
-# the user store's slot on the staged folder's share path on the system .NET runtime; when that lacks
-# the series' runtime it stops with one line.
+# Windows the program is the install's Vintagestory.exe, the game's apphost, with the
+# high-performance GPU registered for it first (Register-ClientGpuPreference). A checkout on a WSL
+# share (Get-WslShare) stages inside the distro unless -NoBuild, -DryRun or -Mods, and runs the
+# client from the user store's slot on the staged folder's share path on the system .NET runtime;
+# when that lacks the series' runtime it stops with one line.
 function Invoke-Client([string[]]$Argv) {
   $positional = @(Get-Positional $Argv @('-Configuration', '-Mods', '-DataPath') @('-NoBuild', '-Provision', '-Software', '-DryRun', '-Linux'))
   $versionArg = if ($positional.Count -gt 0) { $positional[0] } else { 'latest' }
@@ -328,15 +328,16 @@ every checkout and every generated launch configuration. Logs go to <data path>/
 folder>, so two repositories keep separate logs.
 
 In WSL with interop, the Windows client runs: the Vintagestory.exe in
-%LOCALAPPDATA%\exmod\game\<series> on Windows' .NET runtime, data and logs in Windows' store, and the
-mods built and staged in WSL, passed by their \\wsl.localhost path. -Provision installs a missing
-Windows client through Windows' pwsh.exe. Without interop, or with -Linux, the Linux client runs.
+%LOCALAPPDATA%\exmod\game\<series> on Windows' .NET runtime, data and logs in Windows' store, and
+the mods built and staged in WSL, passed by their \\wsl.localhost path. -Provision installs a
+missing Windows client through Windows' pwsh.exe. Without interop, or with -Linux, the Linux client
+runs.
 
 On Windows and from WSL, the program is the client's Vintagestory.exe, and before it starts the
-high-performance GPU is registered for it (GpuPreference=2; under
-HKCU\Software\Microsoft\DirectX\UserGpuPreferences) unless a value for that exe already exists.
-Without one, Windows renders the game on the GPU driving the display, an integrated one on some
-machines.
+high-performance GPU is registered for it under HKCU\Software\Microsoft\DirectX\UserGpuPreferences:
+an exe with no value there gets GpuPreference=2;, a text value without a GpuPreference= entry gets
+it appended, and a value that has one, or is not text, is left as it is. Without a preference,
+Windows renders the game on the GPU driving the display, an integrated one on some machines.
 
 On Windows, a checkout on a WSL share (\\wsl.localhost\<distro>\... or \\wsl$\<distro>\...) is
 built and staged inside that distro (`exmod stage` there, unless -NoBuild, -DryRun or -Mods), and the
