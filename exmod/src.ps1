@@ -338,15 +338,16 @@ function Invoke-Test([string[]]$Argv) {
     }
 
     # Pulled from the console logger's own failure block, so the summary can name what failed
-    # without anyone re-running dotnet test by hand: "  Failed <FQ test name> [duration]" followed,
+    # without anyone re-running dotnet test by hand: "  Failed <display name> [duration]", where a
+    # theory row's display name holds spaces (Bar(x: 1, name: "a b")), followed,
     # a line or two later, by "  Error Message:" and the message itself on the next line.
     $failures = @()
     for ($i = 0; $i -lt $out.Count; $i++) {
-      if ($out[$i] -match '^\s*Failed\s+(\S+)\s+\[') {
+      if ($out[$i] -match '^\s*Failed\s+(.+?)\s+\[[^\[\]]*\]\s*$') {
         $name = $Matches[1]
         $message = ''
         for ($j = $i + 1; $j -lt $out.Count; $j++) {
-          if ($out[$j] -match '^\s*Failed\s+\S+\s+\[') { break }
+          if ($out[$j] -match '^\s*Failed\s+.+?\s+\[[^\[\]]*\]\s*$') { break }
           if ($out[$j] -match '^\s*Error Message:\s*$') {
             if ($j + 1 -lt $out.Count) { $message = $out[$j + 1].Trim() }
             break

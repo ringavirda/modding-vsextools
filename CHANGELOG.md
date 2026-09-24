@@ -17,6 +17,11 @@
   and fails naming each uncovered block's file and member, an entry with no reason, and an entry
   that allows nothing.
 
+### Fixed
+
+- `exmod test` names a failing theory row whose display name holds spaces; the failure list missed
+  it.
+
 ### Changed
 
 - The published old mods are read from a repository whose root holds each mod's folder
