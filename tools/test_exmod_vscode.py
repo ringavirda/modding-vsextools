@@ -1,18 +1,19 @@
 """Tests for the VS Code files Write-ExmodVsCode generates (exmod/new.ps1) and for the pwsh search in
 the launcher wrapper wrappers/exmod.sh. The generator runs through pwsh ($PWSH, PATH, or the
-checkout's .dotnet/tools) and is skipped when no pwsh is found; the wrapper tests run bash against
-stub pwsh and dotnet executables. Each test names the mutation it fails under."""
+checkout's .dotnet/tools) with exmod_harness's prelude and is skipped when no pwsh is found; the
+wrapper tests run bash against stub pwsh and dotnet executables. Each test names the mutation it
+fails under."""
 
 import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PWSH = (os.environ.get("PWSH") or shutil.which("pwsh")
-        or next((p for p in [os.path.join(ROOT, ".dotnet", "tools", "pwsh")] if os.access(p, os.X_OK)), None))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from exmod_harness import PWSH, ROOT, exmod_script  # noqa: E402
 
 STORES = {
     "linux": "${env:HOME}/.local/share/exmod",
@@ -49,8 +50,7 @@ class TemplateTests(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = os.path.realpath(tempfile.mkdtemp())
         touch(os.path.join(cls.tmp, "exmod.json"), "{}")
-        script = (f". (Join-Path $env:EXTOOLS_ROOT 'exmod.ps1') -RepoRoot $env:TEST_REPO 6>$null; "
-                  "Write-ExmodVsCode -Dest $env:TEST_REPO -RepoName 'demo' -Series @('1.22', '1.21')")
+        script = exmod_script("Write-ExmodVsCode -Dest $env:TEST_REPO -RepoName 'demo' -Series @('1.22', '1.21')")
         env = dict(os.environ, EXTOOLS_ROOT=ROOT, TEST_REPO=cls.tmp)
         out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script],
                              env=env, capture_output=True, text=True)

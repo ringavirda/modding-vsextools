@@ -56,11 +56,17 @@
   `\\wsl$\<distro>\` runs every command but `client`, `logs`, `help`, the machine commands and
   `provision game -Kind client` inside that distro through `wsl.exe`, and `client` stages there and
   runs the Windows client from the store on the staged folder's share path. In WSL with interop,
-  `client` runs the Windows client from Windows' store with Windows' dotnet, `-Provision` installs
+  `client` runs the Windows client from Windows' store on Windows' .NET, `-Provision` installs
   it through Windows' `pwsh.exe`, and `logs client` reads Windows' store; `-Linux` keeps the Linux
   client. `client -DryRun` prints the program, arguments and environment it would launch with,
   and provisions nothing. On Windows, `client` for a checkout on a WSL share runs on Windows' own
   .NET and stops naming the runtime when it is missing.
+- The Windows client runs on the high-performance GPU. On Windows and from WSL, `client` starts the
+  install's `Vintagestory.exe` instead of `dotnet Vintagestory.dll`, and `client` and
+  `provision game -Kind client` register `GpuPreference=2;` for that exe under
+  `HKCU\Software\Microsoft\DirectX\UserGpuPreferences` unless a value for it exists. Without one,
+  Windows renders the game on the GPU driving the display. `client -DryRun` prints the exe's
+  preference, or the one it would register, as a `gpu:` line.
 - Generated launch configurations run the client from the user store on every OS (the
   `Vintagestory.exe` apphost on Windows) with `--dataPath` in the store's
   `data/<workspace folder name>` and `--logPath` in its `Logs/<workspace folder name>`, and map

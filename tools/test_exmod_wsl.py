@@ -1,7 +1,7 @@
-"""Tests for the WSL hand-over and the Windows client from WSL in exmod.ps1 and exmod/run.ps1, run
-through pwsh ($PWSH, PATH, or the checkout's .dotnet/tools) on a temporary repository with the
-Windows and interop lookups stubbed; skipped when no pwsh is found. Each test names the mutation it
-fails under."""
+"""Tests for the WSL hand-over, the Windows client from WSL and on Windows, and the GPU preference
+registered for it, in exmod.ps1 and exmod/run.ps1, run through pwsh ($PWSH, PATH, or the checkout's
+.dotnet/tools) on a temporary repository with exmod_harness's prelude and the Windows and interop
+lookups stubbed; skipped when no pwsh is found. Each test names the mutation it fails under."""
 
 import json
 import os
@@ -12,21 +12,14 @@ import sys
 import tempfile
 import unittest
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PWSH = (os.environ.get("PWSH") or shutil.which("pwsh")
-        or next((p for p in [os.path.join(ROOT, ".dotnet", "tools", "pwsh")] if os.access(p, os.X_OK)), None))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from exmod_harness import PWSH, ROOT, exmod_script, touch  # noqa: E402
 
 
-def touch(path, text=""):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        f.write(text)
-
-
-def run(repo, body, home, extra_env=None):
-    """Dot-sources exmod.ps1 against `repo` with its load output discarded, runs `body`, and returns
-    (exit code, stdout lines). HOME is `home`; XDG_DATA_HOME is unset."""
-    script = f". (Join-Path $env:EXTOOLS_ROOT 'exmod.ps1') -RepoRoot $env:TEST_REPO 6>$null; {body}"
+def run(repo, body, home, extra_env=None, stub_gpu=True):
+    """Runs `body` after exmod.ps1 and the prelude (exmod_script, stub_gpu passed on) against `repo`
+    and returns (exit code, stdout lines). HOME is `home`; XDG_DATA_HOME is unset."""
+    script = exmod_script(body, stub_gpu)
     env = dict(os.environ, EXTOOLS_ROOT=ROOT, TEST_REPO=repo, HOME=home, **(extra_env or {}))
     env.pop("XDG_DATA_HOME", None)
     out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script],
@@ -118,7 +111,7 @@ class WindowsClientFromWslTests(unittest.TestCase):
         self.linux_slot = os.path.join(self.home, ".local", "share", "exmod", "game", "1.22")
 
     def seed_windows_client(self):
-        touch(os.path.join(self.slot, "Vintagestory.dll"))
+        touch(os.path.join(self.slot, "Vintagestory.exe"))
         touch(os.path.join(self.slot, "Lib", "e_sqlite3.dll"))
 
     def seed_linux_client(self):
@@ -132,18 +125,20 @@ class WindowsClientFromWslTests(unittest.TestCase):
         return run(self.repo, STUBS + f"Invoke-Client @({argv})", self.home, base)
 
     def test_dry_run_with_interop_prints_the_windows_client_with_spaces_unsplit(self):
-        # Fails if a Windows path is split at its space, the program is not dotnet's Linux view, or a
-        # dry run stages or seeds settings.
+        # Fails if a Windows path is split at its space, the program is dotnet or not the slot exe's
+        # Linux view, a slot holding the exe but no Vintagestory.dll is not usable, the GPU
+        # preference is not printed for the slot's exe or registered for real, or a dry run stages or
+        # seeds settings.
         self.seed_windows_client()
         code, lines = self.client(["-NoBuild", "-DryRun"])
         self.assertEqual(0, code, lines)
         data = self.win_store + r"\data\ws"
         self.assertEqual([
-            f"program: {self.c}/Program Files/dotnet/dotnet.exe",
-            f"arg: {self.win_store}\\game\\1.22\\Vintagestory.dll",
+            f"program: {self.slot}/Vintagestory.exe",
             "arg: --tracelog", "arg: --dataPath", f"arg: {data}",
             "arg: --logPath", f"arg: {data}\\Logs\\exmods",
             "arg: --addModPath", "arg: \\\\wsl.localhost\\test" + os.path.join(self.repo, "bin", "Mods").replace("/", "\\"),
+            f"gpu-stub: {self.win_store}\\game\\1.22\\Vintagestory.exe dry-run",
         ], lines)
         self.assertFalse(os.path.exists(os.path.join(self.c, "Users", "A B", "AppData", "Local", "exmod", "data")))
 
@@ -193,12 +188,14 @@ class WindowsClientFromWslTests(unittest.TestCase):
                           "(winget install Microsoft.PowerShell) to provision the Windows client."], lines)
 
     def test_provision_runs_windows_pwsh_then_launches_with_settings_seeded(self):
-        # Fails if -Provision does not run this tools checkout's provision game in Windows' pwsh, or
-        # the launch does not seed settings through the Linux view of the Windows data path.
+        # Fails if -Provision does not run this tools checkout's provision game in Windows' pwsh, the
+        # launch runs dotnet instead of the slot's exe or registers no GPU preference for it first,
+        # or the launch does not seed settings through the Linux view of the Windows data path.
         record = os.path.join(self.tmp, "calls.txt")
         pwsh = os.path.join(self.c, "Program Files", "PowerShell", "7", "pwsh.exe")
         executable(pwsh, f'printf "pwsh:%s\\n" "$@" >> "{record}"\n'
-                         f'mkdir -p "{self.slot}/Lib"; touch "{self.slot}/Vintagestory.dll" "{self.slot}/Lib/e_sqlite3.dll"\n')
+                         f'mkdir -p "{self.slot}/Lib"; touch "{self.slot}/Lib/e_sqlite3.dll"\n')
+        executable(os.path.join(self.slot, "Vintagestory.exe"), f'printf "exe:%s\\n" "$@" >> "{record}"\necho exe ran\n')
         executable(os.path.join(self.c, "Program Files", "dotnet", "dotnet.exe"),
                    f'printf "dotnet:%s\\n" "$@" >> "{record}"\n')
         code, lines = self.client(["-Provision"])
@@ -210,7 +207,11 @@ class WindowsClientFromWslTests(unittest.TestCase):
         self.assertEqual([f"pwsh:{a}" for a in ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
                                                "-RepoRoot", repo, "provision", "game", "-Version", "1.22",
                                                "-Kind", "client"]], calls[:13])
-        self.assertEqual(f"dotnet:{self.win_store}\\game\\1.22\\Vintagestory.dll", calls[13])
+        self.assertEqual("exe:--tracelog", calls[13])
+        self.assertFalse([c for c in calls if c.startswith("dotnet:")], calls)
+        gpu = f"gpu-stub: {self.win_store}\\game\\1.22\\Vintagestory.exe"
+        self.assertIn(gpu, lines)
+        self.assertLess(lines.index(gpu), lines.index("exe ran"), lines)
         self.assertIn("staged", lines)
         data = os.path.join(self.c, "Users", "A B", "AppData", "Local", "exmod", "data", "ws")
         self.assertTrue(os.path.isfile(os.path.join(data, "clientsettings.json")))
@@ -252,17 +253,17 @@ class WindowsClientFromWslTests(unittest.TestCase):
 
 
 # Windows reaching the checkout through \\wsl.localhost: $OnWindows set, the share stubbed, the
-# hand-over and the client lookup recorded, the launch printed.
+# hand-over recorded, the client lookup answering $env:TEST_SLOT for the store's slot and
+# $env:TEST_TREE otherwise, and the system dotnet holding every runtime but $env:TEST_MISSING's.
 ON_SHARE = r"""
 $OnWindows = $true
 function Get-WslShare { [pscustomobject]@{ Distro = 'arch'; LinuxPath = '/src/repo' } }
 function Invoke-ExmodInWsl([string]$Distro, [string]$LinuxPath, [string[]]$Argv) { Write-Host "wsl: $Distro $LinuxPath $($Argv -join ' ')"; 0 }
-function Find-UsableGameInstall([string]$Version, [string]$Kind, [switch]$SlotOnly) { if ($SlotOnly) { '/slot' } else { '/tree' } }
+function Find-UsableGameInstall([string]$Version, [string]$Kind, [switch]$SlotOnly) { if ($SlotOnly) { $env:TEST_SLOT } else { $env:TEST_TREE } }
 function Publish-RunMods { Write-Host 'staged on windows'; '/windows-stage' }
 function Get-MissingRuntimeMajors { @($env:TEST_MISSING -split ',' | Where-Object { $_ }) }
 function Invoke-ProvisionDotnet { throw 'provisioned' }
-function Resolve-DotnetHost { 'Show-Args' }
-function Show-Args { Write-Host "launch: $($args -join ' ')" }
+function Resolve-DotnetHost { 'dotnet' }
 """
 
 
@@ -273,24 +274,43 @@ class ClientOnWslShareTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp)
         self.repo = os.path.join(self.tmp, "repo")
         touch(os.path.join(self.repo, "exmod.json"), "{}")
+        self.slot = os.path.join(self.tmp, "store slot")
+        self.tree = os.path.join(self.tmp, "tree")
+        executable(os.path.join(self.slot, "Vintagestory.exe"), 'echo "launch: $*"\n')
+        executable(os.path.join(self.tree, "Vintagestory.exe"), 'echo "tree launch: $*"\n')
 
     def client(self, args, missing="", want_code=0):
         argv = ", ".join(f"'{a}'" for a in args)
         code, lines = run(self.repo, ON_SHARE + f"Invoke-Client @({argv})", self.tmp,
-                          {"LOCALAPPDATA": os.path.join(self.tmp, "local"), "TEST_MISSING": missing})
+                          {"LOCALAPPDATA": os.path.join(self.tmp, "local"), "TEST_MISSING": missing,
+                           "TEST_SLOT": self.slot, "TEST_TREE": self.tree})
         self.assertEqual(want_code, code, lines)
         return lines
 
     def test_client_stages_inside_wsl_and_runs_the_store_client_on_the_stage_folder(self):
-        # Fails if the client stages on Windows, the stage is not handed to the distro, or an in-tree
-        # client on the share is taken.
+        # Fails if the client stages on Windows, the stage is not handed to the distro, an in-tree
+        # client on the share is taken, or the store client's exe runs without its GPU preference
+        # registered first.
         lines = self.client([])
         self.assertIn("wsl: arch /src/repo stage -Version 1.22 -Configuration Debug", lines)
         self.assertNotIn("staged on windows", lines)
+        self.assertFalse([l for l in lines if l.startswith("tree launch: ")], lines)
         launch = [l for l in lines if l.startswith("launch: ")]
         self.assertEqual(1, len(launch), lines)
-        self.assertTrue(launch[0].startswith("launch: /slot/Vintagestory.dll --tracelog"), launch)
+        self.assertTrue(launch[0].startswith("launch: --tracelog --dataPath"), launch)
         self.assertTrue(launch[0].endswith(f"--addModPath {os.path.join(self.repo, 'bin', 'Mods')}"), launch)
+        gpu = f"gpu-stub: {os.path.join(self.slot, 'Vintagestory.exe')}"
+        self.assertIn(gpu, lines)
+        self.assertLess(lines.index(gpu), lines.index(launch[0]), lines)
+
+    def test_a_windows_dry_run_prints_the_apphost_and_its_gpu_preference_last(self):
+        # Fails if the Windows client runs dotnet on Vintagestory.dll instead of the slot's exe, or a
+        # dry run registers the preference for real or does not print it.
+        lines = self.client(["-NoBuild", "-DryRun"])
+        self.assertEqual(f"program: {os.path.join(self.slot, 'Vintagestory.exe')}", lines[0])
+        self.assertEqual("arg: --tracelog", lines[1])
+        self.assertFalse([l for l in lines if "Vintagestory.dll" in l], lines)
+        self.assertEqual(f"gpu-stub: {os.path.join(self.slot, 'Vintagestory.exe')} dry-run", lines[-1])
 
     def test_no_build_uses_the_staged_folder_without_a_hand_over(self):
         # Fails if -NoBuild still stages inside WSL.
@@ -303,6 +323,112 @@ class ClientOnWslShareTests(unittest.TestCase):
         # throws) instead of stopping with one line.
         lines = self.client(["-NoBuild", "-DryRun"], missing="10", want_code=1)
         self.assertEqual(["exmod: Windows has no .NET 10 runtime; install it for Windows (https://dot.net)."], lines)
+
+
+# Stubs reg.exe for Register-ClientGpuPreference from WSL: each call's arguments are kept, joined by
+# '|', in $global:RegCalls; a query answers with reg.exe's own layout when $env:TEST_VALUE is set and
+# exits 1 otherwise; an add exits with $env:TEST_ADD_EXIT, 0 when unset.
+REG_EXE = r"""
+$OnWindows = $false
+$global:RegCalls = @()
+function reg.exe {
+  $global:RegCalls += ,($args -join '|')
+  if ($args[0] -eq 'query') {
+    if (-not $env:TEST_VALUE) { $global:LASTEXITCODE = 1; return }
+    $global:LASTEXITCODE = 0
+    ''; 'HKEY_CURRENT_USER\Software\Microsoft\DirectX\UserGpuPreferences'
+    "    $($args[3])    REG_SZ    $env:TEST_VALUE"; ''
+    return
+  }
+  $global:LASTEXITCODE = [int]$env:TEST_ADD_EXIT
+}
+"""
+
+# Stubs the registry cmdlets for Register-ClientGpuPreference on Windows: the key exists when
+# $env:TEST_KEY is set and holds $env:TEST_VALUE under any name; New-Item and New-ItemProperty are
+# kept in $global:RegCalls as their parameters joined by '|'.
+HKCU_DRIVE = r"""
+$OnWindows = $true
+$global:RegCalls = @()
+function Test-Path { [bool]$env:TEST_KEY }
+function Get-Item {
+  if (-not $env:TEST_KEY) { return $null }
+  [pscustomobject]@{} | Add-Member -MemberType ScriptMethod -Name GetValue -Value { param($n) $env:TEST_VALUE } -PassThru
+}
+function New-Item([string]$Path, [switch]$Force) { $global:RegCalls += ,"New-Item|$Path" }
+function New-ItemProperty([string]$LiteralPath, [string]$Name, [string]$Value, [string]$PropertyType, [switch]$Force) {
+  $global:RegCalls += ,"New-ItemProperty|$LiteralPath|$Name|$Value|$PropertyType"
+}
+"""
+
+EXE = r"C:\Users\A B\AppData\Local\exmod\game\1.22\Vintagestory.exe"
+KEY = r"HKCU\Software\Microsoft\DirectX\UserGpuPreferences"
+
+
+@unittest.skipUnless(PWSH, "pwsh not found")
+class GpuPreferenceTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.repo = os.path.join(self.tmp, "repo")
+        touch(os.path.join(self.repo, "exmod.json"), "{}")
+
+    def register(self, stubs, dry_run=False, **env):
+        """(stdout lines, recorded registry calls) of one real Register-ClientGpuPreference for EXE."""
+        body = (stubs + f"Register-ClientGpuPreference '{EXE}'{' -DryRun' if dry_run else ''} 3>&1 | "
+                "ForEach-Object { Write-Host \"$_\" }; $global:RegCalls | ForEach-Object { Write-Host \"call: $_\" }")
+        code, lines = run(self.repo, body, self.tmp, env, stub_gpu=False)
+        self.assertEqual(0, code, lines)
+        said = [l for l in lines if not l.startswith("call: ")]
+        return said, [l[len("call: "):] for l in lines if l.startswith("call: ")]
+
+    def test_from_wsl_an_exe_without_a_value_gets_high_performance_through_reg_exe(self):
+        # Fails if nothing is written, the exe path is split at its space, or the data is not
+        # GpuPreference=2; as REG_SZ.
+        said, calls = self.register(REG_EXE)
+        self.assertEqual([f"query|{KEY}|/v|{EXE}",
+                          f"add|{KEY}|/v|{EXE}|/t|REG_SZ|/d|GpuPreference=2;|/f"], calls)
+        self.assertEqual([f"Registered GpuPreference=2; (the high-performance GPU) for {EXE}"], said)
+
+    def test_from_wsl_an_existing_value_is_kept(self):
+        # Fails if a value the user set is overwritten.
+        said, calls = self.register(REG_EXE, TEST_VALUE="AppStatus=1;GpuPreference=1;")
+        self.assertEqual([f"query|{KEY}|/v|{EXE}"], calls)
+        self.assertEqual([], said)
+
+    def test_from_wsl_a_dry_run_prints_the_value_or_what_it_would_register_and_writes_nothing(self):
+        # Fails if a dry run writes, prints nothing, or reads the value with reg.exe's column padding
+        # left on.
+        said, calls = self.register(REG_EXE, dry_run=True, TEST_VALUE="AppStatus=1;GpuPreference=1;")
+        self.assertEqual(["gpu: AppStatus=1;GpuPreference=1;"], said)
+        self.assertEqual([f"query|{KEY}|/v|{EXE}"], calls)
+        said, calls = self.register(REG_EXE, dry_run=True)
+        self.assertEqual(["gpu: none, would register GpuPreference=2;"], said)
+        self.assertEqual([f"query|{KEY}|/v|{EXE}"], calls)
+
+    def test_from_wsl_a_failed_write_warns_instead_of_claiming_it_registered(self):
+        # Fails if reg.exe add's exit code is ignored.
+        said, _ = self.register(REG_EXE, TEST_ADD_EXIT="5")
+        self.assertEqual([f"Could not register the high-performance GPU for {EXE} : reg.exe add exited with 5."], said)
+
+    def test_on_windows_the_hkcu_drive_gets_the_value_and_the_key_when_missing(self):
+        # Fails if the Windows branch writes through reg.exe (the prelude's stub then throws), skips
+        # creating a missing key, or writes another name, value or type.
+        drive = "HKCU:\\Software\\Microsoft\\DirectX\\UserGpuPreferences"
+        said, calls = self.register(HKCU_DRIVE)
+        self.assertEqual([f"New-Item|{drive}", f"New-ItemProperty|{drive}|{EXE}|GpuPreference=2;|String"], calls)
+        self.assertEqual([f"Registered GpuPreference=2; (the high-performance GPU) for {EXE}"], said)
+        said, calls = self.register(HKCU_DRIVE, TEST_KEY="1")
+        self.assertEqual([f"New-ItemProperty|{drive}|{EXE}|GpuPreference=2;|String"], calls)
+
+    def test_on_windows_an_existing_value_is_kept_and_a_dry_run_prints_it(self):
+        # Fails if the Windows branch overwrites a value the user set, or a dry run writes.
+        said, calls = self.register(HKCU_DRIVE, TEST_KEY="1", TEST_VALUE="GpuPreference=1;")
+        self.assertEqual(([], []), (said, calls))
+        said, calls = self.register(HKCU_DRIVE, dry_run=True, TEST_KEY="1", TEST_VALUE="GpuPreference=1;")
+        self.assertEqual((["gpu: GpuPreference=1;"], []), (said, calls))
+        said, calls = self.register(HKCU_DRIVE, dry_run=True)
+        self.assertEqual((["gpu: none, would register GpuPreference=2;"], []), (said, calls))
 
 
 if __name__ == "__main__":

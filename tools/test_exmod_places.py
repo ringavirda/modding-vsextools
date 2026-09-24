@@ -1,23 +1,18 @@
 """Tests for the install lookup, the user store and the data profile in exmod.ps1 and the commands
 that use them, run through pwsh ($PWSH, PATH, or the checkout's .dotnet/tools) on a temporary
-repository; skipped when no pwsh is found. Each test names the mutation it fails under."""
+repository with exmod_harness's prelude; skipped when no pwsh is found. Each test names the mutation
+it fails under."""
 
 import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PWSH = (os.environ.get("PWSH") or shutil.which("pwsh")
-        or next((p for p in [os.path.join(ROOT, ".dotnet", "tools", "pwsh")] if os.access(p, os.X_OK)), None))
-
-
-def touch(path, text=""):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        f.write(text)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from exmod_harness import PWSH, ROOT, exmod_script, touch  # noqa: E402
 
 
 def make_repo(path):
@@ -26,11 +21,9 @@ def make_repo(path):
 
 
 def run(repo, body, home, xdg=None):
-    """Dot-sources exmod.ps1 against `repo` with host output discarded, runs `body`, and returns the
-    last line of its stdout parsed as JSON. HOME is `home`; XDG_DATA_HOME is `xdg`, or unset when
-    None."""
-    script = (f". (Join-Path $env:EXTOOLS_ROOT 'exmod.ps1') -RepoRoot $env:TEST_REPO 6>$null; "
-              f"{body}")
+    """Runs `body` after exmod.ps1 and the prelude (exmod_script) against `repo` and returns the last
+    line of its stdout parsed as JSON. HOME is `home`; XDG_DATA_HOME is `xdg`, or unset when None."""
+    script = exmod_script(body)
     env = dict(os.environ, EXTOOLS_ROOT=ROOT, TEST_REPO=repo, HOME=home)
     env.pop("XDG_DATA_HOME", None)
     if xdg is not None:
@@ -268,12 +261,66 @@ class ProvisionDefaultsTests(unittest.TestCase):
         self.assertIn(f"Vintage Story 1.22.7 (server) already provisioned at {foreign}-server", said)
 
 
-# Stubs the interop check off, so a run inside WSL takes the Linux client and store too.
-NO_INTEROP = "function Test-WslInterop { $false }; "
+# provision game as Windows runs it, with the download, the installer and reg stubbed: the installer
+# fills the folder its /DIR= names with a client, and the uninstall entry is never found.
+ON_WINDOWS = r"""
+$OnWindows = $true
+function Publicize-GameApi { }
+function reg { $global:LASTEXITCODE = 1 }
+function Invoke-WebRequest([string]$Uri, [string]$OutFile) { Set-Content -LiteralPath $OutFile -Value '' }
+function Start-Process([string]$FilePath, [string[]]$ArgumentList) {
+  $dir = ($ArgumentList | Where-Object { $_ -like '/DIR=*' }).Substring(5)
+  New-Item -ItemType Directory -Force -Path (Join-Path $dir 'Lib') | Out-Null
+  foreach ($f in 'VintagestoryAPI.dll', 'Vintagestory.dll', 'Vintagestory.exe', 'Lib/e_sqlite3.dll') {
+    Set-Content -LiteralPath (Join-Path $dir $f) -Value ''
+  }
+  [pscustomobject]@{ ExitCode = 0 }
+}
+$said = @(Invoke-ProvisionGame @('-Version', '1.22.7', '-Kind', $env:TEST_KIND) 6>&1 | ForEach-Object { "$_" })
+ConvertTo-Json -Compress $said
+"""
+
+
+@unittest.skipUnless(PWSH, "pwsh not found")
+class ProvisionGpuTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.repo = make_repo(os.path.join(self.tmp, "repo"))
+        self.slot = os.path.join(self.tmp, "local", "exmod", "game", "1.22")
+        self.exe = os.path.join(self.slot, "Vintagestory.exe")
+
+    def provision(self, kind):
+        os.environ.update(TEST_KIND=kind, LOCALAPPDATA=os.path.join(self.tmp, "local"))
+        try:
+            return run(self.repo, ON_WINDOWS, self.tmp)
+        finally:
+            del os.environ["TEST_KIND"]
+            del os.environ["LOCALAPPDATA"]
+
+    def test_installing_a_windows_client_registers_its_exe_after_the_install(self):
+        # Fails if a fresh Windows client install registers no GPU preference, or registers it
+        # before the install lands.
+        said = self.provision("client")
+        self.assertEqual([f"Provisioned Vintage Story 1.22.7 (client) at {self.slot}", f"gpu-stub: {self.exe}"], said[-2:])
+
+    def test_a_windows_client_already_in_place_registers_its_exe(self):
+        # Fails if the already-provisioned return skips the registration.
+        seed_install(self.slot, client=True)
+        touch(os.path.join(self.slot, "Lib", "e_sqlite3.dll"))
+        said = self.provision("client")
+        self.assertEqual([f"Vintage Story 1.22.7 (client) already provisioned at {self.slot}", f"gpu-stub: {self.exe}"], said)
+
+    def test_a_windows_server_registers_nothing(self):
+        # Fails if the registration runs for a server install.
+        seed_install(os.path.join(self.repo, ".game", "1.22"), client=False)
+        said = self.provision("server")
+        self.assertFalse([s for s in said if s.startswith("gpu-stub: ")], said)
+
 
 # Stubs the install, staging and dotnet lookup of `client` and prints the arguments it would launch
 # the game with, one per line, as a JSON array.
-CLIENT = (NO_INTEROP + "function Find-UsableGameInstall { '/game' }; function Publish-RunMods { '/mods' }; "
+CLIENT = ("function Find-UsableGameInstall { '/game' }; function Publish-RunMods { '/mods' }; "
           "function Resolve-DotnetHost { 'Show-Args' }; "
           "function Show-Args { ConvertTo-Json -Compress @($args) }; "
           "Invoke-Client @('-NoBuild')")
@@ -299,7 +346,7 @@ class ClientAndLogsTests(unittest.TestCase):
 
     def test_a_dry_run_prints_the_local_dotnet_without_provisioning_it(self):
         # Fails if -DryRun still lets Resolve-DotnetHost provision (the stub then throws).
-        got = run(self.repo, NO_INTEROP + "function dotnet { }; function Invoke-ProvisionDotnet { throw 'provisioned' }; "
+        got = run(self.repo, "function dotnet { }; function Invoke-ProvisionDotnet { throw 'provisioned' }; "
                                           "function Find-UsableGameInstall { '/game' }; "
                                           "$said = @(Invoke-Client @('1.21', '-NoBuild', '-DryRun') 6>&1 | ForEach-Object { \"$_\" }); "
                                           "ConvertTo-Json -Compress $said", self.home)
@@ -309,7 +356,7 @@ class ClientAndLogsTests(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.ws, ".dotnet")))
 
     def logs(self):
-        return run(self.repo, NO_INTEROP + "$said = @(Invoke-Logs @('client', '-Lines', '1') 6>&1 | ForEach-Object { \"$_\" }); "
+        return run(self.repo, "$said = @(Invoke-Logs @('client', '-Lines', '1') 6>&1 | ForEach-Object { \"$_\" }); "
                               "ConvertTo-Json -Compress $said", self.home)
 
     def test_logs_reads_the_repository_folder_when_it_exists(self):

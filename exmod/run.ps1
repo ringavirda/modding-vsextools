@@ -139,13 +139,14 @@ function Stop-Client([string]$Message) {
   exit 1
 }
 
-# `client` from a WSL distro with interop: the Windows client from Windows' user store, run by
-# Windows' dotnet, on data and logs in that store's profile, with the mods built and staged on the
-# Linux side and passed as their \\wsl.localhost path. Stops with one line when Windows has no
-# readable %LOCALAPPDATA%, no dotnet, or no client and -Provision is not given; with -Provision a
-# missing client is installed by this tools checkout's provision game run in Windows' pwsh.exe, and
-# a missing pwsh.exe stops it the same way. $DataOpt is a Windows path or a Linux one. Exits with
-# the game's exit code; returns after printing under -DryRun.
+# `client` from a WSL distro with interop: the Windows client's Vintagestory.exe from Windows' user
+# store, on Windows' .NET runtime, on data and logs in that store's profile, with the mods built and
+# staged on the Linux side and passed as their \\wsl.localhost path. Registers the high-performance
+# GPU for that exe before the launch (Register-ClientGpuPreference). Stops with one line when Windows
+# has no readable %LOCALAPPDATA%, no dotnet, or no client and -Provision is not given; with
+# -Provision a missing client is installed by this tools checkout's provision game run in Windows'
+# pwsh.exe, and a missing pwsh.exe stops it the same way. $DataOpt is a Windows path or a Linux one.
+# Exits with the game's exit code; returns after printing under -DryRun.
 function Invoke-WindowsClientFromWsl([string]$Version, [string]$Configuration, [string]$ModsOpt,
   [bool]$NoBuild, [string]$DataOpt, [bool]$Provision, [bool]$DryRun) {
   $store = Get-WindowsUserStore
@@ -157,7 +158,7 @@ function Invoke-WindowsClientFromWsl([string]$Version, [string]$Configuration, [
 
   $slot = "$store\game\$Version"
   $slotLinux = Convert-WslPath $slot
-  $usable = { (Test-Path (Join-Path $slotLinux 'Vintagestory.dll')) -and (Test-Path (Join-Path $slotLinux 'Lib/e_sqlite3.dll')) }
+  $usable = { (Test-Path (Join-Path $slotLinux 'Vintagestory.exe')) -and (Test-Path (Join-Path $slotLinux 'Lib/e_sqlite3.dll')) }
   if (-not (& $usable)) {
     $script = Convert-WslPath -ToWindows (Join-Path $ToolsRoot 'exmod.ps1')
     $repo = Convert-WslPath -ToWindows $RepoRoot
@@ -182,13 +183,16 @@ function Invoke-WindowsClientFromWsl([string]$Version, [string]$Configuration, [
   else { Convert-WslPath -ToWindows $DataOpt }
   if (-not $DryRun) { Initialize-ClientSettings (Convert-WslPath $dataWin) }
 
-  $program = Convert-WslPath $dotnetWin
-  $gameArgs = @("$slot\Vintagestory.dll", '--tracelog', '--dataPath', $dataWin,
+  $exe = "$slot\Vintagestory.exe"
+  $program = Convert-WslPath $exe
+  $gameArgs = @('--tracelog', '--dataPath', $dataWin,
     '--logPath', "$dataWin\Logs\$(Split-Path $RepoRoot -Leaf)", '--addModPath', (Convert-WslPath -ToWindows $modsDest))
   if ($DryRun) {
     Write-ClientLaunch $program $gameArgs @{}
+    Register-ClientGpuPreference $exe -DryRun
     return
   }
+  Register-ClientGpuPreference $exe
   Write-Step "Launching the Windows client ($Version)"
   & $program @gameArgs
   exit $LASTEXITCODE
@@ -202,9 +206,11 @@ function Invoke-WindowsClientFromWsl([string]$Version, [string]$Configuration, [
 # whose runtime the system dotnet lacks prints the .dotnet muxer it would provision.
 #
 # In WSL with interop and without -Linux, the Windows client runs (Invoke-WindowsClientFromWsl). On
-# Windows, a checkout on a WSL share (Get-WslShare) stages inside the distro unless -NoBuild,
-# -DryRun or -Mods, and runs the client from the user store's slot on the staged folder's share
-# path with the system dotnet; when that lacks the series' runtime it stops with one line.
+# Windows the program is the install's Vintagestory.exe, the game's apphost, with the high-performance
+# GPU registered for it first (Register-ClientGpuPreference). A checkout on a WSL share
+# (Get-WslShare) stages inside the distro unless -NoBuild, -DryRun or -Mods, and runs the client from
+# the user store's slot on the staged folder's share path on the system .NET runtime; when that lacks
+# the series' runtime it stops with one line.
 function Invoke-Client([string[]]$Argv) {
   $positional = @(Get-Positional $Argv @('-Configuration', '-Mods', '-DataPath') @('-NoBuild', '-Provision', '-Software', '-DryRun', '-Linux'))
   $versionArg = if ($positional.Count -gt 0) { $positional[0] } else { 'latest' }
@@ -263,7 +269,8 @@ function Invoke-Client([string[]]$Argv) {
     }
   }
   # The system dotnet muxer ignores DOTNET_ROOT; the game only sees .dotnet's runtimes when both the
-  # host and this variable point there, same as .vscode/launch.json sets it for the debugger.
+  # host and this variable point there, same as .vscode/launch.json sets it for the debugger. The
+  # Windows apphost reads the variable alone.
   $dotnet = Resolve-DotnetHost @($version) -NoProvision:$dryRun
   $dotnetDir = Get-ExmodDotnetDir
   if ($dotnet -eq (Join-Path $dotnetDir "dotnet$ExeSuffix")) {
@@ -281,15 +288,22 @@ function Invoke-Client([string[]]$Argv) {
     $launchEnv['GALLIUM_DRIVER'] = 'llvmpipe'
   }
 
-  $gameArgs = @((Join-Path $install 'Vintagestory.dll'), '--tracelog', '--dataPath', $dataPath,
-    '--logPath', (Get-ClientLogPath $dataPath), '--addModPath', $modsDest)
+  $gameArgs = @('--tracelog', '--dataPath', $dataPath, '--logPath', (Get-ClientLogPath $dataPath),
+    '--addModPath', $modsDest)
+  if ($OnWindows) { $program = [System.IO.Path]::GetFullPath((Join-Path $install 'Vintagestory.exe')) }
+  else {
+    $program = $dotnet
+    $gameArgs = @((Join-Path $install 'Vintagestory.dll')) + $gameArgs
+  }
   if ($dryRun) {
-    Write-ClientLaunch $dotnet $gameArgs $launchEnv
+    Write-ClientLaunch $program $gameArgs $launchEnv
+    if ($OnWindows) { Register-ClientGpuPreference $program -DryRun }
     return
   }
   foreach ($k in $launchEnv.Keys) { Set-Item "env:$k" $launchEnv[$k] }
+  if ($OnWindows) { Register-ClientGpuPreference $program }
   Write-Step "Launching the client ($version)"
-  & $dotnet @gameArgs
+  & $program @gameArgs
   exit $LASTEXITCODE
 }
 
@@ -314,10 +328,16 @@ data path is the store's data/<profile>, the profile being the name of the works
 nearest one above the checkout holding exmod.workspace.json), else of the checkout's folder. Logs go
 to <data path>/Logs/<checkout folder>, so two repositories sharing a profile keep separate logs.
 
-In WSL with interop, the Windows client runs: Windows' dotnet, the client in
-%LOCALAPPDATA%\exmod\game\<series>, data and logs in Windows' store, and the mods built and staged in
-WSL, passed by their \\wsl.localhost path. -Provision installs a missing Windows client through
-Windows' pwsh.exe. Without interop, or with -Linux, the Linux client runs.
+In WSL with interop, the Windows client runs: the Vintagestory.exe in
+%LOCALAPPDATA%\exmod\game\<series> on Windows' .NET runtime, data and logs in Windows' store, and the
+mods built and staged in WSL, passed by their \\wsl.localhost path. -Provision installs a missing
+Windows client through Windows' pwsh.exe. Without interop, or with -Linux, the Linux client runs.
+
+On Windows and from WSL, the program is the client's Vintagestory.exe, and before it starts the
+high-performance GPU is registered for it (GpuPreference=2; under
+HKCU\Software\Microsoft\DirectX\UserGpuPreferences) unless a value for that exe already exists.
+Without one, Windows renders the game on the GPU driving the display, an integrated one on some
+machines.
 
 On Windows, a checkout on a WSL share (\\wsl.localhost\<distro>\... or \\wsl$\<distro>\...) is
 built and staged inside that distro (`exmod stage` there, unless -NoBuild, -DryRun or -Mods), and the
@@ -331,8 +351,9 @@ client runs from the store's game/<series> only, on Windows' own .NET runtime.
   -Software   Mesa's software renderer, for a GPU driver that hangs the game
   -Linux      in WSL, run the Linux client instead of the Windows one
   -DryRun     print the program, its arguments and the environment it would set, one per line
-              (program: , arg: , env: ), and exit 0 without building, staging, provisioning
-              .NET or launching
+              (program: , arg: , env: ), then for a Windows client the GPU preference its exe holds
+              or would get (gpu: ), and exit 0 without building, staging, provisioning .NET,
+              registering or launching
 
 Without -Mods, this repo's runtime dependency mods (see `exmod provision mods`) are staged after
 its own, built or fetched first if needed.

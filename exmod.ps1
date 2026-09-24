@@ -871,6 +871,64 @@ function Get-WindowsProgram([string]$Name) {
 
 #endregion
 
+#region GPU preference
+
+# Windows renders a program on the GPU that drives the display unless this key holds a value named
+# by the program's full path; 'GpuPreference=2;' asks for the high-performance GPU.
+$GpuPreferencesKey = 'HKCU\Software\Microsoft\DirectX\UserGpuPreferences'
+$HighPerformanceGpu = 'GpuPreference=2;'
+
+# Registers $HighPerformanceGpu for the program at $ExePath, a full Windows path such as a client
+# slot's Vintagestory.exe, under $GpuPreferencesKey, unless a value for that path already exists,
+# whatever it holds. Reads and writes through the HKCU: drive on Windows and through reg.exe from WSL
+# with interop. Prints one line when it registers; a registry that cannot be read or written prints
+# a warning and returns, since the game still runs without a preference. -DryRun writes nothing and
+# prints `gpu: <existing value>` or `gpu: none, would register GpuPreference=2;`.
+function Register-ClientGpuPreference([string]$ExePath, [switch]$DryRun) {
+  $drivePath = "HKCU:\$($GpuPreferencesKey.Substring(5))"
+  $current = $null
+  try {
+    if ($OnWindows) {
+      $key = Get-Item -LiteralPath $drivePath -ErrorAction SilentlyContinue
+      if ($key) { $current = $key.GetValue($ExePath) }
+    }
+    else {
+      $out = @(& reg.exe query $GpuPreferencesKey /v $ExePath 2>$null)
+      if ($LASTEXITCODE -eq 0) {
+        $line = $out | Where-Object { "$_" -match '\sREG_SZ\s' } | Select-Object -First 1
+        if ("$line" -match '\sREG_SZ\s+(.*)$') { $current = $Matches[1] }
+      }
+    }
+  }
+  catch {
+    Write-Warning "Could not read the GPU preference for $ExePath : $($_.Exception.Message)"
+    return
+  }
+
+  if ($DryRun) {
+    Write-Host ($current ? "gpu: $current" : "gpu: none, would register $HighPerformanceGpu")
+    return
+  }
+  if ($current) { return }
+  try {
+    if ($OnWindows) {
+      if (-not (Test-Path -LiteralPath $drivePath)) { New-Item -Path $drivePath -Force | Out-Null }
+      New-ItemProperty -LiteralPath $drivePath -Name $ExePath -Value $HighPerformanceGpu -PropertyType String -Force | Out-Null
+    }
+    else {
+      & reg.exe add $GpuPreferencesKey /v $ExePath /t REG_SZ /d $HighPerformanceGpu /f *> $null
+      if ($LASTEXITCODE -ne 0) { throw "reg.exe add exited with $LASTEXITCODE." }
+    }
+  }
+  catch {
+    Write-Warning "Could not register the high-performance GPU for $ExePath : $($_.Exception.Message)"
+    return
+  }
+  Write-Host "Registered $HighPerformanceGpu (the high-performance GPU) for $ExePath"
+}
+
+#endregion
+
 # The commands themselves, one file per stage. Dot-sourced, so everything above is in scope for them
 # and their Add-ExmodCommand calls run before dispatch. A file that is not there is skipped rather
 # than fatal: another repo copies this dispatcher with only the stages it wants (see

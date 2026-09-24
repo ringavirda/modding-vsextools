@@ -133,7 +133,9 @@ function Publicize-GameApi([string]$ApiDll) {
 #   -Kind server (default)  the dedicated-server archive, carrying every assembly the build and the
 #                           headless tests need. What CI and the day-to-day loop use.
 #   -Kind client            the full playable client, needed only to launch the game. On Windows it
-#                           ships solely as an Inno Setup installer, so this silent-installs; on
+#                           ships solely as an Inno Setup installer, so this silent-installs and
+#                           registers the high-performance GPU for its Vintagestory.exe
+#                           (Register-ClientGpuPreference), an install already in place included; on
 #                           Linux and macOS it is a plain tarball. A client install is a superset of
 #                           the server.
 #
@@ -200,6 +202,11 @@ function Invoke-ProvisionGame([string[]]$Argv) {
     $installed = if (Test-Path $stamp) { (Get-Content $stamp -Raw).Trim() } else { '' }
     $clientPresent = Test-Path $clientMarker
     $clientUsableHere = $clientPresent -and (Test-Path $nativeMarker)
+    $registerGpu = {
+      if ($OnWindows -and $kind -eq 'client') {
+        Register-ClientGpuPreference ([System.IO.Path]::GetFullPath((Join-Path $destFull 'Vintagestory.exe')))
+      }
+    }
 
     if (-not $destGiven -and $clientPresent -and -not $clientUsableHere) {
       # The default slot holds a client built for another platform. It is still the install its owner
@@ -228,6 +235,7 @@ function Invoke-ProvisionGame([string[]]$Argv) {
       if ($haveKind -and $installed -eq $version) {
         Write-Host "Vintage Story $version ($kind) already provisioned at $dest"
         Publicize-GameApi $apiMarker
+        & $registerGpu
         return
       }
     }
@@ -336,6 +344,7 @@ function Invoke-ProvisionGame([string[]]$Argv) {
     Set-Content -Path $stamp -Value $version -NoNewline
     Publicize-GameApi $apiMarker
     Write-Host "Provisioned Vintage Story $version ($kind) at $dest"
+    & $registerGpu
   } finally {
     $lock.ReleaseMutex()
     $lock.Dispose()
@@ -374,6 +383,9 @@ the nearest folder above the checkout holding exmod.workspace.json, else the che
            -Kind client takes the full client, to play in, into the user store's game/<series>:
            %LOCALAPPDATA%\exmod on Windows, ~/Library/Application Support/exmod on macOS,
            $XDG_DATA_HOME/exmod (default ~/.local/share/exmod) on Linux. -Dest names another folder.
+           On Windows it registers the high-performance GPU for the client's Vintagestory.exe
+           (GpuPreference=2; under HKCU\Software\Microsoft\DirectX\UserGpuPreferences), also for a
+           client already in place, unless a value for that exe exists.
            -Version takes a full patch (1.22.3) or a series (1.22, its latest patch). Downloads are
            cached in the nearest .game/.cache, else <provision root>/.game/.cache.
 
