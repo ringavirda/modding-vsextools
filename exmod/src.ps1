@@ -323,9 +323,12 @@ function Invoke-Test([string[]]$Argv) {
   }
 
   Write-Host "Running tests in parallel..."
+  # A -Parallel runspace sees none of this script's functions; the parser goes in as its text.
+  $failuresFn = ${function:Get-ExmodTestFailures}.ToString()
   $results = $built | ForEach-Object -ThrottleLimit $throttle -Parallel {
     $dotnet = $using:dotnet
     $filter = $using:filter
+    ${function:Get-ExmodTestFailures} = $using:failuresFn
     $item = $_
     if (-not $item.BuildOk) {
       return [pscustomobject]@{ Name = "$($item.Version)/$($item.Project)"; Ok = $false; Line = 'build failed'; Total = $null }
