@@ -8,8 +8,8 @@
 
 #region provision dotnet
 
-# Builds a self-contained .NET in Get-ExmodDotnetDir (the nearest .dotnet holding a muxer, else one
-# under the provision root) so a fresh clone can run the tests without the modder hand-installing .NET 7/8/10. Each Vintage Story version pins one major (net10=1.22, net8=1.21,
+# Builds a self-contained .NET in Get-ExmodDotnetDir (the repository's or the workspace root's
+# .dotnet holding a muxer, else one under the provision root) so a fresh clone can run the tests without the modder hand-installing .NET 7/8/10. Each Vintage Story version pins one major (net10=1.22, net8=1.21,
 # net7=1.20) and will not roll forward across majors.
 #
 # The global dotnet muxer ignores DOTNET_ROOT, so extra runtimes are only visible when invoked through
@@ -362,8 +362,9 @@ None of them installs onto the machine, and all three are safe to re-run. The pr
 the nearest folder above the checkout holding exmod.workspace.json, else the checkout itself.
 
   dotnet   a self-contained SDK plus every runtime major the requested series need (net10 for 1.22,
-           net8 for 1.21, net7 for 1.20) in the nearest .dotnet/ holding a dotnet muxer from the
-           checkout upward, else in a new one under the provision root. Commands that need those runtimes drive .dotnet/dotnet,
+           net8 for 1.21, net7 for 1.20) in the checkout's .dotnet/, else the workspace root's,
+           whichever holds a dotnet muxer, else in a new one under the provision root. Commands
+           that need those runtimes drive .dotnet/dotnet,
            because the global muxer ignores DOTNET_ROOT and cannot see them.
 
   game     a Vintage Story install. -Kind server (the default) takes the dedicated-server archive,
