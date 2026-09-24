@@ -58,6 +58,10 @@ class TemplateTests(unittest.TestCase):
         if out.returncode != 0:
             shutil.rmtree(cls.tmp)
             raise AssertionError(f"pwsh failed ({out.returncode}): {out.stderr}")
+        cls.raw = {}
+        for name in ("launch.json", "tasks.json"):
+            with open(os.path.join(cls.tmp, ".vscode", name), "rb") as f:
+                cls.raw[name] = f.read()
         cls.launch = read_jsonc(os.path.join(cls.tmp, ".vscode", "launch.json"))
         cls.tasks = read_jsonc(os.path.join(cls.tmp, ".vscode", "tasks.json"))
 
@@ -105,19 +109,33 @@ class TemplateTests(unittest.TestCase):
         for config in self.launch["configurations"]:
             self.assertEqual("none", config["linux"]["env"]["WAYLAND_DISPLAY"], config["name"])
 
-    def test_dotnet_root_reaches_only_the_linux_and_osx_launches_of_a_legacy_series(self):
-        # Fails if the legacy configuration keeps a top-level env, which the Windows apphost inherits.
-        legacy = self.configs()["demo (1.21)"]
-        self.assertNotIn("env", legacy)
-        self.assertNotIn("env", legacy["windows"])
-        for name in ("linux", "osx"):
-            self.assertEqual("${workspaceFolder}/.dotnet", legacy[name]["env"]["DOTNET_ROOT"], name)
-        self.assertNotIn("DOTNET_ROOT", self.configs()["demo (latest)"]["linux"]["env"])
+    def test_no_launch_sets_dotnet_root_and_no_task_provisions_dotnet(self):
+        # Fails if any configuration sets DOTNET_ROOT, a provision-dotnet task is emitted, or a legacy
+        # launch-prep runs anything but provision-game then stage-mods.
+        for name, raw in self.raw.items():
+            self.assertNotIn(b"DOTNET_ROOT", raw, name)
+            self.assertNotIn(b"provision-dotnet", raw, name)
+        for task in self.tasks["tasks"]:
+            self.assertNotIn("dotnet", task.get("args", []), task["label"])
+        tasks = {t["label"]: t for t in self.tasks["tasks"]}
+        self.assertEqual(["provision-game (1.21)", "stage-mods (1.21)"], tasks["launch-prep (1.21)"]["dependsOn"])
+
+    def test_every_provision_task_passes_the_bare_series(self):
+        # Fails if a legacy provision task names a patch, such as "1.21.0" for series 1.21.
+        versions = {t["label"]: t["args"][t["args"].index("-Version") + 1]
+                    for t in self.tasks["tasks"] if t["label"].startswith("provision-game")}
+        self.assertEqual({"provision-game (1.22)": "1.22", "provision-game (1.21)": "1.21"}, versions)
+
+    def test_both_files_end_in_one_lf_and_hold_no_cr(self):
+        # Fails if either file is written without its final newline, with two, or with CRLF.
+        for name, raw in self.raw.items():
+            self.assertTrue(raw.endswith(b"}\n"), name)
+            self.assertNotIn(b"\r", raw, name)
 
     def test_the_provision_tasks_install_a_client_into_the_store_on_every_os(self):
         # Fails if a provision task passes -Dest, or keeps an osx block with its own arguments.
         tasks = {t["label"]: t for t in self.tasks["tasks"]}
-        for label, version in [("provision-game (1.22)", "1.22"), ("provision-game (1.21)", "1.21.0")]:
+        for label, version in [("provision-game (1.22)", "1.22"), ("provision-game (1.21)", "1.21")]:
             task = tasks[label]
             want = ["provision", "game", "-Version", version, "-Kind", "client"]
             self.assertEqual(["${workspaceFolder}/scripts/exmod.sh"] + want, task["args"], label)

@@ -33,7 +33,7 @@ function Get-ExmodRepoRoot([string]$Override) {
     if (-not (Test-Path $Override)) { throw "-RepoRoot path not found: $Override" }
     return [System.IO.Path]::GetFullPath((Resolve-Path $Override).ProviderPath)
   }
-  $dir = (Get-Location).Path
+  $dir = (Get-Location).ProviderPath
   while ($true) {
     if (Test-Path (Join-Path $dir 'exmod.json')) { return $dir }
     $parent = Split-Path $dir -Parent

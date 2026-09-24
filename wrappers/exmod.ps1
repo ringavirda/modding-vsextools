@@ -8,7 +8,7 @@ param(
   [string[]]$Arguments
 )
 $ErrorActionPreference = 'Stop'
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).ProviderPath
 
 function Get-ToolsPin {
   $manifest = Join-Path $repoRoot 'exmod.json'

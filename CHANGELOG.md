@@ -25,6 +25,10 @@
   verify while no loaded check had run.
 - `exmod test` names a failing theory row whose display name holds spaces; the failure list missed
   it.
+- `scripts/exmod.ps1` run by Windows pwsh from a checkout on a `\\wsl.localhost\` or `\\wsl$\`
+  share clones `.extools` into the checkout; it passed git a provider-qualified path, which failed
+  and left a `Microsoft.PowerShell.Core` folder in the current directory. `exmod` run with its
+  current directory on such a share finds the repository there.
 - `exmod test` no longer reads a test's own output line such as `Failed to load asset [game:x]` as
   a failure, nor ends the search for the previous failure's message there.
 
@@ -73,7 +77,10 @@
   `Vintagestory.exe` apphost on Windows) with `--dataPath` in the store's `data/default` and
   `--logPath` in its `Logs/<workspace folder name>`, and map
   `/exmod/<workspace folder name>/` back to the workspace folder through `sourceFileMap`. The
-  provision tasks run `provision game -Kind client` without `-Dest` on every OS.
+  provision tasks run `provision game -Version <series> -Kind client` without `-Dest` on every OS,
+  naming the bare series as `client -Provision` does. No configuration sets `DOTNET_ROOT` and no
+  task provisions `.dotnet`: every series runs on the machine's .NET, and a legacy series'
+  launch-prep is `provision-game` then `stage-mods`. Both files end in a newline.
 - `exmod test -Coverage` builds with `-p:ExmodMapSourcePaths=false`, so the Debug path map exlib's
   build targets apply stays off and `coverage.xml` names source files that exist.
 - `provision game -Dest` takes a path as given only when it is fully qualified, and joins any other

@@ -316,10 +316,10 @@ $depLines
 # One launch configuration running series $Slug's client from the user store of the OS VS Code runs
 # on (the Windows apphost, so a GPU preference registered for it applies), with data in the store's
 # data/default (the profile `exmod client` uses), logs in its Logs/<workspace folder name> and the
-# mods staged in $ModsDir. $Legacy sets DOTNET_ROOT to the checkout's .dotnet on Linux and macOS
-# only: the Windows apphost reads DOTNET_ROOT too, and fails on a folder holding another OS's .NET.
-# Sources built with the /exmod/<workspace folder name>/ path map resolve through sourceFileMap.
-function New-VsCodeLaunchConfig([string]$Name, [string]$PreLaunchTask, [string]$Slug, [string]$ModsDir, [bool]$Legacy) {
+# mods staged in $ModsDir. No OS block sets DOTNET_ROOT: every series runs on the .NET installed on
+# the machine. Sources built with the /exmod/<workspace folder name>/ path map resolve through
+# sourceFileMap.
+function New-VsCodeLaunchConfig([string]$Name, [string]$PreLaunchTask, [string]$Slug, [string]$ModsDir) {
   $stores = [ordered]@{
     linux   = '${env:HOME}/.local/share/exmod'
     osx     = '${env:HOME}/Library/Application Support/exmod'
@@ -332,16 +332,6 @@ function New-VsCodeLaunchConfig([string]$Name, [string]$PreLaunchTask, [string]$
       '--addModPath', "`${workspaceFolder}/$ModsDir")
     (@($items) | ForEach-Object { "$Indent`"$_`"" }) -join ",`n"
   }
-  $envLines = if ($Legacy) {
-    @"
-      "linux": { "env": { "DOTNET_ROOT": "`${workspaceFolder}/.dotnet", "WAYLAND_DISPLAY": "none" } },
-"@
-  } else {
-    @"
-      "linux": { "env": { "WAYLAND_DISPLAY": "none" } },
-"@
-  }
-  $osxEnvLine = if ($Legacy) { "        `"env`": { `"DOTNET_ROOT`": `"`${workspaceFolder}/.dotnet`" },`n" } else { '' }
   return @"
     {
       "name": "$Name",
@@ -353,9 +343,9 @@ function New-VsCodeLaunchConfig([string]$Name, [string]$PreLaunchTask, [string]$
 $(& $argLines $stores.linux '        ')
       ],
       "cwd": "`${workspaceFolder}",
-$envLines
+      "linux": { "env": { "WAYLAND_DISPLAY": "none" } },
       "osx": {
-$osxEnvLine        "program": "$($stores.osx)/game/$Slug/Vintagestory.dll",
+        "program": "$($stores.osx)/game/$Slug/Vintagestory.dll",
         "args": [
 $(& $argLines $stores.osx '          ')
         ]
@@ -378,8 +368,10 @@ $(& $argLines $stores.windows '          ')
 # hand-carries (see exmods/.vscode): a build/pack/test task per game series in $Series, the
 # launch-prep composites (provision-game + stage-mods) each feeds, and one launch configuration per
 # series, named after $RepoName. $Series[0] is the current ("latest") series - the same convention
-# exmod.ps1's own $GameTfms table uses - and every series after it is legacy. Both files are written
-# whole; the caller decides whether that means creating them once or rewriting them on every run.
+# exmod.ps1's own $GameTfms table uses - and every series after it is legacy. A provision task names
+# the bare series, which installs its newest patch as `exmod client -Provision` does. Both files are
+# written whole with LF line ends and a final newline; the caller decides whether that means creating
+# them once or rewriting them on every run.
 function Write-ExmodVsCode([string]$Dest, [string]$RepoName, [string[]]$Series) {
   $latest = $Series[0]
   $legacy = @($Series | Select-Object -Skip 1)
@@ -413,38 +405,39 @@ function Write-ExmodVsCode([string]$Dest, [string]$RepoName, [string[]]$Series) 
     // ----------------------------------------------------------------------------------------
 '@
     $legacyTasks = [System.Collections.Generic.List[string]]::new()
-    foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeTask "provision-game ($s)" @('provision', 'game', '-Version', "$s.0", '-Kind', 'client'))) }
-    foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeTask "provision-dotnet ($s)" @('provision', 'dotnet', '-Version', $s))) }
-    foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeDependsTask "launch-prep ($s)" @("provision-dotnet ($s)", "provision-game ($s)", "stage-mods ($s)"))) }
+    foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeTask "provision-game ($s)" @('provision', 'game', '-Version', $s, '-Kind', 'client'))) }
+    foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeDependsTask "launch-prep ($s)" @("provision-game ($s)", "stage-mods ($s)"))) }
     foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeTask "stage-mods ($s)" @('stage', '-Version', $s))) }
     $tasks.Add("`n$legacyComment`n" + ($legacyTasks -join ",`n"))
   }
 
   $vscodeDir = Join-Path $Dest '.vscode'
   New-Item -ItemType Directory -Force -Path $vscodeDir | Out-Null
-  @"
+  $tasksJson = @"
 {
   "version": "2.0.0",
   "tasks": [
 $($tasks -join ",`n")
   ]
 }
-"@ | Set-Content (Join-Path $vscodeDir 'tasks.json') -NoNewline
+"@
+  Set-Content (Join-Path $vscodeDir 'tasks.json') "$tasksJson`n" -NoNewline
 
   $configs = [System.Collections.Generic.List[string]]::new()
-  $configs.Add((New-VsCodeLaunchConfig "$RepoName (latest)" 'launch-prep (latest)' $latest 'bin/Mods' $false))
+  $configs.Add((New-VsCodeLaunchConfig "$RepoName (latest)" 'launch-prep (latest)' $latest 'bin/Mods'))
   foreach ($s in $legacy) {
-    $configs.Add((New-VsCodeLaunchConfig "$RepoName ($s)" "launch-prep ($s)" $s "bin/Mods-$s" $true))
+    $configs.Add((New-VsCodeLaunchConfig "$RepoName ($s)" "launch-prep ($s)" $s "bin/Mods-$s"))
   }
 
-  @"
+  $launchJson = @"
 {
   "version": "0.2.0",
   "configurations": [
 $($configs -join ",`n")
   ]
 }
-"@ | Set-Content (Join-Path $vscodeDir 'launch.json') -NoNewline
+"@
+  Set-Content (Join-Path $vscodeDir 'launch.json') "$launchJson`n" -NoNewline
 }
 
 #endregion
@@ -754,7 +747,7 @@ that is not you.
 function Invoke-Starter([string[]]$Argv) {
   $positional = @(Get-Positional $Argv @('-ExlibRoot', '-Version') @('-Force'))
   if ($positional.Count -lt 1) { throw "exmod starter needs a destination path." }
-  $dest = if ([System.IO.Path]::IsPathRooted($positional[0])) { $positional[0] } else { Join-Path (Get-Location).Path $positional[0] }
+  $dest = if ([System.IO.Path]::IsPathRooted($positional[0])) { $positional[0] } else { Join-Path (Get-Location).ProviderPath $positional[0] }
   $force = Get-Flag $Argv '-Force'
 
   $exlibRoot = Get-Opt $Argv '-ExlibRoot' $null
