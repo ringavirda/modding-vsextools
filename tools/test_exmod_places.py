@@ -79,7 +79,7 @@ class PlacesTests(unittest.TestCase):
         self.assertEqual(repo, got["ProvisionRoot"])
 
     def test_a_marker_in_the_repository_itself_is_not_a_workspace(self):
-        # Fails if the walk starts at $RepoRoot rather than its parent.
+        # Fails if the walk starts at $RepoRoot.
         repo = make_repo(os.path.join(self.tmp, "alone", "starter"))
         touch(os.path.join(repo, "exmod.workspace.json"), "{}")
         self.assertIsNone(places(repo, self.home)["Workspace"])
@@ -172,8 +172,8 @@ class PlacesTests(unittest.TestCase):
         self.assertEqual(os.path.join(repo, ".dotnet"), places(repo, self.home)["Dotnet"])
 
 
-# Stubs every network and patch step of provision game, so a call with an install already in place
-# only reports where it looked.
+# Stubs the api patch step of provision game. With an install already in place the call downloads
+# nothing and only reports where it looked.
 PROVISION = ("function Publicize-GameApi { }; "
              "$said = @(Invoke-ProvisionGame @('-Version', '1.22.7', '-Kind', $env:TEST_KIND) 6>&1 | "
              "ForEach-Object { \"$_\" }); ConvertTo-Json -Compress $said")
