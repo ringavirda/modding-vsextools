@@ -9,9 +9,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PWSH = (os.environ.get("PWSH") or shutil.which("pwsh")
         or next((p for p in [os.path.join(ROOT, ".dotnet", "tools", "pwsh")] if os.access(p, os.X_OK)), None))
 
-# Runs after exmod.ps1 is loaded and before a test's own body: WSL interop reads as off, and every
+# Defined after exmod.ps1 loads and before a test's body: Test-WslInterop is $false, and every
 # Windows program exmod starts by name (cmd.exe through Invoke-WindowsCmd, reg, reg.exe, wsl.exe)
-# throws instead of running. A test that exercises interop stubs the Windows programs itself.
+# throws. A test body that turns interop on must stub the Windows programs it reaches.
 PRELUDE = r"""
 function Test-WslInterop { $false }
 function Invoke-WindowsCmd { throw "cmd.exe reached in a test: $args" }
@@ -20,8 +20,8 @@ function reg.exe { throw "reg.exe reached in a test: $args" }
 function wsl.exe { throw "wsl.exe reached in a test: $args" }
 """
 
-# Replaces the GPU registration with one line naming the exe it was given, " dry-run" appended under
-# -DryRun, so no test reads or writes the registry of a Windows machine it runs on.
+# Register-ClientGpuPreference as a test sees it: one line, "gpu-stub: <exe>", " dry-run" appended
+# under -DryRun; the registry is never read or written.
 GPU_STUB = r"""
 function Register-ClientGpuPreference([string]$ExePath, [switch]$DryRun) {
   Write-Host "gpu-stub: $ExePath$(if ($DryRun) { ' dry-run' })"
