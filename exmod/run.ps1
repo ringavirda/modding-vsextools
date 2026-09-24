@@ -99,16 +99,16 @@ function Resolve-RunVersion([string]$Spec) {
 #endregion
 #region client
 
-# A usable install already at .game for $Version/$Kind, without provisioning one - the same test
-# Resolve-GameInstall (exmod.ps1) applies, duplicated here because `client` must never let that
-# helper's own auto-provisioning reach the network before -Provision says so.
+# The first usable $Kind install for $Version among Get-GameInstallCandidates (exmod.ps1), or $null,
+# without provisioning one - the same test Resolve-GameInstall applies, duplicated here because
+# `client` must never let that helper's own auto-provisioning reach the network before -Provision
+# says so.
 function Find-UsableGameInstall([string]$Version, [string]$Kind) {
   $slug = ($Version -split '\.')[0..1] -join '.'
   $entry = if ($Kind -eq 'server') { 'VintagestoryServer.dll' } else { 'Vintagestory.dll' }
-  foreach ($c in @((Get-ClientSlot $slug), ".game/$slug-$Kind", ".game/$slug")) {
-    $full = if ([System.IO.Path]::IsPathRooted($c)) { $c } else { Join-Path $RepoRoot $c }
-    if (-not (Test-Path (Join-Path $full $entry))) { continue }
-    if (Test-Path (Get-NativeMarker $full)) { return $full }
+  foreach ($c in (Get-GameInstallCandidates $slug $Kind)) {
+    if (-not (Test-Path (Join-Path $c $entry))) { continue }
+    if (Test-Path (Get-NativeMarker $c)) { return $c }
   }
   return $null
 }
@@ -157,8 +157,9 @@ function Invoke-Client([string[]]$Argv) {
   # The system dotnet muxer ignores DOTNET_ROOT; the game only sees .dotnet's runtimes when both the
   # host and this variable point there, same as .vscode/launch.json sets it for the debugger.
   $dotnet = Resolve-DotnetHost @($version)
-  if ($dotnet -eq (Join-Path $RepoRoot ".dotnet/dotnet$ExeSuffix")) {
-    $env:DOTNET_ROOT = Join-Path $RepoRoot '.dotnet'
+  $dotnetDir = Get-ExmodDotnetDir
+  if ($dotnet -eq (Join-Path $dotnetDir "dotnet$ExeSuffix")) {
+    $env:DOTNET_ROOT = $dotnetDir
   }
 
   if (-not $OnWindows -and -not $IsMacOS) {
@@ -174,7 +175,7 @@ function Invoke-Client([string[]]$Argv) {
   }
 
   Write-Step "Launching the client ($version)"
-  & $dotnet (Join-Path $install 'Vintagestory.dll') --tracelog --dataPath $dataPath --addModPath $modsDest
+  & $dotnet (Join-Path $install 'Vintagestory.dll') --tracelog --dataPath $dataPath --logPath (Get-ClientLogPath $dataPath) --addModPath $modsDest
   exit $LASTEXITCODE
 }
 
@@ -190,11 +191,19 @@ would, and runs the real client in the foreground, passing its exit code through
 client on its own - the archive is about a gigabyte - unless -Provision is given; otherwise it
 prints the exact `exmod provision game` command to run and exits 1.
 
+The client and its data live in the user store: %LOCALAPPDATA%\exmod on Windows,
+~/Library/Application Support/exmod on macOS, $XDG_DATA_HOME/exmod (default ~/.local/share/exmod) on
+Linux. The client is the store's game/<series>, else the nearest .game/<series>-client,
+.game/<series>-<platform> or .game/<series> from the checkout upward. The data path is the store's
+data/<profile>, the profile being the name of the workspace folder (the nearest one above the
+checkout holding exmod.workspace.json), else of the checkout's folder. Logs go to
+<data path>/Logs/<checkout folder>, so two repositories sharing a profile keep separate logs.
+
   -Mods       mod folder(s), or folder(s) of mod folders, instead of every built mod in the checkout
               and its resolved dependencies
   -NoBuild    skip the build step; the mods must already be built
-  -DataPath   client data path (default: .gamedata; on Windows %LOCALAPPDATA%\exmod\data\<repo>)
-  -Provision  fetch a client install for this series here, if none is usable yet
+  -DataPath   client data path (default: <store>/data/<profile>)
+  -Provision  fetch a client install for this series into the store, if none is usable yet
 
 Without -Mods, this repo's runtime dependency mods (see `exmod provision mods`) are staged after
 its own, built or fetched first if needed.
@@ -258,24 +267,28 @@ its own, built or fetched first if needed.
 # with it.
 $SmokePort = 42499
 
-# Finds a working dedicated-server install for $version's slug (".game/<slug>-server" first, since
-# that is where Invoke-ProvisionGame redirects a server request away from an existing client that
-# cannot serve it - see its header comment - then the plain ".game/<slug>"), provisioning one if
-# neither is present. Returns the full path to the install directory.
+# Finds a working dedicated-server install for $version's slug, the nearest from $RepoRoot upward
+# (".game/<slug>-server" first, since that is where Invoke-ProvisionGame redirects a server request
+# away from an existing client that cannot serve it - see its header comment - then the plain
+# ".game/<slug>"), provisioning one if neither is present. Returns the full path to the install
+# directory.
 function Resolve-SmokeServer([string]$version) {
   $slug = ($version -split '\.')[0..1] -join '.'
   $candidates = @(".game/$slug-server", ".game/$slug")
-  foreach ($c in $candidates) {
-    $full = Join-Path $RepoRoot $c
-    if (Test-Path (Join-Path $full 'VintagestoryServer.dll')) { return $full }
+  $find = {
+    foreach ($c in $candidates) {
+      $hit = Find-ExmodAbove "$c/VintagestoryServer.dll"
+      if ($hit) { return Split-Path $hit -Parent }
+    }
+    return $null
   }
+  $found = & $find
+  if ($found) { return $found }
   Write-Host "No dedicated-server install found for $version - provisioning one..."
   Invoke-ProvisionGame @('-Version', $version, '-Kind', 'server')
-  foreach ($c in $candidates) {
-    $full = Join-Path $RepoRoot $c
-    if (Test-Path (Join-Path $full 'VintagestoryServer.dll')) { return $full }
-  }
-  throw "Provisioning completed but no VintagestoryServer.dll was found under $($candidates -join ' or ')."
+  $found = & $find
+  if ($found) { return $found }
+  throw "Provisioning completed but no VintagestoryServer.dll was found in $($candidates -join ' or ') above $RepoRoot."
 }
 
 # Boots the real dedicated server with the given mods, waits for it to come up, runs /exmod verify and
@@ -491,7 +504,13 @@ function Invoke-Logs([string[]]$Argv) {
   $dataPath = Get-Opt $Argv '-DataPath' $defaultDataPath
   Initialize-ClientSettings $dataPath
 
+  # A client run logs into its repository's own folder under Logs; a data path the client last ran
+  # in without one still has its logs directly in Logs.
   $logsDir = Join-Path $dataPath 'Logs'
+  if ($target -eq 'client') {
+    $repoLogs = Get-ClientLogPath $dataPath
+    if (Test-Path $repoLogs) { $logsDir = $repoLogs }
+  }
   $logPath = Join-Path $logsDir "$target-$kind.log"
 
   if (-not (Test-Path $logPath)) {
@@ -513,10 +532,11 @@ Add-ExmodCommand -Group run -Name logs -Summary 'tail a client or server log' -A
 exmod logs [client|server] [-Kind main|debug|audit|chat|crash|build] [-Lines <n>] [-Follow]
            [-DataPath <path>]
 
-Prints the tail of one log. Client logs live at <dataPath>/Logs/client-<kind>.log (default data
-path: .gamedata); server logs at <dataPath>/Logs/server-<kind>.log (default: .gamedata/server, the
-same default `exmod server` uses). Fails with the list of logs that do exist when the one asked for
-is not among them.
+Prints the tail of one log. Client logs live at <dataPath>/Logs/<checkout folder>/client-<kind>.log,
+or <dataPath>/Logs/client-<kind>.log when that folder does not exist; the default data path is the
+one `exmod client` uses, <store>/data/<profile> (see `exmod help client`). Server logs live at
+<dataPath>/Logs/server-<kind>.log (default: .gamedata/server, the same default `exmod server` uses).
+Fails with the list of logs that do exist when the one asked for is not among them.
 
   -Kind      main (the default), debug, audit, chat, crash, or build
   -Lines     lines to print from the end (default: 200)

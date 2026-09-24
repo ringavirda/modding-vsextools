@@ -38,6 +38,17 @@
   (`<root>/<mod>/assets`, the exmods-legacy layout) instead of a `legacy/` subtree: blocktypes,
   asset roots and `domain:` textures resolve there, and a block in such a folder settles a code
   both sides declare toward the old side.
+- The client and its data live in the user store on every OS: `%LOCALAPPDATA%\exmod` on Windows,
+  `~/Library/Application Support/exmod` on macOS, `$XDG_DATA_HOME/exmod` (default
+  `~/.local/share/exmod`) on Linux. `exmod client` looks for the client in the store's
+  `game/<series>` before any `.game`, and runs it with data in `data/<profile>` and logs in
+  `data/<profile>/Logs/<repository folder>`, which `exmod logs client` reads;
+  `provision game -Kind client` installs there by default.
+- An `exmod.workspace.json` above a repository marks a workspace: its folder name is the data
+  profile, and a `.game` or `.dotnet` is provisioned at its root. Installs, `.dotnet` and
+  `.game/.cache` are found in the nearest folder from the repository upward that holds them, so
+  sibling repositories share them without symlinks. A `.dotnet` counts only when it holds the
+  dotnet muxer.
 
 ## [0.3.4] - 2026-09-15
 

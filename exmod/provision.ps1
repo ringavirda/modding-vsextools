@@ -1,14 +1,15 @@
-# Provisioning: the toolchain and the game, both fetched into the checkout rather than installed on
-# the machine. Everything here is safe to re-run; nothing is downloaded twice unless -Force says so.
+# Provisioning: the toolchain and the game, fetched into the workspace or the checkout, or for a
+# playable client into the user store, rather than installed on the machine. Everything here is safe
+# to re-run; nothing is downloaded twice unless -Force says so.
 #
 #   exmod setup                  the whole first run on a fresh clone
 #   exmod provision dotnet       a self-contained .NET with every runtime major the lanes need
-#   exmod provision game         a Vintage Story install under .game/
+#   exmod provision game         a Vintage Story install under .game/ or the user store
 
 #region provision dotnet
 
-# Builds a self-contained .NET under .dotnet so a fresh clone can run the tests without the modder
-# hand-installing .NET 7/8/10. Each Vintage Story version pins one major (net10=1.22, net8=1.21,
+# Builds a self-contained .NET in Get-ExmodDotnetDir (the nearest .dotnet holding a muxer, else one
+# under the provision root) so a fresh clone can run the tests without the modder hand-installing .NET 7/8/10. Each Vintage Story version pins one major (net10=1.22, net8=1.21,
 # net7=1.20) and will not roll forward across majors.
 #
 # The global dotnet muxer ignores DOTNET_ROOT, so extra runtimes are only visible when invoked through
@@ -17,7 +18,7 @@ function Invoke-ProvisionDotnet([string[]]$Argv) {
   $version = Get-Opt $Argv '-Version' 'latest'
   $force = Get-Flag $Argv '-Force'
 
-  $dotnetDir = Join-Path $RepoRoot '.dotnet'
+  $dotnetDir = Get-ExmodDotnetDir
   $channels = [ordered]@{ '1.22' = '10.0'; '1.21' = '8.0'; '1.20' = '7.0' }
   $sdkChannel = '10.0'
   $wanted = switch ($version) {
@@ -72,7 +73,7 @@ function Invoke-ProvisionDotnet([string[]]$Argv) {
   }
 
   if ($force -or -not (Test-Sdk $sdkChannel.Split('.')[0])) {
-    Write-Host "Installing the .NET $sdkChannel SDK into .dotnet ..."
+    Write-Host "Installing the .NET $sdkChannel SDK into $dotnetDir ..."
     Install-Dotnet @('-Channel', $sdkChannel, '-InstallDir', $dotnetDir)
   }
 
@@ -90,7 +91,7 @@ function Invoke-ProvisionDotnet([string[]]$Argv) {
     }
   }
 
-  Write-Host "Self-contained .NET ready in .dotnet for version(s): $($wanted -join ', ')"
+  Write-Host "Self-contained .NET ready in $dotnetDir for version(s): $($wanted -join ', ')"
 }
 
 #endregion
@@ -124,8 +125,10 @@ function Publicize-GameApi([string]$ApiDll) {
   }
 }
 
-# Provisions a Vintage Story install into .game/<slug> from the public CDN. No machine-wide install,
-# no admin. Idempotent.
+# Provisions a Vintage Story install from the public CDN. No machine-wide install, no admin.
+# Idempotent. Without -Dest a client goes to the user store's client slot (Get-ClientSlot) and a
+# server to <provision root>/.game/<slug>; downloads are cached in the nearest .game/.cache, else
+# <provision root>/.game/.cache.
 #
 #   -Kind server (default)  the dedicated-server archive, carrying every assembly the build and the
 #                           headless tests need. What CI and the day-to-day loop use.
@@ -136,8 +139,9 @@ function Publicize-GameApi([string]$ApiDll) {
 #
 # Each platform only ever fetches its own archive, so a Linux checkout never pulls Windows binaries.
 # "Superset" assumes the client at the default slot was built for the platform doing the provisioning;
-# when it was not (e.g. this slug's slot still holds a Windows client after a move to Linux/macOS), a
-# default -Dest is redirected to "<dest>-<kind>" rather than overwriting the client the owner plays from.
+# when it was not (e.g. <provision root>/.game/<slug> holds a Windows client on Linux or macOS), a
+# default -Dest is redirected to "<dest>-<kind>" beside it rather than overwriting the client the
+# owner plays from.
 function Invoke-ProvisionGame([string[]]$Argv) {
   $version = Get-Opt $Argv '-Version'
   $dest = Get-Opt $Argv '-Dest'
@@ -161,11 +165,14 @@ function Invoke-ProvisionGame([string[]]$Argv) {
 
   $slug = ($version -split '\.')[0..1] -join '.'
   $destGiven = [bool]$dest
-  if (-not $dest) { $dest = ".game/$slug" }
+  if (-not $dest) {
+    $dest = if ($kind -eq 'client') { Get-ClientSlot $slug } else { Join-Path (Get-ExmodProvisionRoot) ".game/$slug" }
+  }
   # An absolute -Dest is used as given; Join-Path would otherwise concatenate it onto the repo root
   # (an absolute second segment does not make Join-Path treat it as rooted).
   $destFull = if ([System.IO.Path]::IsPathRooted($dest)) { $dest } else { Join-Path $RepoRoot $dest }
-  $cacheDir = Join-Path $RepoRoot '.game/.cache'
+  $cacheDir = Find-ExmodAbove '.game/.cache'
+  if (-not $cacheDir) { $cacheDir = Join-Path (Get-ExmodProvisionRoot) '.game/.cache' }
   New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
 
   # Serialize concurrent provisions of the same slug, e.g. parallel MSBuild nodes auto-provisioning on
@@ -199,7 +206,7 @@ function Invoke-ProvisionGame([string[]]$Argv) {
       # plays from and must not be overwritten because it cannot run here; provision alongside it.
       Write-Host "The client at $dest was built for another platform - provisioning this platform's $kind at $dest-$kind instead."
       $dest = "$dest-$kind"
-      $destFull = Join-Path $RepoRoot $dest
+      $destFull = "$destFull-$kind"
       $apiMarker = Join-Path $destFull 'VintagestoryAPI.dll'
       $clientMarker = Join-Path $destFull 'Vintagestory.dll'
       $nativeMarker = Get-NativeMarker $destFull
@@ -266,8 +273,8 @@ function Invoke-ProvisionGame([string[]]$Argv) {
       $exe = Join-Path $cacheDir $name
       Get-Cached "$cdn/$name" $exe $name
 
-      # Every VS installer shares one Inno AppId, so installing into .game rewrites the single shared
-      # uninstall entry. Snapshot it and restore it verbatim afterwards; the .game client stays
+      # Every VS installer shares one Inno AppId, so installing into the slot rewrites the single shared
+      # uninstall entry. Snapshot it and restore it verbatim afterwards; the slot's client stays
       # unregistered, which is fine because launching never needs an Add/Remove-Programs entry.
       $appKey = '{70364653-036D-49B3-8B80-AF39665F29C1}_is1'
       $regKey = $null
@@ -351,17 +358,23 @@ exmod provision dotnet [-Version latest|all|1.22|1.21|1.20] [-Force]
 exmod provision game -Version <x.y[.z]> [-Kind server|client] [-Dest <path>] [-Force]
 exmod provision mods [-Configuration Debug]
 
-All three fetch into the checkout, never onto the machine, and all three are safe to re-run.
+None of them installs onto the machine, and all three are safe to re-run. The provision root is
+the nearest folder above the checkout holding exmod.workspace.json, else the checkout itself.
 
   dotnet   a self-contained SDK plus every runtime major the requested series need (net10 for 1.22,
-           net8 for 1.21, net7 for 1.20) under .dotnet/. Commands that need those runtimes drive
-           .dotnet/dotnet, because the global muxer ignores DOTNET_ROOT and cannot see them.
+           net8 for 1.21, net7 for 1.20) in the nearest .dotnet/ holding a dotnet muxer from the
+           checkout upward, else in a new one under the provision root. Commands that need those runtimes drive .dotnet/dotnet,
+           because the global muxer ignores DOTNET_ROOT and cannot see them.
 
-  game     a Vintage Story install under .game/<series>. -Kind server (the default) takes the
-           dedicated-server archive, which carries every assembly the build and the tests need and
-           needs no game licence; -Kind client takes the full client, to play in. A server request
-           never overwrites a client that can already serve - it lands in .game/<series>-server
-           instead. -Version takes a full patch (1.22.3) or a series (1.22, its latest patch).
+  game     a Vintage Story install. -Kind server (the default) takes the dedicated-server archive,
+           which carries every assembly the build and the tests need and needs no game licence, into
+           <provision root>/.game/<series>; a client there that can serve is kept, and one built for
+           another platform is left alone, the server landing in .game/<series>-server beside it.
+           -Kind client takes the full client, to play in, into the user store's game/<series>:
+           %LOCALAPPDATA%\exmod on Windows, ~/Library/Application Support/exmod on macOS,
+           $XDG_DATA_HOME/exmod (default ~/.local/share/exmod) on Linux. -Dest names another folder.
+           -Version takes a full patch (1.22.3) or a series (1.22, its latest patch). Downloads are
+           cached in the nearest .game/.cache, else <provision root>/.game/.cache.
 
   mods     every runtime dependency this repo does not build itself (game and this repo's own mods
            and samples never count): a workspace sibling's build output, else a cached extraction

@@ -51,14 +51,86 @@ $ExeSuffix = if ($OnWindows) { '.exe' } else { '' }
 # carries. A client built for another OS has Vintagestory.dll but not that library, so it cannot
 # run here.
 $PlatformSlot = if ($OnWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } else { 'linux' }
-# Where this platform's client for a series lives. On Windows it is a local folder outside the
-# checkout: a native library does not load from a network share, and a checkout under
-# \\wsl.localhost is one. Elsewhere it is a slot beside the shared default one.
-# Where the client keeps its data (settings, saves, logs). On Windows a local folder outside the
-# checkout, named for the repository: SQLite cannot lock a save file over a network share.
+
+# The nearest directory strictly above $RepoRoot holding exmod.workspace.json, the marker of a
+# workspace whose sibling repositories share one .game, one .dotnet and one data profile. $null for
+# a standalone clone; a marker in $RepoRoot itself does not count.
+function Get-ExmodWorkspaceRoot {
+  $dir = Split-Path $RepoRoot -Parent
+  while ($dir) {
+    if (Test-Path -LiteralPath (Join-Path $dir 'exmod.workspace.json') -PathType Leaf) { return $dir }
+    $parent = Split-Path $dir -Parent
+    if ($parent -eq $dir) { break }
+    $dir = $parent
+  }
+  return $null
+}
+
+# The full path <dir>/<Relative> for the nearest <dir> from $RepoRoot upward, $RepoRoot first, where
+# that file or folder exists; $null when no directory up to the filesystem root holds it.
+function Find-ExmodAbove([string]$Relative) {
+  $dir = $RepoRoot
+  while ($dir) {
+    $candidate = [System.IO.Path]::GetFullPath((Join-Path $dir $Relative))
+    if (Test-Path -LiteralPath $candidate) { return $candidate }
+    $parent = Split-Path $dir -Parent
+    if ($parent -eq $dir) { break }
+    $dir = $parent
+  }
+  return $null
+}
+
+# Where a fresh .game or .dotnet is provisioned: the workspace root inside a workspace, else
+# $RepoRoot.
+function Get-ExmodProvisionRoot {
+  $workspace = Get-ExmodWorkspaceRoot
+  if ($workspace) { return $workspace }
+  return $RepoRoot
+}
+
+# The per-user folder holding the runnable client and the game data, outside every checkout: a
+# native library does not load from a network share, SQLite cannot lock a save on one, and a
+# checkout under \\wsl.localhost is one. %LOCALAPPDATA%\exmod on Windows,
+# ~/Library/Application Support/exmod on macOS, $XDG_DATA_HOME/exmod on Linux, or
+# ~/.local/share/exmod when XDG_DATA_HOME is unset or empty.
+function Get-ExmodUserStore {
+  if ($OnWindows) { return Join-Path $env:LOCALAPPDATA 'exmod' }
+  if ($IsMacOS) { return Join-Path $HOME 'Library/Application Support/exmod' }
+  $base = if ($env:XDG_DATA_HOME) { $env:XDG_DATA_HOME } else { Join-Path $HOME '.local/share' }
+  return Join-Path $base 'exmod'
+}
+
+# The data profile's name: the workspace folder's name inside a workspace, so every repository and
+# worktree in it shares settings, saves and mod configs; else $RepoRoot's folder name.
+function Get-ExmodProfile {
+  $workspace = Get-ExmodWorkspaceRoot
+  return Split-Path ($workspace ? $workspace : $RepoRoot) -Leaf
+}
+
+# This OS's runnable client for series $Slug: <user store>/game/<slug>. The folder may not exist.
+function Get-ClientSlot([string]$Slug) {
+  return Join-Path (Get-ExmodUserStore) "game/$Slug"
+}
+
+# The client's data folder (settings, saves, mod configs): <user store>/data/<profile>. The folder
+# may not exist.
 function Get-ClientDataPath {
-  if ($OnWindows) { return Join-Path $env:LOCALAPPDATA "exmod/data/$(Split-Path $RepoRoot -Leaf)" }
-  return Join-Path $RepoRoot '.gamedata'
+  return Join-Path (Get-ExmodUserStore) "data/$(Get-ExmodProfile)"
+}
+
+# The client's log folder under $DataPath, one per repository so the runs of two repositories
+# sharing a profile keep separate logs: <DataPath>/Logs/<repository folder>.
+function Get-ClientLogPath([string]$DataPath) {
+  return Join-Path $DataPath "Logs/$(Split-Path $RepoRoot -Leaf)"
+}
+
+# The .dotnet folder to use and provision into: the nearest one from $RepoRoot upward holding a
+# dotnet muxer, else <provision root>/.dotnet, which may not exist yet. A .dotnet without the muxer
+# is passed over: the dotnet CLI keeps one of its own in the home folder and in the temp folder.
+function Get-ExmodDotnetDir {
+  $found = Find-ExmodAbove ".dotnet/dotnet$ExeSuffix"
+  if ($found) { return Split-Path $found -Parent }
+  return Join-Path (Get-ExmodProvisionRoot) '.dotnet'
 }
 
 # Whether a project's last build was another platform's: its MSBuild file list names paths in
@@ -74,10 +146,6 @@ function Test-ForeignBuildState([string]$ProjectDir) {
   return $false
 }
 
-function Get-ClientSlot([string]$Slug) {
-  if ($OnWindows) { return Join-Path $env:LOCALAPPDATA "exmod/game/$Slug" }
-  return ".game/$Slug-$PlatformSlot"
-}
 function Get-NativeMarker([string]$InstallDir) {
   $lib = if ($OnWindows) { 'Lib/e_sqlite3.dll' } elseif ($IsMacOS) { 'Lib/libe_sqlite3.dylib' } else { 'Lib/libe_sqlite3.so' }
   return Join-Path $InstallDir $lib
@@ -355,9 +423,9 @@ function Resolve-GameVersions([string]$Spec) {
 }
 
 # The dotnet muxer to drive for $Versions: the system one when it already has every runtime major
-# they need, otherwise the checkout's own. The global muxer ignores DOTNET_ROOT, so runtimes
-# provisioned into .dotnet are only visible through .dotnet/dotnet - which is what lets a machine
-# with only .NET 10 installed still run the 1.21 and 1.20 lanes.
+# they need, otherwise the one in Get-ExmodDotnetDir, provisioned first. The global muxer ignores
+# DOTNET_ROOT, so runtimes provisioned into .dotnet are only visible through .dotnet/dotnet - which
+# is what lets a machine with only .NET 10 installed still run the 1.21 and 1.20 lanes.
 function Resolve-DotnetHost([string[]]$Versions) {
   $needed = @($Versions | ForEach-Object { $GameRuntimeMajors[$_] } | Select-Object -Unique)
   $sysRuntimes = try { (& dotnet --list-runtimes 2>$null) -join "`n" } catch { '' }
@@ -365,31 +433,38 @@ function Resolve-DotnetHost([string[]]$Versions) {
   if ($missing.Count -eq 0) { return 'dotnet' }
   Write-Host "Missing .NET runtime major(s) system-wide: $($missing -join ', ') - provisioning a local .dotnet..."
   Invoke-ProvisionDotnet @('-Version', ($Versions.Count -eq 1 ? $Versions[0] : 'all'))
-  return (Join-Path $RepoRoot ".dotnet/dotnet$ExeSuffix")
+  return (Join-Path (Get-ExmodDotnetDir) "dotnet$ExeSuffix")
 }
 
-# A provisioned game install for $Version that can actually run here, preferring $Kind. A client
-# package is a superset of a server one, so both slots are searched before anything is downloaded.
-# Provisions one when neither answers, into a suffixed slot rather than over an install built for
-# another platform: that one is what the owner plays from, and replacing it is their call.
+# Every folder that may hold a $Kind install of series $Slug, in the order they are tried: this OS's
+# client slot in the user store, then the nearest .game/<slug>-<kind>, .game/<slug>-<platform> and
+# .game/<slug> holding the kind's entry assembly, each searched from $RepoRoot upward. A name found
+# nowhere is left out; the client slot is always listed, whether or not it exists.
+function Get-GameInstallCandidates([string]$Slug, [string]$Kind) {
+  $entry = if ($Kind -eq 'server') { 'VintagestoryServer.dll' } else { 'Vintagestory.dll' }
+  $out = @(Get-ClientSlot $Slug)
+  foreach ($name in @("$Slug-$Kind", "$Slug-$PlatformSlot", $Slug)) {
+    $hit = Find-ExmodAbove ".game/$name/$entry"
+    if ($hit) { $out += Split-Path $hit -Parent }
+  }
+  return $out
+}
+
+# A provisioned game install for $Version that can actually run here, preferring $Kind, from
+# Get-GameInstallCandidates. A client package is a superset of a server one, so the client slot is
+# searched even for a server. Provisions one when none answers, to provision game's default -Dest
+# for $Kind.
 function Resolve-GameInstall([string]$Version = $CurrentGameVersion, [string]$Kind = 'server') {
   if ($Kind -notin @('server', 'client')) { throw "Kind must be 'server' or 'client'." }
   $slug = ($Version -split '\.')[0..1] -join '.'
   $entry = if ($Kind -eq 'server') { 'VintagestoryServer.dll' } else { 'Vintagestory.dll' }
-  $candidates = @((Get-ClientSlot $slug), ".game/$slug-$Kind", ".game/$slug")
 
   # The entry assembly is in the archive for every platform; the native libraries beside it are not.
   # A package left over from another OS has the dll and none of them, and starts only far enough to
   # fail, so it does not count as an install here.
-  $usable = {
-    param([string]$Dir)
-    if (-not (Test-Path (Join-Path $Dir $entry))) { return $false }
-    return Test-Path (Get-NativeMarker $Dir)
-  }
   $find = {
-    foreach ($c in $candidates) {
-      $full = if ([System.IO.Path]::IsPathRooted($c)) { $c } else { Join-Path $RepoRoot $c }
-      if (& $usable $full) { return $full }
+    foreach ($c in (Get-GameInstallCandidates $slug $Kind)) {
+      if ((Test-Path (Join-Path $c $entry)) -and (Test-Path (Get-NativeMarker $c))) { return $c }
     }
     return $null
   }
@@ -403,7 +478,7 @@ function Resolve-GameInstall([string]$Version = $CurrentGameVersion, [string]$Ki
 
   $hit = & $find
   if (-not $hit) {
-    throw "Provisioning completed but no usable $Kind install was found under $($candidates -join ' or ')."
+    throw "Provisioning completed but no usable $Kind install was found in $(Get-ClientSlot $slug) or a .game/$slug above $RepoRoot."
   }
   return $hit
 }

@@ -234,7 +234,7 @@ function Invoke-Test([string[]]$Argv) {
   # coverage_gate.py. The gate floors track the current build, so this always uses the latest version.
   # -Filter does not apply here; the solution run is always whole.
   if ($coverage) {
-    $toolsDir = Join-Path $RepoRoot '.dotnet/tools'
+    $toolsDir = Join-Path (Get-ExmodDotnetDir) 'tools'
     & $dotnet tool install dotnet-coverage --tool-path $toolsDir 2>$null | Out-Null
     $dc = Join-Path $toolsDir "dotnet-coverage$ExeSuffix"
     $cov = Join-Path $RepoRoot 'coverage.xml'
@@ -435,7 +435,7 @@ writes the census when every assembly passed; a -Filter run neither reads nor wr
 #
 # `csharpier check` exits 1 on the finished result, so -Check formats and compares against git rather
 # than using the tool's own check mode.
-# The formatter, installed into the checkout's own tool folder when the machine has none - the same
+# The formatter, installed into .dotnet/tools (Get-ExmodDotnetDir) when the machine has none - the same
 # bootstrap scripts/exmod.sh does for pwsh, and for the same reason: a contributor should not have to
 # install anything by hand before the format gate will run.
 # Pinned so every checkout formats identically; a local install of another version is removed
@@ -443,7 +443,7 @@ writes the census when every assembly passed; a -Filter run neither reads nor wr
 $CSharpierVersion = '1.3.0'
 
 function Resolve-CSharpier() {
-  $toolsDir = Join-Path $RepoRoot '.dotnet/tools'
+  $toolsDir = Join-Path (Get-ExmodDotnetDir) 'tools'
   $local = Join-Path $toolsDir "csharpier$ExeSuffix"
   if (Test-Path $local) {
     $have = @(& $local --version 2>$null)[0]
