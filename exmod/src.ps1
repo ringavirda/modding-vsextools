@@ -185,6 +185,31 @@ function Assert-ExmodTestRun($Results, $Drops, [string]$Census) {
 # Every unfiltered run, -Coverage included, checks each assembly's test count against the census and
 # fails on a count below the recorded one; only an unfiltered run with every assembly green writes
 # the census. A -Filter run neither reads nor writes it: its counts are a subset.
+# The failures a dotnet test console log names, as { Name, Message }, pulled from the console
+# logger's own failure block: "  Failed <display name> [duration]", where the name is one token
+# or a theory row's token plus its argument list (Bar(x: 1, name: "a b")), followed a line or two
+# later by "  Error Message:" and the message itself on the next line. A test's own output line
+# such as "Failed to load asset [game:x]" is not a failure. Empty when nothing failed.
+function Get-ExmodTestFailures([string[]]$Lines) {
+  $failed = '^\s*Failed\s+(\S+?(\(.*\))?)\s+\[[^\[\]]*\]\s*$'
+  $failures = @()
+  for ($i = 0; $i -lt $Lines.Count; $i++) {
+    if ($Lines[$i] -match $failed) {
+      $name = $Matches[1]
+      $message = ''
+      for ($j = $i + 1; $j -lt $Lines.Count; $j++) {
+        if ($Lines[$j] -match $failed) { break }
+        if ($Lines[$j] -match '^\s*Error Message:\s*$') {
+          if ($j + 1 -lt $Lines.Count) { $message = $Lines[$j + 1].Trim() }
+          break
+        }
+      }
+      $failures += [pscustomobject]@{ Name = $name; Message = $message }
+    }
+  }
+  return $failures
+}
+
 function Invoke-Test([string[]]$Argv) {
   $positional = @(Get-Positional $Argv @('-Throttle', '-Filter') @('-Coverage', '-AcceptDrop'))
   $version = if ($positional.Count -gt 0) { $positional[0] } else { 'latest' }
@@ -337,25 +362,7 @@ function Invoke-Test([string[]]$Argv) {
       $line = 'zero tests discovered'
     }
 
-    # Pulled from the console logger's own failure block, so the summary can name what failed
-    # without anyone re-running dotnet test by hand: "  Failed <display name> [duration]", where a
-    # theory row's display name holds spaces (Bar(x: 1, name: "a b")), followed,
-    # a line or two later, by "  Error Message:" and the message itself on the next line.
-    $failures = @()
-    for ($i = 0; $i -lt $out.Count; $i++) {
-      if ($out[$i] -match '^\s*Failed\s+(.+?)\s+\[[^\[\]]*\]\s*$') {
-        $name = $Matches[1]
-        $message = ''
-        for ($j = $i + 1; $j -lt $out.Count; $j++) {
-          if ($out[$j] -match '^\s*Failed\s+.+?\s+\[[^\[\]]*\]\s*$') { break }
-          if ($out[$j] -match '^\s*Error Message:\s*$') {
-            if ($j + 1 -lt $out.Count) { $message = $out[$j + 1].Trim() }
-            break
-          }
-        }
-        $failures += [pscustomobject]@{ Name = $name; Message = $message }
-      }
-    }
+    $failures = @(Get-ExmodTestFailures $out)
 
     [pscustomobject]@{
       Name = "$($item.Version)/$($item.Project)"; Ok = $ok; Line = $line; Failures = $failures

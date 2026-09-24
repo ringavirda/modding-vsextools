@@ -10,17 +10,21 @@
   both counts; `-AcceptDrop` records the lower count, and `exmod check -AcceptDrop` passes it to the
   test step. A `-Filter` run neither reads nor writes the census.
 - `exmod test -Coverage` runs a side gate after the coverage floors: every block guarded by a
-  client-side test (`Side == EnumAppSide.Client`, `Side != EnumAppSide.Server` with client work in
-  its body, `IsClient`, and the code after a server-side early return) in the gated assemblies needs
-  a covered line in `coverage.xml` or an entry in `side-gate-allowlist.json` beside the floors file,
-  naming its file, member and reason. It prints `side gates: N client blocks, C covered, A allowed`
-  and fails naming each uncovered block's file and member, an entry with no reason, and an entry
-  that allows nothing.
+  client-side test (`Side == EnumAppSide.Client`, `Side != EnumAppSide.Server`, `IsClient`,
+  `is ICoreClientAPI`, `is not ICoreServerAPI`, the code after a server-side early return, and the
+  else of a server-side test) in the gated assemblies needs a covered line in `coverage.xml` or an
+  entry in `side-gate-allowlist.json` beside the floors file, naming its file, member and reason. A
+  client body that is only `return;`, `break;` or `continue;` is skipped; one returning a value
+  counts. It prints `side gates: N client blocks, C covered, A allowed` and fails naming each
+  uncovered block's file and member, an entry with no reason, an entry that allows nothing, a gated
+  source outside `obj/` missing from disk, and a run that finds no client block.
 
 ### Fixed
 
 - `exmod test` names a failing theory row whose display name holds spaces; the failure list missed
   it.
+- `exmod test` no longer reads a test's own output line such as `Failed to load asset [game:x]` as
+  a failure, nor ends the search for the previous failure's message there.
 
 ### Changed
 
