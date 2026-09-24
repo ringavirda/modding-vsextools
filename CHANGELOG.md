@@ -21,6 +21,8 @@
 
 ### Fixed
 
+- `exmod smoke` fails when `/exmod verify` prints no summary line, which it passed as a clean
+  verify while no loaded check had run.
 - `exmod test` names a failing theory row whose display name holds spaces; the failure list missed
   it.
 - `exmod test` no longer reads a test's own output line such as `Failed to load asset [game:x]` as

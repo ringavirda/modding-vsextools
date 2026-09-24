@@ -376,10 +376,11 @@ function Invoke-Smoke([string[]]$Argv) {
 
     $hasErrors = [bool](Select-String -Path $logPath -Pattern '\[Error\]|\[Fatal\]' -Quiet)
     $verifyMatch = [regex]::Match($log, '(\d+) check\(s\) run, (\d+) error\(s\) found\.')
-    $verifyErrors = if ($verifyMatch.Success) { [int]$verifyMatch.Groups[2].Value } else { 0 }
 
     Write-Host ""
     if ($hasErrors) { throw "Smoke failed: the server log holds [Error] or [Fatal] line(s)." }
+    if (-not $verifyMatch.Success) { throw "Smoke failed: /exmod verify printed no summary, so no loaded check ran." }
+    $verifyErrors = [int]$verifyMatch.Groups[2].Value
     if ($verifyErrors -gt 0) { throw "Smoke failed: /exmod verify reported $verifyErrors error(s)." }
     Write-Host "Smoke passed: server booted, verified clean and stopped."
   }
