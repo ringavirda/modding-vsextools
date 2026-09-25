@@ -18,6 +18,16 @@
   counts. It prints `side gates: N client blocks, C covered, A allowed` and fails naming each
   uncovered block's file and member, an entry with no reason, an entry that allows nothing, a gated
   source outside `obj/` missing from disk, and a run that finds no client block.
+- `exmod provision vsdbg [-Linux] [-DryRun]` installs vsdbg with Microsoft's GetVsDbg script into
+  the user store's `vsdbg/`: in WSL with interop the Windows one, into `%LOCALAPPDATA%\exmod\vsdbg`
+  through Windows' `pwsh.exe`, else `powershell.exe`; on Linux the Linux one. It is skipped when
+  the debugger is there, and on Windows and macOS it prints one line and installs nothing.
+- `exmod debug-adapter`, left out of the command list, is the debug adapter the generated launch
+  configurations' `linux` block starts through `pipeTransport`. In WSL with interop it runs Windows'
+  vsdbg and rewrites the launch request for the Windows client in Windows' store, other absolute
+  Linux paths becoming their `\\wsl.localhost` form, and registers the GPU preference and seeds
+  the client settings as `exmod client` does; elsewhere on Linux it runs the store's Linux vsdbg
+  and rewrites nothing. It writes only the debug protocol to stdout.
 
 ### Fixed
 
@@ -47,7 +57,10 @@
   is not read). `exmod client` looks for the client in the store's `game/<series>` before any
   `.game`, and runs it with data in `data/default` and logs in
   `data/default/Logs/<repository folder>`, which `exmod logs client` reads;
-  `provision game -Kind client` installs there by default.
+  `provision game -Kind client` installs there by default. In WSL with interop,
+  `provision game -Kind client` without `-Dest` installs the Windows client into Windows' store
+  through Windows' `pwsh.exe`; `-Linux` keeps the Linux store. `provision game -DryRun` prints
+  the folder it would install into and, from WSL, the Windows command, and installs nothing.
 - An `exmod.workspace.json` above a repository marks a workspace: a `.game` or `.dotnet` is
   provisioned at its root. Installs and `.game/.cache` are
   found in the nearest folder from the repository upward that holds them, so sibling repositories
@@ -58,15 +71,15 @@
   their series before any lookup, as the builds already did: `client`, `verify`, `smoke`, `pack`,
   `bundle` and the shape renders take it first.
 - WSL in both directions. On Windows, a checkout under `\\wsl.localhost\<distro>\` or
-  `\\wsl$\<distro>\` runs every command but `client`, `logs`, `help`, the machine commands and
-  `provision game -Kind client` inside that distro through `wsl.exe --exec`, so no shell reads the
-  arguments, and `client` stages there and
-  runs the Windows client from the store on the staged folder's share path. In WSL with interop,
-  `client` runs the Windows client from Windows' store on Windows' .NET, `-Provision` installs
-  it through Windows' `pwsh.exe`, and `logs client` reads Windows' store; `-Linux` keeps the Linux
-  client. `client -DryRun` prints the program, arguments and environment it would launch with,
-  and provisions nothing. On Windows, `client` for a checkout on a WSL share runs on Windows' own
-  .NET and stops naming the runtime when it is missing.
+  `\\wsl$\<distro>\` runs every command but `client`, `logs`, `help`, the machine commands,
+  `provision game -Kind client` and `provision vsdbg` inside that distro through `wsl.exe --exec`,
+  so no shell reads the arguments, and `client` stages there and runs the Windows client from the
+  store on the staged folder's share path. In WSL with interop, `client` runs the Windows client
+  from Windows' store on Windows' .NET, `-Provision` installs it through Windows' `pwsh.exe`, and
+  `logs client` reads Windows' store; `-Linux` keeps the Linux client. `client -DryRun` prints the
+  program, arguments and environment it would launch with, and provisions nothing. On Windows,
+  `client` for a checkout on a WSL share runs on Windows' own .NET and stops naming the runtime
+  when it is missing.
 - The Windows client runs on the high-performance GPU. On Windows and from WSL, `client` starts the
   install's `Vintagestory.exe` instead of `dotnet Vintagestory.dll` and registers `GpuPreference=2;`
   for that exe under `HKCU\Software\Microsoft\DirectX\UserGpuPreferences`, as does
@@ -76,14 +89,13 @@
   `client -DryRun` prints what it finds and would do as a `gpu:` line.
 - Generated launch configurations run the client from the user store on every OS (the
   `Vintagestory.exe` apphost on Windows) with `--dataPath` in the store's `data/default` and
-  `--logPath` in its `Logs/<workspace folder name>`, and map
-  `/exmod/<workspace folder name>/` back to the workspace folder through `sourceFileMap`. The
-  provision tasks run `provision game -Version <series> -Kind client` without `-Dest` on every OS,
-  naming the bare series as `client -Provision` does. No configuration sets `DOTNET_ROOT` and no
-  task provisions `.dotnet`: every series runs on the machine's .NET, and a legacy series'
-  launch-prep is `provision-game` then `stage-mods`. Both files end in a newline.
-- `exmod test -Coverage` builds with `-p:ExmodMapSourcePaths=false`, so the Debug path map exlib's
-  build targets apply stays off and `coverage.xml` names source files that exist.
+  `--logPath` in its `Logs/<workspace folder name>`; the `linux` block debugs through
+  `scripts/exmod.sh debug-adapter`, and each launch-prep runs `provision vsdbg` between
+  provisioning the client and staging. The provision tasks run
+  `provision game -Version <series> -Kind client` without `-Dest` on every OS, naming the bare
+  series as `client -Provision` does. No configuration sets `DOTNET_ROOT` and no task provisions
+  `.dotnet`: every series runs on the machine's .NET, and a legacy series' launch-prep is
+  `provision-game`, `provision-vsdbg`, then `stage-mods`. Both files end in a newline.
 - `provision game -Dest` takes a path as given only when it is fully qualified, and joins any other
   path onto the repository root.
 - `scripts/exmod.sh` looks for pwsh in the repository's `.dotnet/tools`, then in the workspace

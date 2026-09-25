@@ -80,11 +80,30 @@ machine
 |---|---|
 | `fix-registry` | repoint Windows' Vintage Story file association |
 
+## Launching and debugging
+
+`exmod client` runs the game client from the user store (`%LOCALAPPDATA%\exmod` on Windows,
+`~/Library/Application Support/exmod` on macOS, `~/.local/share/exmod` on Linux) with its data in
+the store's `data/default`. In WSL with interop it runs the Windows client from Windows' store;
+`-Linux` keeps the Linux one. `exmod help client` has the rest.
+
+The `.vscode/launch.json` of a generated repository runs the same client under the debugger. On
+Windows and macOS, F5 uses the C# extension's own vsdbg. On Linux, each configuration's `linux`
+block starts `scripts/exmod.sh debug-adapter` through a `pipeTransport` in place of vsdbg. In WSL
+with interop, a Remote-WSL window, the adapter starts Windows' vsdbg from
+`%LOCALAPPDATA%\exmod\vsdbg` and rewrites the launch request for the Windows client: the program
+and every path under the Linux store move to Windows' store, any other absolute Linux path becomes
+its `\\wsl.localhost` form, and the GPU preference and client settings are set as `exmod client`
+sets them. Elsewhere on Linux it starts `~/.local/share/exmod/vsdbg/vsdbg` and passes everything
+through. `exmod provision vsdbg`, which each launch-prep runs, installs the vsdbg the adapter needs.
+The adapter is left out of the command list; `exmod help debug-adapter` describes it.
+
 ## Layout
 
 ```
 exmod.ps1        the dispatcher: argument helpers, the manifest resolvers, command registration, help
-exmod/           one file per lifecycle stage: provision, new, scaffold, src, run, shapes, dist, windows
+exmod/           one file per lifecycle stage: provision, new, scaffold, src, run, debug, shapes, dist,
+                 windows
 wrappers/        the two launchers a consuming repository checks in
 scripts/         the launchers again, pointed at this checkout, so extools drives itself
 pack/            the packaging build (Cake Frosting), manifest-driven
