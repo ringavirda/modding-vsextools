@@ -418,7 +418,7 @@ class ProvisionVsdbgTests(unittest.TestCase):
         self.assertEqual(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"], calls[:4])
         command = calls[4]
         self.assertIn("Invoke-WebRequest -Uri 'https://aka.ms/getvsdbgps1'", command)
-        self.assertIn("-Version latest -RuntimeID win-x64 -InstallPath '" + WIN_STORE + r"\vsdbg'", command)
+        self.assertIn("-Version latest -RuntimeID win7-x64 -InstallPath '" + WIN_STORE + r"\vsdbg'", command)
 
     def test_the_windows_command_parses_in_powershell_with_a_quote_in_the_store(self):
         # Fails if the command handed to Windows' PowerShell has a syntax error, such as the quote in

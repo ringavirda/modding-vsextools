@@ -467,12 +467,13 @@ $GetVsDbgSh = 'https://aka.ms/getvsdbgsh'
 $GetVsDbgPs1 = 'https://aka.ms/getvsdbgps1'
 
 # Installs vsdbg, the debugger `exmod debug-adapter` starts, with Microsoft's GetVsDbg script. In
-# WSL with interop and without -Linux: win-x64 into Windows' <store>\vsdbg, run by Windows' pwsh.exe,
-# else powershell.exe, the script downloaded on the Windows side. Otherwise: into
-# <user store>/vsdbg through curl and bash. Skips with one line when the executable is there. On
-# Windows and macOS prints one line and returns. Stops with one line when Windows' store cannot be
-# read, Windows has neither PowerShell, or the install leaves no executable; exits with the
-# installer's exit code when it fails. -DryRun prints `dest: <folder>` and `run: <command>`.
+# WSL with interop and without -Linux: runtime id win7-x64 (the Windows build is published under no
+# other) into Windows' <store>\vsdbg, run by Windows' pwsh.exe, else powershell.exe, the script
+# downloaded on the Windows side. Otherwise: into <user store>/vsdbg through curl and bash. Skips
+# with one line when the executable is there. On Windows and macOS prints one line and returns.
+# Stops with one line when Windows' store cannot be read, Windows has neither PowerShell, or the
+# install leaves no executable; exits with the installer's exit code when it fails. -DryRun prints
+# `dest: <folder>` and `run: <command>`.
 function Invoke-ProvisionVsdbg([string[]]$Argv) {
   $dryRun = Get-Flag $Argv '-DryRun'
   if ($OnWindows -or $IsMacOS) {
@@ -493,7 +494,7 @@ function Invoke-ProvisionVsdbg([string[]]$Argv) {
       Stop-Client 'exmod: Windows has neither pwsh.exe nor powershell.exe on its PATH; install PowerShell 7 for Windows (winget install Microsoft.PowerShell) to provision vsdbg.'
     }
     $command = "`$s = Join-Path ([IO.Path]::GetTempPath()) 'GetVsDbg.ps1'; Invoke-WebRequest -Uri '$GetVsDbgPs1' -OutFile `$s -UseBasicParsing; " +
-      "& `$s -Version latest -RuntimeID win-x64 -InstallPath '$($dir.Replace("'", "''"))'; exit `$LASTEXITCODE"
+      "& `$s -Version latest -RuntimeID win7-x64 -InstallPath '$($dir.Replace("'", "''"))'; exit `$LASTEXITCODE"
     $shellArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $command)
     if ($dryRun) {
       Write-Host "dest: $dir"
