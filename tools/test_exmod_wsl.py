@@ -54,16 +54,19 @@ class ShareAndSideTests(unittest.TestCase):
             del os.environ["TEST_PATHS"]
         self.assertEqual(["archlinux|/home/me/src", "Ubuntu-24.04|/", "arch|/x y", "arch|/", "none", "none"], got)
 
-    def test_windows_side_commands_are_client_logs_machine_and_client_provisioning_only(self):
-        # Fails if provision is treated as one case, or a machine-group command is handed to WSL.
+    def test_windows_side_commands_are_client_logs_machine_and_client_and_vsdbg_provisioning_only(self):
+        # Fails if provision is treated as one case, a machine-group command is handed to WSL, or
+        # provision vsdbg is.
         got = self.json("ConvertTo-Json -Compress @("
                         "(Test-ExmodWindowsSideCommand 'client' @()), (Test-ExmodWindowsSideCommand 'logs' @()), "
                         "(Test-ExmodWindowsSideCommand 'fix-registry' @()), "
                         "(Test-ExmodWindowsSideCommand 'provision' @('game', '-Version', '1.22', '-Kind', 'client')), "
                         "(Test-ExmodWindowsSideCommand 'provision' @('game', '-Version', '1.22', '-Kind', 'server')), "
                         "(Test-ExmodWindowsSideCommand 'provision' @('game', '-Version', '1.22')), "
+                        "(Test-ExmodWindowsSideCommand 'provision' @('vsdbg')), "
+                        "(Test-ExmodWindowsSideCommand 'provision' @('dotnet')), "
                         "(Test-ExmodWindowsSideCommand 'stage' @()), (Test-ExmodWindowsSideCommand 'build' @()))")
-        self.assertEqual([True, True, True, True, False, False, False, False], got)
+        self.assertEqual([True, True, True, True, False, False, True, False, False, False], got)
 
     def test_the_hand_over_passes_every_argument_through_wsl_exec_unchanged(self):
         # Fails if the hand-over uses `--` instead of `--exec`, or drops an empty argument.
@@ -244,6 +247,55 @@ class WindowsClientFromWslTests(unittest.TestCase):
         self.assertEqual(1, code)
         self.assertEqual(f"exmod: provisioning completed but no usable Windows client was found in "
                          f"{self.win_store}\\game\\1.22.", lines[-1])
+
+    def provision_game(self, args, **env):
+        base = {"TEST_C": self.c, "LOCALAPPDATA": os.path.join(self.tmp, "local")}
+        base.update(env)
+        argv = ", ".join(f"'{a}'" for a in args)
+        return run(self.repo, STUBS + f"Invoke-ProvisionGame @({argv})", self.home, base)
+
+    def test_provision_game_client_dry_run_names_the_windows_slot_and_command(self):
+        # Fails if a client provision under interop goes to the Linux store, or its Windows command
+        # is not this tools checkout's provision game on this repository.
+        code, lines = self.provision_game(["-Version", "1.22", "-Kind", "client", "-DryRun"])
+        self.assertEqual(0, code, lines)
+        script = "\\\\wsl.localhost\\test" + os.path.join(ROOT, "exmod.ps1").replace("/", "\\")
+        repo = "\\\\wsl.localhost\\test" + self.repo.replace("/", "\\")
+        self.assertEqual([f"dest: {self.win_store}\\game\\1.22",
+                          f"run: pwsh.exe -NoProfile -ExecutionPolicy Bypass -File {script} -RepoRoot {repo} "
+                          "provision game -Version 1.22 -Kind client"], lines)
+
+    def test_provision_game_leaves_the_windows_store_for_server_dest_linux_or_no_interop(self):
+        # Fails if any one guard of the Windows branch is dropped: a server, a -Dest, -Linux or
+        # interop off each keeps the install on this side.
+        ws_game = os.path.join(self.ws, ".game", "1.22")
+        cases = [
+            (["-Version", "1.22", "-Kind", "server", "-DryRun"], {}, ws_game),
+            (["-Version", "1.22", "-Kind", "client", "-Dest", "/opt/vs", "-DryRun"], {}, "/opt/vs"),
+            (["-Version", "1.22", "-Kind", "client", "-Linux", "-DryRun"], {}, self.linux_slot),
+            (["-Version", "1.22", "-Kind", "client", "-DryRun"], {"TEST_INTEROP": "0"}, self.linux_slot),
+        ]
+        for args, env, dest in cases:
+            code, lines = self.provision_game(args, **env)
+            self.assertEqual((0, [f"dest: {dest}"]), (code, lines), args)
+
+    def test_provision_game_client_runs_windows_pwsh_with_force_passed_on(self):
+        # Fails if the WSL branch provisions on this side, or drops -Force on its way to Windows.
+        record = os.path.join(self.tmp, "calls.txt")
+        executable(os.path.join(self.c, "Program Files", "PowerShell", "7", "pwsh.exe"),
+                   f'printf "%s\\n" "$@" >> "{record}"\n')
+        code, lines = self.provision_game(["-Version", "1.22", "-Kind", "client", "-Force"])
+        self.assertEqual(0, code, lines)
+        with open(record) as f:
+            calls = f.read().splitlines()
+        self.assertEqual(["provision", "game", "-Version", "1.22", "-Kind", "client", "-Force"], calls[-7:])
+        self.assertIn("Provisioning a Windows client install for 1.22 ...", lines)
+
+    def test_provision_game_client_with_an_unreadable_windows_store_stops(self):
+        # Fails if the store check is dropped (the dry run then names a bare \game path).
+        code, lines = self.provision_game(["-Version", "1.22", "-Kind", "client", "-DryRun"], TEST_STORE="0")
+        self.assertEqual((1, ["exmod: Windows %LOCALAPPDATA% could not be read through cmd.exe; pass -Linux to "
+                              "provision the Linux client."]), (code, lines))
 
     def test_logs_reads_the_windows_store_under_interop(self):
         # Fails if logs client ignores the interop check or -Linux, or reads on past an unreadable store.

@@ -5,6 +5,7 @@
 #   exmod setup                  the whole first run on a fresh clone
 #   exmod provision dotnet       a self-contained .NET with every runtime major the lanes need
 #   exmod provision game         a Vintage Story install under .game/ or the user store
+#   exmod provision vsdbg        the debugger F5 runs on Linux and in WSL, into the user store
 
 #region provision dotnet
 
@@ -146,14 +147,38 @@ function Publicize-GameApi([string]$ApiDll) {
 # when it was not (e.g. <provision root>/.game/<slug> holds a Windows client on Linux or macOS), a
 # default -Dest is redirected to "<dest>-<kind>" beside it rather than overwriting the client the
 # owner plays from.
+#
+# In WSL with interop, a client without -Dest or -Linux is Windows' to run: it goes to Windows'
+# user store through Invoke-WindowsClientProvision. -DryRun prints `dest: <folder>` (from WSL,
+# `run: ` and the Windows command after it) and returns before resolving the patch, downloading or
+# writing anything.
 function Invoke-ProvisionGame([string[]]$Argv) {
   $version = Get-Opt $Argv '-Version'
   $dest = Get-Opt $Argv '-Dest'
   $kind = Get-Opt $Argv '-Kind' 'server'
   $force = Get-Flag $Argv '-Force'
+  $dryRun = Get-Flag $Argv '-DryRun'
 
   if (-not $version) { throw "provision game needs -Version <x.y[.z]>." }
   if ($kind -notin @('server', 'client')) { throw "-Kind must be 'server' or 'client'." }
+
+  if ($kind -eq 'client' -and -not $dest -and -not (Get-Flag $Argv '-Linux') -and (Test-WslInterop)) {
+    $store = Get-WindowsUserStore
+    if (-not $store) { Stop-Client 'exmod: Windows %LOCALAPPDATA% could not be read through cmd.exe; pass -Linux to provision the Linux client.' }
+    if ($dryRun) {
+      Write-Host "dest: $store\game\$(($version -split '\.')[0..1] -join '.')"
+      Write-Host "run: pwsh.exe $(@(Get-WindowsClientProvisionArgs $version -Force:$force) -join ' ')"
+      return
+    }
+    Invoke-WindowsClientProvision $version -Force:$force
+    return
+  }
+  if ($dryRun) {
+    $slug = ($version -split '\.')[0..1] -join '.'
+    $planned = if ($dest) { $dest } elseif ($kind -eq 'client') { Get-ClientSlot $slug } else { Join-Path (Get-ExmodProvisionRoot) ".game/$slug" }
+    Write-Host "dest: $(if ([System.IO.Path]::IsPathFullyQualified($planned)) { $planned } else { Join-Path $RepoRoot $planned })"
+    return
+  }
 
   # A major.minor series resolves to its newest stable patch; a full patch passes through. This lets
   # launch track the latest patch while the build's compatibility floor stays pinned at the series .0.
@@ -361,14 +386,17 @@ Add-ExmodCommand -Group start -Name provision -Summary 'fetch the toolchain, the
     'game' { Invoke-ProvisionGame $rest }
     'dotnet' { Invoke-ProvisionDotnet $rest }
     'mods' { Invoke-ProvisionMods $rest }
-    default { throw "provision needs 'game', 'dotnet' or 'mods'." }
+    'vsdbg' { Invoke-ProvisionVsdbg $rest }
+    default { throw "provision needs 'game', 'dotnet', 'mods' or 'vsdbg'." }
   }
 } -Detail @'
 exmod provision dotnet [-Version latest|all|1.22|1.21|1.20] [-Force]
-exmod provision game -Version <x.y[.z]> [-Kind server|client] [-Dest <path>] [-Force]
+exmod provision game -Version <x.y[.z]> [-Kind server|client] [-Dest <path>] [-Force] [-Linux]
+                     [-DryRun]
 exmod provision mods [-Configuration Debug]
+exmod provision vsdbg [-Linux] [-DryRun]
 
-None of them installs onto the machine, and all three are safe to re-run. The provision root is
+None of them installs onto the machine, and all four are safe to re-run. The provision root is
 the nearest folder above the checkout holding exmod.workspace.json, else the checkout itself.
 
   dotnet   a self-contained SDK plus every runtime major the requested series need (net10 for 1.22,
@@ -391,12 +419,24 @@ the nearest folder above the checkout holding exmod.workspace.json, else the che
            entry, and never changing a value that has one or is not text.
            -Version takes a full patch (1.22.3) or a series (1.22, its latest patch). Downloads are
            cached in the nearest .game/.cache, else <provision root>/.game/.cache.
+           In WSL with interop, -Kind client without -Dest installs the Windows client into
+           Windows' store (%LOCALAPPDATA%\exmod\game\<series>) by running this command in Windows'
+           pwsh.exe; -Linux keeps the Linux store. -DryRun prints the folder (dest: ) and, from
+           WSL, the Windows command (run: ), and installs nothing.
 
   mods     every runtime dependency this repo does not build itself (game and this repo's own mods
            and samples never count): a workspace sibling's build output, else a cached extraction
            under .exmod/mods/<id>, else a fresh download into it - exmod.json's depends.<id>.url or
            .github when named, else the ModDB API. Prints what it resolved and from where, or says
            every dependency is built in this repository when there is nothing to resolve.
+
+  vsdbg    the debugger the generated launch configurations run on Linux and in WSL, through
+           `exmod debug-adapter`, fetched with Microsoft's GetVsDbg script into the user store's
+           vsdbg/. In WSL with interop and without -Linux it is the Windows one, installed into
+           %LOCALAPPDATA%\exmod\vsdbg by Windows' pwsh.exe, else powershell.exe. Skipped when the
+           debugger is already there. On Windows and macOS it prints one line and installs nothing:
+           F5 there uses the C# extension's own debugger. -DryRun prints the folder (dest: ) and the
+           command that would install into it (run: ).
 '@
 
 #endregion
@@ -417,6 +457,70 @@ function Invoke-ProvisionMods([string[]]$Argv) {
   foreach ($d in $deps) {
     Write-Host ('{0}  {1,-10}  {2}' -f $d.Id.PadRight($width), $d.Version, $d.Path)
   }
+}
+
+#endregion
+
+#region provision vsdbg
+
+$GetVsDbgSh = 'https://aka.ms/getvsdbgsh'
+$GetVsDbgPs1 = 'https://aka.ms/getvsdbgps1'
+
+# Installs vsdbg, the debugger `exmod debug-adapter` starts, with Microsoft's GetVsDbg script. In
+# WSL with interop and without -Linux: win-x64 into Windows' <store>\vsdbg, run by Windows' pwsh.exe,
+# else powershell.exe, the script downloaded on the Windows side. Otherwise: into
+# <user store>/vsdbg through curl and bash. Skips with one line when the executable is there. On
+# Windows and macOS prints one line and returns. Stops with one line when Windows' store cannot be
+# read, Windows has neither PowerShell, or the install leaves no executable; exits with the
+# installer's exit code when it fails. -DryRun prints `dest: <folder>` and `run: <command>`.
+function Invoke-ProvisionVsdbg([string[]]$Argv) {
+  $dryRun = Get-Flag $Argv '-DryRun'
+  if ($OnWindows -or $IsMacOS) {
+    Write-Host "F5 on $($OnWindows ? 'Windows' : 'macOS') uses the C# extension's own debugger; nothing to provision."
+    return
+  }
+
+  if (-not (Get-Flag $Argv '-Linux') -and (Test-WslInterop)) {
+    $store = Get-WindowsUserStore
+    if (-not $store) { Stop-Client 'exmod: Windows %LOCALAPPDATA% could not be read through cmd.exe; pass -Linux to provision the Linux vsdbg.' }
+    $dir = "$store\vsdbg"
+    $exe = "$dir\vsdbg.exe"
+    $installed = { Test-Path (Convert-WslPath $exe) }
+    if (& $installed) { Write-Host "vsdbg already at $exe"; return }
+    $shell = Get-WindowsProgram 'pwsh.exe'
+    if (-not $shell) { $shell = Get-WindowsProgram 'powershell.exe' }
+    if (-not $shell) {
+      Stop-Client 'exmod: Windows has neither pwsh.exe nor powershell.exe on its PATH; install PowerShell 7 for Windows (winget install Microsoft.PowerShell) to provision vsdbg.'
+    }
+    $command = "`$s = Join-Path ([IO.Path]::GetTempPath()) 'GetVsDbg.ps1'; Invoke-WebRequest -Uri '$GetVsDbgPs1' -OutFile `$s -UseBasicParsing; " +
+      "& `$s -Version latest -RuntimeID win-x64 -InstallPath '$($dir.Replace("'", "''"))'; exit `$LASTEXITCODE"
+    $shellArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $command)
+    if ($dryRun) {
+      Write-Host "dest: $dir"
+      Write-Host "run: $shell $($shellArgs -join ' ')"
+      return
+    }
+    Write-Host "Installing the Windows vsdbg into $dir ..."
+    & (Convert-WslPath $shell) @shellArgs | Out-Host
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    if (-not (& $installed)) { Stop-Client "exmod: GetVsDbg completed but left no vsdbg.exe in $dir." }
+    Write-Host "vsdbg installed at $exe"
+    return
+  }
+
+  $dir = Join-Path (Get-ExmodUserStore) 'vsdbg'
+  $exe = Join-Path $dir 'vsdbg'
+  if (Test-Path $exe) { Write-Host "vsdbg already at $exe"; return }
+  if ($dryRun) {
+    Write-Host "dest: $dir"
+    Write-Host "run: curl -sSL $GetVsDbgSh | bash /dev/stdin -v latest -l '$dir'"
+    return
+  }
+  Write-Host "Installing vsdbg into $dir ..."
+  & bash -c 'set -o pipefail; curl -sSL "$1" | bash /dev/stdin -v latest -l "$2"' exmod-provision-vsdbg $GetVsDbgSh $dir | Out-Host
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  if (-not (Test-Path $exe)) { Stop-Client "exmod: GetVsDbg completed but left no vsdbg in $dir." }
+  Write-Host "vsdbg installed at $exe"
 }
 
 #endregion

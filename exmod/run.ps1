@@ -139,14 +139,37 @@ function Stop-Client([string]$Message) {
   exit 1
 }
 
+# The pwsh.exe arguments that run this tools checkout's `provision game -Version $Version -Kind
+# client` on Windows against this repository, the script and the repository named by their Windows
+# paths; -Force is passed on. WSL only.
+function Get-WindowsClientProvisionArgs([string]$Version, [switch]$Force) {
+  $provisionArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Convert-WslPath -ToWindows (Join-Path $ToolsRoot 'exmod.ps1')),
+    '-RepoRoot', (Convert-WslPath -ToWindows $RepoRoot), 'provision', 'game', '-Version', $Version, '-Kind', 'client')
+  if ($Force) { $provisionArgs += '-Force' }
+  return $provisionArgs
+}
+
+# Installs the Windows client for $Version into Windows' user store by running
+# Get-WindowsClientProvisionArgs in Windows' pwsh.exe, its output passed to the host. Stops with one
+# line when Windows has no pwsh.exe, and exits with the provision's exit code when it fails. WSL only.
+function Invoke-WindowsClientProvision([string]$Version, [switch]$Force) {
+  $pwshWin = Get-WindowsProgram 'pwsh.exe'
+  if (-not $pwshWin) {
+    Stop-Client 'exmod: Windows has no pwsh.exe on its PATH; install PowerShell 7 for Windows (winget install Microsoft.PowerShell) to provision the Windows client.'
+  }
+  Write-Host "Provisioning a Windows client install for $Version ..."
+  & (Convert-WslPath $pwshWin) @(Get-WindowsClientProvisionArgs $Version -Force:$Force) | Out-Host
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
 # `client` from a WSL distro with interop: the Windows client's Vintagestory.exe from Windows' user
 # store, on Windows' .NET runtime, on data and logs in that store's data/default, with the mods
 # built and staged on the Linux side and passed as their \\wsl.localhost path. Registers the
 # high-performance GPU for that exe before the launch (Register-ClientGpuPreference). Stops with one
 # line when Windows has no readable %LOCALAPPDATA%, no dotnet, or no client and -Provision is not
-# given; with -Provision a missing client is installed by this tools checkout's provision game run
-# in Windows' pwsh.exe, and a missing pwsh.exe stops it the same way. $DataOpt is a Windows path or
-# a Linux one. Exits with the game's exit code; returns after printing under -DryRun.
+# given; with -Provision a missing client is installed by Invoke-WindowsClientProvision, and a
+# missing pwsh.exe stops it the same way. $DataOpt is a Windows path or a Linux one. Exits with the
+# game's exit code; returns after printing under -DryRun.
 function Invoke-WindowsClientFromWsl([string]$Version, [string]$Configuration, [string]$ModsOpt,
   [bool]$NoBuild, [string]$DataOpt, [bool]$Provision, [bool]$DryRun) {
   $store = Get-WindowsUserStore
@@ -160,20 +183,12 @@ function Invoke-WindowsClientFromWsl([string]$Version, [string]$Configuration, [
   $slotLinux = Convert-WslPath $slot
   $usable = { (Test-Path (Join-Path $slotLinux 'Vintagestory.exe')) -and (Test-Path (Join-Path $slotLinux 'Lib/e_sqlite3.dll')) }
   if (-not (& $usable)) {
-    $script = Convert-WslPath -ToWindows (Join-Path $ToolsRoot 'exmod.ps1')
-    $repo = Convert-WslPath -ToWindows $RepoRoot
-    $provisionArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $script, '-RepoRoot', $repo,
-      'provision', 'game', '-Version', $Version, '-Kind', 'client')
     if (-not $Provision -or $DryRun) {
+      $script = Convert-WslPath -ToWindows (Join-Path $ToolsRoot 'exmod.ps1')
+      $repo = Convert-WslPath -ToWindows $RepoRoot
       Stop-Client "exmod: no Windows client for $Version in $slot. Provision one with: exmod client -Provision, or on Windows: pwsh.exe -NoProfile -ExecutionPolicy Bypass -File '$script' -RepoRoot '$repo' provision game -Version $Version -Kind client"
     }
-    $pwshWin = Get-WindowsProgram 'pwsh.exe'
-    if (-not $pwshWin) {
-      Stop-Client 'exmod: Windows has no pwsh.exe on its PATH; install PowerShell 7 for Windows (winget install Microsoft.PowerShell) to provision the Windows client.'
-    }
-    Write-Host "Provisioning a Windows client install for $Version ..."
-    & (Convert-WslPath $pwshWin) @provisionArgs | Out-Host
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    Invoke-WindowsClientProvision $Version
     if (-not (& $usable)) { Stop-Client "exmod: provisioning completed but no usable Windows client was found in $slot." }
   }
 

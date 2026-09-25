@@ -808,14 +808,16 @@ function Get-WslShare([string]$Path) {
 }
 
 # Whether $Command with $Argv runs on Windows for a checkout on a WSL share instead of being handed
-# to the distro: client, logs, help, every machine-group command, and provision game -Kind client,
-# which installs into the Windows user store. Aliases resolve to their command first.
+# to the distro: client, logs, help, every machine-group command, provision game -Kind client, which
+# installs into the Windows user store, and provision vsdbg, which Windows leaves to the C#
+# extension. Aliases resolve to their command first.
 function Test-ExmodWindowsSideCommand([string]$Command, [string[]]$Argv = @()) {
   $cmd = Resolve-ExmodCommand $Command
   $name = if ($cmd) { $cmd.Name } else { $Command }
   if ($name -in @('client', 'logs', 'help')) { return $true }
   if ($cmd -and $cmd.Group -eq 'machine') { return $true }
   if ($name -eq 'provision') {
+    if (@($Argv)[0] -eq 'vsdbg') { return $true }
     return (@($Argv)[0] -eq 'game') -and ((Get-Opt $Argv '-Kind' 'server') -eq 'client')
   }
   return $false
