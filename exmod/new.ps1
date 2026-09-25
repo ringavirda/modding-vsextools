@@ -317,8 +317,9 @@ $depLines
 # on (the Windows apphost, so a GPU preference registered for it applies), with data in the store's
 # data/default (the profile `exmod client` uses), logs in its Logs/<workspace folder name> and the
 # mods staged in $ModsDir. No OS block sets DOTNET_ROOT: every series runs on the .NET installed on
-# the machine. Sources built with the /exmod/<workspace folder name>/ path map resolve through
-# sourceFileMap.
+# the machine. The linux block's pipeTransport starts the checkout's `scripts/exmod.sh
+# debug-adapter` in place of vsdbg: in WSL with interop it runs the Windows client from Windows'
+# store under Windows' vsdbg, elsewhere on Linux the Linux client under the store's vsdbg.
 function New-VsCodeLaunchConfig([string]$Name, [string]$PreLaunchTask, [string]$Slug, [string]$ModsDir) {
   $stores = [ordered]@{
     linux   = '${env:HOME}/.local/share/exmod'
@@ -343,7 +344,16 @@ function New-VsCodeLaunchConfig([string]$Name, [string]$PreLaunchTask, [string]$
 $(& $argLines $stores.linux '        ')
       ],
       "cwd": "`${workspaceFolder}",
-      "linux": { "env": { "WAYLAND_DISPLAY": "none" } },
+      "linux": {
+        "env": { "WAYLAND_DISPLAY": "none" },
+        "pipeTransport": {
+          "pipeCwd": "`${workspaceFolder}",
+          "pipeProgram": "bash",
+          "pipeArgs": ["`${workspaceFolder}/scripts/exmod.sh", "debug-adapter"],
+          "debuggerPath": "vsdbg",
+          "quoteArgs": false
+        }
+      },
       "osx": {
         "program": "$($stores.osx)/game/$Slug/Vintagestory.dll",
         "args": [
@@ -356,7 +366,6 @@ $(& $argLines $stores.osx '          ')
 $(& $argLines $stores.windows '          ')
         ]
       },
-      "sourceFileMap": { "/exmod/`${workspaceFolderBasename}/": "`${workspaceFolder}/" },
       "stopAtEntry": false,
       "console": "internalConsole",
       "requireExactSource": false
@@ -366,18 +375,18 @@ $(& $argLines $stores.windows '          ')
 
 # .vscode/tasks.json and launch.json for a generated repository, in the shape every family repo
 # hand-carries (see exmods/.vscode): a build/pack/test task per game series in $Series, the
-# launch-prep composites (provision-game + stage-mods) each feeds, and one launch configuration per
-# series, named after $RepoName. $Series[0] is the current ("latest") series - the same convention
-# exmod.ps1's own $GameTfms table uses - and every series after it is legacy. A provision task names
-# the bare series, which installs its newest patch as `exmod client -Provision` does. Both files are
-# written whole with LF line ends and a final newline; the caller decides whether that means creating
-# them once or rewriting them on every run.
+# launch-prep composites (provision-game, provision-vsdbg for the debug adapter, stage-mods) each
+# feeds, and one launch configuration per series, named after $RepoName. $Series[0] is the current
+# ("latest") series - the same convention exmod.ps1's own $GameTfms table uses - and every series
+# after it is legacy. A provision task names the bare series, which installs its newest patch as
+# `exmod client -Provision` does. Both files are written whole with LF line ends and a final
+# newline; the caller decides whether that means creating them once or rewriting them on every run.
 function Write-ExmodVsCode([string]$Dest, [string]$RepoName, [string[]]$Series) {
   $latest = $Series[0]
   $legacy = @($Series | Select-Object -Skip 1)
 
   $tasks = [System.Collections.Generic.List[string]]::new()
-  $tasks.Add((New-VsCodeDependsTask "launch-prep (latest)" @("provision-game ($latest)", 'stage-mods (latest)')))
+  $tasks.Add((New-VsCodeDependsTask "launch-prep (latest)" @("provision-game ($latest)", 'provision-vsdbg', 'stage-mods (latest)')))
   $tasks.Add((New-VsCodeTask 'stage-mods (latest)' @('stage')))
   $tasks.Add((New-VsCodeTask 'Publish mods' @('pack')))
 
@@ -395,6 +404,7 @@ function Write-ExmodVsCode([string]$Dest, [string]$RepoName, [string[]]$Series) 
   }
   $tasks.Add((New-VsCodeTask 'Test: all versions (parallel)' @('test', 'all') '{ "kind": "test", "isDefault": true }'))
   $tasks.Add((New-VsCodeTask "provision-game ($latest)" @('provision', 'game', '-Version', $latest, '-Kind', 'client')))
+  $tasks.Add((New-VsCodeTask 'provision-vsdbg' @('provision', 'vsdbg')))
 
   if ($legacy.Count -gt 0) {
     $legacyComment = @'
@@ -406,7 +416,7 @@ function Write-ExmodVsCode([string]$Dest, [string]$RepoName, [string[]]$Series) 
 '@
     $legacyTasks = [System.Collections.Generic.List[string]]::new()
     foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeTask "provision-game ($s)" @('provision', 'game', '-Version', $s, '-Kind', 'client'))) }
-    foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeDependsTask "launch-prep ($s)" @("provision-game ($s)", "stage-mods ($s)"))) }
+    foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeDependsTask "launch-prep ($s)" @("provision-game ($s)", 'provision-vsdbg', "stage-mods ($s)"))) }
     foreach ($s in $legacy) { $legacyTasks.Add((New-VsCodeTask "stage-mods ($s)" @('stage', '-Version', $s))) }
     $tasks.Add("`n$legacyComment`n" + ($legacyTasks -join ",`n"))
   }
@@ -701,8 +711,10 @@ checkout cannot load its native libraries; `~/.local/share/exmod` on Linux;
 it) and stage the mods first, and one launch configuration per series that
 boots the game with them loaded - opening this repo in VS Code and hitting F5 does the same thing
 `bash scripts/exmod.sh build latest && exmod stage && exmod client` would, with the game's own log
-in the debug console. On Linux the game runs on X11 (GLFW's Wayland backend cannot place the
-cursor); a GPU driver that hangs the game is bypassed with `exmod client -Software`, or the same
+in the debug console. On Linux, F5 debugs through `scripts/exmod.sh debug-adapter` and the vsdbg
+launch-prep installs into the user store; in a Remote-WSL window it runs the Windows client and its
+data from `%LOCALAPPDATA%\exmod` under Windows' vsdbg. On Linux the game runs on X11 (GLFW's
+Wayland backend cannot place the cursor); a GPU driver that hangs the game is bypassed with `exmod client -Software`, or the same
 two variables in the launch configuration's `env` (`LIBGL_ALWAYS_SOFTWARE=1`,
 `GALLIUM_DRIVER=llvmpipe`).
 

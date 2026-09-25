@@ -97,12 +97,25 @@ class TemplateTests(unittest.TestCase):
                     "--addModPath", f"${{workspaceFolder}}/{mods}",
                 ], args, (label, name))
 
-    def test_every_configuration_maps_the_path_map_prefix_back_to_the_workspace_folder(self):
-        # Fails if a configuration drops sourceFileMap or maps another prefix.
+    def test_no_configuration_maps_source_paths(self):
+        # Fails if any configuration keeps a sourceFileMap.
+        self.assertNotIn(b"sourceFileMap", self.raw["launch.json"])
+
+    def test_only_the_linux_block_debugs_through_the_checkouts_debug_adapter(self):
+        # Fails if the linux block loses its pipeTransport or starts anything but `bash
+        # scripts/exmod.sh debug-adapter` in the workspace folder, or the top level, osx or windows
+        # carries one (Windows and macOS then lose the C# extension's own debugger).
         self.assertEqual(2, len(self.launch["configurations"]))
         for config in self.launch["configurations"]:
-            self.assertEqual({"/exmod/${workspaceFolderBasename}/": "${workspaceFolder}/"},
-                             config.get("sourceFileMap"), config["name"])
+            self.assertEqual({
+                "pipeCwd": "${workspaceFolder}",
+                "pipeProgram": "bash",
+                "pipeArgs": ["${workspaceFolder}/scripts/exmod.sh", "debug-adapter"],
+                "debuggerPath": "vsdbg",
+                "quoteArgs": False,
+            }, config["linux"].get("pipeTransport"), config["name"])
+            for where in (config, config["osx"], config["windows"]):
+                self.assertNotIn("pipeTransport", where, config["name"])
 
     def test_linux_runs_on_x11(self):
         # Fails if the linux block loses WAYLAND_DISPLAY=none.
@@ -110,15 +123,24 @@ class TemplateTests(unittest.TestCase):
             self.assertEqual("none", config["linux"]["env"]["WAYLAND_DISPLAY"], config["name"])
 
     def test_no_launch_sets_dotnet_root_and_no_task_provisions_dotnet(self):
-        # Fails if any configuration sets DOTNET_ROOT, a provision-dotnet task is emitted, or a legacy
-        # launch-prep runs anything but provision-game then stage-mods.
+        # Fails if any configuration sets DOTNET_ROOT, or a provision-dotnet task is emitted.
         for name, raw in self.raw.items():
             self.assertNotIn(b"DOTNET_ROOT", raw, name)
             self.assertNotIn(b"provision-dotnet", raw, name)
         for task in self.tasks["tasks"]:
             self.assertNotIn("dotnet", task.get("args", []), task["label"])
+
+    def test_every_launch_prep_provisions_vsdbg_between_the_client_and_staging(self):
+        # Fails if a launch-prep drops provision-vsdbg, runs it out of that order, or the task does
+        # not run `provision vsdbg` on every OS.
         tasks = {t["label"]: t for t in self.tasks["tasks"]}
-        self.assertEqual(["provision-game (1.21)", "stage-mods (1.21)"], tasks["launch-prep (1.21)"]["dependsOn"])
+        self.assertEqual(["provision-game (1.22)", "provision-vsdbg", "stage-mods (latest)"],
+                         tasks["launch-prep (latest)"]["dependsOn"])
+        self.assertEqual(["provision-game (1.21)", "provision-vsdbg", "stage-mods (1.21)"],
+                         tasks["launch-prep (1.21)"]["dependsOn"])
+        task = tasks["provision-vsdbg"]
+        self.assertEqual(["${workspaceFolder}/scripts/exmod.sh", "provision", "vsdbg"], task["args"])
+        self.assertEqual(["provision", "vsdbg"], task["windows"]["args"][-2:])
 
     def test_every_provision_task_passes_the_bare_series(self):
         # Fails if a legacy provision task names a patch, such as "1.21.0" for series 1.21.
