@@ -40,7 +40,7 @@ function Update-WindowsLaunch([System.Text.Json.Nodes.JsonObject]$Launch, [strin
     $Launch['program'] = [System.Text.Json.Nodes.JsonValue]::Create([string]$programWin)
   }
   if ($clientExe) {
-    $Launch['cwd'] = [System.Text.Json.Nodes.JsonValue]::Create([string](Split-Path $clientExe -Parent))
+    $Launch['cwd'] = [System.Text.Json.Nodes.JsonValue]::Create($clientExe.Substring(0, $clientExe.LastIndexOf('\')))
   }
   elseif (& $string $Launch['cwd']) {
     $Launch['cwd'] = [System.Text.Json.Nodes.JsonValue]::Create([string](ConvertTo-WindowsLaunchPath "$($Launch['cwd'])" $WinStore))
