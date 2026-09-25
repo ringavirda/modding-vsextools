@@ -9,7 +9,8 @@
 #
 # This file is the dispatcher: the argument helpers and resolvers every command shares, and the
 # registry they register themselves in. The commands live one file per stage under scripts/exmod/ -
-# provision, src, run, dist, windows - and each of those opens with the list of commands it owns.
+# provision, src, run, debug, dist, windows - and each of those opens with the list of commands it
+# owns.
 #
 #   exmod                   the command list, grouped
 #   exmod help <command>    one command in detail
@@ -733,7 +734,8 @@ $Script:ExmodGroups = [ordered]@{
 }
 
 # Registers one command. Summary is its line in the grouped list; Detail is what `exmod help <name>`
-# prints; Action receives the arguments after the command name as a string array.
+# prints; Action receives the arguments after the command name as a string array. -Hidden leaves it
+# out of the grouped list; `exmod help <name>` still prints its Detail.
 function Add-ExmodCommand {
   param(
     [Parameter(Mandatory)][string]$Group,
@@ -741,7 +743,8 @@ function Add-ExmodCommand {
     [Parameter(Mandatory)][string]$Summary,
     [Parameter(Mandatory)][string]$Detail,
     [Parameter(Mandatory)][scriptblock]$Action,
-    [string[]]$Alias = @()
+    [string[]]$Alias = @(),
+    [switch]$Hidden
   )
   if (-not $Script:ExmodGroups.Contains($Group)) { throw "Unknown command group '$Group'." }
   $Script:ExmodCommands[$Name] = [pscustomobject]@{
@@ -751,6 +754,7 @@ function Add-ExmodCommand {
     Detail  = $Detail.Trim()
     Action  = $Action
     Alias   = $Alias
+    Hidden  = [bool]$Hidden
   }
 }
 
@@ -781,9 +785,10 @@ function Show-ExmodHelp([string]$Name) {
   Write-Host 'exmod - every task in this repo, from a fresh clone to a tagged release.'
   Write-Host ''
   Write-Host '  exmod <command> [arguments]        exmod help <command> for one in detail'
-  $width = ($Script:ExmodCommands.Values | ForEach-Object { $_.Name.Length } | Measure-Object -Maximum).Maximum
+  $listed = @($Script:ExmodCommands.Values | Where-Object { -not $_.Hidden })
+  $width = ($listed | ForEach-Object { $_.Name.Length } | Measure-Object -Maximum).Maximum
   foreach ($group in $Script:ExmodGroups.Keys) {
-    $members = @($Script:ExmodCommands.Values | Where-Object { $_.Group -eq $group })
+    $members = @($listed | Where-Object { $_.Group -eq $group })
     if (-not $members) { continue }
     Write-Host ''
     Write-Host $Script:ExmodGroups[$group] -ForegroundColor Cyan
@@ -850,9 +855,10 @@ function Convert-WslPath([string]$Path, [switch]$ToWindows) {
 
 # The first line cmd.exe prints for $Line on Windows, CR trimmed, or $null when it prints nothing,
 # fails, or cmd.exe cannot be started. cmd.exe's warning about a Linux working directory goes to
-# stderr and is dropped. WSL only.
+# stderr and is dropped. cmd.exe gets an empty stdin: interop hands a Windows program this process's
+# stdin otherwise, and it reads what it finds there. WSL only.
 function Invoke-WindowsCmd([string]$Line) {
-  $out = @(try { & cmd.exe /c $Line 2>$null } catch { })
+  $out = @(try { $null | & cmd.exe /c $Line 2>$null } catch { })
   if ($LASTEXITCODE -ne 0 -or -not $out) { return $null }
   $first = "$($out[0])".TrimEnd("`r").Trim()
   return ($first ? $first : $null)
@@ -888,11 +894,11 @@ $HighPerformanceGpu = 'GpuPreference=2;'
 # kept; one without gets $HighPerformanceGpu appended, its other entries kept and a `;` put before
 # it when the value lacks a trailing one, and is written back as REG_SZ. A value of another type is
 # kept with one warning. Reads and writes through the HKCU: drive on Windows and through reg.exe
-# from WSL with interop. Prints one line when it writes; a registry that cannot be read or written
-# prints a warning and returns, since the game still runs without a preference. -DryRun writes
-# nothing and prints `gpu: <value>` when the value holds a preference, `gpu: <value>, would append
-# GpuPreference=2;` when it does not, and `gpu: none, would register GpuPreference=2;` when there
-# is none.
+# from WSL with interop, which gets an empty stdin as cmd.exe does in Invoke-WindowsCmd. Prints one
+# line when it writes; a registry that cannot be read or written prints a warning and returns, since
+# the game still runs without a preference. -DryRun writes nothing and prints `gpu: <value>` when
+# the value holds a preference, `gpu: <value>, would append GpuPreference=2;` when it does not, and
+# `gpu: none, would register GpuPreference=2;` when there is none.
 function Register-ClientGpuPreference([string]$ExePath, [switch]$DryRun) {
   $drivePath = "HKCU:\$($GpuPreferencesKey.Substring(5))"
   $exists = $false
@@ -904,7 +910,7 @@ function Register-ClientGpuPreference([string]$ExePath, [switch]$DryRun) {
       $exists = $null -ne $current
     }
     else {
-      $out = @(& reg.exe query $GpuPreferencesKey /v $ExePath 2>$null)
+      $out = @($null | & reg.exe query $GpuPreferencesKey /v $ExePath 2>$null)
       $exists = $LASTEXITCODE -eq 0
       if ($exists) {
         $line = $out | Where-Object { "$_" -match '\s{4}REG_[A-Z_]+' } | Select-Object -First 1
@@ -936,7 +942,7 @@ function Register-ClientGpuPreference([string]$ExePath, [switch]$DryRun) {
       New-ItemProperty -LiteralPath $drivePath -Name $ExePath -Value $value -PropertyType String -Force | Out-Null
     }
     else {
-      & reg.exe add $GpuPreferencesKey /v $ExePath /t REG_SZ /d $value /f *> $null
+      $null | & reg.exe add $GpuPreferencesKey /v $ExePath /t REG_SZ /d $value /f *> $null
       if ($LASTEXITCODE -ne 0) { throw "reg.exe add exited with $LASTEXITCODE." }
     }
   }
@@ -953,7 +959,7 @@ function Register-ClientGpuPreference([string]$ExePath, [switch]$DryRun) {
 # and their Add-ExmodCommand calls run before dispatch. A file that is not there is skipped rather
 # than fatal: another repo copies this dispatcher with only the stages it wants (see
 # templates/ci/tests.yml), and here a missing one shows up as a missing command in `exmod`.
-foreach ($module in @('provision', 'new', 'scaffold', 'src', 'run', 'shapes', 'dist', 'windows')) {
+foreach ($module in @('provision', 'new', 'scaffold', 'src', 'run', 'debug', 'shapes', 'dist', 'windows')) {
   $path = Join-Path $PSScriptRoot "exmod/$module.ps1"
   if (Test-Path $path) { . $path }
 }
