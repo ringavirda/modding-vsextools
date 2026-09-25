@@ -173,19 +173,20 @@ class RelayTests(unittest.TestCase):
         self.assertEqual(WIN_STORE + r"\game\1.22\Vintagestory.exe", self.rewritten()["arguments"]["program"])
 
     def test_store_arguments_move_to_windows_store_and_workspace_paths_become_unc(self):
-        # Fails if an argument under the Linux store is sent through wslpath instead of moved to the
-        # Windows store, a workspace path is left as a Linux path, or a non-path argument changes.
+        # Fails if an argument under the Linux store is not the same path under the Windows store, a
+        # workspace path is left as a Linux path, or a non-path argument changes.
         unc = "\\\\wsl.localhost\\test" + self.repo.replace("/", "\\")
         self.assertEqual(["--tracelog", "--dataPath", WIN_STORE + r"\data\default",
                           "--logPath", WIN_STORE + r"\data\default\Logs\repo",
                           "--addModPath", unc + r"\bin\Mods"], self.rewritten()["arguments"]["args"])
 
-    def test_cwd_becomes_unc_wayland_leaves_and_the_rest_is_kept(self):
-        # Fails if cwd is left as a Linux path, WAYLAND_DISPLAY is kept or the rest of env dropped, or
-        # any other launch field or the message's own fields change.
+    def test_the_client_runs_from_its_folder_wayland_leaves_and_the_rest_is_kept(self):
+        # Fails if cwd is left as the Linux workspace path or becomes its UNC path instead of the
+        # client's folder, WAYLAND_DISPLAY is kept or the rest of env dropped, or any other launch
+        # field or the message's own fields change.
         launch = self.rewritten()
         want = launch_request(self.store, self.repo)
-        self.assertEqual("\\\\wsl.localhost\\test" + self.repo.replace("/", "\\"), launch["arguments"].pop("cwd"))
+        self.assertEqual(WIN_STORE + r"\game\1.22", launch["arguments"].pop("cwd"))
         self.assertEqual({"KEEP": "1"}, launch["arguments"].pop("env"))
         for key in ("cwd", "env", "program", "args"):
             want["arguments"].pop(key)
@@ -193,9 +194,8 @@ class RelayTests(unittest.TestCase):
         self.assertEqual(want, launch)
 
     def test_split_and_batched_messages_reach_the_adapter_whole_and_in_order(self):
-        # Fails if a read that ends mid-message is sent on before the rest arrives (the launch then
-        # goes out unrewritten), or only the first message of a read is taken (the last is lost at
-        # the end of input).
+        # Fails if a read that ends mid-message is sent on before the rest arrives, or only the first
+        # message of a read is taken.
         s = self.sessions["on"]
         self.assertNotIn(b"Vintagestory.dll", s.record)
         self.assertTrue(s.record.startswith(INITIALIZE), s.record)
@@ -214,14 +214,14 @@ class RelayTests(unittest.TestCase):
         self.assertTrue(os.path.isfile(settings))
 
     def test_adapter_bytes_reach_stdout_unchanged_and_alone(self):
-        # Fails if the adapter's output is decoded as text (the 0xff byte is lost), buffered past
-        # the end, or anything else is written to stdout, in either mode.
+        # Fails if the adapter's output is decoded as text, buffered past the end, or anything else
+        # is written to stdout, in either mode.
         for name, s in self.sessions.items():
             self.assertEqual(CANNED, s.out, (name, s.err))
             self.assertEqual(0, s.code, (name, s.err))
 
     def test_trailing_arguments_are_not_passed_to_the_adapter(self):
-        # Fails if the command's arguments reach vsdbg, which then gets two debugger paths.
+        # Fails if the command's arguments reach vsdbg.
         for name, s in self.sessions.items():
             self.assertEqual(["--interpreter=vscode"], s.argv, name)
 
@@ -305,7 +305,7 @@ class AdapterLookupTests(unittest.TestCase):
         self.assertLess(time.time() - started, 30)
 
     def test_an_unreadable_windows_store_stops_on_stderr(self):
-        # Fails if the adapter goes on without Windows' store (the paths then start with a backslash).
+        # Fails if the adapter goes on without Windows' store.
         s = self.session(TEST_STORE="0")
         self.assertEqual((1, b""), (s.code, s.out), s.err)
         self.assertEqual("exmod debug-adapter: Windows %LOCALAPPDATA% could not be read through cmd.exe.",
@@ -451,7 +451,7 @@ class ProvisionVsdbgTests(unittest.TestCase):
                         lines)
 
     def test_without_either_powershell_it_stops_naming_powershell(self):
-        # Fails if the missing-shell check is dropped (the command then runs a $null program).
+        # Fails if the missing-shell check is dropped.
         code, lines = self.provision([], TEST_PWSH="0", TEST_POWERSHELL="0")
         self.assertEqual(1, code)
         self.assertEqual(["exmod: Windows has neither pwsh.exe nor powershell.exe on its PATH; install PowerShell 7 "

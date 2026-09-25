@@ -24,8 +24,9 @@ function ConvertTo-WindowsLaunchPath([string]$Path, [string]$WinStore) {
 
 # Rewrites the arguments of a debug-protocol launch request, in place, to start the Windows client
 # from $WinStore, Windows' user store: a program <Linux store>/game/<series>/Vintagestory.dll becomes
-# $WinStore\game\<series>\Vintagestory.exe, and the program otherwise, each string argument and cwd
-# go through ConvertTo-WindowsLaunchPath; env.WAYLAND_DISPLAY is removed. Then, as `exmod client`
+# $WinStore\game\<series>\Vintagestory.exe with that folder as cwd, as the game's own launcher starts
+# it; any other program, each string argument and any other cwd go through
+# ConvertTo-WindowsLaunchPath; env.WAYLAND_DISPLAY is removed. Then, as `exmod client`
 # does, registers the high-performance GPU for that Vintagestory.exe and seeds the settings of the
 # folder after --dataPath, their output sent to stderr.
 function Update-WindowsLaunch([System.Text.Json.Nodes.JsonObject]$Launch, [string]$WinStore) {
@@ -38,7 +39,10 @@ function Update-WindowsLaunch([System.Text.Json.Nodes.JsonObject]$Launch, [strin
     else { ConvertTo-WindowsLaunchPath $program $WinStore }
     $Launch['program'] = [System.Text.Json.Nodes.JsonValue]::Create([string]$programWin)
   }
-  if (& $string $Launch['cwd']) {
+  if ($clientExe) {
+    $Launch['cwd'] = [System.Text.Json.Nodes.JsonValue]::Create([string](Split-Path $clientExe -Parent))
+  }
+  elseif (& $string $Launch['cwd']) {
     $Launch['cwd'] = [System.Text.Json.Nodes.JsonValue]::Create([string](ConvertTo-WindowsLaunchPath "$($Launch['cwd'])" $WinStore))
   }
   $dataWin = $null
@@ -183,7 +187,7 @@ diagnostics go to stderr. Arguments are ignored: the C# extension appends `<debu
 In WSL with interop it starts Windows' vsdbg from %LOCALAPPDATA%\exmod\vsdbg and passes every
 message through unchanged but the launch request, which it rewrites for the Windows client: the
 program <Linux store>/game/<series>/Vintagestory.dll becomes the Windows store's
-game\<series>\Vintagestory.exe; each argument and the cwd under the Linux store
+game\<series>\Vintagestory.exe, run from that folder; each argument under the Linux store
 (~/.local/share/exmod) becomes the same path under the Windows store, and any other absolute Linux
 path its \\wsl.localhost path; WAYLAND_DISPLAY leaves the environment. Before that launch it
 registers the high-performance GPU for the exe and seeds a fresh --dataPath folder's settings, as
