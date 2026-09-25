@@ -74,8 +74,9 @@ try { Invoke-Test @('-Coverage') } catch { }
 @unittest.skipUnless(PWSH, "pwsh not found")
 @unittest.skipIf(sys.platform == "win32", "the dotnet-coverage stub is a shell script")
 class CoverageRunTests(unittest.TestCase):
-    def test_the_coverage_run_builds_with_source_paths_unmapped(self):
-        # Fails if -Coverage drops -p:ExmodMapSourcePaths=false from its dotnet test line.
+    def test_the_coverage_run_collects_over_one_plain_debug_test_of_the_solution(self):
+        # Fails if -Coverage adds a property to its dotnet test line, such as the dropped
+        # -p:ExmodMapSourcePaths=false, or tests another configuration or project.
         assert PWSH
         with tempfile.TemporaryDirectory() as d:
             repo = os.path.join(d, "repo")
@@ -89,7 +90,7 @@ class CoverageRunTests(unittest.TestCase):
                                  capture_output=True, text=True).stdout
         args = [l[len("coverage-arg: "):] for l in out.splitlines() if l.startswith("coverage-arg: ")]
         self.assertEqual(["collect", "-f", "cobertura", "-o", os.path.join(repo, "coverage.xml"),
-                          'stub-dotnet test "demo.sln" -c Debug --nologo -p:ExmodMapSourcePaths=false'],
+                          'stub-dotnet test "demo.sln" -c Debug --nologo'],
                          args, out)
 
 
