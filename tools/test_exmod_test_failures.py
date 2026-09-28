@@ -94,5 +94,61 @@ class CoverageRunTests(unittest.TestCase):
                          args, out)
 
 
+# Invoke-Test all -Filter x over one test project on every series, with a dotnet stub whose test run
+# appends "start <tfm>" and "end <tfm>" to $env:TEST_ORDER, the current series' run holding for 2 s
+# in between.
+WAVES = r"""
+$Manifest = [pscustomobject]@{ series = @('1.22', '1.21', '1.20') }
+$CurrentGameVersion = '1.22'
+function Resolve-DotnetHost { $env:TEST_STUB }
+function Get-ExmodTestProjects {
+  [ordered]@{ a = [pscustomobject]@{ Project = 'A.Tests'; Proj = 'a.csproj'; Series = $Manifest.series } }
+}
+Invoke-Test @('all', '-Filter', 'x')
+"""
+
+STUB = """#!/bin/sh
+[ "$1" = test ] || exit 0
+echo "start $4" >> "$TEST_ORDER"
+[ "$4" = net10.0 ] && sleep 2
+echo "end $4" >> "$TEST_ORDER"
+echo "Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1"
+"""
+
+
+@unittest.skipUnless(PWSH, "pwsh not found")
+@unittest.skipIf(sys.platform == "win32", "the dotnet stub is a shell script")
+class GoldenWriteOrderTests(unittest.TestCase):
+    def run_all(self, write):
+        assert PWSH
+        with tempfile.TemporaryDirectory() as d:
+            repo = os.path.join(d, "repo")
+            touch(os.path.join(repo, "exmod.json"), "{}")
+            stub = os.path.join(d, "dotnet")
+            touch(stub, STUB)
+            os.chmod(stub, os.stat(stub).st_mode | stat.S_IEXEC)
+            order = os.path.join(d, "order.log")
+            env = exmod_env(os.path.join(d, "local"), TEST_REPO=repo, TEST_STUB=stub, TEST_ORDER=order)
+            env.pop("EXLIB_WRITE_GOLDENS", None)
+            if write:
+                env["EXLIB_WRITE_GOLDENS"] = "1"
+            out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", exmod_script(WAVES)],
+                                 env=env, capture_output=True, text=True).stdout
+            with open(order) as f:
+                return f.read().split(), out
+
+    def test_a_golden_write_runs_the_older_series_after_the_current_series_has_finished(self):
+        # Fails if a golden write starts every lane at once: an older series' write would then read
+        # the shared goldens while the current series' write rewrites them.
+        lines, out = self.run_all(write=True)
+        self.assertEqual(["start", "net10.0", "end", "net10.0"], lines[:4], out)
+        self.assertIn("EXLIB_WRITE_GOLDENS is set: the 1.22 lanes run first", out)
+
+    def test_any_other_run_starts_every_lane_at_once(self):
+        # Fails if the lanes run one series after another when no golden write is asked for.
+        lines, out = self.run_all(write=False)
+        self.assertEqual(["end", "net10.0"], lines[-2:], out)
+        self.assertNotIn("EXLIB_WRITE_GOLDENS is set", out)
+
 if __name__ == "__main__":
     unittest.main()

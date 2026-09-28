@@ -210,6 +210,13 @@ function Get-ExmodTestFailures([string[]]$Lines) {
   return $failures
 }
 
+# The wave a lane of <Version> runs in: 0, or 1 for an older series while EXLIB_WRITE_GOLDENS is set.
+# A golden write on an older series compares against the shared goldens the current series' write
+# rewrites, so it starts only once every current-series lane has finished.
+function Get-ExmodTestWave([string]$Version) {
+  if ($env:EXLIB_WRITE_GOLDENS -and $Version -ne $CurrentGameVersion) { 1 } else { 0 }
+}
+
 function Invoke-Test([string[]]$Argv) {
   $positional = @(Get-Positional $Argv @('-Throttle', '-Filter') @('-Coverage', '-AcceptDrop'))
   $version = if ($positional.Count -gt 0) { $positional[0] } else { 'latest' }
@@ -322,54 +329,60 @@ function Invoke-Test([string[]]$Argv) {
     $item | Add-Member -NotePropertyName BuildOk -NotePropertyValue ($LASTEXITCODE -eq 0) -PassThru
   }
 
+  $waves = @($built | ForEach-Object { Get-ExmodTestWave $_.Version } | Sort-Object -Unique)
+  if ($waves.Count -gt 1) {
+    Write-Host "EXLIB_WRITE_GOLDENS is set: the $CurrentGameVersion lanes run first, the older series after them."
+  }
   Write-Host "Running tests in parallel..."
   # A -Parallel runspace sees none of this script's functions; the parser goes in as its text.
   $failuresFn = ${function:Get-ExmodTestFailures}.ToString()
-  $results = $built | ForEach-Object -ThrottleLimit $throttle -Parallel {
-    $dotnet = $using:dotnet
-    $filter = $using:filter
-    ${function:Get-ExmodTestFailures} = $using:failuresFn
-    $item = $_
-    if (-not $item.BuildOk) {
-      return [pscustomobject]@{ Name = "$($item.Version)/$($item.Project)"; Ok = $false; Line = 'build failed'; Total = $null }
-    }
-    $testArgs = @('test', $item.Proj, '-f', $item.Tfm, '--no-build', '--nologo')
-    if ($filter) { $testArgs += @('--filter', $filter) }
-    if ($item.Legacy) { $testArgs += '-p:Legacy=true' }
-    $out = & $dotnet @testArgs 2>&1
-    $ok = ($LASTEXITCODE -eq 0)
-    $line = ($out | Select-String -Pattern 'Passed!|Failed!|error' | Select-Object -Last 1)
-
-    # The exit code is not enough. An assembly that fails to load during discovery prints
-    # "No test is available in ..." and exits 0 with no summary line, so the run reads as a blank PASS
-    # while every test in the suite has silently vanished. Treat a missing summary as the failure it is.
-    $total = ($out | Select-String -Pattern 'Total:\s*(\d+)' -AllMatches |
-      ForEach-Object { $_.Matches } | Select-Object -Last 1)
-    if (-not $total) {
-      # Under a filter, a suite holding nothing that matches is the ordinary case - the filter names a
-      # class that lives in one project of three - so it reports zero rather than failing. Without one,
-      # a missing summary is the failure it looks like: an assembly that fails to load during discovery
-      # prints "No test is available in ..." and exits 0 with no summary line, so the run would
-      # otherwise read as a blank PASS while every test in the suite had silently vanished.
-      if ($filter -and $ok) {
-        $line = 'no test matched the filter'
+  $results = foreach ($wave in $waves) {
+    $built | Where-Object { (Get-ExmodTestWave $_.Version) -eq $wave } | ForEach-Object -ThrottleLimit $throttle -Parallel {
+      $dotnet = $using:dotnet
+      $filter = $using:filter
+      ${function:Get-ExmodTestFailures} = $using:failuresFn
+      $item = $_
+      if (-not $item.BuildOk) {
+        return [pscustomobject]@{ Name = "$($item.Version)/$($item.Project)"; Ok = $false; Line = 'build failed'; Total = $null }
       }
-      else {
+      $testArgs = @('test', $item.Proj, '-f', $item.Tfm, '--no-build', '--nologo')
+      if ($filter) { $testArgs += @('--filter', $filter) }
+      if ($item.Legacy) { $testArgs += '-p:Legacy=true' }
+      $out = & $dotnet @testArgs 2>&1
+      $ok = ($LASTEXITCODE -eq 0)
+      $line = ($out | Select-String -Pattern 'Passed!|Failed!|error' | Select-Object -Last 1)
+
+      # The exit code is not enough. An assembly that fails to load during discovery prints
+      # "No test is available in ..." and exits 0 with no summary line, so the run reads as a blank PASS
+      # while every test in the suite has silently vanished. Treat a missing summary as the failure it is.
+      $total = ($out | Select-String -Pattern 'Total:\s*(\d+)' -AllMatches |
+        ForEach-Object { $_.Matches } | Select-Object -Last 1)
+      if (-not $total) {
+        # Under a filter, a suite holding nothing that matches is the ordinary case - the filter names a
+        # class that lives in one project of three - so it reports zero rather than failing. Without one,
+        # a missing summary is the failure it looks like: an assembly that fails to load during discovery
+        # prints "No test is available in ..." and exits 0 with no summary line, so the run would
+        # otherwise read as a blank PASS while every test in the suite had silently vanished.
+        if ($filter -and $ok) {
+          $line = 'no test matched the filter'
+        }
+        else {
+          $ok = $false
+          $line = 'NO TEST SUMMARY - the assembly discovered no tests (a type-load failure during ' +
+          'discovery does this and still exits 0).'
+        }
+      }
+      elseif (-not $filter -and [int]$total.Groups[1].Value -eq 0) {
         $ok = $false
-        $line = 'NO TEST SUMMARY - the assembly discovered no tests (a type-load failure during ' +
-        'discovery does this and still exits 0).'
+        $line = 'zero tests discovered'
       }
-    }
-    elseif (-not $filter -and [int]$total.Groups[1].Value -eq 0) {
-      $ok = $false
-      $line = 'zero tests discovered'
-    }
 
-    $failures = @(Get-ExmodTestFailures $out)
+      $failures = @(Get-ExmodTestFailures $out)
 
-    [pscustomobject]@{
-      Name = "$($item.Version)/$($item.Project)"; Ok = $ok; Line = $line; Failures = $failures
-      Total = if ($total) { [int]$total.Groups[1].Value } else { $null }
+      [pscustomobject]@{
+        Name = "$($item.Version)/$($item.Project)"; Ok = $ok; Line = $line; Failures = $failures
+        Total = if ($total) { [int]$total.Groups[1].Value } else { $null }
+      }
     }
   }
 
@@ -417,6 +430,9 @@ projects and building them at once races on the same intermediate assemblies.
               client-guarded block needs a covered line or an entry in side-gate-allowlist.json
               beside the floors file
   -AcceptDrop record a test count below the census instead of failing on it
+
+With EXLIB_WRITE_GOLDENS set, the current series' lanes run first and the older series' after them:
+an older series' golden write compares against the shared goldens the current series' write rewrites.
 
 The census, .exmod/census/<branch>.json, holds each assembly's last green test count per series.
 An unfiltered run fails on an assembly that discovers no tests and on a count below the census, and
