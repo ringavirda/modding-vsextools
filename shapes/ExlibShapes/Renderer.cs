@@ -629,7 +629,8 @@ public static class Renderer {
   /// world unit, textured with <paramref name="textures"/> (resolved from the shape's own path
   /// when null), posed by <paramref name="poses"/> when given, with back faces culled unless
   /// <paramref name="cull"/> is false, a floor grid unless <paramref name="grid"/> is false, face
-  /// outlines unless <paramref name="edges"/> is false, and every path in
+  /// outlines unless <paramref name="edges"/> is false, every pixel nothing was drawn on left
+  /// fully transparent with no floor grid when <paramref name="transparent"/> is true, and every path in
   /// <paramref name="highlight"/> outlined in <see cref="HighlightColor"/> regardless of depth.
   /// A pixel the model encloses that no face covers is filled with <see cref="Interior"/>, so a
   /// hole the view looks straight through does not show the paper behind it.
@@ -645,7 +646,8 @@ public static class Renderer {
     IReadOnlySet<string>? only = null,
     TextureSet? textures = null,
     int margin = 2,
-    bool edges = true
+    bool edges = true,
+    bool transparent = false
   ) {
     textures ??= TextureSet.ForShape(
       shape,
@@ -693,7 +695,7 @@ public static class Renderer {
         SKAlphaType.Unpremul
       );
       using (var canvas = new SKCanvas(empty))
-        canvas.Clear(Background);
+        canvas.Clear(transparent ? SKColors.Transparent : Background);
       return empty;
     }
 
@@ -782,7 +784,7 @@ public static class Renderer {
           );
         }
 
-    if (grid) {
+    if (grid && !transparent) {
       Dictionary<
         string,
         ((double X, double Y, double Z) Lo, (double X, double Y, double Z) Hi)
@@ -840,15 +842,20 @@ public static class Renderer {
     );
     for (int y = 0; y < height; y++)
       for (int x = 0; x < width; x++)
-        bmp.SetPixel(
-          x,
-          y,
-          new SKColor(
-            (byte)Math.Clamp((int)colorBuf[y, x, 0], 0, 255),
-            (byte)Math.Clamp((int)colorBuf[y, x, 1], 0, 255),
-            (byte)Math.Clamp((int)colorBuf[y, x, 2], 0, 255)
-          )
+      {
+        var color = new SKColor(
+          (byte)Math.Clamp((int)colorBuf[y, x, 0], 0, 255),
+          (byte)Math.Clamp((int)colorBuf[y, x, 1], 0, 255),
+          (byte)Math.Clamp((int)colorBuf[y, x, 2], 0, 255)
         );
+        bool bare =
+          transparent
+          && double.IsNegativeInfinity(zBuf[y, x])
+          && color.Red == Background.Red
+          && color.Green == Background.Green
+          && color.Blue == Background.Blue;
+        bmp.SetPixel(x, y, bare ? SKColors.Transparent : color);
+      }
     return bmp;
   }
 

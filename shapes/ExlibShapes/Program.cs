@@ -374,7 +374,7 @@ internal static class Program {
       args,
       "usage: exlib-shapes block FILE --out DIR [--variant CODE] "
         + "[--views iso,north,east,south,west,up] [--angle N] [--full] [--ppu N] "
-        + "[--selective PATTERN,...] [--roots PATH...] [--game PATH]"
+        + "[--selective PATTERN,...] [--transparent] [--roots PATH...] [--game PATH]"
     );
     string outDir =
       OptOf(flags, "--out") ?? throw new UsageException("--out is required");
@@ -384,6 +384,7 @@ internal static class Program {
       ? int.Parse(a, CultureInfo.InvariantCulture)
       : null;
     bool full = FlagOf(flags, "--full");
+    bool transparent = FlagOf(flags, "--transparent");
     int ppu = int.Parse(
       OptOf(flags, "--ppu") ?? "24",
       CultureInfo.InvariantCulture
@@ -413,7 +414,8 @@ internal static class Program {
       ppu,
       angle,
       full,
-      selective
+      selective,
+      transparent
     );
 
     foreach (JToken written in (JArray)manifest["files"]!)

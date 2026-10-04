@@ -95,7 +95,7 @@ also printed to stderr as the run happens).
 
 ```
 exlib-shapes block FILE --out DIR [--variant CODE] [--views iso,north,east,south,west,up]
-  [--angle N] [--full] [--ppu N] [--selective PATTERN,...] [--roots PATH...] [--game PATH]
+  [--angle N] [--full] [--ppu N] [--selective PATTERN,...] [--transparent] [--roots PATH...] [--game PATH]
 ```
 
 Renders one variant of `FILE` the way the game draws it in the world: its own shape file under the
@@ -106,7 +106,8 @@ drawn at its presentation facing, or as its first variant when the family has no
 `--views` defaults to `iso,north,east,south,west,up`, one `<stem>-<view>.png` each; `--ppu` is
 pixels per shape unit (default 24). `--selective` is a comma-separated list of `selectiveElements`
 patterns applied on top of the shape entry's own list, when it carries one: an element needs both
-to draw, so `--selective` only ever narrows what the entry already shows. A family declaring a
+to draw, so `--selective` only ever narrows what the entry already shows. `--transparent` leaves
+the ground transparent and draws no floor grid, the PNGs keeping their alpha. A family declaring a
 footprint (`fillerOffsets`) also gets `<stem>-footprint.svg`, the plan of the principal and the
 cells it reserves, the principal marked, drawn in the same frame as the pictures.
 

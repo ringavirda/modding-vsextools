@@ -86,6 +86,57 @@ public class RendererTests {
     Assert.True(AllBackground(downImg));
   }
 
+  private static LoadedShape Pinion() =>
+    ShapeFile.Load(FixturePath.Of("items/machined/item-shaped-gearpinion.json"));
+
+  [Fact]
+  public void Opaque_render_has_a_background_ground_and_a_floor_grid() {
+    LoadedShape shape = Pinion();
+    View iso = Renderer.NamedViews["iso"];
+    using SKBitmap gridded = Renderer.Render(shape, iso, ppu: 8);
+    using SKBitmap bare = Renderer.Render(shape, iso, ppu: 8, grid: false);
+
+    Assert.Equal(Renderer.Background, gridded.GetPixel(0, 0));
+    for (int y = 0; y < gridded.Height; y++)
+      for (int x = 0; x < gridded.Width; x++)
+        Assert.Equal(255, gridded.GetPixel(x, y).Alpha);
+    Assert.Contains(
+      Enumerable.Range(0, gridded.Width * gridded.Height),
+      i => gridded.GetPixel(i % gridded.Width, i / gridded.Width)
+        != bare.GetPixel(i % gridded.Width, i / gridded.Width)
+    );
+  }
+
+  [Fact]
+  public void Transparent_render_clears_the_ground_and_draws_no_grid() {
+    LoadedShape shape = Pinion();
+    View iso = Renderer.NamedViews["iso"];
+    using SKBitmap clear = Renderer.Render(
+      shape,
+      iso,
+      ppu: 8,
+      transparent: true
+    );
+    using SKBitmap bare = Renderer.Render(shape, iso, ppu: 8, grid: false);
+
+    Assert.Equal(bare.Width, clear.Width);
+    Assert.Equal(bare.Height, clear.Height);
+    Assert.Equal(0, clear.GetPixel(0, 0).Alpha);
+    int solid = 0;
+    for (int y = 0; y < clear.Height; y++)
+      for (int x = 0; x < clear.Width; x++) {
+        SKColor c = clear.GetPixel(x, y);
+        if (c.Alpha == 0) {
+          Assert.Equal(Renderer.Background, bare.GetPixel(x, y));
+          continue;
+        }
+        solid++;
+        Assert.Equal(255, c.Alpha);
+        Assert.Equal(bare.GetPixel(x, y), c);
+      }
+    Assert.True(solid > 0);
+  }
+
   [Fact]
   public void Strip_sums_widths() {
     LoadedShape shape = ShapeFile.Load(

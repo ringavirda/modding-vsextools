@@ -197,6 +197,8 @@ public static class BlockViews {
   /// cells included; false clips them.</param>
   /// <param name="selective">Narrows the shape entry's own <c>selectiveElements</c> further: an
   /// element needs both to draw.</param>
+  /// <param name="transparent">Leaves the ground transparent and draws no floor grid; the PNGs keep
+  /// their alpha.</param>
   public static JObject Write(
     string file,
     Variant variant,
@@ -206,7 +208,8 @@ public static class BlockViews {
     int ppu = 24,
     int? angle = null,
     bool full = false,
-    IReadOnlyList<string>? selective = null
+    IReadOnlyList<string>? selective = null,
+    bool transparent = false
   ) {
     ResolvedBlock block =
       index.Resolve(variant.Code)
@@ -232,7 +235,8 @@ public static class BlockViews {
           Renderer.NamedViews[view],
           ppu: ppu,
           textures: drawn.Textures,
-          cull: false
+          cull: false,
+          transparent: transparent
         )
       )
       using (SKData data = image.Encode(SKEncodedImageFormat.Png, 100))

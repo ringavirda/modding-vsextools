@@ -41,6 +41,34 @@ public class BlockViewsTests {
       : variants.Single(v => v.Code == wanted);
   }
 
+  [Theory]
+  [InlineData(false, 255)]
+  [InlineData(true, 0)]
+  public void The_ground_of_a_picture_is_transparent_only_when_asked(
+    bool transparent,
+    int cornerAlpha
+  ) {
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+    string file = Blocktype("mega");
+    string outDir = OutDir($"ground-{transparent}");
+    BlockViews.Write(
+      file,
+      Drawn(index, file),
+      index,
+      outDir,
+      ["iso"],
+      ppu: 4,
+      transparent: transparent
+    );
+
+    using SKBitmap png = SKBitmap.Decode(Path.Combine(outDir, "mega-iso.png"));
+    Assert.Equal(cornerAlpha, png.GetPixel(0, 0).Alpha);
+    Assert.Contains(
+      Enumerable.Range(0, png.Width * png.Height),
+      i => png.GetPixel(i % png.Width, i / png.Width).Alpha == 255
+    );
+  }
+
   [Fact]
   public void A_megablock_gets_a_picture_per_view_and_its_footprint_plan() {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
