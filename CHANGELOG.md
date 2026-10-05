@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-10-05
+
 ### Added
 
 - `exmod test` keeps a census of each test assembly's last green count per series in
