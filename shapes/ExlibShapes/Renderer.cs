@@ -841,8 +841,7 @@ public static class Renderer {
       SKAlphaType.Unpremul
     );
     for (int y = 0; y < height; y++)
-      for (int x = 0; x < width; x++)
-      {
+      for (int x = 0; x < width; x++) {
         var color = new SKColor(
           (byte)Math.Clamp((int)colorBuf[y, x, 0], 0, 255),
           (byte)Math.Clamp((int)colorBuf[y, x, 1], 0, 255),

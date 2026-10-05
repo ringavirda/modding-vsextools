@@ -213,7 +213,21 @@ internal static class Program {
         + "[--only PATH...] [--highlight PATH...] [--selective PATTERN,...] [--no-grid] [--no-edges] "
         + "[--game PATH] [--repo PATH]"
     );
-    RejectUnknownFlags("render", flags, ["--out","--views","--ppu","--anim","--frames","--selective","--repo"], ["--only","--highlight"], ["--no-grid","--no-edges"]);
+    RejectUnknownFlags(
+      "render",
+      flags,
+      [
+        "--out",
+        "--views",
+        "--ppu",
+        "--anim",
+        "--frames",
+        "--selective",
+        "--repo",
+      ],
+      ["--only", "--highlight"],
+      ["--no-grid", "--no-edges"]
+    );
     string outDir =
       OptOf(flags, "--out") ?? throw new UsageException("--out is required");
     string views = OptOf(flags, "--views") ?? "iso";
@@ -295,7 +309,13 @@ internal static class Program {
       "usage: exlib-shapes schematic FILE --out DIR [--views plan,iso] [--angle N] [--layer N|all] "
         + "[--ppu N] [--roots PATH...] [--game PATH]"
     );
-    RejectUnknownFlags("schematic", flags, ["--out","--views","--angle","--layer","--ppu"], ["--roots"], []);
+    RejectUnknownFlags(
+      "schematic",
+      flags,
+      ["--out", "--views", "--angle", "--layer", "--ppu"],
+      ["--roots"],
+      []
+    );
     string outDir =
       OptOf(flags, "--out") ?? throw new UsageException("--out is required");
     string views = OptOf(flags, "--views") ?? "plan,iso";
@@ -412,7 +432,13 @@ internal static class Program {
         + "[--views iso,north,east,south,west,up] [--angle N] [--full] [--ppu N] "
         + "[--selective PATTERN,...] [--transparent] [--roots PATH...] [--game PATH]"
     );
-    RejectUnknownFlags("block", flags, ["--out","--variant","--views","--angle","--ppu","--selective"], ["--roots"], ["--full","--transparent"]);
+    RejectUnknownFlags(
+      "block",
+      flags,
+      ["--out", "--variant", "--views", "--angle", "--ppu", "--selective"],
+      ["--roots"],
+      ["--full", "--transparent"]
+    );
     string outDir =
       OptOf(flags, "--out") ?? throw new UsageException("--out is required");
     string? wanted = OptOf(flags, "--variant");
@@ -490,7 +516,13 @@ internal static class Program {
       args,
       "usage: exlib-shapes item FILE --out DIR [--variant CODE] [--ppu N] [--roots PATH...] [--game PATH]"
     );
-    RejectUnknownFlags("item", flags, ["--out","--variant","--ppu"], ["--roots"], []);
+    RejectUnknownFlags(
+      "item",
+      flags,
+      ["--out", "--variant", "--ppu"],
+      ["--roots"],
+      []
+    );
     string outDir =
       OptOf(flags, "--out") ?? throw new UsageException("--out is required");
     string? wanted = OptOf(flags, "--variant");
@@ -667,7 +699,7 @@ internal static class Program {
       args,
       "usage: exlib-shapes measure FILE [--group PREFIX] [--cells x,y,z;x,y,z]"
     );
-    RejectUnknownFlags("measure", flags, ["--group","--cells"], [], []);
+    RejectUnknownFlags("measure", flags, ["--group", "--cells"], [], []);
     string? group = OptOf(flags, "--group");
     string? cellsArg = OptOf(flags, "--cells");
 

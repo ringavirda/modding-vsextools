@@ -87,7 +87,9 @@ public class RendererTests {
   }
 
   private static LoadedShape Pinion() =>
-    ShapeFile.Load(FixturePath.Of("items/machined/item-shaped-gearpinion.json"));
+    ShapeFile.Load(
+      FixturePath.Of("items/machined/item-shaped-gearpinion.json")
+    );
 
   [Fact]
   public void Opaque_render_has_a_background_ground_and_a_floor_grid() {
@@ -102,7 +104,8 @@ public class RendererTests {
         Assert.Equal(255, gridded.GetPixel(x, y).Alpha);
     Assert.Contains(
       Enumerable.Range(0, gridded.Width * gridded.Height),
-      i => gridded.GetPixel(i % gridded.Width, i / gridded.Width)
+      i =>
+        gridded.GetPixel(i % gridded.Width, i / gridded.Width)
         != bare.GetPixel(i % gridded.Width, i / gridded.Width)
     );
   }
