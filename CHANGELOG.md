@@ -34,6 +34,9 @@
 
 ### Fixed
 
+- A build that provisions the game publicises `IPlayer`: the API patcher ran from the building
+  project's folder, where `dotnet run` ran that project instead and left the install unpatched. A
+  patcher failure now fails provisioning before the install is stamped, so the next run retries.
 - `exmod smoke` fails when `/exmod verify` prints no summary line, which it passed as a clean
   verify while no loaded check had run.
 - `exmod test` names a failing theory row whose display name holds spaces; the failure list missed

@@ -113,17 +113,21 @@ function Publicize-GameApi([string]$ApiDll) {
   # one every other tool project here builds against) demands a game install in a .game/ at or
   # above the checkout, which a consumer clone of extools need not have. The patcher needs no such
   # install; it only touches the dll path it is given, so running it clear of that props file is
-  # enough.
+  # enough. The working directory may hold a project, which a bare `dotnet run <file>` would run in
+  # place of the file, so the run is by `--file` and from the scratch copy's folder.
+  # A patcher failure throws, so the caller does not stamp the install and the next run retries.
   $scratch = Join-Path ([System.IO.Path]::GetTempPath()) "patch-api-$([guid]::NewGuid().ToString('N'))"
   New-Item -ItemType Directory -Force -Path $scratch | Out-Null
+  Push-Location $scratch
   try {
     $scratchPatcher = Join-Path $scratch 'patch-api.cs'
     Copy-Item $patcher $scratchPatcher
-    & dotnet run $scratchPatcher -- $ApiDll | Out-Host
+    & dotnet run --file $scratchPatcher -- $ApiDll | Out-Host
     if ($LASTEXITCODE -ne 0) {
-      Write-Warning "patch-api failed ($LASTEXITCODE) on $ApiDll - IPlayer cannot be mocked on this install, and any test that substitutes it will fail with a TypeLoadException."
+      throw "patch-api failed ($LASTEXITCODE) on $ApiDll - IPlayer cannot be mocked on this install, and any test that substitutes it will fail with a TypeLoadException."
     }
   } finally {
+    Pop-Location
     Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
   }
 }
@@ -367,8 +371,8 @@ function Invoke-ProvisionGame([string[]]$Argv) {
       throw "Client install completed but Vintagestory.dll is missing under $dest."
     }
 
-    Set-Content -Path $stamp -Value $version -NoNewline
     Publicize-GameApi $apiMarker
+    Set-Content -Path $stamp -Value $version -NoNewline
     Write-Host "Provisioned Vintage Story $version ($kind) at $dest"
     & $registerGpu
   } finally {
