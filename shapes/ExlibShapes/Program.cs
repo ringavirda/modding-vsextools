@@ -135,6 +135,40 @@ internal static class Program {
     return result;
   }
 
+  // Throws for any `--flag` token the command does not read. The token after a space-form value
+  // flag is that flag's value and is skipped; a multi-value flag's tokens are positional until
+  // the next `--flag`.
+  private static void RejectUnknownFlags(
+    string command,
+    string[] flags,
+    string[] valueFlags,
+    string[] multiFlags,
+    string[] switches
+  ) {
+    valueFlags = [.. valueFlags, "--game"];
+    for (int i = 0; i < flags.Length; i++) {
+      string token = flags[i];
+      if (!token.StartsWith("--", StringComparison.Ordinal))
+        continue;
+      int eq = token.IndexOf('=');
+      string name = eq < 0 ? token : token[..eq];
+      if (eq < 0 && valueFlags.Contains(name)) {
+        i++;
+        continue;
+      }
+      if (
+        valueFlags.Contains(name)
+        || multiFlags.Contains(name)
+        || switches.Contains(name)
+      )
+        continue;
+      string[] taken = [.. valueFlags, .. multiFlags, .. switches];
+      throw new UsageException(
+        $"{command} does not take {name} (it takes {string.Join(", ", taken)})"
+      );
+    }
+  }
+
   private static bool FlagOf(string[] args, string name) => args.Contains(name);
 
   // --selective's own comma-separated patterns, empty when the flag is absent - the same
@@ -172,13 +206,14 @@ internal static class Program {
       ? ((long)frame).ToString(CultureInfo.InvariantCulture)
       : frame.ToString("G6", CultureInfo.InvariantCulture);
 
-  private static int RunRender(string[] args) {
+  internal static int RunRender(string[] args) {
     (string file, string[] flags) = FileAndFlags(
       args,
       "usage: exlib-shapes render FILE --out DIR [--views a,b] [--ppu N] [--anim CLIP --frames N] "
         + "[--only PATH...] [--highlight PATH...] [--selective PATTERN,...] [--no-grid] [--no-edges] "
         + "[--game PATH] [--repo PATH]"
     );
+    RejectUnknownFlags("render", flags, ["--out","--views","--ppu","--anim","--frames","--selective","--repo"], ["--only","--highlight"], ["--no-grid","--no-edges"]);
     string outDir =
       OptOf(flags, "--out") ?? throw new UsageException("--out is required");
     string views = OptOf(flags, "--views") ?? "iso";
@@ -254,12 +289,13 @@ internal static class Program {
     return 0;
   }
 
-  private static int RunSchematic(string[] args) {
+  internal static int RunSchematic(string[] args) {
     (string file, string[] flags) = FileAndFlags(
       args,
       "usage: exlib-shapes schematic FILE --out DIR [--views plan,iso] [--angle N] [--layer N|all] "
         + "[--ppu N] [--roots PATH...] [--game PATH]"
     );
+    RejectUnknownFlags("schematic", flags, ["--out","--views","--angle","--layer","--ppu"], ["--roots"], []);
     string outDir =
       OptOf(flags, "--out") ?? throw new UsageException("--out is required");
     string views = OptOf(flags, "--views") ?? "plan,iso";
@@ -369,13 +405,14 @@ internal static class Program {
     return 0;
   }
 
-  private static int RunBlock(string[] args) {
+  internal static int RunBlock(string[] args) {
     (string file, string[] flags) = FileAndFlags(
       args,
       "usage: exlib-shapes block FILE --out DIR [--variant CODE] "
         + "[--views iso,north,east,south,west,up] [--angle N] [--full] [--ppu N] "
         + "[--selective PATTERN,...] [--transparent] [--roots PATH...] [--game PATH]"
     );
+    RejectUnknownFlags("block", flags, ["--out","--variant","--views","--angle","--ppu","--selective"], ["--roots"], ["--full","--transparent"]);
     string outDir =
       OptOf(flags, "--out") ?? throw new UsageException("--out is required");
     string? wanted = OptOf(flags, "--variant");
@@ -448,11 +485,12 @@ internal static class Program {
     return 0;
   }
 
-  private static int RunItem(string[] args) {
+  internal static int RunItem(string[] args) {
     (string file, string[] flags) = FileAndFlags(
       args,
       "usage: exlib-shapes item FILE --out DIR [--variant CODE] [--ppu N] [--roots PATH...] [--game PATH]"
     );
+    RejectUnknownFlags("item", flags, ["--out","--variant","--ppu"], ["--roots"], []);
     string outDir =
       OptOf(flags, "--out") ?? throw new UsageException("--out is required");
     string? wanted = OptOf(flags, "--variant");
@@ -542,11 +580,12 @@ internal static class Program {
     );
   }
 
-  private static int RunTree(string[] args) {
+  internal static int RunTree(string[] args) {
     (string file, string[] flags) = FileAndFlags(
       args,
       "usage: exlib-shapes tree FILE [--group PREFIX]"
     );
+    RejectUnknownFlags("tree", flags, ["--group"], [], []);
     string? group = OptOf(flags, "--group");
     LoadedShape shape = ShapeFile.Load(file);
 
@@ -623,11 +662,12 @@ internal static class Program {
     return ox * oy * oz;
   }
 
-  private static int RunMeasure(string[] args) {
+  internal static int RunMeasure(string[] args) {
     (string file, string[] flags) = FileAndFlags(
       args,
       "usage: exlib-shapes measure FILE [--group PREFIX] [--cells x,y,z;x,y,z]"
     );
+    RejectUnknownFlags("measure", flags, ["--group","--cells"], [], []);
     string? group = OptOf(flags, "--group");
     string? cellsArg = OptOf(flags, "--cells");
 

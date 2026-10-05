@@ -34,7 +34,7 @@ Add-ExmodCommand -Group source -Name render -Summary 'render a shape file to tex
   param([string[]]$Argv) Invoke-Render $Argv
 } -Detail @'
 exmod render FILE --out=DIR [--views a,b,...] [--ppu N] [--anim CLIP --frames N] [--only PATH...]
-  [--highlight PATH...] [--no-grid] [--no-edges] [--game PATH] [--repo PATH]
+  [--highlight PATH...] [--selective PATTERN,...] [--no-grid] [--no-edges] [--game PATH] [--repo PATH]
 
 Renders a shape file's named views (or one animation clip's frames) to PNG - see
 shapes/ExlibShapes/README.md for the full option list and the standalone `exlib-shapes` tool.
@@ -48,6 +48,7 @@ an ambiguous prefix of its common `-OutVariable`/`-OutBuffer` parameters and ref
   --anim CLIP --frames N   render one animation clip's frame(s) instead of a static view
   --only PATH     restrict to elements whose path starts with PATH (repeatable)
   --highlight PATH   outline this element regardless of depth (repeatable)
+  --selective PATTERN,...   keep only the selectiveElements that match, as a shape entry's own list does
   --no-grid       no floor grid
   --no-edges      no face outlines
   --game PATH     a specific game install (default: this repository's own provisioned one)
@@ -80,7 +81,7 @@ Add-ExmodCommand -Group source -Name block -Summary 'render one blocktype varian
   param([string[]]$Argv) Invoke-Block $Argv
 } -Detail @'
 exmod block FILE --out=DIR [--variant CODE] [--views iso,north,east,south,west,up] [--angle N]
-  [--full] [--ppu N] [--roots PATH...] [--game PATH]
+  [--full] [--ppu N] [--selective PATTERN,...] [--transparent] [--roots PATH...] [--game PATH]
 
 Renders one variant of a blocktype file the way the game draws it in the world - its own shape
 under its shapeByType turn, painted with its texture map, or a unit cube when it ships no shape -
@@ -97,6 +98,8 @@ parameter binder treats a bare `--out` token as an ambiguous prefix of its commo
   --angle N       turn the machine before rendering (0, 90, 180 or 270)
   --full          draw the whole model, the parts an animation parks outside the block included
   --ppu N         pixels per shape unit (default: 24)
+  --selective PATTERN,...   keep only the selectiveElements that match, as a shape entry's own list does
+  --transparent   leave the background transparent
   --roots PATH    extra mod repository roots to resolve textures against (repeatable)
   --game PATH     a specific game install (default: this repository's own provisioned one)
 '@
