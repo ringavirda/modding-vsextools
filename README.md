@@ -54,6 +54,21 @@ source
 | `schematic` | render a multiblock/megablock layout to a build schematic |
 | `block` | render one blocktype variant to the views a page shows |
 | `item` | render one itemtype variant to its own picture |
+| `shapes-build` | build the shapes tool when its output is stale |
+
+`render`, `schematic`, `block` and `item` run the built shapes tool, and build it first only when its
+output is missing or older than its sources, the assets project it references, the props it imports
+or the game's `VintagestoryAPI.dll`; the tool references no exlib or mod assembly. A build rewrites
+the tool's `bin/` and `obj/`, so a workspace that serialises builds with a lock file runs renders
+side by side by holding the lock shared and building under it exclusive:
+
+```sh
+flock -w 240 -o LOCK exmod shapes-build
+EXMOD_SHAPES_NO_BUILD=1 flock -s -w 240 LOCK exmod render shape.json --out=DIR
+```
+
+With `EXMOD_SHAPES_NO_BUILD` set, a stale tool makes the command refuse and name `exmod shapes-build`
+instead of building, so renders started together on a stale tool never build at once.
 
 run
 
