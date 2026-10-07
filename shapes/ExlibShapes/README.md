@@ -48,7 +48,7 @@ placeholder).
 
 ```
 exlib-shapes schematic FILE --out DIR [--views plan,iso] [--angle N] [--layer N|all] [--ppu N]
-  [--roots PATH...] [--game PATH]
+  [--shape COPY] [--roots PATH...] [--game PATH]
 ```
 
 Reads `FILE`'s `attributes.multiblockStructure` (the structure table, its oriented selectors,
@@ -72,6 +72,21 @@ the model's own `rotateY` as given and turns the declared cells onto it, which i
 wherever the footprint tells the quarter turns apart. A megablock's own body is drawn over a thin
 outline of the cells it reserves rather than under grey boxes; a structure's filler cells, which
 the player leaves clear, keep theirs.
+
+`FILE` may instead be a planned layout (`"schema": "layout-recap/1"`, or a top-level `planned`
+object; `vsshape layout` writes one per machine). It carries no variants and draws one shape, the
+copy it was measured from: `--shape COPY`, else `planned.copy.path` against the repository root
+(the nearest ancestor of `FILE` holding `workbench/`). The copy is turned by `planned.frame.turn` and
+shifted by the negated `planned.frame.anchor` to land in the cells' frame, and `--angle` turns copy
+and cells together; no front is derived, so the edges are unlabelled and the default view has the
+cells as authored. `plan` writes the same `<stem>-plan-y<N>.svg` files with each `planned.grid`
+glyph centred in its cell, each cell's `collisionBoxes` outlined inside it (blue) and each
+control's selection `box` outlined dashed (red), and a key under the caption listing the glyphs and
+box styles on that layer. `iso` writes the copy with a one-unit frame (red) around every declared
+cell; `--layer` cuts the frames but draws the copy whole. The manifest gains a `planned` object:
+`copy` (the shape file read), `frameTurn`, `layers` (`{layer, rows}` per y, the glyph rows north
+first) and `glyphs` (`{glyph, meaning}` in the order the grid holds them). `--shape` on a blocktype
+file is refused.
 
 Both `schematic` and `block` show the front of a machine, the side a player stands at. A machine is
 placed facing away from the player, so an oriented family is drawn at the facing whose front turns

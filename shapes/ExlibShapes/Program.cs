@@ -320,12 +320,12 @@ internal static class Program {
     (string file, string[] flags) = FileAndFlags(
       args,
       "usage: exlib-shapes schematic FILE --out DIR [--views plan,iso] [--angle N] [--layer N|all] "
-        + "[--ppu N] [--roots PATH...] [--game PATH]"
+        + "[--ppu N] [--shape COPY] [--roots PATH...] [--game PATH]"
     );
     RejectUnknownFlags(
       "schematic",
       flags,
-      ["--out", "--views", "--angle", "--layer", "--ppu"],
+      ["--out", "--views", "--angle", "--layer", "--ppu", "--shape"],
       ["--roots"],
       []
     );
@@ -350,6 +350,22 @@ internal static class Program {
       game,
       BlockIndex.UnderLegacyTree(file)
     );
+    string? shape = OptOf(flags, "--shape");
+    if (PlannedLayout.Is(file))
+      return RunPlanned(
+        file,
+        shape,
+        index,
+        outDir,
+        ViewSet(views),
+        angle,
+        layer,
+        ppu
+      );
+    if (shape != null)
+      throw new UsageException(
+        "--shape applies to a planned layout (layout-recap/1), not a blocktype file"
+      );
     Variant? drawn = DrawnVariant(index, file, null);
     Presentation.Staged staged = Presentation.Stage(
       Footprint.Placed(Layout.Load(file, drawn?.Path), index),
@@ -426,6 +442,116 @@ internal static class Program {
     Console.WriteLine(manifestPath);
     // A malformed source file is reported here too, not only in the manifest: a caller watching
     // the run should see it without opening the JSON.
+    foreach (string line in index.ParseWarnings)
+      Console.Error.WriteLine($"exlib-shapes: {line}");
+    var warnings = (JArray)manifest["warnings"]!;
+    if (warnings.Count > 0)
+      Console.WriteLine(
+        "warnings: ["
+          + string.Join(", ", warnings.Select(w => (string)w!))
+          + "]"
+      );
+    return 0;
+  }
+
+  private static HashSet<string> ViewSet(string views) => [.. views.Split(',')];
+
+  // `schematic` on a planned layout: the plan SVGs and iso PNGs of its declared cells, glyphs and
+  // boxes over the shape copy, named as a blocktype's are.
+  private static int RunPlanned(
+    string file,
+    string? shape,
+    BlockIndex index,
+    string outDir,
+    HashSet<string> views,
+    int angle,
+    string? layer,
+    int ppu
+  ) {
+    PlannedLayout planned = PlannedLayout.Load(file);
+    string copy =
+      shape
+      ?? (
+        planned.CopyPath is { } relative
+        && TextureRoots.Build(null, null, file).RepoPath is { } repo
+          ? Path.Combine(repo, relative)
+          : throw new UsageException(
+            $"{file}: no planned.copy.path under a repository root; pass --shape"
+          )
+      );
+    if (!File.Exists(copy))
+      throw new UsageException($"{copy}: the shape copy does not exist");
+    planned = planned.Rotated(angle);
+    Layout layout = planned.Layout;
+
+    Directory.CreateDirectory(outDir);
+    string stem = Path.GetFileNameWithoutExtension(file);
+    var legend = new Dictionary<int, LegendEntry>();
+    var files = new List<string>();
+    var plans = new List<(string File, int Layer)>();
+    if (views.Contains("plan"))
+      foreach (
+        int y in layout
+          .Layers()
+          .Concat(planned.Grid.Select(g => g.At.Y))
+          .Distinct()
+          .OrderBy(y => y)
+      ) {
+        string path = Path.Combine(outDir, $"{stem}-plan-y{y}.svg");
+        File.WriteAllText(
+          path,
+          Schematic.PlanSvg(layout, y, legend, planned: planned)
+        );
+        files.Add(path);
+        plans.Add((path, y));
+      }
+
+    if (views.Contains("iso")) {
+      string path = Path.Combine(outDir, $"{stem}-iso.png");
+      using (
+        SKBitmap img = PlannedSchematic.IsoPng(planned, copy, index, angle, ppu)
+      )
+        SavePng(img, path);
+      files.Add(path);
+
+      List<int> cutLayers = layer switch {
+        "all" => [.. layout.Layers()],
+        null => [],
+        _ => [int.Parse(layer, CultureInfo.InvariantCulture)],
+      };
+      foreach (int y in cutLayers) {
+        string cutPath = Path.Combine(outDir, $"{stem}-iso-y{y}.png");
+        using (
+          SKBitmap img = PlannedSchematic.IsoPng(
+            planned,
+            copy,
+            index,
+            angle,
+            ppu,
+            y
+          )
+        )
+          SavePng(img, cutPath);
+        files.Add(cutPath);
+      }
+    }
+
+    JObject manifest = PlannedSchematic.Manifest(
+      planned,
+      copy,
+      files,
+      plans,
+      [
+        .. PlannedSchematic.MissingTextures(planned, copy, index),
+        .. index.ParseWarnings,
+      ]
+    );
+    string manifestPath = Path.Combine(outDir, $"{stem}.json");
+    File.WriteAllText(manifestPath, manifest.ToString(Formatting.Indented));
+
+    foreach (string f in files)
+      Console.WriteLine(f);
+    Console.WriteLine(manifestPath);
     foreach (string line in index.ParseWarnings)
       Console.Error.WriteLine($"exlib-shapes: {line}");
     var warnings = (JArray)manifest["warnings"]!;

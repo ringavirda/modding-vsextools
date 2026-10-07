@@ -1,0 +1,9 @@
+{
+  "textures": {"t": "game:block/stone"},
+  "elements": [
+    {"name": "Body", "from": [0, 0, 0], "to": [8, 16, 8], "faces": {
+      "north": {"texture": "#t", "uv": [0, 0, 16, 16]}, "east": {"texture": "#t", "uv": [0, 0, 16, 16]},
+      "south": {"texture": "#t", "uv": [0, 0, 16, 16]}, "west": {"texture": "#t", "uv": [0, 0, 16, 16]},
+      "up": {"texture": "#t", "uv": [0, 0, 16, 16]}, "down": {"texture": "#t", "uv": [0, 0, 16, 16]}}}
+  ]
+}

@@ -155,17 +155,20 @@ public static class Schematic {
     int y,
     IReadOnlyDictionary<int, LegendEntry> legend,
     int cell = 32,
-    string? front = null
+    string? front = null,
+    PlannedLayout? planned = null
   ) {
     List<int> allX =
     [
       .. layout.Cells.Select(c => c.X),
       .. layout.Fillers.Select(o => o.X),
+      .. planned?.Grid.Select(g => g.At.X) ?? [],
     ];
     List<int> allZ =
     [
       .. layout.Cells.Select(c => c.Z),
       .. layout.Fillers.Select(o => o.Z),
+      .. planned?.Grid.Select(g => g.At.Z) ?? [],
     ];
     foreach (IReadOnlyList<Offset> offsets in layout.Connectors.Values) {
       allX.AddRange(offsets.Select(o => o.X));
@@ -182,13 +185,23 @@ public static class Schematic {
     int Pz(int z) => (z - z0) * cell;
 
     const int margin = 24;
-    int canvas = Math.Max(width, CaptionWidth(LayerCaption(y))) + 2 * margin;
+    IReadOnlyList<string> key =
+      planned == null ? [] : PlannedSchematic.Key(planned, y);
+    int canvas =
+      Math.Max(
+        width,
+        Math.Max(
+          CaptionWidth(LayerCaption(y)),
+          key.Count == 0 ? 0 : key.Max(CaptionWidth)
+        )
+      )
+      + 2 * margin;
     int left = (canvas - width) / 2;
     var sb = new StringBuilder();
     sb.Append(
       // The iso render's paper colour behind the grid, so the labels read on a dark page too.
       $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{canvas}\" "
-        + $"height=\"{height + 2 * margin + CaptionSpace}\" font-family=\"sans-serif\" "
+        + $"height=\"{height + 2 * margin + CaptionSpace + key.Count * KeyRow}\" font-family=\"sans-serif\" "
         + $"font-size=\"{FontSize}\" style=\"background-color:#f0f0ec\">"
     );
     sb.Append(
@@ -229,10 +242,10 @@ public static class Schematic {
       int fx = Px(f.X),
         fz = Pz(f.Z);
       sb.Append(
-        $"<line class=\"filler\" x1=\"{fx}\" y1=\"{fz}\" x2=\"{fx + cell}\" y2=\"{fz + cell}\" stroke=\"black\" />"
+        $"<line class=\"filler\" x1=\"{fx}\" y1=\"{fz}\" x2=\"{fx + cell}\" y2=\"{fz + cell}\" stroke=\"{(planned == null ? "black" : "#c8c8c4")}\" />"
       );
       sb.Append(
-        $"<line class=\"filler\" x1=\"{fx + cell}\" y1=\"{fz}\" x2=\"{fx}\" y2=\"{fz + cell}\" stroke=\"black\" />"
+        $"<line class=\"filler\" x1=\"{fx + cell}\" y1=\"{fz}\" x2=\"{fx}\" y2=\"{fz + cell}\" stroke=\"{(planned == null ? "black" : "#c8c8c4")}\" />"
       );
     }
 
@@ -253,6 +266,14 @@ public static class Schematic {
       }
     }
 
+    if (planned != null) {
+      PlannedSchematic.Overlay(sb, planned, y, cell, x0, z0);
+      for (int i = 0; i < key.Count; i++)
+        sb.Append(
+          $"<text class=\"key\" x=\"0\" y=\"{height + CaptionSpace + 12 + i * KeyRow}\">{key[i]}</text>"
+        );
+    }
+
     Edges(sb, width, height, front);
     sb.Append(
       $"<text class=\"caption\" x=\"{Svg(width / 2.0)}\" y=\"{height + CaptionSpace - 4}\" "
@@ -264,6 +285,9 @@ public static class Schematic {
 
   // Pixels reserved under a grid for the edge label and the caption below it.
   private const int CaptionSpace = 30;
+
+  // Pixels per line of a planned plan's key under the caption.
+  private const int KeyRow = 14;
 
   // A light diagonal hatch over the paper, the fill of a cell the player may leave as air.
   private const string Hatch =
@@ -799,6 +823,18 @@ public static class Schematic {
       cutAt,
       spin
     );
+    return Iso(raw, textureValues, layout, index, ppu, cutAt);
+  }
+
+  // The isometric picture of a composed shape with the layer scale of `layout` beside it.
+  internal static SKBitmap Iso(
+    JObject raw,
+    Dictionary<string, TextureRef> textureValues,
+    Layout layout,
+    BlockIndex index,
+    int ppu,
+    int? cutAt
+  ) {
     Shape shape =
       JsonConvert.DeserializeObject<Shape>(raw.ToString())
       ?? throw new JsonException(
@@ -812,10 +848,15 @@ public static class Schematic {
 
     var extra = new Dictionary<string, byte[,,]>();
     foreach (
-      (string prefix, string key, byte level) in new[]
+      (string prefix, string key, byte[] rgb) in new[]
       {
-        ("filler", FillerTextureKey, (byte)190),
-        ("footprint", OutlineTextureKey, (byte)130),
+        ("filler", FillerTextureKey, new byte[] { 190, 190, 190 }),
+        ("footprint", OutlineTextureKey, new byte[] { 130, 130, 130 }),
+        (
+          PlannedSchematic.CellPrefix,
+          PlannedSchematic.CellTextureKey,
+          new byte[] { 200, 60, 40 }
+        ),
       }
     ) {
       if (
@@ -828,9 +869,9 @@ public static class Schematic {
       var grey = new byte[16, 16, 4];
       for (int y = 0; y < 16; y++)
         for (int x = 0; x < 16; x++) {
-          grey[y, x, 0] = level;
-          grey[y, x, 1] = level;
-          grey[y, x, 2] = level;
+          grey[y, x, 0] = rgb[0];
+          grey[y, x, 1] = rgb[1];
+          grey[y, x, 2] = rgb[2];
           grey[y, x, 3] = 255;
         }
       extra[key] = grey;

@@ -90,6 +90,7 @@ public class ProgramArgsTests {
     "--angle=90",
     "--layer=all",
     "--ppu=8",
+    "--shape=/c",
     "--roots=/a",
     "--game=/g"
   )]

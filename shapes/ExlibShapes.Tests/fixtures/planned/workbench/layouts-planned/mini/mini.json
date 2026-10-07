@@ -1,0 +1,19 @@
+{
+  "schema": "layout-recap/1",
+  "code": "mini",
+  "attributes": {
+    "fillerOffsets": [
+      {"x": 1, "y": 0, "z": 0, "collisionBoxes": [{"x1": 0.5, "y1": 0.0, "z1": 0.25, "x2": 1.0, "y2": 1.0, "z2": 0.75}]},
+      {"x": -1, "y": 0, "z": 0, "portFace": "e", "portNetwork": "pipe"},
+      {"x": 0, "y": 0, "z": 1, "controls": [{"id": "valve", "box": {"x1": 0.25, "y1": 0.25, "z1": 0.5, "x2": 0.75, "y2": 0.75, "z2": 1.0}}]},
+      {"x": 0, "y": 1, "z": 0}
+    ]
+  },
+  "planned": {
+    "machine": "mini",
+    "copy": {"path": "workbench/shapes-finished/mini/mini-copy.json"},
+    "frame": {"turn": 0, "anchor": [0, 0, 0]},
+    "controls": [{"id": "valve", "glyph": "W", "kind": "control"}, {"id": "bypass", "glyph": "W", "kind": "control"}],
+    "grid": {"origin": [-1, 0], "layers": {"0": "P O _\n. W .", "1": ". # .\n. . ."}}
+  }
+}
