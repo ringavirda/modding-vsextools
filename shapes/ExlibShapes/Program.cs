@@ -273,8 +273,12 @@ internal static class Program {
       if (anim != null)
         foreach (double frame in frames)
           if (
-            Renderer.Fit(shape, view, Poses.PoseAt(shape, anim, frame), onlySet)
-            is { } fit
+            Renderer.Fit(
+              shape,
+              view,
+              Poses.PoseAt(shape, anim, frame),
+              onlySet
+            ) is { } fit
           )
             canvas = canvas is { } c ? c.Union(fit) : fit;
       foreach (double frame in frames) {

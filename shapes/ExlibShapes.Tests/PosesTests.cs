@@ -198,8 +198,7 @@ public class PosesTests {
       iso,
       ppu: 8,
       poses: start,
-      fitTo: union with
-      {
+      fitTo: union with {
         GridX1 = own.GridX1,
       }
     );
@@ -219,21 +218,19 @@ public class PosesTests {
       string file = FixturePath.Of("anim/slide-clip.json");
       Assert.Equal(
         0,
-        Program.RunRender(
-          [
-            file,
-            "--out",
-            outDir,
-            "--views",
-            "south",
-            "--ppu",
-            "8",
-            "--anim",
-            "slide",
-            "--frames",
-            "0,15",
-          ]
-        )
+        Program.RunRender([
+          file,
+          "--out",
+          outDir,
+          "--views",
+          "south",
+          "--ppu",
+          "8",
+          "--anim",
+          "slide",
+          "--frames",
+          "0,15",
+        ])
       );
       using SKBitmap first = SKBitmap.Decode(
         Path.Combine(outDir, "slide-clip-south-f0.png")
