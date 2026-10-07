@@ -8,6 +8,8 @@
   its output is missing or older than its inputs. `exmod shapes-build` builds it on its own, and
   with `EXMOD_SHAPES_NO_BUILD` set a stale tool makes those commands refuse instead of building, so
   renders can run side by side under a shared lock and the build under the exclusive one.
+- The shapes tool's `render --anim` draws every frame of a view on one canvas sized to hold the
+  whole clip, so the frames line up as an animation; each frame used to be cropped to its own pose.
 
 ## [0.3.5] - 2026-10-05
 

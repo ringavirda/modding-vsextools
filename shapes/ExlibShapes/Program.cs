@@ -269,6 +269,14 @@ internal static class Program {
     var written = new List<string>();
     foreach (string viewName in viewNames) {
       View view = Renderer.NamedViews[viewName];
+      Renderer.Canvas? canvas = null;
+      if (anim != null)
+        foreach (double frame in frames)
+          if (
+            Renderer.Fit(shape, view, Poses.PoseAt(shape, anim, frame), onlySet)
+            is { } fit
+          )
+            canvas = canvas is { } c ? c.Union(fit) : fit;
       foreach (double frame in frames) {
         Dictionary<string, Pose>? poses =
           anim != null ? Poses.PoseAt(shape, anim, frame) : null;
@@ -281,7 +289,8 @@ internal static class Program {
           only: onlySet,
           textures: textures,
           grid: !noGrid,
-          edges: !noEdges
+          edges: !noEdges,
+          fitTo: canvas
         );
         string suffix = anim != null ? $"-f{FormatFrame(frame)}" : "";
         string outPath = Path.Combine(outDir, $"{stem}-{viewName}{suffix}.png");

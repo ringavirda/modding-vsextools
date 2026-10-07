@@ -602,6 +602,111 @@ public static class Renderer {
     return new Projection(xmin - margin, ymax + margin, ppu, view);
   }
 
+  /// <summary>
+  /// The extents a render is fitted to: the view-space box the canvas covers, its margin
+  /// included, and the world X and Z range, in whole units, the floor grid is drawn over.
+  /// </summary>
+  public readonly record struct Canvas(
+    double XMin,
+    double XMax,
+    double YMin,
+    double YMax,
+    int GridX0,
+    int GridX1,
+    int GridZ0,
+    int GridZ1
+  ) {
+    /// <summary>The smallest canvas holding both this one and <paramref name="other"/>.</summary>
+    public Canvas Union(Canvas other) =>
+      new(
+        Math.Min(XMin, other.XMin),
+        Math.Max(XMax, other.XMax),
+        Math.Min(YMin, other.YMin),
+        Math.Max(YMax, other.YMax),
+        Math.Min(GridX0, other.GridX0),
+        Math.Max(GridX1, other.GridX1),
+        Math.Min(GridZ0, other.GridZ0),
+        Math.Max(GridZ1, other.GridZ1)
+      );
+  }
+
+  /// <summary>
+  /// The canvas <see cref="Render"/> fits <paramref name="shape"/> into for the same arguments.
+  /// Frames of one clip rendered on the <see cref="Canvas.Union"/> of every frame's canvas share
+  /// one size, and a part the clip does not move keeps its pixels from frame to frame.
+  /// </summary>
+  /// <returns>Null when no face is drawn.</returns>
+  public static Canvas? Fit(
+    LoadedShape shape,
+    View view,
+    IReadOnlyDictionary<string, Pose>? poses = null,
+    IReadOnlySet<string>? only = null,
+    int margin = 2
+  ) {
+    Mat3 viewRot = Mat3.RotateX(view.Pitch) * Mat3.RotateY(view.Yaw);
+    double xmin = double.PositiveInfinity,
+      xmax = double.NegativeInfinity;
+    double ymin = double.PositiveInfinity,
+      ymax = double.NegativeInfinity;
+    foreach (
+      (double X, double Y, double Z) p in ViewPoints(
+        shape,
+        viewRot,
+        only,
+        poses
+      )
+    ) {
+      xmin = Math.Min(xmin, p.X);
+      xmax = Math.Max(xmax, p.X);
+      ymin = Math.Min(ymin, p.Y);
+      ymax = Math.Max(ymax, p.Y);
+    }
+    if (
+      double.IsInfinity(xmin)
+      || GridRange(shape, WorldMatricesD(shape, poses)) is not { } g
+    )
+      return null;
+    return new Canvas(
+      xmin - margin,
+      xmax + margin,
+      ymin - margin,
+      ymax + margin,
+      g.X0,
+      g.X1,
+      g.Z0,
+      g.Z1
+    );
+  }
+
+  // The world X and Z range, in whole units, of every leaf's box; null for a shape with no leaf.
+  private static (int X0, int X1, int Z0, int Z1)? GridRange(
+    LoadedShape shape,
+    Dictionary<string, Mat4d> mats
+  ) {
+    Dictionary<
+      string,
+      ((double X, double Y, double Z) Lo, (double X, double Y, double Z) Hi)
+    > boxes = ElementBoxesD(shape, mats);
+    if (boxes.Count == 0)
+      return null;
+    (double X, double Y, double Z) lo = boxes
+      .Values.Select(b => b.Lo)
+      .Aggregate(
+        (a, b) => (Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Min(a.Z, b.Z))
+      );
+    (double X, double Y, double Z) hi = boxes
+      .Values.Select(b => b.Hi)
+      .Aggregate(
+        (a, b) => (Math.Max(a.X, b.X), Math.Max(a.Y, b.Y), Math.Max(a.Z, b.Z))
+      );
+    return (
+      (int)Math.Floor(lo.X),
+      (int)Math.Ceiling(hi.X),
+      (int)Math.Floor(lo.Z),
+      (int)Math.Ceiling(hi.Z)
+    );
+  }
+
   // Every face corner of every drawn leaf, in view space - the points both the canvas extents and
   // the rasterizer's own screen positions come from.
   private static IEnumerable<(double X, double Y, double Z)> ViewPoints(
@@ -633,7 +738,8 @@ public static class Renderer {
   /// fully transparent with no floor grid when <paramref name="transparent"/> is true, and every path in
   /// <paramref name="highlight"/> outlined in <see cref="HighlightColor"/> regardless of depth.
   /// A pixel the model encloses that no face covers is filled with <see cref="Interior"/>, so a
-  /// hole the view looks straight through does not show the paper behind it.
+  /// hole the view looks straight through does not show the paper behind it. The canvas is
+  /// <paramref name="fitTo"/> when given, else <see cref="Fit"/>'s for the same arguments.
   /// </summary>
   public static SKBitmap Render(
     LoadedShape shape,
@@ -647,7 +753,8 @@ public static class Renderer {
     TextureSet? textures = null,
     int margin = 2,
     bool edges = true,
-    bool transparent = false
+    bool transparent = false,
+    Canvas? fitTo = null
   ) {
     textures ??= TextureSet.ForShape(
       shape,
@@ -699,13 +806,26 @@ public static class Renderer {
       return empty;
     }
 
-    // The canvas's own origin comes from Project, so a caller annotating the result afterwards
-    // measures with the very numbers this render laid the shape out on.
-    Projection projection = Project(shape, view, ppu, margin, only, poses);
-    double xmin = projection.XMin,
+    // With no canvas given the origin comes from Project, so a caller annotating the result
+    // afterwards measures with the very numbers this render laid the shape out on.
+    double xmin,
+      ymax,
+      xmax,
+      ymin;
+    if (fitTo is { } fixedCanvas)
+      (xmin, xmax, ymin, ymax) = (
+        fixedCanvas.XMin,
+        fixedCanvas.XMax,
+        fixedCanvas.YMin,
+        fixedCanvas.YMax
+      );
+    else {
+      Projection projection = Project(shape, view, ppu, margin, only, poses);
+      xmin = projection.XMin;
       ymax = projection.YMax;
-    double xmax = quads.SelectMany(q => q.PtsView).Max(p => p.Item1) + margin;
-    double ymin = quads.SelectMany(q => q.PtsView).Min(p => p.Item2) - margin;
+      xmax = quads.SelectMany(q => q.PtsView).Max(p => p.Item1) + margin;
+      ymin = quads.SelectMany(q => q.PtsView).Min(p => p.Item2) - margin;
+    }
 
     int width = Math.Max(1, (int)Math.Ceiling((xmax - xmin) * ppu));
     int height = Math.Max(1, (int)Math.Ceiling((ymax - ymin) * ppu));
@@ -785,27 +905,10 @@ public static class Renderer {
         }
 
     if (grid && !transparent) {
-      Dictionary<
-        string,
-        ((double X, double Y, double Z) Lo, (double X, double Y, double Z) Hi)
-      > boxes = ElementBoxesD(shape, mats);
-      if (boxes.Count > 0) {
-        (double X, double Y, double Z) lo = boxes
-          .Values.Select(b => b.Lo)
-          .Aggregate(
-            (a, b) =>
-              (Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Min(a.Z, b.Z))
-          );
-        (double X, double Y, double Z) hi = boxes
-          .Values.Select(b => b.Hi)
-          .Aggregate(
-            (a, b) =>
-              (Math.Max(a.X, b.X), Math.Max(a.Y, b.Y), Math.Max(a.Z, b.Z))
-          );
-        int x0 = (int)Math.Floor(lo.X),
-          x1 = (int)Math.Ceiling(hi.X);
-        int z0 = (int)Math.Floor(lo.Z),
-          z1 = (int)Math.Ceiling(hi.Z);
+      (int X0, int X1, int Z0, int Z1)? range = fitTo is { } c
+        ? (c.GridX0, c.GridX1, c.GridZ0, c.GridZ1)
+        : GridRange(shape, mats);
+      if (range is (int x0, int x1, int z0, int z1)) {
         for (int x = x0; x <= x1; x++) {
           ScreenPoint a = ToScreen(viewRot.Mul(x, 0.0, z0));
           ScreenPoint b = ToScreen(viewRot.Mul(x, 0.0, z1));

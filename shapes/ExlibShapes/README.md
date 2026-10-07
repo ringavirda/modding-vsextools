@@ -29,7 +29,9 @@ exlib-shapes render FILE --out DIR [--views a,b,...] [--ppu N] [--anim CLIP --fr
 Renders `FILE`'s named views, one PNG each, to `--out`. `--views` is a comma-separated list of
 `south`, `north`, `east`, `west`, `up`, `down`, `iso` (default: `iso`); `--ppu` is pixels per shape
 unit (default 24). `--anim CLIP --frames N` (comma-separated frame numbers, which may be
-fractional) renders that animation clip's poses instead of the shape's rest pose. `--only`
+fractional) renders that animation clip's poses instead of the shape's rest pose, every frame of a
+view on one canvas sized to hold them all, so the parts the clip does not move stay put from frame
+to frame. `--only`
 restricts the render to elements whose path starts with the given prefix, repeatable; `--highlight`
 outlines an element regardless of depth, repeatable. `--selective` is a comma-separated list of
 `selectiveElements` patterns (`A/*` for a subtree, a bare `A` for that element alone), the game's
