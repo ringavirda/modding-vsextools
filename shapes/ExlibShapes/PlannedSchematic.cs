@@ -10,15 +10,15 @@ namespace ExpandedLib.Shapes;
 
 /// <summary>
 /// The drawings of a <see cref="PlannedLayout"/>: the glyph and box overlay a plan SVG carries, the
-/// iso composite of the shape copy with the declared cells framed, and the manifest naming what was
+/// iso composite of the shape copy with the collision boxes outlined, and the manifest naming what was
 /// drawn.
 /// </summary>
 public static class PlannedSchematic {
-  /// <summary>The element-name prefix of the frame bars drawn around each declared cell.</summary>
-  public const string CellPrefix = "cellframe";
+  /// <summary>The element-name prefix of the bars drawn along each collision box.</summary>
+  public const string BoxPrefix = "collisionbox";
 
-  /// <summary>The texture key of the frame bars.</summary>
-  public const string CellTextureKey = "__cellframe";
+  /// <summary>The texture key of the box bars.</summary>
+  public const string BoxTextureKey = "__collisionbox";
 
   /// <summary>The thickness of a frame bar, in voxels.</summary>
   public const double FrameBar = 0.25;
@@ -101,8 +101,9 @@ public static class PlannedSchematic {
   /// <summary>
   /// The composite raw shape JSON for <paramref name="planned"/> and the texture values it
   /// references: the copy at <paramref name="copyPath"/>, turned by the plan's frame turn and
-  /// <paramref name="angle"/> and shifted so the frame anchor lands on the origin, and a frame of
-  /// thin bars around every declared cell not above <paramref name="cutAt"/>. The copy is drawn
+  /// <paramref name="angle"/> and shifted so the frame anchor lands on the origin, and thin
+  /// bars along the edges of every collision box of a cell not above <paramref name="cutAt"/>: the
+  /// principal's (when the plan names it), a full cube for a cell without a box list, none for an empty list. The copy is drawn
   /// whole whatever <paramref name="cutAt"/> is. <paramref name="planned"/> is already turned by
   /// <paramref name="angle"/>.
   /// </summary>
@@ -132,11 +133,12 @@ public static class PlannedSchematic {
       Schematic.WrappedCell(block, shift, Schematic.PrincipalPrefix, angle);
     var elements = new JArray { group };
     int i = 0;
-    foreach (Offset cell in planned.Layout.Fillers) {
-      if (cutAt != null && cell.Y > cutAt)
+    foreach (PlannedCell cell in planned.Collision) {
+      if (cutAt != null && cell.At.Y > cutAt)
         continue;
-      foreach (JObject bar in Frame(cell, $"{CellPrefix}{i++}"))
-        elements.Add(bar);
+      foreach (LocalBox box in cell.Boxes)
+        foreach (JObject bar in Frame(cell.At, box, $"{BoxPrefix}{i++}"))
+          elements.Add(bar);
     }
     return (
       new JObject { ["textures"] = new JObject(), ["elements"] = elements },
@@ -144,36 +146,53 @@ public static class PlannedSchematic {
     );
   }
 
-  // The twelve edges of a cell as bars FrameBar thick, laid inside the cell.
-  private static IEnumerable<JObject> Frame(Offset cell, string name) {
-    double[] ends = [0, 16 - FrameBar];
+  // The twelve edges of a box as bars FrameBar thick, laid inside the box, in cell `cell`.
+  private static IEnumerable<JObject> Frame(
+    Offset cell,
+    LocalBox box,
+    string name
+  ) {
+    double[] lo = [box.X1 * 16, box.Y1 * 16, box.Z1 * 16];
+    double[] extent =
+    [
+      (box.X2 - box.X1) * 16,
+      (box.Y2 - box.Y1) * 16,
+      (box.Z2 - box.Z1) * 16,
+    ];
+    double[] bar = [.. extent.Select(e => Math.Min(FrameBar, e))];
+    double[] origin = [cell.X * 16, cell.Y * 16, cell.Z * 16];
     int n = 0;
-    for (int axis = 0; axis < 3; axis++)
-      foreach (double a in ends)
-        foreach (double b in ends) {
-          double[] from = [0, 0, 0];
-          double[] size = [FrameBar, FrameBar, FrameBar];
-          size[axis] = 16;
-          from[(axis + 1) % 3] = a;
-          from[(axis + 2) % 3] = b;
+    for (int axis = 0; axis < 3; axis++) {
+      int u = (axis + 1) % 3,
+        v = (axis + 2) % 3;
+      foreach (bool atFarU in new[] { false, true })
+        foreach (bool atFarV in new[] { false, true }) {
+          double[] from = [.. lo];
+          double[] size = [.. bar];
+          size[axis] = extent[axis];
+          if (atFarU)
+            from[u] += extent[u] - bar[u];
+          if (atFarV)
+            from[v] += extent[v] - bar[v];
           var faces = new JObject();
           foreach (string face in Geometry.Faces)
-            faces[face] = new JObject { ["texture"] = $"#{CellTextureKey}" };
+            faces[face] = new JObject { ["texture"] = $"#{BoxTextureKey}" };
           yield return new JObject {
             ["name"] = $"{name}-{n++}",
             ["from"] = new JArray(
-              cell.X * 16 + from[0],
-              cell.Y * 16 + from[1],
-              cell.Z * 16 + from[2]
+              origin[0] + from[0],
+              origin[1] + from[1],
+              origin[2] + from[2]
             ),
             ["to"] = new JArray(
-              cell.X * 16 + from[0] + size[0],
-              cell.Y * 16 + from[1] + size[1],
-              cell.Z * 16 + from[2] + size[2]
+              origin[0] + from[0] + size[0],
+              origin[1] + from[1] + size[1],
+              origin[2] + from[2] + size[2]
             ),
             ["faces"] = faces,
           };
         }
+    }
   }
 
   /// <summary>The isometric picture of <see cref="Compose"/>: the copy, with the declared cells

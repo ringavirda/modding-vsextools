@@ -7,7 +7,8 @@
 - The shapes tool's `schematic` draws a planned layout (`layout-recap/1`, one per machine from
   `vsshape layout`): a plan SVG per layer with each grid glyph in its cell, the cells' collision
   boxes and the controls' selection boxes outlined and a key of the glyphs on the layer, and an iso
-  PNG of the shape copy with the declared cells framed. `--shape COPY` names the copy, else the
+  PNG of the shape copy with every collision box of the principal and the declared cells outlined
+  over it, the machine showing through. `--shape COPY` names the copy, else the
   file's `planned.copy.path` is read from the repository root. The manifest lists the layers, the
   glyphs and the copy read.
 

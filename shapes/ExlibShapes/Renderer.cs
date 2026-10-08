@@ -738,7 +738,10 @@ public static class Renderer {
   /// fully transparent with no floor grid when <paramref name="transparent"/> is true, and every path in
   /// <paramref name="highlight"/> outlined in <see cref="HighlightColor"/> regardless of depth.
   /// A pixel the model encloses that no face covers is filled with <see cref="Interior"/>, so a
-  /// hole the view looks straight through does not show the paper behind it. The canvas is
+  /// hole the view looks straight through does not show the paper behind it. Leaves whose path
+  /// starts with <paramref name="overlay"/> are drawn last, without face outlines, and neither cover
+  /// nor enclose a pixel for that fill, so the model shows through them and the space they frame is
+  /// not filled. The canvas is
   /// <paramref name="fitTo"/> when given, else <see cref="Fit"/>'s for the same arguments.
   /// </summary>
   public static SKBitmap Render(
@@ -754,13 +757,16 @@ public static class Renderer {
     int margin = 2,
     bool edges = true,
     bool transparent = false,
-    Canvas? fitTo = null
+    Canvas? fitTo = null,
+    string? overlay = null
   ) {
     textures ??= TextureSet.ForShape(
       shape,
       TextureRoots.Build(null, null, shape.Path)
     );
     Dictionary<string, Mat4d> mats = WorldMatricesD(shape, poses);
+    bool IsOverlay(string path) =>
+      overlay != null && path.StartsWith(overlay, StringComparison.Ordinal);
     List<Node> leaves =
     [
       .. shape
@@ -768,7 +774,8 @@ public static class Renderer {
         .Where(el =>
           only == null
           || only.Any(p => el.Path.StartsWith(p, StringComparison.Ordinal))
-        ),
+        )
+        .OrderBy(el => IsOverlay(el.Path)),
     ];
 
     Mat3 viewRot = Mat3.RotateX(view.Pitch) * Mat3.RotateY(view.Yaw);
@@ -847,6 +854,7 @@ public static class Renderer {
 
     var highlightQuads = new List<(QuadD Quad, ScreenPoint[] Screen)>();
     var drawn = new List<ScreenPoint[]>();
+    double[,]? modelZ = null;
     foreach (
       (
         QuadD q,
@@ -859,7 +867,10 @@ public static class Renderer {
       if (cull && normalView.Item3 <= 0)
         continue;
       ScreenPoint[] screen = [.. ptsView.Select(ToScreen)];
-      drawn.Add(screen);
+      if (IsOverlay(q.Path))
+        modelZ ??= (double[,])zBuf.Clone();
+      else
+        drawn.Add(screen);
       byte[,,] tex = textures.Get(q.Texture);
       (double U, double V)[] uvCorners = RotateUvCorners(q.Uv, q.Rotation);
       double shade = Shading(q.Normal);
@@ -880,7 +891,7 @@ public static class Renderer {
         );
     }
 
-    FillHoles(colorBuf, zBuf, width, height);
+    FillHoles(colorBuf, zBuf, modelZ ?? zBuf, width, height);
 
     if (edges)
       // Face outlines darken the surface they lie on, so two parts of one texture keep their
@@ -968,6 +979,7 @@ public static class Renderer {
   private static void FillHoles(
     double[,,] colorBuf,
     double[,] zBuf,
+    double[,] coverZ,
     int width,
     int height
   ) {
@@ -980,7 +992,7 @@ public static class Renderer {
         || x < 0
         || x >= width
         || open[y, x]
-        || !double.IsNegativeInfinity(zBuf[y, x])
+        || !double.IsNegativeInfinity(coverZ[y, x])
       )
         return;
       open[y, x] = true;
@@ -1004,7 +1016,11 @@ public static class Renderer {
 
     for (int y = 0; y < height; y++)
       for (int x = 0; x < width; x++) {
-        if (open[y, x] || !double.IsNegativeInfinity(zBuf[y, x]))
+        if (
+          open[y, x]
+          || !double.IsNegativeInfinity(coverZ[y, x])
+          || !double.IsNegativeInfinity(zBuf[y, x])
+        )
           continue;
         colorBuf[y, x, 0] = Interior.Red;
         colorBuf[y, x, 1] = Interior.Green;

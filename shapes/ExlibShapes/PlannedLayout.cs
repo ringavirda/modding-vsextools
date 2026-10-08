@@ -21,6 +21,12 @@ public readonly record struct LocalBox(
 /// control's selection box rather than a collision box.</summary>
 public readonly record struct PlannedBox(Offset At, LocalBox Box, bool Control);
 
+/// <summary>The collision boxes of one declared cell: none, one box or several, in the cell's frame.</summary>
+public readonly record struct PlannedCell(
+  Offset At,
+  IReadOnlyList<LocalBox> Boxes
+);
+
 /// <summary>
 /// A machine's planned layout (<c>"schema": "layout-recap/1"</c>, written by <c>vsshape layout</c>):
 /// a blocktype-shaped file whose <c>attributes.fillerOffsets</c> are the declared cells, plus a
@@ -37,6 +43,11 @@ public sealed class PlannedLayout {
 
   /// <summary>Every collision box of a declared cell, then every control's selection box.</summary>
   public IReadOnlyList<PlannedBox> Boxes { get; }
+
+  /// <summary>The collision boxes of the principal's cell, then of each declared cell: a
+  /// <c>collisionBoxes</c> list as written, a full cube when the entry has none, no box when the
+  /// list is empty. The principal is absent when the file has no <c>planned.principal</c>.</summary>
+  public IReadOnlyList<PlannedCell> Collision { get; }
 
   /// <summary>Control glyph to what it is, <c>"door mainhatch"</c>: the kind and id of a
   /// <c>planned.controls</c> entry, the ids of further entries sharing the glyph appended after
@@ -59,6 +70,7 @@ public sealed class PlannedLayout {
     Layout layout,
     IReadOnlyList<(Offset, char)> grid,
     IReadOnlyList<PlannedBox> boxes,
+    IReadOnlyList<PlannedCell> collision,
     IReadOnlyDictionary<char, string> controls,
     string? copyPath,
     int frameTurn,
@@ -67,6 +79,7 @@ public sealed class PlannedLayout {
     Layout = layout;
     Grid = grid;
     Boxes = boxes;
+    Collision = collision;
     Controls = controls;
     CopyPath = copyPath;
     FrameTurn = frameTurn;
@@ -116,12 +129,16 @@ public sealed class PlannedLayout {
 
     var boxes = new List<PlannedBox>();
     var controlBoxes = new List<PlannedBox>();
+    var collision = new List<PlannedCell>();
+    if (raw["planned"]?["principal"] is JObject principal)
+      collision.Add(CellOf(new Offset(0, 0, 0), principal));
     foreach (
       JObject entry in (
         (JArray)raw["attributes"]!["fillerOffsets"]!
       ).Cast<JObject>()
     ) {
       var at = new Offset((int)entry["x"]!, (int)entry["y"]!, (int)entry["z"]!);
+      collision.Add(CellOf(at, entry));
       foreach (JToken box in entry["collisionBoxes"] as JArray ?? [])
         boxes.Add(new PlannedBox(at, BoxOf(box), false));
       foreach (JToken control in entry["controls"] as JArray ?? [])
@@ -142,6 +159,7 @@ public sealed class PlannedLayout {
       layout,
       glyphs,
       [.. boxes, .. controlBoxes],
+      collision,
       controls,
       (string?)raw["planned"]!["copy"]?["path"],
       (int?)frame?["turn"] ?? 0,
@@ -150,6 +168,14 @@ public sealed class PlannedLayout {
         : new Offset((int)anchor[0]!, (int)anchor[1]!, (int)anchor[2]!)
     );
   }
+
+  private static PlannedCell CellOf(Offset at, JObject entry) =>
+    new(
+      at,
+      entry["collisionBoxes"] is JArray list
+        ? [.. list.Select(BoxOf)]
+        : [new LocalBox(0, 0, 0, 1, 1, 1)]
+    );
 
   private static LocalBox BoxOf(JToken box) =>
     new(
@@ -182,6 +208,12 @@ public sealed class PlannedLayout {
           Layout.RotateOffset(b.At, angle),
           TurnBox(b.Box, angle),
           b.Control
+        )),
+      ],
+      [
+        .. Collision.Select(c => new PlannedCell(
+          Layout.RotateOffset(c.At, angle),
+          [.. c.Boxes.Select(b => TurnBox(b, angle))]
         )),
       ],
       Controls,

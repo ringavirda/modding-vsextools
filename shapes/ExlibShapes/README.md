@@ -82,8 +82,10 @@ and cells together; no front is derived, so the edges are unlabelled and the def
 cells as authored. `plan` writes the same `<stem>-plan-y<N>.svg` files with each `planned.grid`
 glyph centred in its cell, each cell's `collisionBoxes` outlined inside it (blue) and each
 control's selection `box` outlined dashed (red), and a key under the caption listing the glyphs and
-box styles on that layer. `iso` writes the copy with a one-unit frame (red) around every declared
-cell; `--layer` cuts the frames but draws the copy whole. The manifest gains a `planned` object:
+box styles on that layer. `iso` writes the copy with the edges of every collision box (red bars a quarter voxel thick) of
+the principal (`planned.principal`) and of each declared cell, a full cube for an entry with no
+`collisionBoxes` and nothing for an empty list; the machine shows through the boxes. `--layer` cuts
+the cells' bars but draws the copy whole. The manifest gains a `planned` object:
 `copy` (the shape file read), `frameTurn`, `layers` (`{layer, rows}` per y, the glyph rows north
 first) and `glyphs` (`{glyph, meaning}` in the order the grid holds them). `--shape` on a blocktype
 file is refused.

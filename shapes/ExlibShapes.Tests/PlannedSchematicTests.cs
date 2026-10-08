@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -143,7 +144,7 @@ public class PlannedSchematicTests {
   }
 
   [Fact]
-  public void Iso_view_draws_the_copy_with_the_cells_framed() {
+  public void Iso_view_draws_the_copy_with_the_collision_boxes_outlined() {
     string outDir = Path.Combine(
       Path.GetTempPath(),
       "exlib-shapes-" + Guid.NewGuid().ToString("N")
@@ -182,23 +183,132 @@ public class PlannedSchematicTests {
     );
   }
 
+  private static (double[] From, double[] To) Extent(IEnumerable<JObject> bars) {
+    double[][] from =
+    [
+      .. bars.Select(e =>
+        ((JArray)e["from"]!).Select(v => (double)v).ToArray()
+      ),
+    ];
+    double[][] to =
+    [
+      .. bars.Select(e => ((JArray)e["to"]!).Select(v => (double)v).ToArray()),
+    ];
+    return (
+      [.. Enumerable.Range(0, 3).Select(i => from.Min(f => f[i]))],
+      [.. Enumerable.Range(0, 3).Select(i => to.Max(t => t[i]))]
+    );
+  }
+
+  private static IEnumerable<JObject> BarsOf(JObject raw, int box) =>
+    raw["elements"]!
+      .Cast<JObject>()
+      .Where(e =>
+        ((string)e["name"]!).StartsWith(
+          $"{PlannedSchematic.BoxPrefix}{box}-",
+          StringComparison.Ordinal
+        )
+      );
+
+  private static string Variant(string edit) {
+    string dir = Path.Combine(
+      Path.GetTempPath(),
+      "exlib-shapes-" + Guid.NewGuid().ToString("N")
+    );
+    Directory.CreateDirectory(dir);
+    string path = Path.Combine(dir, "mini.json");
+    File.WriteAllText(path, edit);
+    return path;
+  }
+
   [Fact]
-  public void Frame_bars_are_a_quarter_voxel_thick() {
-    // Fails when the bars go back to a voxel: the first bar would span 1 on x.
+  public void Bars_run_along_the_edges_of_a_collision_box_not_its_cell() {
+    // Fails when the old cell frames return: cell (1,0,0)'s bars would span x 16..32, z 0..16.
     (JObject raw, _) = PlannedSchematic.Compose(
       PlannedLayout.Load(Planned),
       Chosen,
       0
     );
-    JObject bar = raw["elements"]!
-      .Cast<JObject>()
-      .First(e => ((string)e["name"]!).StartsWith(PlannedSchematic.CellPrefix));
-    double[] from = ((JArray)bar["from"]!).Select(v => (double)v).ToArray();
-    double[] to = ((JArray)bar["to"]!).Select(v => (double)v).ToArray();
-    Assert.Equal(PlannedSchematic.FrameBar, to[1] - from[1]);
-    Assert.Equal(PlannedSchematic.FrameBar, to[2] - from[2]);
-    Assert.Equal(16, to[0] - from[0]);
+    JObject[] bars = [.. BarsOf(raw, 0)];
+    Assert.Equal(12, bars.Length);
+    (double[] from, double[] to) = Extent(bars);
+    Assert.Equal([24, 0, 4], from);
+    Assert.Equal([32, 16, 12], to);
+    JObject first = bars[0];
+    double[] f = ((JArray)first["from"]!).Select(v => (double)v).ToArray();
+    double[] t = ((JArray)first["to"]!).Select(v => (double)v).ToArray();
+    Assert.Equal(PlannedSchematic.FrameBar, t[1] - f[1]);
+    Assert.Equal(PlannedSchematic.FrameBar, t[2] - f[2]);
+    Assert.Equal(8, t[0] - f[0]);
     Assert.Equal(0.25, PlannedSchematic.FrameBar);
+  }
+
+  [Fact]
+  public void A_cell_without_a_box_list_gets_its_cubes_edges() {
+    // Fails when the missing list reads as no box: cell (-1,0,0) would have no bars.
+    (JObject raw, _) = PlannedSchematic.Compose(
+      PlannedLayout.Load(Planned),
+      Chosen,
+      0
+    );
+    JObject[] bars = [.. BarsOf(raw, 1)];
+    Assert.Equal(12, bars.Length);
+    (double[] from, double[] to) = Extent(bars);
+    Assert.Equal([-16, 0, 0], from);
+    Assert.Equal([0, 16, 16], to);
+  }
+
+  [Fact]
+  public void A_cell_with_an_empty_box_list_draws_no_bar() {
+    // Fails when an empty list reads as a full cube: the port cell would be cubed at x -16..0.
+    string path = Variant(
+      File.ReadAllText(Planned)
+        .Replace("\"portFace\"", "\"collisionBoxes\": [], \"portFace\"")
+    );
+    (JObject raw, _) = PlannedSchematic.Compose(
+      PlannedLayout.Load(path),
+      Chosen,
+      0
+    );
+    Assert.Equal(1 + 3 * 12, raw["elements"]!.Count());
+    Assert.Empty(
+      raw["elements"]!
+        .Cast<JObject>()
+        .Where(e =>
+          ((string)e["name"]!).StartsWith(
+            PlannedSchematic.BoxPrefix,
+            StringComparison.Ordinal
+          )
+          && (double)((JArray)e["from"]!)[0]! < 0
+        )
+    );
+  }
+
+  [Fact]
+  public void The_principal_cell_draws_its_own_boxes_and_a_cut_layer_drops_those_above() {
+    // Fails when the principal is left out: the box at the origin would have no bars.
+    string path = Variant(
+      File.ReadAllText(Planned)
+        .Replace(
+          "\"planned\": {",
+          "\"planned\": {\"principal\": {\"collisionBoxes\": [{\"x1\": 0, \"y1\": 0.25, \"z1\": 0, \"x2\": 1, \"y2\": 0.5, \"z2\": 1}]},"
+        )
+    );
+    (JObject raw, _) = PlannedSchematic.Compose(
+      PlannedLayout.Load(path),
+      Chosen,
+      0
+    );
+    (double[] from, double[] to) = Extent(BarsOf(raw, 0));
+    Assert.Equal([0, 4, 0], from);
+    Assert.Equal([16, 8, 16], to);
+    (raw, _) = PlannedSchematic.Compose(
+      PlannedLayout.Load(path),
+      Chosen,
+      0,
+      cutAt: 0
+    );
+    Assert.Equal(1 + 4 * 12, raw["elements"]!.Count());
   }
 
   [Fact]

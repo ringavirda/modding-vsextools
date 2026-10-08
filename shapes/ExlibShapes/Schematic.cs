@@ -853,8 +853,8 @@ public static class Schematic {
         ("filler", FillerTextureKey, new byte[] { 190, 190, 190 }),
         ("footprint", OutlineTextureKey, new byte[] { 130, 130, 130 }),
         (
-          PlannedSchematic.CellPrefix,
-          PlannedSchematic.CellTextureKey,
+          PlannedSchematic.BoxPrefix,
+          PlannedSchematic.BoxTextureKey,
           new byte[] { 200, 60, 40 }
         ),
       }
@@ -887,7 +887,8 @@ public static class Schematic {
       loaded,
       iso,
       ppu: ppu,
-      textures: textures
+      textures: textures,
+      overlay: PlannedSchematic.BoxPrefix
     );
     return WithLayerScale(
       drawing,

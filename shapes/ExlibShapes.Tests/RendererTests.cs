@@ -111,6 +111,66 @@ public class RendererTests {
   }
 
   [Fact]
+  public void Overlay_leaves_enclose_nothing_that_is_filled_as_interior() {
+    // Fails when the overlay is drawn like the model: the space the twelve bars frame is then
+    // enclosed and painted Interior.
+    string texturePath = FixturePath.Of(
+      "textures/repo/workbench/shapes/wsl-target"
+    );
+    string faces = string.Join(
+      ",",
+      new[] { "north", "east", "south", "west", "up", "down" }.Select(f =>
+        $"\"{f}\": {{\"texture\": \"#a\", \"uv\": [0,0,16,16], \"enabled\": true}}"
+      )
+    );
+    string Cube(string name, double[] from, double[] to) =>
+      $"{{\"name\": \"{name}\", \"from\": [{string.Join(",", from)}], \"to\": [{string.Join(",", to)}], \"faces\": {{{faces}}}}}";
+    var elements = new List<string> { Cube("model", [0, 0, 0], [4, 4, 4]) };
+    double[] ends = [0, 15.75];
+    int n = 0;
+    for (int axis = 0; axis < 3; axis++)
+      foreach (double a in ends)
+        foreach (double b in ends) {
+          double[] from = [8, 8, 8];
+          double[] to = [8.25, 8.25, 8.25];
+          to[axis] = 24;
+          from[(axis + 1) % 3] += a;
+          to[(axis + 1) % 3] += a;
+          from[(axis + 2) % 3] += b;
+          to[(axis + 2) % 3] += b;
+          elements.Add(Cube($"bar{n++}", from, to));
+        }
+    Shape raw = Newtonsoft.Json.JsonConvert.DeserializeObject<Shape>(
+      $"{{\"textures\": {{\"a\": \"{texturePath}\"}}, \"elements\": [{string.Join(",", elements)}]}}"
+    )!;
+    LoadedShape shape = ShapeFile.FromRaw(raw, null);
+    View iso = Renderer.NamedViews["iso"];
+
+    int Interiors(SKBitmap bmp) {
+      int count = 0;
+      for (int y = 0; y < bmp.Height; y++)
+        for (int x = 0; x < bmp.Width; x++)
+          if (bmp.GetPixel(x, y) == Renderer.Interior)
+            count++;
+      return count;
+    }
+
+    using SKBitmap plain = Renderer.Render(shape, iso, ppu: 12, grid: false);
+    using SKBitmap overlaid = Renderer.Render(
+      shape,
+      iso,
+      ppu: 12,
+      grid: false,
+      overlay: "bar"
+    );
+    Assert.True(
+      Interiors(plain) > 0,
+      "the bars enclose nothing without the overlay"
+    );
+    Assert.Equal(0, Interiors(overlaid));
+  }
+
+  [Fact]
   public void Transparent_render_clears_the_ground_and_draws_no_grid() {
     LoadedShape shape = Pinion();
     View iso = Renderer.NamedViews["iso"];
