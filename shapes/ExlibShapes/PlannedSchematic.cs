@@ -20,6 +20,9 @@ public static class PlannedSchematic {
   /// <summary>The texture key of the frame bars.</summary>
   public const string CellTextureKey = "__cellframe";
 
+  /// <summary>The thickness of a frame bar, in voxels.</summary>
+  public const double FrameBar = 0.25;
+
   private const string CollisionStroke = "#1f5fbf";
   private const string ControlStroke = "#c0392b";
 
@@ -136,15 +139,15 @@ public static class PlannedSchematic {
     );
   }
 
-  // The twelve edges of a cell as bars a unit thick, laid inside the cell.
+  // The twelve edges of a cell as bars FrameBar thick, laid inside the cell.
   private static IEnumerable<JObject> Frame(Offset cell, string name) {
-    int[] ends = [0, 15];
+    double[] ends = [0, 16 - FrameBar];
     int n = 0;
     for (int axis = 0; axis < 3; axis++)
-      foreach (int a in ends)
-        foreach (int b in ends) {
-          int[] from = [0, 0, 0];
-          int[] size = [1, 1, 1];
+      foreach (double a in ends)
+        foreach (double b in ends) {
+          double[] from = [0, 0, 0];
+          double[] size = [FrameBar, FrameBar, FrameBar];
           size[axis] = 16;
           from[(axis + 1) % 3] = a;
           from[(axis + 2) % 3] = b;

@@ -237,15 +237,15 @@ public static class Schematic {
     }
 
     foreach (Offset f in layout.Fillers) {
-      if (f.Y != y)
+      if (f.Y != y || planned != null)
         continue;
       int fx = Px(f.X),
         fz = Pz(f.Z);
       sb.Append(
-        $"<line class=\"filler\" x1=\"{fx}\" y1=\"{fz}\" x2=\"{fx + cell}\" y2=\"{fz + cell}\" stroke=\"{(planned == null ? "black" : "#c8c8c4")}\" />"
+        $"<line class=\"filler\" x1=\"{fx}\" y1=\"{fz}\" x2=\"{fx + cell}\" y2=\"{fz + cell}\" stroke=\"black\" />"
       );
       sb.Append(
-        $"<line class=\"filler\" x1=\"{fx + cell}\" y1=\"{fz}\" x2=\"{fx}\" y2=\"{fz + cell}\" stroke=\"{(planned == null ? "black" : "#c8c8c4")}\" />"
+        $"<line class=\"filler\" x1=\"{fx + cell}\" y1=\"{fz}\" x2=\"{fx}\" y2=\"{fz + cell}\" stroke=\"black\" />"
       );
     }
 

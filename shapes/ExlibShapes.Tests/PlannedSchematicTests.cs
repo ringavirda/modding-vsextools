@@ -169,6 +169,34 @@ public class PlannedSchematicTests {
   }
 
   [Fact]
+  public void Frame_bars_are_a_quarter_voxel_thick() {
+    // Fails when the bars go back to a voxel: the first bar would span 1 on x.
+    (JObject raw, _) = PlannedSchematic.Compose(
+      PlannedLayout.Load(Planned),
+      Chosen,
+      0
+    );
+    JObject bar = raw["elements"]!
+      .Cast<JObject>()
+      .First(e => ((string)e["name"]!).StartsWith(PlannedSchematic.CellPrefix));
+    double[] from = ((JArray)bar["from"]!).Select(v => (double)v).ToArray();
+    double[] to = ((JArray)bar["to"]!).Select(v => (double)v).ToArray();
+    Assert.Equal(PlannedSchematic.FrameBar, to[1] - from[1]);
+    Assert.Equal(PlannedSchematic.FrameBar, to[2] - from[2]);
+    Assert.Equal(16, to[0] - from[0]);
+    Assert.Equal(0.25, PlannedSchematic.FrameBar);
+  }
+
+  [Fact]
+  public void Planned_plan_draws_no_cross_and_a_blocktype_plan_does() {
+    // Fails when the cross returns on a planned plan, and when a blocktype plan loses it.
+    Assert.DoesNotContain("class=\"filler\"", Plan(Run(), 0));
+    Layout kiln = Layout.Load(FixturePath.Of("schematic/kiln.json"));
+    string svg = Schematic.PlanSvg(kiln, 0, Schematic.LegendColors(kiln));
+    Assert.Contains("class=\"filler\"", svg);
+  }
+
+  [Fact]
   public void Shape_flag_is_refused_for_a_blocktype_file() {
     string kiln = FixturePath.Of("schematic/kiln.json");
     Assert.Throws<UsageException>(() =>
