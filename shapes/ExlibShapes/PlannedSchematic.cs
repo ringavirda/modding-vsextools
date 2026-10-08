@@ -10,15 +10,22 @@ namespace ExpandedLib.Shapes;
 
 /// <summary>
 /// The drawings of a <see cref="PlannedLayout"/>: the glyph and box overlay a plan SVG carries, the
-/// iso composite of the shape copy with the collision boxes outlined, and the manifest naming what was
+/// iso composite of the shape copy with the collision and control boxes outlined, and the manifest naming what was
 /// drawn.
 /// </summary>
 public static class PlannedSchematic {
   /// <summary>The element-name prefix of the bars drawn along each collision box.</summary>
   public const string BoxPrefix = "collisionbox";
 
-  /// <summary>The texture key of the box bars.</summary>
+  /// <summary>The element-name prefix of the bars drawn along each control's selection box; it
+  /// starts with <see cref="BoxPrefix"/>, so the iso draws both as overlay.</summary>
+  public const string ControlPrefix = BoxPrefix + "control";
+
+  /// <summary>The texture key of the collision box bars.</summary>
   public const string BoxTextureKey = "__collisionbox";
+
+  /// <summary>The texture key of the control box bars.</summary>
+  public const string ControlTextureKey = "__controlbox";
 
   /// <summary>The thickness of a frame bar, in voxels.</summary>
   public const double FrameBar = 0.25;
@@ -103,7 +110,8 @@ public static class PlannedSchematic {
   /// references: the copy at <paramref name="copyPath"/>, turned by the plan's frame turn and
   /// <paramref name="angle"/> and shifted so the frame anchor lands on the origin, and thin
   /// bars along the edges of every collision box of a cell not above <paramref name="cutAt"/>: the
-  /// principal's (when the plan names it), a full cube for a cell without a box list, none for an empty list. The copy is drawn
+  /// principal's (when the plan names it), a full cube for a cell without a box list, none for an empty list,
+  /// then of every control's selection box in such a cell, named from <see cref="ControlPrefix"/>. The copy is drawn
   /// whole whatever <paramref name="cutAt"/> is. <paramref name="planned"/> is already turned by
   /// <paramref name="angle"/>.
   /// </summary>
@@ -137,8 +145,24 @@ public static class PlannedSchematic {
       if (cutAt != null && cell.At.Y > cutAt)
         continue;
       foreach (LocalBox box in cell.Boxes)
-        foreach (JObject bar in Frame(cell.At, box, $"{BoxPrefix}{i++}"))
+        foreach (
+          JObject bar in Frame(cell.At, box, $"{BoxPrefix}{i++}", BoxTextureKey)
+        )
           elements.Add(bar);
+    }
+    int c = 0;
+    foreach (PlannedBox b in planned.Boxes.Where(b => b.Control)) {
+      if (cutAt != null && b.At.Y > cutAt)
+        continue;
+      foreach (
+        JObject bar in Frame(
+          b.At,
+          b.Box,
+          $"{ControlPrefix}{c++}",
+          ControlTextureKey
+        )
+      )
+        elements.Add(bar);
     }
     return (
       new JObject { ["textures"] = new JObject(), ["elements"] = elements },
@@ -150,7 +174,8 @@ public static class PlannedSchematic {
   private static IEnumerable<JObject> Frame(
     Offset cell,
     LocalBox box,
-    string name
+    string name,
+    string textureKey
   ) {
     double[] lo = [box.X1 * 16, box.Y1 * 16, box.Z1 * 16];
     double[] extent =
@@ -176,7 +201,7 @@ public static class PlannedSchematic {
             from[v] += extent[v] - bar[v];
           var faces = new JObject();
           foreach (string face in Geometry.Faces)
-            faces[face] = new JObject { ["texture"] = $"#{BoxTextureKey}" };
+            faces[face] = new JObject { ["texture"] = $"#{textureKey}" };
           yield return new JObject {
             ["name"] = $"{name}-{n++}",
             ["from"] = new JArray(

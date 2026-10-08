@@ -84,8 +84,9 @@ glyph centred in its cell, each cell's `collisionBoxes` outlined inside it (blue
 control's selection `box` outlined dashed (red), and a key under the caption listing the glyphs and
 box styles on that layer. `iso` writes the copy with the edges of every collision box (red bars a quarter voxel thick) of
 the principal (`planned.principal`) and of each declared cell, a full cube for an entry with no
-`collisionBoxes` and nothing for an empty list; the machine shows through the boxes. `--layer` cuts
-the cells' bars but draws the copy whole. The manifest gains a `planned` object:
+`collisionBoxes` and nothing for an empty list, and the same bars in blue along each control's
+selection `box` (on the principal or a declared cell); the machine shows through the boxes. `--layer`
+cuts the cells' bars but draws the copy whole. The manifest gains a `planned` object:
 `copy` (the shape file read), `frameTurn`, `layers` (`{layer, rows}` per y, the glyph rows north
 first) and `glyphs` (`{glyph, meaning}` in the order the grid holds them). `--shape` on a blocktype
 file is refused.

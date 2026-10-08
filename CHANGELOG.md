@@ -8,7 +8,7 @@
   `vsshape layout`): a plan SVG per layer with each grid glyph in its cell, the cells' collision
   boxes and the controls' selection boxes outlined and a key of the glyphs on the layer, and an iso
   PNG of the shape copy with every collision box of the principal and the declared cells outlined
-  over it, the machine showing through. `--shape COPY` names the copy, else the
+  in red and every control's selection box in blue over it, the machine showing through. `--shape COPY` names the copy, else the
   file's `planned.copy.path` is read from the repository root. The manifest lists the layers, the
   glyphs and the copy read.
 

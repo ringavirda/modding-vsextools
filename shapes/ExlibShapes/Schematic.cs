@@ -857,6 +857,11 @@ public static class Schematic {
           PlannedSchematic.BoxTextureKey,
           new byte[] { 200, 60, 40 }
         ),
+        (
+          PlannedSchematic.ControlPrefix,
+          PlannedSchematic.ControlTextureKey,
+          new byte[] { 70, 150, 255 }
+        ),
       }
     ) {
       if (

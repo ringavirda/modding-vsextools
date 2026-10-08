@@ -130,8 +130,14 @@ public sealed class PlannedLayout {
     var boxes = new List<PlannedBox>();
     var controlBoxes = new List<PlannedBox>();
     var collision = new List<PlannedCell>();
-    if (raw["planned"]?["principal"] is JObject principal)
+    if (raw["planned"]?["principal"] is JObject principal) {
       collision.Add(CellOf(new Offset(0, 0, 0), principal));
+      foreach (JToken control in principal["controls"] as JArray ?? [])
+        if (control["box"] is { } selection)
+          controlBoxes.Add(
+            new PlannedBox(new Offset(0, 0, 0), BoxOf(selection), true)
+          );
+    }
     foreach (
       JObject entry in (
         (JArray)raw["attributes"]!["fillerOffsets"]!

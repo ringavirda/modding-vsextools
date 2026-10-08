@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
+using SkiaSharp;
 using Xunit;
 
 namespace ExpandedLib.Shapes.Tests;
@@ -159,14 +160,14 @@ public class PlannedSchematicTests {
       Chosen,
       0
     );
-    Assert.Equal(1 + 4 * 12, raw["elements"]!.Count());
+    Assert.Equal(1 + 5 * 12, raw["elements"]!.Count());
     (raw, _) = PlannedSchematic.Compose(
       PlannedLayout.Load(Planned),
       Chosen,
       0,
       cutAt: 0
     );
-    Assert.Equal(1 + 3 * 12, raw["elements"]!.Count());
+    Assert.Equal(1 + 4 * 12, raw["elements"]!.Count());
   }
 
   [Fact]
@@ -270,7 +271,7 @@ public class PlannedSchematicTests {
       Chosen,
       0
     );
-    Assert.Equal(1 + 3 * 12, raw["elements"]!.Count());
+    Assert.Equal(1 + 4 * 12, raw["elements"]!.Count());
     Assert.Empty(
       raw["elements"]!
         .Cast<JObject>()
@@ -308,7 +309,124 @@ public class PlannedSchematicTests {
       0,
       cutAt: 0
     );
-    Assert.Equal(1 + 4 * 12, raw["elements"]!.Count());
+    Assert.Equal(1 + 5 * 12, raw["elements"]!.Count());
+  }
+
+  private static IEnumerable<JObject> ControlBarsOf(JObject raw) =>
+    raw["elements"]!
+      .Cast<JObject>()
+      .Where(e =>
+        ((string)e["name"]!).StartsWith(
+          PlannedSchematic.ControlPrefix,
+          StringComparison.Ordinal
+        )
+      );
+
+  [Fact]
+  public void Bars_run_along_the_edges_of_a_controls_selection_box() {
+    // Fails when the control boxes are dropped: the valve's cell would have no control bars.
+    (JObject raw, _) = PlannedSchematic.Compose(
+      PlannedLayout.Load(Planned),
+      Chosen,
+      0
+    );
+    JObject[] bars = [.. ControlBarsOf(raw)];
+    Assert.Equal(12, bars.Length);
+    (double[] from, double[] to) = Extent(bars);
+    Assert.Equal([4, 4, 24], from);
+    Assert.Equal([12, 12, 32], to);
+  }
+
+  [Fact]
+  public void A_control_box_above_the_cut_layer_draws_no_bar() {
+    // Fails when the cut ignores control boxes: the layer 1 control would keep its bars at cut 0.
+    string path = Variant(
+      File.ReadAllText(Planned)
+        .Replace(
+          "{\"x\": 0, \"y\": 1, \"z\": 0}",
+          "{\"x\": 0, \"y\": 1, \"z\": 0, \"controls\": [{\"id\": \"lever\", \"box\": {\"x1\": 0, \"y1\": 0, \"z1\": 0, \"x2\": 0.5, \"y2\": 0.5, \"z2\": 0.5}}]}"
+        )
+    );
+    (JObject raw, _) = PlannedSchematic.Compose(
+      PlannedLayout.Load(path),
+      Chosen,
+      0
+    );
+    Assert.Equal(24, ControlBarsOf(raw).Count());
+    (raw, _) = PlannedSchematic.Compose(
+      PlannedLayout.Load(path),
+      Chosen,
+      0,
+      cutAt: 0
+    );
+    Assert.Equal(12, ControlBarsOf(raw).Count());
+  }
+
+  [Fact]
+  public void The_principals_control_gets_bars_in_the_origin_cell() {
+    // Fails when the principal's controls are not read: the origin cell would have no control bars.
+    string path = Variant(
+      File.ReadAllText(Planned)
+        .Replace(
+          "\"planned\": {",
+          "\"planned\": {\"principal\": {\"controls\": [{\"id\": \"wheel\", \"box\": {\"x1\": 0.25, \"y1\": 0, \"z1\": 0, \"x2\": 0.5, \"y2\": 0.5, \"z2\": 0.5}}]},"
+        )
+    );
+    (JObject raw, _) = PlannedSchematic.Compose(
+      PlannedLayout.Load(path),
+      Chosen,
+      0
+    );
+    JObject[] origin =
+    [
+      .. ControlBarsOf(raw).Where(e => (double)((JArray)e["from"]!)[2]! < 16),
+    ];
+    Assert.Equal(12, origin.Length);
+    (double[] from, double[] to) = Extent(origin);
+    Assert.Equal([4, 0, 0], from);
+    Assert.Equal([8, 8, 8], to);
+  }
+
+  [Fact]
+  public void Iso_view_draws_a_cells_collision_and_control_boxes_in_two_colours() {
+    // Fails when either colour is dropped: the iso would hold only one of the two bar colours.
+    string path = Variant(
+      File.ReadAllText(Planned)
+        .Replace(
+          "{\"x\": 0, \"y\": 0, \"z\": 1, \"controls\"",
+          "{\"x\": 0, \"y\": 0, \"z\": 1, \"collisionBoxes\": [{\"x1\": 0, \"y1\": 0, \"z1\": 0, \"x2\": 1, \"y2\": 0.25, \"z2\": 1}], \"controls\""
+        )
+    );
+    string outDir = Path.Combine(
+      Path.GetTempPath(),
+      "exlib-shapes-" + Guid.NewGuid().ToString("N")
+    );
+    Assert.Equal(
+      0,
+      Program.RunSchematic([
+        path,
+        "--out",
+        outDir,
+        "--views",
+        "iso",
+        "--shape",
+        Chosen,
+      ])
+    );
+    using SKBitmap iso = SKBitmap.Decode(Path.Combine(outDir, "mini-iso.png"));
+    bool Any(Func<SKColor, bool> test) {
+      for (int y = 0; y < iso.Height; y++)
+        for (int x = 0; x < iso.Width; x++)
+          if (test(iso.GetPixel(x, y)))
+            return true;
+      return false;
+    }
+    Assert.True(
+      Any(c => c.Red >= 100 && c.Red > c.Green * 2.5 && c.Red > c.Blue * 3)
+    );
+    Assert.True(
+      Any(c => c.Blue >= 120 && c.Blue > c.Green * 1.4 && c.Green > c.Red * 1.5)
+    );
   }
 
   [Fact]
