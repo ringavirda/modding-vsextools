@@ -69,11 +69,11 @@ public class PlannedSchematicTests {
     // Fails when the box outlines are dropped from the overlay.
     string svg = Plan(Run(), 0);
     Assert.Contains(
-      "class=\"box\" stroke=\"#1f5fbf\" stroke-width=\"1\" fill=\"none\" x=\"80\" y=\"8\" width=\"16\" height=\"16\"",
+      "class=\"box\" stroke=\"#c0392b\" stroke-width=\"1\" fill=\"none\" x=\"80\" y=\"8\" width=\"16\" height=\"16\"",
       svg
     );
     Assert.Contains(
-      "class=\"control-box\" stroke=\"#c0392b\" stroke-width=\"1.5\" stroke-dasharray=\"3 2\" fill=\"none\" x=\"40\" y=\"48\" width=\"16\" height=\"16\"",
+      "class=\"control-box\" stroke=\"#1f5fbf\" stroke-width=\"1.5\" stroke-dasharray=\"3 2\" fill=\"none\" x=\"40\" y=\"48\" width=\"16\" height=\"16\"",
       svg
     );
   }
@@ -83,7 +83,8 @@ public class PlannedSchematicTests {
     string layer0 = Plan(Run(), 0);
     Assert.Contains(">W  control valve, bypass<", layer0);
     Assert.Contains(">P  port<", layer0);
-    Assert.Contains(">blue outline  collision box<", layer0);
+    Assert.Contains(">red outline  collision box<", layer0);
+    Assert.Contains(">blue dashed outline  control selection box<", layer0);
     string layer1 = Plan(Run(), 1);
     Assert.Contains(">#  full cube<", layer1);
     Assert.DoesNotContain("collision box", layer1);
@@ -95,7 +96,7 @@ public class PlannedSchematicTests {
     string svg = Plan(Run("--angle", "180"), 0);
     Assert.Equal('_', GlyphAt(svg, "16", "53"));
     Assert.Contains(
-      "class=\"box\" stroke=\"#1f5fbf\" stroke-width=\"1\" fill=\"none\" x=\"0\" y=\"40\" width=\"16\" height=\"16\"",
+      "class=\"box\" stroke=\"#c0392b\" stroke-width=\"1\" fill=\"none\" x=\"0\" y=\"40\" width=\"16\" height=\"16\"",
       svg
     );
   }

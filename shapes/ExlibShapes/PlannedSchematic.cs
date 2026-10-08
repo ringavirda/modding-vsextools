@@ -30,8 +30,8 @@ public static class PlannedSchematic {
   /// <summary>The thickness of a frame bar, in voxels.</summary>
   public const double FrameBar = 0.25;
 
-  private const string CollisionStroke = "#1f5fbf";
-  private const string ControlStroke = "#c0392b";
+  private const string CollisionStroke = "#c0392b";
+  private const string ControlStroke = "#1f5fbf";
 
   private static readonly Dictionary<char, string> Meanings = new() {
     ['O'] = "principal",
@@ -64,9 +64,9 @@ public static class PlannedSchematic {
     )
       lines.Add($"{glyph}  {Meaning(planned, glyph)}");
     if (planned.Boxes.Any(b => b.At.Y == y && !b.Control))
-      lines.Add("blue outline  collision box");
+      lines.Add("red outline  collision box");
     if (planned.Boxes.Any(b => b.At.Y == y && b.Control))
-      lines.Add("red dashed outline  control selection box");
+      lines.Add("blue dashed outline  control selection box");
     return lines;
   }
 

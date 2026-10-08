@@ -80,8 +80,8 @@ copy it was measured from: `--shape COPY`, else `planned.copy.path` against the 
 shifted by the negated `planned.frame.anchor` to land in the cells' frame, and `--angle` turns copy
 and cells together; no front is derived, so the edges are unlabelled and the default view has the
 cells as authored. `plan` writes the same `<stem>-plan-y<N>.svg` files with each `planned.grid`
-glyph centred in its cell, each cell's `collisionBoxes` outlined inside it (blue) and each
-control's selection `box` outlined dashed (red), and a key under the caption listing the glyphs and
+glyph centred in its cell, each cell's `collisionBoxes` outlined inside it (red) and each
+control's selection `box` outlined dashed (blue), and a key under the caption listing the glyphs and
 box styles on that layer. `iso` writes the copy with the edges of every collision box (red bars a quarter voxel thick) of
 the principal (`planned.principal`) and of each declared cell, a full cube for an entry with no
 `collisionBoxes` and nothing for an empty list, and the same bars in blue along each control's
