@@ -169,6 +169,20 @@ public class PlannedSchematicTests {
   }
 
   [Fact]
+  public void Planned_plan_outlines_each_declared_cell() {
+    // Fails when the outline is dropped: the filler cells (0,0) and (2,0) would be bare glyphs.
+    string svg = Plan(Run(), 0);
+    Assert.Contains(
+      "class=\"declared\" stroke=\"#a0a09c\" stroke-width=\"1\" fill=\"none\" x=\"0\" y=\"0\" width=\"32\" height=\"32\"",
+      svg
+    );
+    Assert.Equal(
+      PlannedLayout.Load(Planned).Layout.Fillers.Count(f => f.Y == 0),
+      Regex.Matches(svg, "class=\"declared\"").Count
+    );
+  }
+
+  [Fact]
   public void Frame_bars_are_a_quarter_voxel_thick() {
     // Fails when the bars go back to a voxel: the first bar would span 1 on x.
     (JObject raw, _) = PlannedSchematic.Compose(

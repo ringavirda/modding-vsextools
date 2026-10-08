@@ -63,7 +63,7 @@ public static class PlannedSchematic {
     return lines;
   }
 
-  /// <summary>Appends layer <paramref name="y"/>'s glyphs and box outlines to a plan SVG whose grid
+  /// <summary>Appends layer <paramref name="y"/>'s declared-cell outlines, glyphs and box outlines to a plan SVG whose grid
   /// starts at cell (<paramref name="x0"/>, <paramref name="z0"/>) and draws a cell
   /// <paramref name="cell"/> px wide. A box keeps its place inside its cell, north at the top.</summary>
   internal static void Overlay(
@@ -75,6 +75,11 @@ public static class PlannedSchematic {
     int z0
   ) {
     string F(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+    foreach (Offset f in planned.Layout.Fillers.Where(f => f.Y == y))
+      sb.Append(
+        $"<rect class=\"declared\" stroke=\"#a0a09c\" stroke-width=\"1\" fill=\"none\" "
+          + $"x=\"{F((f.X - x0) * cell)}\" y=\"{F((f.Z - z0) * cell)}\" width=\"{cell}\" height=\"{cell}\" />"
+      );
     foreach (PlannedBox b in planned.Boxes.Where(b => b.At.Y == y)) {
       string style = b.Control
         ? $"class=\"control-box\" stroke=\"{ControlStroke}\" stroke-width=\"1.5\" stroke-dasharray=\"3 2\""
