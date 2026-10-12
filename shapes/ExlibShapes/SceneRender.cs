@@ -182,7 +182,11 @@ public static class SceneRender {
     TextureSet textures = TexturesOf(values, index);
     List<string> corners = [.. CornerViews.Where(views.Contains)];
     (LoadedShape Shape, TextureSet Textures)? marks = Marks(scene, index);
-    Dictionary<string, Renderer.Canvas> canvases = Canvases(shape, marks, corners);
+    Dictionary<string, Renderer.Canvas> canvases = Canvases(
+      shape,
+      marks,
+      corners
+    );
     Directory.CreateDirectory(outDir);
     TextureSet tint = TintedTextures(scene, values, index, textures);
     var files = new List<string>();
@@ -225,8 +229,8 @@ public static class SceneRender {
 
   /// <summary>
   /// The canvas of each view in <paramref name="corners"/> that draws a face: one size, the largest
-  /// width and the largest height among the views' fits of the shape and its marks, each fit
-  /// centred in it.
+  /// width and the largest height among the views' fits of the shape and its marks and of the
+  /// four corners of the floor grid, each fit centred in it.
   /// </summary>
   internal static Dictionary<string, Renderer.Canvas> Canvases(
     LoadedShape shape,
@@ -242,7 +246,7 @@ public static class SceneRender {
       )
         fit = fit?.Union(markFit) ?? markFit;
       if (fit is { } f)
-        fits[name] = f;
+        fits[name] = WithGrid(f, Renderer.NamedViews[name]);
     }
     double width = fits
       .Values.Select(f => f.XMax - f.XMin)
@@ -252,7 +256,30 @@ public static class SceneRender {
       .Values.Select(f => f.YMax - f.YMin)
       .DefaultIfEmpty(0)
       .Max();
-    return fits.ToDictionary(kv => kv.Key, kv => Centred(kv.Value, width, height));
+    return fits.ToDictionary(
+      kv => kv.Key,
+      kv => Centred(kv.Value, width, height)
+    );
+  }
+
+  private static Renderer.Canvas WithGrid(
+    Renderer.Canvas fit,
+    View view,
+    int margin = 2
+  ) {
+    var projection = new Renderer.Projection(0, 0, 1, view);
+    Renderer.Canvas grown = fit;
+    foreach (int x in new[] { fit.GridX0, fit.GridX1 })
+      foreach (int z in new[] { fit.GridZ0, fit.GridZ1 }) {
+        (double col, double row) = projection.Screen(x, 0, z);
+        grown = grown with {
+          XMin = Math.Min(grown.XMin, col - margin),
+          XMax = Math.Max(grown.XMax, col + margin),
+          YMin = Math.Min(grown.YMin, -row - margin),
+          YMax = Math.Max(grown.YMax, -row + margin),
+        };
+      }
+    return grown;
   }
 
   private static Renderer.Canvas Centred(

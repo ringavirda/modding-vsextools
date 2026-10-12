@@ -595,12 +595,14 @@ public class SceneTests : IDisposable {
   // The pixel of demo-tint-se.png at the top face's centre of the cell at `at`.
   private static SKColor DemoTopPixel(SKBitmap tinted, Offset at) {
     SceneFile scene = SceneFile.Load(Fixture);
-    (JObject raw, _, _) = SceneRender.Compose(
-      scene,
-      BlockIndex.Build([DemoRoot])
-    );
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+    (JObject raw, _, _) = SceneRender.Compose(scene, index);
     View view = Renderer.NamedViews["se"];
-    Renderer.Canvas canvas = Renderer.Fit(SceneRender.Load(raw), view)!.Value;
+    Renderer.Canvas canvas = SceneRender.Canvases(
+      SceneRender.Load(raw),
+      SceneRender.Marks(scene, index),
+      Corners
+    )["se"];
     (double col, double row) = new Renderer.Projection(
       canvas.XMin,
       canvas.YMax,
