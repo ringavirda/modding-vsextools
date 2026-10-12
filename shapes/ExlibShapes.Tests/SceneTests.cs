@@ -66,6 +66,73 @@ public class SceneTests : IDisposable {
     );
   }
 
+  private static string Scene(string networkBody) =>
+    "{\"format\": \"setup-scene/1\", \"setup\": \"x\", \"networks\": [{\"key\": \"A\", \"type\": \"steam\", "
+    + networkBody
+    + "}]}";
+
+  [Fact]
+  public void The_reader_refuses_a_count_that_is_text() {
+    Assert.Throws<InvalidDataException>(() => SceneFile.Parse(Scene("\"nodes\": \"x\"")));
+  }
+
+  [Fact]
+  public void The_reader_refuses_a_fractional_count() {
+    Assert.Throws<InvalidDataException>(() => SceneFile.Parse(Scene("\"nodes\": 1.5")));
+  }
+
+  [Fact]
+  public void The_reader_refuses_a_count_past_the_integer_range() {
+    Assert.Throws<InvalidDataException>(() =>
+      SceneFile.Parse(Scene("\"nodes\": 99999999999"))
+    );
+  }
+
+  [Fact]
+  public void The_reader_refuses_an_object_where_a_string_belongs() {
+    Assert.Throws<InvalidDataException>(() =>
+      SceneFile.Parse(
+        "{\"format\": \"setup-scene/1\", \"setup\": \"x\", \"cells\": [{\"at\": [0,0,0], \"code\": {}}]}"
+      )
+    );
+  }
+
+  [Fact]
+  public void A_port_at_the_scene_edge_keeps_its_frame_inside_every_tinted_view() {
+    var core = new SceneCell(new Offset(0, 0, 0), "demo:masonry", "c", "block", null, null, null, null, []);
+    var port = new SceneCell(
+      new Offset(1, 0, 0),
+      "demo:masonry",
+      "p",
+      "port",
+      new Offset(0, 0, 0),
+      null,
+      null,
+      new ScenePort("e", "steam", null),
+      []
+    );
+    var scene = new SceneFile("edge", null, null, [core, port], [], []);
+    string dir = Scratch();
+    SceneRender.Write(scene, BlockIndex.Build([DemoRoot]), dir, "edge", Corners);
+    foreach (string view in Corners) {
+      using SKBitmap bitmap = SKBitmap.Decode(Path.Combine(dir, $"edge-tint-{view}.png"));
+      int reds = 0;
+      for (int y = 0; y < bitmap.Height; y++)
+        for (int x = 0; x < bitmap.Width; x++) {
+          SKColor c = bitmap.GetPixel(x, y);
+          bool red = c.Red > 150 && c.Green < 90 && c.Blue < 90;
+          if (!red)
+            continue;
+          reds++;
+          Assert.True(
+            x > 0 && y > 0 && x < bitmap.Width - 1 && y < bitmap.Height - 1,
+            $"{view}: red pixel on the edge at {x},{y} of {bitmap.Width}x{bitmap.Height}"
+          );
+        }
+      Assert.True(reds > 0, $"{view}: no red frame");
+    }
+  }
+
   [Fact]
   public void The_four_plain_views_share_one_size_and_match_their_references() {
     string dir = Scratch();
@@ -391,6 +458,40 @@ public class SceneTests : IDisposable {
       ],
       SceneRender.FindingLines(SceneFile.Load(Fixture), "demo")
     );
+  }
+
+  [Fact]
+  public void The_scene_command_writes_the_manifest_and_prints_the_files_and_findings() {
+    string dir = Scratch();
+    var stdout = new StringWriter();
+    TextWriter saved = Console.Out;
+    Console.SetOut(stdout);
+    try {
+      Assert.Equal(
+        0,
+        Program.RunScene([Fixture, "--out", dir, "--roots", DemoRoot])
+      );
+    } finally {
+      Console.SetOut(saved);
+    }
+    JObject written = JObject.Parse(File.ReadAllText(Path.Combine(dir, "demo.json")));
+    written["files"] = new JArray(
+      written["files"]!.Select(f => (JToken)Path.GetFileName((string)f!))
+    );
+    JObject expected = JObject.Parse(
+      File.ReadAllText(FixturePath.Expected("scene/demo-manifest.json"))
+    );
+    Assert.True(JToken.DeepEquals(expected, written), written.ToString());
+    string[] lines = stdout.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    Assert.Equal(
+      [
+        "unjoined: demo kiln s steam at 2,0,3",
+        "open: demo main e at 4,0,0",
+      ],
+      lines[^2..]
+    );
+    Assert.Equal(Path.Combine(dir, "demo.json"), lines[^3]);
+    Assert.Equal(10, lines.Length - 3);
   }
 
   [Fact]

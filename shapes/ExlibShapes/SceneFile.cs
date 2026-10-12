@@ -112,7 +112,7 @@ public sealed record SceneFile(
             .Select(n => new SceneNetwork(
               Required(n, "key"),
               Required(n, "type"),
-              (int?)n["nodes"] ?? 0,
+              Count(n, "nodes"),
               Strings(n["ids"])
             )),
         ],
@@ -120,12 +120,12 @@ public sealed record SceneFile(
           .. Items(root, "lines")
             .Select(l => new SceneLine(
               Required(l, "key"),
-              (int?)l["members"] ?? 0,
+              Count(l, "members"),
               Strings(l["ids"])
             )),
         ]
       );
-    } catch (Exception e) when (e is InvalidCastException or FormatException or OverflowException) {
+    } catch (Exception e) when (e is InvalidCastException or FormatException or OverflowException or ArgumentException) {
       throw new InvalidDataException($"not a scene file: {e.Message}", e);
     }
   }
@@ -151,6 +151,13 @@ public sealed record SceneFile(
 
   private static IEnumerable<JObject> Items(JObject root, string key) =>
     root[key] is JArray list ? list.OfType<JObject>() : [];
+
+  private static int Count(JObject o, string key) =>
+    o[key] switch {
+      null => 0,
+      { Type: JTokenType.Integer } t => (int)t,
+      _ => throw new InvalidDataException($"\"{key}\" is not an integer"),
+    };
 
   private static string Required(JObject o, string key) =>
     (string?)o[key] ?? throw new InvalidDataException($"missing \"{key}\"");

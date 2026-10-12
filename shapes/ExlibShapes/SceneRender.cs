@@ -178,13 +178,19 @@ public static class SceneRender {
     LoadedShape shape = Load(raw);
     TextureSet textures = TexturesOf(values, index);
     List<string> corners = [.. CornerViews.Where(views.Contains)];
+    (LoadedShape Shape, TextureSet Textures)? marks = Marks(scene, index);
     Renderer.Canvas? canvas = null;
-    foreach (string name in corners)
+    foreach (string name in corners) {
       if (Renderer.Fit(shape, Renderer.NamedViews[name]) is { } fit)
         canvas = canvas?.Union(fit) ?? fit;
+      if (
+        marks is { } m
+        && Renderer.Fit(m.Shape, Renderer.NamedViews[name]) is { } markFit
+      )
+        canvas = canvas?.Union(markFit) ?? markFit;
+    }
     Directory.CreateDirectory(outDir);
     TextureSet tint = TintedTextures(scene, values, index, textures);
-    (LoadedShape Shape, TextureSet Textures)? marks = Marks(scene, index);
     var files = new List<string>();
     var tinted = new List<string>();
     foreach (string name in corners) {
