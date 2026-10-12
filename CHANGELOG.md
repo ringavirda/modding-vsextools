@@ -28,9 +28,11 @@
   test host names the tests it was running, and keeps every run's full output in `.exmod/test-logs/`; a failed
   run, or one below the census, prints that log's path.
 - `exmod render`, `schematic`, `block` and `item` run the built shapes tool and build it only when
-  its output is missing or older than its inputs. `exmod shapes-build` builds it on its own, and
-  with `EXMOD_SHAPES_NO_BUILD` set a stale tool makes those commands refuse instead of building, so
-  renders can run side by side under a shared lock and the build under the exclusive one.
+  its output is missing or older than its inputs. `exmod shapes-build` builds it on its own and
+  publishes the output to a new folder under `.exmod/shapes/`, switching the `current` symlink to it
+  by rename, keeping the previous publish and deleting older ones past 10 minutes. With
+  `EXMOD_SHAPES_NO_BUILD` set those commands run `current` with no lock and refuse when nothing is
+  published, so renders are not held up by a build or suite.
 - The shapes tool's `render --anim` draws every frame of a view on one canvas sized to hold the
   whole clip, so the frames line up as an animation; each frame used to be cropped to its own pose.
 
