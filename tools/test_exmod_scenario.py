@@ -1,7 +1,7 @@
 """Tests for `exmod scenario` in exmod/run.ps1 and the scratch server it shares with `exmod smoke`: the
 option parse, the command line and names, the staging layout, the server config, the schematic copy, and the
-report over sample log text with the exit rules. Run through pwsh ($PWSH, PATH, or the checkout's
-.dotnet/tools) with exmod_harness's prelude, one pwsh per class; skipped when no pwsh is found. Each test
+report over sample log text with the exit rules. Run through pwsh ($PWSH, PATH, or the nearest
+.dotnet/tools above the checkout) with exmod_harness's prelude, one pwsh per class; skipped when no pwsh is found. Each test
 names the mutation it fails under."""
 
 import json
@@ -91,6 +91,7 @@ class ArgumentTests(FixtureRepo):
 Try-Case 'ports' { $o = Get-ScenarioOptions @('-Port','42500','exlib/sample','-Version','1.22','exlib/sample-2','-Timeout','90'); [ordered]@{ Names = $o.Names; Port = $o.Port; Timeout = $o.Timeout } }
 Try-Case 'defaults' { $o = Get-ScenarioOptions @('exlib/sample'); [ordered]@{ Port = $o.Port; Timeout = $o.Timeout; Version = $o.Version } }
 Try-Case 'verbose' { $o = Get-ScenarioOptions @('-Verbose','exlib/sample'); [ordered]@{ Names = $o.Names; Verbose = $o.Verbose; Off = (Get-ScenarioOptions @('exlib/sample')).Verbose } }
+Try-Case 'hostVerbose' { $VerbosePreference = 'Continue'; (Get-ScenarioOptions @('exlib/sample')).Verbose }
 Try-Case 'unknown' { Get-ScenarioOptions @('-Keep','exlib/sample') | Out-Null; 'no error' }
 Try-Case 'series' { Get-ScenarioOptions @('-Version','1.21') | Out-Null; 'no error' }
 """)
@@ -117,6 +118,10 @@ Try-Case 'series' { Get-ScenarioOptions @('-Version','1.21') | Out-Null; 'no err
         self.assertTrue(got["Verbose"])
         self.assertFalse(got["Off"])
 
+    def test_verbose_is_read_from_the_preference_the_host_binds(self):
+        # Mutation: the $VerbosePreference test removed from Verbose in Get-ScenarioOptions. Fails here.
+        self.assertTrue(self.results_of()["hostVerbose"])
+
     def test_an_unknown_option_is_refused(self):
         # Mutation: the unknown-option throw removed, so -Keep is passed on as a scenario name. Fails here.
         self.assertIn("Unknown option -Keep", self.results_of()["unknown"].get("Error", "no error"))
@@ -141,6 +146,13 @@ Try-Case 'command' { Get-ScenarioCommand @('exlib/sample','exlib/sample-2') }
 Try-Case 'names' { Get-ScenarioNames }
 """)["names"]
         self.assertEqual(["exlib/sample", "exlib/sample-2"], sorted(got))
+
+    def test_a_bare_stem_is_filed_under_the_checkouts_modid_and_a_slashed_name_is_kept(self):
+        # Mutation: Expand-ScenarioNames returns its names unchanged. Fails here.
+        got = run_cases(self.repo, r"""
+Try-Case 'expand' { Expand-ScenarioNames @('sample','exlib/sample-2','other/x') }
+""")["expand"]
+        self.assertEqual(["exlib/sample", "exlib/sample-2", "other/x"], got)
 
     def test_the_schematic_name_replaces_slashes_as_the_runner_does(self):
         # Mutation: the -replace of '/' removed, so the file is looked for under a subfolder. Fails here.
@@ -191,7 +203,7 @@ Try-Case 'schematics' {
 Try-Case 'serverconfig' {
   $c = Get-ScenarioServerConfig
   [ordered]@{ Ip = $c.Ip; WorldType = $c.WorldConfig.WorldType; PlayStyle = $c.WorldConfig.PlayStyle;
-    GameMode = $c.WorldConfig.WorldConfiguration.gameMode; PassTimeWhenEmpty = $c.PassTimeWhenEmpty;
+    GameMode = $c.WorldConfig.WorldConfiguration.gameMode; PassTimeWhenEmpty = $c.PassTimeWhenEmpty; WhitelistMode = $c.WhitelistMode;
     DefaultRole = $c.DefaultRoleCode; RoleCodes = @($c.Roles | ForEach-Object { $_.Code }) }
 }
 """)
@@ -236,6 +248,7 @@ Try-Case 'serverconfig' {
         self.assertEqual("superflat", got["WorldType"])
         self.assertEqual("creative", got["GameMode"])
         self.assertTrue(got["PassTimeWhenEmpty"])
+        self.assertEqual("Off", got["WhitelistMode"])
 
     def test_the_default_role_is_a_role_the_config_defines(self):
         # Mutation: the Roles entry removed from the config. Fails here: the default code names no group.

@@ -1,13 +1,30 @@
 """What every test that loads exmod.ps1 shares: the checkout root, the pwsh to run it with ($PWSH,
-PATH, or the checkout's .dotnet/tools; None when there is none), the environment and the prelude
+PATH, or the nearest .dotnet/tools above the checkout; None when there is none), the environment and the prelude
 that keep a test off the Windows side of the machine it runs on, the network and the real store."""
 
 import os
 import shutil
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PWSH = (os.environ.get("PWSH") or shutil.which("pwsh")
-        or next((p for p in [os.path.join(ROOT, ".dotnet", "tools", "pwsh")] if os.access(p, os.X_OK)), None))
+
+
+def _find_pwsh():
+    if os.environ.get("PWSH"):
+        return os.environ["PWSH"]
+    if shutil.which("pwsh"):
+        return shutil.which("pwsh")
+    d = ROOT
+    while True:
+        p = os.path.join(d, ".dotnet", "tools", "pwsh")
+        if os.access(p, os.X_OK):
+            return p
+        up = os.path.dirname(d)
+        if up == d:
+            return None
+        d = up
+
+
+PWSH = _find_pwsh()
 
 # Defined after exmod.ps1 loads and before a test's body: Test-WslInterop is $false, and every
 # Windows program exmod starts by name (cmd.exe through Invoke-WindowsCmd, reg, reg.exe, wsl.exe),

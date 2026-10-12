@@ -693,6 +693,11 @@ function Get-ScenarioNames {
       ForEach-Object { "$ScenarioMod/$($_.BaseName)" })
 }
 
+# A bare stem is filed under the checkout's modid; a name with a slash is taken as given.
+function Expand-ScenarioNames([string[]]$Names) {
+  return @($Names | ForEach-Object { if ($_ -like '*/*') { $_ } else { "$ScenarioMod/$_" } })
+}
+
 # The stdin line that starts a run of the named scenarios.
 function Get-ScenarioCommand([string[]]$Names) {
   return "/exmod scenario run $($Names -join ' ')"
@@ -732,7 +737,7 @@ function Get-ScenarioServerConfig {
     Ip                = '127.0.0.1'
     AdvertiseServer   = $false
     PassTimeWhenEmpty = $true
-    WhitelistMode     = 0
+    WhitelistMode     = 'Off'
     DefaultRoleCode   = 'suplayer'
     Roles             = @([ordered]@{
         Code              = 'suplayer'
@@ -872,7 +877,7 @@ function Save-ScenarioSchematics([string]$DataDir, [string[]]$Names, [string]$De
 # when none is named), prints the run's lines, stops the server and throws when the run does not pass.
 function Invoke-Scenario([string[]]$Argv) {
   $opts = Get-ScenarioOptions $Argv
-  $names = if ($opts.Names) { $opts.Names } else { Get-ScenarioNames }
+  $names = if ($opts.Names) { Expand-ScenarioNames $opts.Names } else { Get-ScenarioNames }
   $scenarios = Join-Path $RepoRoot 'tests/live'
   if (-not (Test-Path $scenarios)) { throw "No tests/live under $RepoRoot." }
   $command = Get-ScenarioCommand $names
@@ -923,7 +928,7 @@ exmod scenario [<name>...] [-Version <x.y>] [-Port <n>] [-Timeout <seconds>]
 
 Builds this checkout's live mod (exmod.json's `live` key), boots a dedicated server with the built mods
 and the live mod, copies tests/live into the server's Scenarios/exlib folder, runs the named scenarios
-on it, prints the run's lines and stops the server. A name is <modid>/<stem>, such as exlib/sample;
+on it, prints the run's lines and stops the server. A name is <modid>/<stem>, such as exlib/sample, or a bare stem of this checkout's own;
 with no name, every scenario file in tests/live runs.
 
   -Version   the game series; only the current one, which the live mod is built for (default 1.22)
