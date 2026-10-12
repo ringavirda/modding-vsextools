@@ -885,7 +885,7 @@ function Write-ScenarioProgress($Server, [int]$Printed, [bool]$Steps = $false) {
   $report = Get-ScenarioReport @(Get-Content $Server.Log -ErrorAction SilentlyContinue) $Steps
   $new = @($report.Shown | Select-Object -Skip $Printed)
   foreach ($line in $new) {
-    if ($line -notmatch '^\[scenario\] done: ') { Write-Host $line }
+    if ($line -notmatch '\[scenario\] done: ') { Write-Host $line }
   }
   return [pscustomobject]@{ Report = $report; Printed = $Printed + $new.Count }
 }
