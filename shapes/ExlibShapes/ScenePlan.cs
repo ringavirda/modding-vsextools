@@ -86,6 +86,7 @@ public static class ScenePlan {
   /// </summary>
   /// <param name="scene">The scene to draw.</param>
   /// <param name="y">The layer; see <see cref="Layers"/>.</param>
+  /// <exception cref="InvalidOperationException">The scene has no cells.</exception>
   public static string Svg(SceneFile scene, int y) {
     IReadOnlyDictionary<string, string> colors = KeyColors(scene);
     var byAt = new Dictionary<Offset, SceneCell>();
@@ -147,7 +148,7 @@ public static class ScenePlan {
       );
     legend.Add((Unjoined, "red arrow: unjoined port, red tick: open face"));
 
-    string caption = Schematic.LayerCaption(y);
+    string caption = $"Layer y={y}";
     int canvas =
       Math.Max(
         width,

@@ -12,14 +12,24 @@ namespace ExpandedLib.Shapes.Tests;
 
 /// <summary>Covers the scene reader and the plain corner views of <c>fixtures/scene/demo.scene.json</c>,
 /// compared against <c>expected/scene/</c>.</summary>
-public class SceneTests {
+public class SceneTests : IDisposable {
   private static readonly string[] Corners = ["ne", "nw", "se", "sw"];
 
   private static string Fixture => FixturePath.Of("scene/demo.scene.json");
   private static string DemoRoot => FixturePath.Of("schematic");
 
-  private static string Scratch() =>
-    Directory.CreateTempSubdirectory("scene-test").FullName;
+  private readonly List<string> _scratch = [];
+
+  private string Scratch() {
+    string dir = Directory.CreateTempSubdirectory("scene-test").FullName;
+    _scratch.Add(dir);
+    return dir;
+  }
+
+  public void Dispose() {
+    foreach (string dir in _scratch)
+      Directory.Delete(dir, true);
+  }
 
   private static SceneRendered Render(string outDir, int ppu = 4) =>
     SceneRender.Write(
@@ -480,5 +490,154 @@ public class SceneTests {
       );
       Assert.Equal((plain.Width, plain.Height), (tint.Width, tint.Height));
     }
+  }
+
+  [Fact]
+  public void A_port_with_a_null_face_is_read() {
+    SceneFile scene = SceneFile.Parse(
+      """
+      {"format": "setup-scene/1", "setup": "x", "cells": [
+        {"at": [0,0,0], "code": "a:b", "role": "port", "principal": [0,0,0],
+         "port": {"face": null, "type": "mechanical", "joins": "M1"}}]}
+      """
+    );
+    Assert.Equal(new ScenePort(null, "mechanical", "M1"), scene.Cells[0].Port);
+  }
+
+  [Theory]
+  [InlineData("{\"code\": \"a:b\"}")]
+  [InlineData("{\"at\": [0,0,0]}")]
+  [InlineData("{\"at\": [0,0.5,0], \"code\": \"a:b\"}")]
+  [InlineData("{\"at\": [0,\"y\",0], \"code\": \"a:b\"}")]
+  public void A_cell_without_a_position_or_code_or_with_a_fractional_one_is_refused(
+    string cell
+  ) {
+    Assert.Throws<InvalidDataException>(() =>
+      SceneFile.Parse(
+        $"{{\"format\": \"setup-scene/1\", \"setup\": \"x\", \"cells\": [{cell}]}}"
+      )
+    );
+  }
+
+  [Fact]
+  public void An_unresolved_code_in_two_cells_is_listed_once() {
+    SceneCell ghost(int x) =>
+      new(new Offset(x, 0, 0), "demo:nothing", "g", "block", null, null, null, null, []);
+    var scene = new SceneFile("ghosts", null, null, [ghost(0), ghost(1)], [], []);
+    SceneRendered rendered = SceneRender.Write(
+      scene,
+      BlockIndex.Build([DemoRoot]),
+      Scratch(),
+      "ghosts",
+      ["se"]
+    );
+    Assert.Equal(["demo:nothing"], rendered.Unresolved);
+  }
+
+  private static readonly int[] Shades = [100, 75, 60];
+
+  private static bool IsShadeOf(SKColor c, string hex) {
+    SKColor key = SKColor.Parse(hex);
+    return Shades.Any(s =>
+      Math.Abs(c.Red - key.Red * s / 100) <= PixelCompare.Tolerance
+      && Math.Abs(c.Green - key.Green * s / 100) <= PixelCompare.Tolerance
+      && Math.Abs(c.Blue - key.Blue * s / 100) <= PixelCompare.Tolerance
+    );
+  }
+
+  private static SceneFile Walled(string? joins, bool withPort) {
+    List<SceneCell> cells =
+    [
+      new(
+        new Offset(1, 0, 1),
+        "exlib:structurefiller",
+        null,
+        "port",
+        new Offset(1, 0, 1),
+        null,
+        null,
+        withPort ? new ScenePort("s", "steam", joins) : null,
+        []
+      ),
+    ];
+    foreach (Offset at in new Offset[] { new(0, 0, 1), new(2, 0, 1), new(1, 0, 0), new(1, 0, 2), new(1, 1, 1) })
+      cells.Add(new(at, "demo:masonry", "guard", "block", null, null, null, null, []));
+    return new SceneFile(
+      "walled",
+      null,
+      null,
+      cells,
+      joins == null ? [] : [new SceneNetwork("A", "steam", 0, [])],
+      []
+    );
+  }
+
+  // The tinted views of a walled port, and of the same scene with the port's frame left out.
+  private IEnumerable<(SKBitmap Framed, SKBitmap Bare)> WalledViews(string? joins) {
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+    string dir = Scratch();
+    SceneRender.Write(Walled(joins, true), index, dir, "framed", Corners);
+    SceneRender.Write(Walled(joins, false), index, dir, "bare", Corners);
+    foreach (string view in Corners)
+      yield return (
+        SKBitmap.Decode(Path.Combine(dir, $"framed-tint-{view}.png")),
+        SKBitmap.Decode(Path.Combine(dir, $"bare-tint-{view}.png"))
+      );
+  }
+
+  private static List<SKColor> Changed(SKBitmap framed, SKBitmap bare) {
+    var pixels = new List<SKColor>();
+    for (int y = 0; y < framed.Height; y++)
+      for (int x = 0; x < framed.Width; x++)
+        if (framed.GetPixel(x, y) != bare.GetPixel(x, y))
+          pixels.Add(framed.GetPixel(x, y));
+    return pixels;
+  }
+
+  [Fact]
+  public void A_walled_unjoined_ports_frame_shows_red_in_each_tinted_view() {
+    foreach ((SKBitmap framed, SKBitmap bare) in WalledViews(null)) {
+      List<SKColor> changed = Changed(framed, bare);
+      Assert.Contains(changed, c => IsShadeOf(c, ScenePlan.Unjoined));
+    }
+  }
+
+  [Fact]
+  public void Pixels_a_frame_changes_are_its_own_colour_and_the_tint_inside_it_stays() {
+    foreach ((SKBitmap framed, SKBitmap bare) in WalledViews(null)) {
+      List<SKColor> changed = Changed(framed, bare);
+      Assert.NotEmpty(changed);
+      Assert.True(
+        changed.Count(c => IsShadeOf(c, ScenePlan.Unjoined)) * 5 >= changed.Count * 4,
+        $"{changed.Count(c => !IsShadeOf(c, ScenePlan.Unjoined))} of {changed.Count} changed pixels are not the frame's"
+      );
+    }
+  }
+
+  [Fact]
+  public void A_joined_ports_frame_is_its_networks_colour_and_not_red() {
+    string joins = ScenePlan.KeyColors(Walled("A", true))["A"];
+    foreach ((SKBitmap framed, SKBitmap bare) in WalledViews("A")) {
+      List<SKColor> changed = Changed(framed, bare);
+      Assert.Contains(changed, c => IsShadeOf(c, joins));
+      Assert.DoesNotContain(changed, c => IsShadeOf(c, ScenePlan.Unjoined));
+    }
+  }
+
+  [Theory]
+  [InlineData("ne")]
+  [InlineData("nw")]
+  [InlineData("se")]
+  [InlineData("sw")]
+  public void Each_tinted_view_equals_its_reference(string view) {
+    string dir = Scratch();
+    Render(dir);
+    using SKBitmap actual = SKBitmap.Decode(
+      Path.Combine(dir, $"demo-tint-{view}.png")
+    );
+    using SKBitmap expected = SKBitmap.Decode(
+      FixturePath.Expected($"scene/demo-tint-{view}.png")
+    );
+    PixelCompare.Assert(expected, actual, $"demo-tint-{view}");
   }
 }

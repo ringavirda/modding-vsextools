@@ -17,9 +17,9 @@
       "type": "steam",
       "nodes": 4,
       "ids": [
-        "kiln",
         "main",
-        "riser"
+        "riser",
+        "kiln"
       ],
       "color": "#4C72B0"
     }

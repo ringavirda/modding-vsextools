@@ -170,12 +170,13 @@ public static class PlannedSchematic {
     );
   }
 
-  // The twelve edges of a box as bars FrameBar thick, laid inside the box, in cell `cell`.
-  private static IEnumerable<JObject> Frame(
+  // The twelve edges of a box as bars `thickness` thick, laid inside the box, in cell `cell`.
+  internal static IEnumerable<JObject> Frame(
     Offset cell,
     LocalBox box,
     string name,
-    string textureKey
+    string textureKey,
+    double thickness = FrameBar
   ) {
     double[] lo = [box.X1 * 16, box.Y1 * 16, box.Z1 * 16];
     double[] extent =
@@ -184,7 +185,7 @@ public static class PlannedSchematic {
       (box.Y2 - box.Y1) * 16,
       (box.Z2 - box.Z1) * 16,
     ];
-    double[] bar = [.. extent.Select(e => Math.Min(FrameBar, e))];
+    double[] bar = [.. extent.Select(e => Math.Min(thickness, e))];
     double[] origin = [cell.X * 16, cell.Y * 16, cell.Z * 16];
     int n = 0;
     for (int axis = 0; axis < 3; axis++) {

@@ -98,7 +98,7 @@ Build it under the exclusive lock first: `flock -w 240 -o LOCK exmod shapes-buil
 
   FILE            the shape JSON to render
   --out=DIR       where the PNGs are written
-  --views a,b     named views to render (south, north, east, west, up, down, iso); default: iso
+  --views a,b     named views to render (south, north, east, west, up, down, iso, ne, nw, se, sw); default: iso
   --ppu N         pixels per shape unit (default: 24)
   --anim CLIP --frames N   render one animation clip's frame(s) instead of a static view
   --only PATH     restrict to elements whose path starts with PATH (repeatable)
@@ -186,7 +186,7 @@ Build it under the exclusive lock first: `flock -w 240 -o LOCK exmod shapes-buil
   FILE            the blocktype JSON to render
   --out=DIR       where the PNGs, the footprint SVG and <stem>.json are written
   --variant CODE  the variant to draw (default: the presentation facing, else the family's first)
-  --views a,b     named views (south, north, east, west, up, down, iso); default: all but down
+  --views a,b     named views (south, north, east, west, up, down, iso, ne, nw, se, sw); default: all but down
   --angle N       turn the machine before rendering (0, 90, 180 or 270)
   --full          draw the whole model, the parts an animation parks outside the block included
   --ppu N         pixels per shape unit (default: 24)

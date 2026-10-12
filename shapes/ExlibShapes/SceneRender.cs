@@ -43,6 +43,14 @@ public static class SceneRender {
 
   internal const string UnresolvedTextureKey = "__unresolved";
 
+  // The element-name prefix of the port frames and open stubs, drawn as overlay.
+  private const string MarkPrefix = "mark";
+
+  // Bar thickness of a port frame, in voxels; a stub is StubSide square and StubLength long.
+  private const double MarkBar = 0.5;
+  private const double StubSide = 4;
+  private const double StubLength = 6;
+
   /// <summary>
   /// The composite of the scene's drawn cells. A filler or port entry draws nothing; a fluid entry
   /// draws only where no other entry shares its cell; air draws nothing; a code no root resolves
@@ -176,6 +184,7 @@ public static class SceneRender {
         canvas = canvas?.Union(fit) ?? fit;
     Directory.CreateDirectory(outDir);
     TextureSet tint = TintedTextures(scene, values, index, textures);
+    (LoadedShape Shape, TextureSet Textures)? marks = Marks(scene, index);
     var files = new List<string>();
     var tinted = new List<string>();
     foreach (string name in corners) {
@@ -183,7 +192,16 @@ public static class SceneRender {
         WriteView(shape, name, textures, canvas, ppu, outDir, $"{stem}-plain-{name}.png")
       );
       tinted.Add(
-        WriteView(shape, name, tint, canvas, ppu, outDir, $"{stem}-tint-{name}.png")
+        WriteView(
+          shape,
+          name,
+          tint,
+          canvas,
+          ppu,
+          outDir,
+          $"{stem}-tint-{name}.png",
+          marks
+        )
       );
     }
     return new SceneRendered(
@@ -201,7 +219,8 @@ public static class SceneRender {
     Renderer.Canvas? canvas,
     int ppu,
     string outDir,
-    string fileName
+    string fileName,
+    (LoadedShape Shape, TextureSet Textures)? marks = null
   ) {
     using SKBitmap bitmap = Renderer.Render(
       shape,
@@ -210,11 +229,107 @@ public static class SceneRender {
       textures: textures,
       fitTo: canvas
     );
+    if (marks is { } m) {
+      using SKBitmap layer = Renderer.Render(
+        m.Shape,
+        Renderer.NamedViews[view],
+        ppu: ppu,
+        grid: false,
+        textures: m.Textures,
+        edges: false,
+        transparent: true,
+        fitTo: canvas,
+        overlay: MarkPrefix
+      );
+      using var surface = new SKCanvas(bitmap);
+      surface.DrawBitmap(layer, 0, 0);
+    }
     string path = Path.Combine(outDir, fileName);
     using SKData data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
     using FileStream stream = File.Create(path);
     data.SaveTo(stream);
     return path;
+  }
+
+  // The port frames and open stubs as bars of their own shape, so they are rendered apart from the
+  // cells and laid over the tinted picture.
+  private static (LoadedShape Shape, TextureSet Textures)? Marks(
+    SceneFile scene,
+    BlockIndex index
+  ) {
+    IReadOnlyDictionary<string, string> colors = ScenePlan.KeyColors(scene);
+    var elements = new JArray();
+    var used = new SortedSet<string>(StringComparer.Ordinal);
+    for (int i = 0; i < scene.Cells.Count; i++) {
+      SceneCell c = scene.Cells[i];
+      if (c.Port is { } port) {
+        string color =
+          port.Joins != null && colors.TryGetValue(port.Joins, out string? joined)
+            ? joined
+            : ScenePlan.Unjoined;
+        used.Add(color);
+        foreach (
+          JObject bar in PlannedSchematic.Frame(
+            c.At,
+            new LocalBox(0, 0, 0, 1, 1, 1),
+            $"{MarkPrefix}frame{i}",
+            MarkTextureKey(color),
+            MarkBar
+          )
+        )
+          elements.Add(bar);
+      }
+      foreach (string face in c.Open) {
+        used.Add(ScenePlan.Unjoined);
+        elements.Add(Stub(c.At, face, $"{MarkPrefix}stub{i}{face}"));
+      }
+    }
+    if (elements.Count == 0)
+      return null;
+    var values = new Dictionary<string, TextureRef>();
+    var extra = used.ToDictionary(
+      color => MarkTextureKey(color),
+      color => Solid(color)
+    );
+    return (
+      Load(new JObject { ["textures"] = new JObject(), ["elements"] = elements }),
+      TextureSet.FromResolved(values, index.ResolveTexture, extra)
+    );
+  }
+
+  private static string MarkTextureKey(string hex) => $"__mark{hex[1..]}";
+
+  private static byte[,,] Solid(string hex) {
+    var image = new byte[16, 16, 4];
+    for (int y = 0; y < 16; y++)
+      for (int x = 0; x < 16; x++) {
+        for (int c = 0; c < 3; c++)
+          image[y, x, c] = Convert.ToByte(hex.Substring(1 + 2 * c, 2), 16);
+        image[y, x, 3] = 255;
+      }
+    return image;
+  }
+
+  // A bar StubSide square leaving the middle of `face` of cell `at` StubLength out.
+  private static JObject Stub(Offset at, string face, string name) {
+    double[] origin = [at.X * 16, at.Y * 16, at.Z * 16];
+    double[] lo = [origin[0] + 8, origin[1] + 8, origin[2] + 8];
+    double[] size = [StubSide, StubSide, StubSide];
+    int axis = face is "e" or "w" ? 0 : face is "u" or "d" ? 1 : 2;
+    bool positive = face is "e" or "s" or "u";
+    for (int a = 0; a < 3; a++)
+      lo[a] -= StubSide / 2;
+    size[axis] = StubLength;
+    lo[axis] = origin[axis] + (positive ? 16 : -StubLength);
+    var faces = new JObject();
+    foreach (string f in Geometry.Faces)
+      faces[f] = new JObject { ["texture"] = $"#{MarkTextureKey(ScenePlan.Unjoined)}" };
+    return new JObject {
+      ["name"] = name,
+      ["from"] = new JArray(lo[0], lo[1], lo[2]),
+      ["to"] = new JArray(lo[0] + size[0], lo[1] + size[1], lo[2] + size[2]),
+      ["faces"] = faces,
+    };
   }
 
   private static TextureSet TintedTextures(

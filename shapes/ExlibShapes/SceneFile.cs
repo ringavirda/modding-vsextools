@@ -36,6 +36,11 @@ public sealed record SceneCell(
 );
 
 /// <summary>A pipe or gas network of a scene.</summary>
+/// <param name="Key">The network key cells and ports name.</param>
+/// <param name="Type">The network type, such as <c>steam</c>.</param>
+/// <param name="Nodes">The number of cells on the network; a count, not a list.</param>
+/// <param name="Ids">The setup ids of the network's cells in cell order, a filler or port counted
+/// under its principal's id, then the principal ids of the ports that join it; each once.</param>
 public sealed record SceneNetwork(
   string Key,
   string Type,
@@ -44,6 +49,10 @@ public sealed record SceneNetwork(
 );
 
 /// <summary>A mechanical line of a scene.</summary>
+/// <param name="Key">The line key cells and ports name.</param>
+/// <param name="Members">The number of cells on the line; a count, not a list.</param>
+/// <param name="Ids">The setup ids of the line's cells in cell order, a filler or port counted
+/// under its principal's id, then the principal ids of the ports that join it; each once.</param>
 public sealed record SceneLine(
   string Key,
   int Members,
@@ -54,6 +63,12 @@ public sealed record SceneLine(
 /// A setup scene as the harness dumps it: every non-air cell of a built setup, with its network or
 /// line key, ports and open faces. The format is <c>setup-scene/1</c>.
 /// </summary>
+/// <param name="Setup">The setup's name.</param>
+/// <param name="Variant">The variant's name; null when the setup has none.</param>
+/// <param name="Game">The game version the dump was made on; null when absent.</param>
+/// <param name="Cells">Every cell, in file order.</param>
+/// <param name="Networks">The pipe and gas networks.</param>
+/// <param name="Lines">The mechanical lines.</param>
 public sealed record SceneFile(
   string Setup,
   string? Variant,
@@ -68,7 +83,8 @@ public sealed record SceneFile(
   /// <summary>Reads a scene file.</summary>
   /// <param name="path">A <c>.scene.json</c> file.</param>
   /// <exception cref="InvalidDataException">The file is not JSON, its format is not
-  /// <see cref="Format"/>, or a cell lacks its position or code.</exception>
+  /// <see cref="Format"/>, a cell lacks its position or code, or a position or count is not an
+  /// integer.</exception>
   /// <exception cref="IOException">The file cannot be read.</exception>
   public static SceneFile Load(string path) => Parse(File.ReadAllText(path));
 
@@ -85,29 +101,33 @@ public sealed record SceneFile(
       throw new InvalidDataException(
         $"scene format {format ?? "(none)"} is not {Format}"
       );
-    return new SceneFile(
-      Required(root, "setup"),
-      (string?)root["variant"],
-      (string?)root["game"],
-      [.. Items(root, "cells").Select(Cell)],
-      [
-        .. Items(root, "networks")
-          .Select(n => new SceneNetwork(
-            Required(n, "key"),
-            Required(n, "type"),
-            (int?)n["nodes"] ?? 0,
-            Strings(n["ids"])
-          )),
-      ],
-      [
-        .. Items(root, "lines")
-          .Select(l => new SceneLine(
-            Required(l, "key"),
-            (int?)l["members"] ?? 0,
-            Strings(l["ids"])
-          )),
-      ]
-    );
+    try {
+      return new SceneFile(
+        Required(root, "setup"),
+        (string?)root["variant"],
+        (string?)root["game"],
+        [.. Items(root, "cells").Select(Cell)],
+        [
+          .. Items(root, "networks")
+            .Select(n => new SceneNetwork(
+              Required(n, "key"),
+              Required(n, "type"),
+              (int?)n["nodes"] ?? 0,
+              Strings(n["ids"])
+            )),
+        ],
+        [
+          .. Items(root, "lines")
+            .Select(l => new SceneLine(
+              Required(l, "key"),
+              (int?)l["members"] ?? 0,
+              Strings(l["ids"])
+            )),
+        ]
+      );
+    } catch (Exception e) when (e is InvalidCastException or FormatException or OverflowException) {
+      throw new InvalidDataException($"not a scene file: {e.Message}", e);
+    }
   }
 
   private static SceneCell Cell(JObject c) =>
@@ -140,6 +160,9 @@ public sealed record SceneFile(
 
   private static Offset? At(JToken? token) =>
     token is JArray { Count: 3 } a
+    && a.All(t => t.Type == JTokenType.Integer)
       ? new Offset((int)a[0], (int)a[1], (int)a[2])
-      : null;
+      : token is JArray { Count: 3 }
+        ? throw new InvalidDataException("a position is not three integers")
+        : null;
 }

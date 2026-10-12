@@ -27,7 +27,7 @@ exlib-shapes render FILE --out DIR [--views a,b,...] [--ppu N] [--anim CLIP --fr
 ```
 
 Renders `FILE`'s named views, one PNG each, to `--out`. `--views` is a comma-separated list of
-`south`, `north`, `east`, `west`, `up`, `down`, `iso` (default: `iso`); `--ppu` is pixels per shape
+`south`, `north`, `east`, `west`, `up`, `down`, `iso`, `ne`, `nw`, `se`, `sw` (default: `iso`); `--ppu` is pixels per shape
 unit (default 24). `--anim CLIP --frames N` (comma-separated frame numbers, which may be
 fractional) renders that animation clip's poses instead of the shape's rest pose, every frame of a
 view on one canvas sized to hold them all, so the parts the clip does not move stay put from frame
@@ -123,7 +123,10 @@ line key, its ports and its open faces), to `--out`. `PATH` is one file, or a fo
 `--views` defaults to the four corners and `plan`. Each corner `NAME` writes `<stem>-plain-NAME.png`,
 the cells as that iso corner shows them, an unresolved code drawn as a black-and-yellow checker cube,
 and `<stem>-tint-NAME.png` on the same canvas: each texel's colour averaged with its network's or
-line's colour, a cell on neither in its texture's grey.
+line's colour, a cell on neither in its texture's grey. Over the tinted picture, never hidden by a
+machine in front, each port cell is framed along its edges in its network's or line's colour (red
+when it joins none) and each open face carries a red stub, a short square bar leaving the middle
+of the face.
 `plan` writes `<stem>-plan-y<Y>.svg` per Y layer: each cell filled in its network's or line's colour
 and labelled with its id over its key, fillers hatched in their principal's fill, a port an arrow on
 its face (red when unjoined), an open face a red tick, and a legend under the grid. `--ppu` is the
