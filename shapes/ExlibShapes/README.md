@@ -219,7 +219,7 @@ The `<stem>.json` manifest carries `files`, `variant`, `missingTextures`, `unpai
 ## item-views
 
 ```
-exlib-shapes item-views PATH --out DIR [--views gui,tp,fp,ground,iso] [--ppu N] [--roots PATH...] [--game PATH]
+exlib-shapes item-views PATH --out DIR [--views gui,tp,fp,ground,iso] [--sheet] [--ppu N] [--roots PATH...] [--game PATH]
 ```
 
 Renders an `item-views/1` file, the dump the item-views guard writes for a group of collectibles:
@@ -230,7 +230,10 @@ the `item` command's, drawn from the dump's transforms as they stand: `<stem>-gu
 folder PATH renders every `*.views.json` directly in it, in ordinal name order; a file of another
 format is an error. The shape resolves through the roots as `item` resolves it. The `<stem>.json`
 manifest carries `files`, `view`, `kind`, `failing` (one `<gate> <name> <target>` line per gate
-that did not pass), `missingTextures` and `warnings`.
+that did not pass), `missingTextures` and `warnings`. `--sheet` also writes `sheet.png` to `--out`,
+the contact sheet: one row per dump with a column for each requested view in the order gui, tp, fp,
+ground, iso, the dump's view and kind under it, every failing gate named in red and a red frame
+round a row with any failing gate.
 
 ## tree / measure
 

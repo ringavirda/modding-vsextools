@@ -4,6 +4,7 @@
 
 ### Added
 
+- `exmod item-views --sheet` also writes `sheet.png`, the contact sheet: a row per dump with a column per requested view in the order gui, tp, fp, ground, iso, the dump's view and kind under it, each failing gate named in red and a red frame round a row with any failing gate.
 - `exmod item` and `exmod item-views` take `--views fp`: the player's arms posed at frame 0 of the held clip's `-fp` twin with the item on the anchor, seen from the eye through a pinhole camera of the game's 75 degree `fpHandsFoV` in a 480 x 270 picture; the renderer gained a perspective projection, which clips a face at the near plane, and its orthographic path is unchanged.
 - `exmod item` and `exmod item-views` take `--views tp`: the game's player shape posed at frame 0 of the item's held clip (`heldTpIdleAnimation`, else `heldRightReadyAnimation`, else `helditemready`) with the item on its right hand's anchor through `tpHandTransform`, drawn from the player's right side and from the front right at a fixed scale; faces the shape marks `#null` are no longer drawn by any render.
 - `exmod item FILE --views gui,ground[,iso]` draws an itemtype variant the way the game places it: `gui` in the centre slot of a 3 x 3 grid of inventory slots, `ground` lying on a stone block, from the itemtype's own `guiTransform` and `groundTransform` resolved by type with the game's item defaults for a key it omits and `scale` or per-axis `scaleXyz`; without `--views` the output is as before.

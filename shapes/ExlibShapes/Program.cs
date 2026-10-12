@@ -825,14 +825,14 @@ internal static class Program {
   internal static int RunItemViews(string[] args, TextWriter stdout) {
     (string path, string[] flags) = FileAndFlags(
       args,
-      "usage: exlib-shapes item-views PATH --out DIR [--views gui,tp,fp,ground,iso] [--ppu N] [--roots PATH...] [--game PATH]"
+      "usage: exlib-shapes item-views PATH --out DIR [--views gui,tp,fp,ground,iso] [--sheet] [--ppu N] [--roots PATH...] [--game PATH]"
     );
     RejectUnknownFlags(
       "item-views",
       flags,
       ["--out", "--views", "--ppu"],
       ["--roots"],
-      []
+      ["--sheet"]
     );
     string outDir =
       OptOf(flags, "--out") ?? throw new UsageException("--out is required");
@@ -862,8 +862,10 @@ internal static class Program {
       .. BlockIndex.DefaultRoots(Path.GetFullPath(dumps[0])),
     ];
     BlockIndex index = BlockIndex.Build(roots, game);
+    var manifests = new List<JObject>();
     foreach (string dump in dumps) {
       JObject manifest = ItemViews.WriteDump(dump, index, outDir, ppu, views);
+      manifests.Add(manifest);
       foreach (JToken written in (JArray)manifest["files"]!)
         stdout.WriteLine((string)written!);
       string name = Path.GetFileName(dump);
@@ -873,6 +875,11 @@ internal static class Program {
       stdout.WriteLine(Path.Combine(outDir, stem + ".json"));
       foreach (JToken warning in (JArray)manifest["warnings"]!)
         Console.Error.WriteLine($"exlib-shapes: {(string)warning!}");
+    }
+    if (flags.Contains("--sheet")) {
+      string sheet = Path.Combine(outDir, "sheet.png");
+      ItemViews.WriteSheet(manifests, views, sheet);
+      stdout.WriteLine(sheet);
     }
     return 0;
   }

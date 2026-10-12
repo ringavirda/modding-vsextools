@@ -298,12 +298,13 @@ published.
 Add-ExmodCommand -Group source -Name item-views -Summary 'render an item-views/1 dump to its gui, ground and iso pictures' -Action {
   param([string[]]$Argv) Invoke-ItemViews $Argv
 } -Detail @'
-exmod item-views PATH --out=DIR [--views gui,tp,fp,ground,iso] [--ppu N] [--roots PATH...] [--game PATH]
+exmod item-views PATH --out=DIR [--views gui,tp,fp,ground,iso] [--sheet] [--ppu N] [--roots PATH...] [--game PATH]
 
 Renders an item's `<domain>-<code>.views.json` dump, the transforms the game resolved for a group of
 collectibles, to a `<stem>-<view>.png` per view and a `<stem>.json` manifest of the files, the
 dump's view and kind, the gates that failed, the missing textures and the warnings. A folder PATH
 renders every `*.views.json` directly in it, in name order. Prints each file and the manifest path.
+With --sheet it also writes `sheet.png`, one row per dump, and prints its path.
 Exits 1 for an unreadable dump or a format other than item-views/1. `--out` needs the `=` form
 here: PowerShell's own parameter binder treats a bare `--out` token as an ambiguous prefix of its
 common `-OutVariable`/`-OutBuffer` parameters and refuses it outright.
@@ -316,6 +317,7 @@ published.
   PATH            a .views.json file, or a folder of them
   --out=DIR       where the PNGs and <stem>.json are written
   --views LIST    comma-separated: iso, gui, tp, fp, ground (default: gui,ground,iso)
+  --sheet         also write sheet.png to --out: a row per dump, a column per view, failing gates in red
   --ppu N         pixels per shape unit for the isometric render (default: 24)
   --roots PATH    extra mod repository roots to resolve the shape and textures against (repeatable)
   --game PATH     a specific game install (default: this repository's own provisioned one)

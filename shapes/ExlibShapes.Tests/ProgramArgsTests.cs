@@ -192,6 +192,7 @@ public class ProgramArgsTests {
     "item-views",
     "--out=/tmp/x",
     "--views=gui,ground",
+    "--sheet",
     "--ppu=24",
     "--roots=/a",
     "--game=/g"

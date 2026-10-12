@@ -78,6 +78,57 @@ public class ItemViewsDumpTests {
   }
 
   [Fact]
+  public void Sheet_has_a_row_per_dump_and_frames_failures() {
+    string dumps = Scratch("sheet-dumps");
+    Directory.CreateDirectory(dumps);
+    File.Copy(
+      Path.Combine(
+        FixturePath.Of("item-views-failing"),
+        "demo-gearpinion-bent.views.json"
+      ),
+      Path.Combine(dumps, "demo-gearpinion-bent.views.json")
+    );
+    File.WriteAllText(
+      Path.Combine(dumps, "demo-gearpinion-ok.views.json"),
+      File.ReadAllText(Dump)
+        .Replace("\"pass\": false", "\"pass\": true", StringComparison.Ordinal)
+        .Replace(
+          "demo:gearpinion",
+          "demo:gearpinion-ok",
+          StringComparison.Ordinal
+        )
+    );
+    string outDir = Scratch("sheet");
+    var stdout = new StringWriter();
+    Assert.Equal(
+      0,
+      Program.RunItemViews(
+        [
+          dumps,
+          $"--out={outDir}",
+          "--views=gui,iso",
+          "--sheet",
+          $"--roots={DemoRoot}",
+        ],
+        stdout
+      )
+    );
+    string sheetPath = Path.Combine(outDir, "sheet.png");
+    Assert.Contains(sheetPath, stdout.ToString());
+    using SKBitmap sheet = SKBitmap.Decode(sheetPath);
+    const int rowHeight = 184;
+    Assert.Equal(2 * rowHeight, sheet.Height);
+    Assert.Equal(2 * 192, sheet.Width);
+    Assert.Equal(SKColors.Red, sheet.GetPixel(1, 1));
+    Assert.Equal(SKColors.Red, sheet.GetPixel(sheet.Width - 2, rowHeight - 2));
+    Assert.NotEqual(SKColors.Red, sheet.GetPixel(1, rowHeight + 1));
+    Assert.NotEqual(
+      SKColors.Red,
+      sheet.GetPixel(sheet.Width - 2, 2 * rowHeight - 2)
+    );
+  }
+
+  [Fact]
   public void Gui_silhouette_bounds_equal_the_footprint() {
     ViewsFile dump = ViewsFile.Load(Dump);
     BlockIndex index = BlockIndex.Build([DemoRoot]);
