@@ -77,6 +77,7 @@ run
 | `client` | build, stage and launch the client |
 | `server` | build, stage and run a dedicated server |
 | `smoke` | boot a server, verify it, stop it |
+| `scenario` | boot a server, run live scenarios on it, stop it |
 | `stage` | copy built mods into a Mods folder |
 | `logs` | tail a client or server log |
 

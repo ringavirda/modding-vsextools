@@ -573,10 +573,6 @@ function Remove-ScratchServer($Server, [bool]$KeepData) {
   }
 }
 
-# An unusual, fixed port for every smoke boot: a game the owner is actually playing on this machine
-# binds the default 42420 (or whatever their own serverconfig.json says), and this must never collide
-# with it.
-#
 # Boots the real dedicated server with the given mods, waits for it to come up, runs /exmod verify and
 # stops it - the zero-effort rung: no test code, just "does the server load this without erroring".
 #
@@ -667,10 +663,11 @@ $ScenarioBootSeconds = 180
 $ScenarioMod = 'exlib'
 
 # The options `exmod scenario` takes: Names (as given, possibly none), Version (the current series only,
-# the live mod being built for it), Port (the first port; shard i binds Port + i), Timeout (seconds to wait
-# for the count line, or $null for the run's budget plus 60), Shards (servers to boot, 1 or more), Mods (extra
-# mod folders, as given), Verbose (print every step line of passing cases too), Keep (leave the server up
-# and relay the terminal to it) and KeepData (keep each scratch data path).
+# the live mod being built for it), Port (the first port; the shards bind the ports from it upward, skipping
+# smoke's), Timeout (seconds to wait for the count line, or $null for the run's budget plus 60), Shards
+# (servers to boot, 1 or more), ShardsAsked (whether -Shards was given), Mods (extra mod folders, as given),
+# Verbose (print every step line of passing cases too), Keep (leave the server up and relay the terminal to
+# it) and KeepData (keep each scratch data path).
 function Get-ScenarioOptions([string[]]$Argv) {
   $names = @(Get-Positional $Argv @('-Version', '-Port', '-Timeout', '-Shards', '-Mods') @('-Verbose', '-Keep', '-KeepData'))
   $unknown = @($names | Where-Object { $_ -like '-*' })
@@ -680,7 +677,8 @@ function Get-ScenarioOptions([string[]]$Argv) {
     throw "exmod scenario runs on $CurrentGameVersion only: the live mod is built for it, and $version was asked."
   }
   $timeout = Get-Opt $Argv '-Timeout' $null
-  $shards = [int](Get-Opt $Argv '-Shards' 1)
+  $shardsGiven = Get-Opt $Argv '-Shards' $null
+  $shards = if ($null -eq $shardsGiven) { 1 } else { [int]$shardsGiven }
   if ($shards -lt 1) { throw "-Shards must be 1 or more, and $shards was asked." }
   $mods = Get-Opt $Argv '-Mods' $null
   return [pscustomobject]@{
@@ -690,6 +688,7 @@ function Get-ScenarioOptions([string[]]$Argv) {
     Verbose  = ((Get-Flag $Argv '-Verbose') -or ($VerbosePreference -eq 'Continue'))
     Timeout  = if ($null -eq $timeout) { $null } else { [int]$timeout }
     Shards   = $shards
+    ShardsAsked = ($null -ne $shardsGiven)
     Mods     = if ($null -eq $mods) { @() } else { @($mods -split ',') }
     Keep     = (Get-Flag $Argv '-Keep')
     KeepData = (Get-Flag $Argv '-KeepData')
@@ -704,6 +703,16 @@ function Split-ScenarioShards([string[]]$Names, [int]$Count) {
     $groups += ,@(for ($j = $i; $j -lt $Names.Count; $j += $Count) { $Names[$j] })
   }
   return ,$groups
+}
+
+# The ports for $Count shards: from $First upward, leaving out smoke's port so a smoke run and a scenario
+# run share the machine.
+function Get-ScenarioPorts([int]$First, [int]$Count) {
+  $ports = @()
+  for ($port = $First; $ports.Count -lt $Count; $port++) {
+    if ($port -ne $SmokePort) { $ports += $port }
+  }
+  return $ports
 }
 
 # The mod folders a scenario boot stages: the defaults, the live mod, then the -Mods folders as given.
@@ -1047,10 +1056,12 @@ function Invoke-Scenario([string[]]$Argv) {
   $present = @($sources | Where-Object { $_.Dir -and (Test-Path $_.Dir) })
   if (-not $present) { throw "No tests/live under $RepoRoot." }
   $names = if ($opts.Names) { Expand-ScenarioNames $opts.Names $sources[0].ModId } else { Get-ScenarioNames $present }
-  if ($opts.Shards -gt $names.Count) { throw "-Shards $($opts.Shards) is more than the $($names.Count) case(s) to run." }
+  if (-not $names) { throw "No scenario file under tests/live in $RepoRoot." }
+  if ($opts.ShardsAsked -and $opts.Shards -gt $names.Count) { throw "-Shards $($opts.Shards) is more than the $($names.Count) scenario name(s) to run." }
   $copies = @{}
   foreach ($source in $present) { $copies[$source.Dir] = "Scenarios/$($source.ModId)" }
   $groups = Split-ScenarioShards $names $opts.Shards
+  $ports = @(Get-ScenarioPorts $opts.Port $groups.Count)
 
   $exlibDir = Build-ScenarioExlibMod
   $liveDir = Build-ScenarioLiveMod
@@ -1061,7 +1072,7 @@ function Invoke-Scenario([string[]]$Argv) {
   $shards = [System.Collections.Generic.List[object]]::new()
   try {
     for ($i = 0; $i -lt $groups.Count; $i++) {
-      $port = $opts.Port + $i
+      $port = $ports[$i]
       $server = New-ScratchServer 'scenario' $modDirs -DataCopies $copies -ServerConfig (Get-ScenarioServerConfig $opts.Keep)
       $shards.Add([pscustomobject]@{
           Server   = $server
@@ -1153,7 +1164,7 @@ mod is built from the same checkout; each mod's tests/live is copied under its o
   -Version   the game series; only the current one, which the live mod is built for (default 1.22)
   -Port      the port the server binds (default 42498), so two runs can share the machine
   -Timeout   seconds to wait for the count line, in place of the run's budget plus 60
-  -Shards    servers to boot, each on the next port up from -Port; the names are dealt out over them in
+  -Shards    servers to boot, each on the next port up from -Port (smoke's 42499 is skipped); the names are dealt out over them in
              turn, each server runs its own, and one count line covers all (default 1)
   -Mods      extra mod folder(s), or folder(s) of mod folders, staged beside the live mod
   -Keep      leave the plots standing and the server up: prints the port, the data path and how to join,

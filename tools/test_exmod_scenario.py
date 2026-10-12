@@ -1,8 +1,7 @@
 """Tests for `exmod scenario` in exmod/run.ps1 and the scratch server it shares with `exmod smoke`: the
 option parse, the command line and names, the staging layout, the server config, the schematic copy, and the
 report over sample log text with the exit rules. Run through pwsh ($PWSH, PATH, or the nearest
-.dotnet/tools above the checkout) with exmod_harness's prelude, one pwsh per class; skipped when no pwsh is found. Each test
-names the mutation it fails under."""
+.dotnet/tools above the checkout) with exmod_harness's prelude, one pwsh per class; skipped when no pwsh is found."""
 
 import json
 import os
@@ -99,6 +98,10 @@ Try-Case 'shardDefaults' { $o = Get-ScenarioOptions @('exlib/sample'); [ordered]
 Try-Case 'shardsZero' { Get-ScenarioOptions @('-Shards','0') | Out-Null; 'no error' }
 Try-Case 'modDirs' { Get-ScenarioModDirs @('default-a') 'live-dir' @(Join-Path $RepoRoot 'build/mod-a') }
 Try-Case 'tooManyShards' { Invoke-Scenario @('-Shards','3','exlib/sample') | Out-Null; 'no error' }
+Try-Case 'shardsAsked' { [ordered]@{ Asked = (Get-ScenarioOptions @('-Shards','1','exlib/sample')).ShardsAsked; NotAsked = (Get-ScenarioOptions @('exlib/sample')).ShardsAsked } }
+Try-Case 'noFiles' { Get-ChildItem (Join-Path $RepoRoot 'tests/live') -Filter '*.json' -File | Remove-Item; Invoke-Scenario @() | Out-Null; 'no error' }
+Try-Case 'noFilesShards' { Invoke-Scenario @('-Shards','2') | Out-Null; 'no error' }
+Try-Case 'shardPorts' { [ordered]@{ Clear = @(Get-ScenarioPorts 42600 2); Skips = @(Get-ScenarioPorts 42498 3); From = @(Get-ScenarioPorts 42499 2) } }
 """)
         return self.results
 
@@ -157,7 +160,22 @@ Try-Case 'tooManyShards' { Invoke-Scenario @('-Shards','3','exlib/sample') | Out
         self.assertTrue(got[2].endswith(os.path.join("build", "mod-a")))
 
     def test_more_shards_than_cases_is_refused_before_anything_is_built(self):
-        self.assertIn("-Shards 3 is more than the 1 case(s) to run.", self.results_of()["tooManyShards"].get("Error", "no error"))
+        self.assertIn("-Shards 3 is more than the 1 scenario name(s) to run.", self.results_of()["tooManyShards"].get("Error", "no error"))
+
+    def test_shards_asked_is_true_only_when_the_option_was_given(self):
+        got = self.results_of()["shardsAsked"]
+        self.assertTrue(got["Asked"])
+        self.assertFalse(got["NotAsked"])
+
+    def test_a_run_with_no_scenario_file_says_so_with_or_without_shards(self):
+        for key in ("noFiles", "noFilesShards"):
+            self.assertIn("No scenario file under tests/live", self.results_of()[key].get("Error", "no error"))
+
+    def test_shard_ports_run_upward_from_the_first_and_skip_smokes(self):
+        got = self.results_of()["shardPorts"]
+        self.assertEqual([42600, 42601], got["Clear"])
+        self.assertEqual([42498, 42500, 42501], got["Skips"])
+        self.assertEqual([42500, 42501], got["From"])
 
 
 @unittest.skipUnless(PWSH, "pwsh not found")
@@ -260,7 +278,7 @@ Try-Case 'serverconfig' {
         # Mutation: the warning replaced by a throw, so an unreadable modinfo stops the staging. Fails here.
         got = self.results_of()["staged"]
         self.assertIn("mod-b", got["Mods"])
-        self.assertNotIn("error", got)
+        self.assertNotIn("Error", got)
 
     def test_the_server_config_is_written_only_when_given(self):
         # Mutation: the serverconfig.json write unconditional, so a bare scratch server gets one. Fails here.
