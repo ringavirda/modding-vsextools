@@ -56,19 +56,34 @@ public static partial class ItemViews {
         TextureSet textures,
         IReadOnlyDictionary<string, TextureRef> values
       ) = Compose(item, index);
+      Seraph? seraph = views.Contains("tp") ? LoadSeraph(index) : null;
       foreach (string view in views) {
+        if (view == "tp" && seraph == null) {
+          warnings.Add(
+            $"{dump.View}: the player shape is not found; tp not drawn"
+          );
+          continue;
+        }
         string path = Path.Combine(outDir, $"{stem}-{view}.png");
         using SKBitmap image = DrawView(
           view,
           shape,
           textures,
           dump.Gui,
+          dump.Tp,
           dump.Ground,
-          ppu
+          ppu,
+          seraph,
+          dump.Clips?.Idle,
+          dump.Clips?.Ready
         );
         Save(image, path);
         files.Add(path);
       }
+      if (seraph != null)
+        warnings.AddRange(
+          TpWarnings(seraph.Shape, dump.Clips?.Idle, dump.Clips?.Ready)
+        );
       NoteTextures(item, textures, values, missing, unpainted);
     } else
       warnings.Add(

@@ -22,6 +22,18 @@ internal sealed record ViewsShape(
   double RotateZ
 );
 
+/// <summary>The held clips a views dump names; each null where the item sets none.</summary>
+/// <param name="Idle">The third-person idle clip.</param>
+/// <param name="Ready">The ready clip.</param>
+/// <param name="Hit">The third-person hit clip.</param>
+/// <param name="Use">The third-person use clip.</param>
+internal sealed record ViewsClips(
+  string? Idle,
+  string? Ready,
+  string? Hit,
+  string? Use
+);
+
 /// <summary>One gate of a views dump.</summary>
 /// <param name="Gate">The gate's id, such as <c>G7</c>.</param>
 /// <param name="Name">The measurement's name, such as <c>hand.size</c>.</param>
@@ -51,7 +63,10 @@ internal sealed record ViewsGate(
 /// <param name="Ground">The resolved ground transform.</param>
 /// <param name="Footprint">The item's slot footprint [x0, y0, x1, y1] in pixels at GUI scale 1,
 /// from the slot's top left, y down; null when the dump carries none.</param>
+/// <param name="Grip">The item's point [x, y, z] in voxels that lies on the hand; null when the
+/// dump carries none.</param>
 /// <param name="Gates">Every gate, in file order.</param>
+/// <param name="Clips">The held clips; null when the dump carries none.</param>
 internal sealed record ViewsFile(
   string? Game,
   string View,
@@ -64,7 +79,9 @@ internal sealed record ViewsFile(
   ItemTransform Tp,
   ItemTransform Ground,
   IReadOnlyList<double>? Footprint,
-  IReadOnlyList<ViewsGate> Gates
+  IReadOnlyList<double>? Grip,
+  IReadOnlyList<ViewsGate> Gates,
+  ViewsClips? Clips = null
 ) {
   /// <summary>The value the file's <c>format</c> must hold.</summary>
   public const string Format = "item-views/1";
@@ -115,7 +132,18 @@ internal sealed record ViewsFile(
         root["footprint"] is JArray { Count: 4 } box
           ? [.. box.Select(n => (double)n)]
           : null,
-        [.. Items(root, "gates").Select(Gate)]
+        root["grip"] is JArray { Count: 3 } grip
+          ? [.. grip.Select(n => (double)n)]
+          : null,
+        [.. Items(root, "gates").Select(Gate)],
+        root["clips"] is JObject clips
+          ? new ViewsClips(
+            (string?)clips["idle"],
+            (string?)clips["ready"],
+            (string?)clips["hit"],
+            (string?)clips["use"]
+          )
+          : null
       );
     } catch (Exception e)
         when (e is InvalidCastException or ArgumentException or FormatException) {

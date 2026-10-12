@@ -20,9 +20,15 @@ public static partial class ItemViews {
   /// size of a page's other figures rather than as a thumbnail.</summary>
   public const int IconScale = 4;
 
-  /// <summary>The views <see cref="Write"/> draws for a shape: <c>iso</c>, <c>gui</c> and
-  /// <c>ground</c>.</summary>
-  public static readonly IReadOnlyList<string> Views = ["iso", "gui", "ground"];
+  /// <summary>The views <see cref="Write"/> draws for a shape: <c>iso</c>, <c>gui</c>, <c>tp</c>
+  /// and <c>ground</c>.</summary>
+  public static readonly IReadOnlyList<string> Views =
+  [
+    "iso",
+    "gui",
+    "tp",
+    "ground",
+  ];
 
   // Slot edge in screen pixels at GUI scale 1, and the pixels of picture drawn per screen pixel.
   private const int SlotSize = 48;
@@ -60,9 +66,10 @@ public static partial class ItemViews {
   /// <param name="ppu">Pixels per shape unit for the isometric render.</param>
   /// <param name="views">Null draws the pictures above. A list draws exactly the views it names,
   /// each to <c>&lt;stem&gt;-&lt;view&gt;.png</c>: <c>iso</c> is the isometric render of the shape,
-  /// <c>gui</c> the item in the centre slot of a 3 x 3 grid of inventory slots, <c>ground</c> the
+  /// <c>gui</c> the item in the centre slot of a 3 x 3 grid of inventory slots, <c>tp</c> the
+  /// player holding the item seen from the right side and from the front right, <c>ground</c> the
   /// item lying on a stone block. A view needing a shape on an itemtype without one is a warning
-  /// and no picture.</param>
+  /// and no picture, and <c>tp</c> needs the game's player shape among the index's assets.</param>
   public static JObject Write(
     string file,
     Variant variant,
@@ -98,20 +105,36 @@ public static partial class ItemViews {
         IReadOnlyDictionary<string, TextureRef> values
       ) = Compose(item, index);
       ItemTransform gui = ReadTransform(variant, GuiKey);
+      ItemTransform tp = ReadTransform(variant, TpKey);
       ItemTransform ground = ReadTransform(variant, GroundKey);
+      string? idle = ClipOf(variant, "heldTpIdleAnimation");
+      string? ready = ClipOf(variant, "heldRightReadyAnimation");
+      Seraph? seraph = views?.Contains("tp") == true ? LoadSeraph(index) : null;
       foreach (string view in views ?? ["iso"]) {
+        if (view == "tp" && seraph == null) {
+          warnings.Add(
+            $"{item.Code}: the player shape is not found; tp not drawn"
+          );
+          continue;
+        }
         string path = Path.Combine(outDir, $"{stem}-{view}.png");
         using SKBitmap image = DrawView(
           view,
           shape,
           textures,
           gui,
+          tp,
           ground,
-          ppu
+          ppu,
+          seraph,
+          idle,
+          ready
         );
         Save(image, path);
         files.Add(path);
       }
+      if (seraph != null)
+        warnings.AddRange(TpWarnings(seraph.Shape, idle, ready));
       NoteTextures(item, textures, values, missing, unpainted);
     } else if (views != null)
       warnings.Add(
@@ -226,16 +249,28 @@ public static partial class ItemViews {
     data.SaveTo(stream);
   }
 
+  // The clip an itemtype names under key, read through the ByType rule; null when it sets none.
+  private static string? ClipOf(Variant variant, string key) =>
+    BlockTypeResolution.ByType(variant.Raw, key, variant.Path)
+      is { Type: JTokenType.String } clip
+      ? (string?)clip
+      : null;
+
   private static SKBitmap DrawView(
     string view,
     LoadedShape shape,
     TextureSet textures,
     ItemTransform gui,
+    ItemTransform tp,
     ItemTransform ground,
-    int ppu
+    int ppu,
+    Seraph? seraph,
+    string? idle,
+    string? ready
   ) =>
     view switch {
       "gui" => RenderGui(shape, textures, gui),
+      "tp" => RenderTp(shape, textures, tp, seraph!, idle, ready),
       "ground" => RenderGround(shape, textures, ground),
       _ => Renderer.Render(
         shape,

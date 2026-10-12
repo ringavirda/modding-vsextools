@@ -55,6 +55,29 @@ public class ItemViewsDumpTests {
   }
 
   [Fact]
+  public void Reader_reads_the_held_clips_and_the_grip() {
+    ViewsFile bare = ViewsFile.Load(Dump);
+    Assert.Equal(new ViewsClips(null, null, null, null), bare.Clips);
+    Assert.Equal([10.0749, 8.7533, 8.6509], bare.Grip);
+    string text = File.ReadAllText(Dump)
+      .Replace(
+        "\"idle\": null",
+        "\"idle\": \"spearidle\"",
+        StringComparison.Ordinal
+      )
+      .Replace(
+        "\"use\": null",
+        "\"use\": \"spearhit\"",
+        StringComparison.Ordinal
+      );
+    ViewsFile dump = ViewsFile.Parse(text);
+    Assert.Equal(
+      new ViewsClips("spearidle", null, null, "spearhit"),
+      dump.Clips
+    );
+  }
+
+  [Fact]
   public void Gui_silhouette_bounds_equal_the_footprint() {
     ViewsFile dump = ViewsFile.Load(Dump);
     BlockIndex index = BlockIndex.Build([DemoRoot]);
@@ -88,6 +111,83 @@ public class ItemViewsDumpTests {
       maxRow + 1,
       (48 + footprint[3]) * ppu - ppu,
       (48 + footprint[3]) * ppu + ppu
+    );
+  }
+
+  // The client install the player shape comes from; CI provisions one.
+  private static string RequireClientGame() {
+    string? game = FixturePath.ClientGame("assets/survival/shapes");
+    Skip.If(
+      game is null
+        && Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == null,
+      "a client install is absent"
+    );
+    Assert.NotNull(game);
+    return game!;
+  }
+
+  [SkippableFact]
+  public void Tp_hand_pixel_lies_on_the_grip() {
+    ViewsFile dump = ViewsFile.Load(Dump);
+    BlockIndex index = BlockIndex.Build([DemoRoot], RequireClientGame());
+    (LoadedShape shape, TextureSet textures, _) = ItemViews.Compose(
+      ItemViews.ItemOf(dump, index),
+      index
+    );
+    ItemViews.Seraph seraph = ItemViews.LoadSeraph(index)!;
+    string clip = ItemViews.HeldClip(
+      seraph.Shape,
+      dump.Clips?.Idle,
+      dump.Clips?.Ready
+    )!;
+    Renderer.RenderPart[] parts = ItemViews.TpParts(
+      shape,
+      textures,
+      dump.Tp,
+      seraph,
+      clip
+    );
+    (double X, double Y, double Z) hand = Renderer
+      .WorldMatricesD(seraph.Shape, Poses.PoseAt(seraph.Shape, clip, 0))[
+        seraph.Shape.Find("ItemAnchor")!.Path
+      ]
+      .Mul(0, 0, 0);
+    double[] grip = [.. dump.Grip!];
+    foreach (View view in ItemViews.TpAngles) {
+      Renderer.Projection projection = Renderer.Project(
+        parts,
+        view,
+        ItemViews.TpPpu
+      );
+      (double gx, double gy, double gz) = parts[1]
+        .Model.Mul(grip[0], grip[1], grip[2]);
+      (double col, double row) = projection.Screen(gx, gy, gz);
+      (double handCol, double handRow) = projection.Screen(
+        hand.X,
+        hand.Y,
+        hand.Z
+      );
+      Assert.InRange(col, handCol - 1, handCol + 1);
+      Assert.InRange(row, handRow - 1, handRow + 1);
+    }
+  }
+
+  [Fact]
+  public void The_tp_view_of_a_dump_without_the_player_shape_is_a_warning() {
+    string empty = Scratch("no-game-install");
+    Directory.CreateDirectory(empty);
+    BlockIndex index = BlockIndex.Build([DemoRoot], empty);
+    JObject manifest = ItemViews.WriteDump(
+      Dump,
+      index,
+      Scratch("no-player"),
+      24,
+      ["tp"]
+    );
+    Assert.Empty((JArray)manifest["files"]!);
+    Assert.Equal(
+      ["demo:gearpinion: the player shape is not found; tp not drawn"],
+      manifest["warnings"]!.Select(w => (string)w!)
     );
   }
 

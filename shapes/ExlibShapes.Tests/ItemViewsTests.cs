@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using SkiaSharp;
+using Vintagestory.API.Common;
 using Xunit;
 
 namespace ExpandedLib.Shapes.Tests;
@@ -420,6 +422,399 @@ public class ItemViewsTests {
     Assert.Equal(1.0, Math.Abs(ny) / length, 6);
   }
 
+  private static (
+    LoadedShape Shape,
+    TextureSet Textures,
+    ItemTransform Tp,
+    ItemViews.Seraph Seraph
+  ) VanillaTp(string file, string code) {
+    string path = Path.Combine(
+      RequireClientGame(),
+      "assets/survival/itemtypes",
+      file
+    );
+    BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(path));
+    Variant variant = index.ItemVariants(path).Single(v => v.Path == code);
+    (LoadedShape shape, TextureSet textures, _) = ItemViews.Compose(
+      index.ResolveVariant(variant),
+      index
+    );
+    return (
+      shape,
+      textures,
+      ItemViews.ReadTransform(variant, ItemViews.TpKey),
+      ItemViews.LoadSeraph(index)!
+    );
+  }
+
+  private static Renderer.Mat4d Anchor(ItemViews.Seraph seraph, string clip) =>
+    Renderer.WorldMatricesD(seraph.Shape, Poses.PoseAt(seraph.Shape, clip, 0))[
+      seraph.Shape.Find("ItemAnchor")!.Path
+    ];
+
+  // A point of the held item in the player's voxels, worked from the hand chain: the point turned
+  // by the item's rotation plus the attachment point's -180 about y, moved by the translation,
+  // scaled, all about the origin, in blocks, then through the anchor.
+  private static (double X, double Y, double Z) Held(
+    Renderer.Mat4d anchor,
+    ItemTransform t,
+    (double X, double Y, double Z) p
+  ) {
+    (double x, double y, double z) = Turn(
+      (p.X / 16 - t.Origin.X, p.Y / 16 - t.Origin.Y, p.Z / 16 - t.Origin.Z),
+      (t.Rotation.X, t.Rotation.Y - 180, t.Rotation.Z)
+    );
+    return anchor.Mul(
+      16 * (t.Origin.X + t.ScaleXyz.X * (t.Translation.X + x)),
+      16 * (t.Origin.Y + t.ScaleXyz.Y * (t.Translation.Y + y)),
+      16 * (t.Origin.Z + t.ScaleXyz.Z * (t.Translation.Z + z))
+    );
+  }
+
+  // The two ends of a shape along x.
+  private static (
+    (double X, double Y, double Z) Low,
+    (double X, double Y, double Z) High
+  ) Ends(LoadedShape shape) {
+    Dictionary<string, Renderer.Mat4d> mats = Renderer.WorldMatricesD(
+      shape,
+      null
+    );
+    var points = shape
+      .Leaves()
+      .SelectMany(el => Renderer.FaceQuadsD(el, mats[el.Path]))
+      .SelectMany(q => q.Points)
+      .ToList();
+    return (points.MinBy(p => p.X), points.MaxBy(p => p.X));
+  }
+
+  // The item's two ends drawn in the tp view's side and three-quarter angles lie within a pixel of
+  // where the hand chain puts them, and the pictures' world points are the ones the chain gives.
+  private static (
+    (double X, double Y, double Z) Low,
+    (double X, double Y, double Z) High,
+    double PlayerHeight
+  ) AssertTpEnds(string file, string code, string clip) {
+    (
+      LoadedShape shape,
+      TextureSet textures,
+      ItemTransform tp,
+      ItemViews.Seraph seraph
+    ) = VanillaTp(file, code);
+    Renderer.RenderPart[] parts = ItemViews.TpParts(
+      shape,
+      textures,
+      tp,
+      seraph,
+      clip
+    );
+    Renderer.Mat4d anchor = Anchor(seraph, clip);
+    ((double, double, double) low, (double, double, double) high) = Ends(shape);
+    foreach (View view in ItemViews.TpAngles) {
+      Renderer.Projection projection = Renderer.Project(
+        parts,
+        view,
+        ItemViews.TpPpu
+      );
+      foreach ((double, double, double) end in new[] { low, high }) {
+        (double wx, double wy, double wz) = Held(anchor, tp, end);
+        (double expectedCol, double expectedRow) = projection.Screen(
+          wx,
+          wy,
+          wz
+        );
+        (double mx, double my, double mz) = parts[1]
+          .Model.Mul(end.Item1, end.Item2, end.Item3);
+        (double col, double row) = projection.Screen(mx, my, mz);
+        Assert.InRange(col, expectedCol - 1, expectedCol + 1);
+        Assert.InRange(row, expectedRow - 1, expectedRow + 1);
+      }
+    }
+    Dictionary<string, Renderer.Mat4d> bodyMats = Renderer.WorldMatricesD(
+      seraph.Shape,
+      null
+    );
+    double[] ys =
+    [
+      .. seraph
+        .Shape.Leaves()
+        .SelectMany(el => Renderer.FaceQuadsD(el, bodyMats[el.Path]))
+        .SelectMany(q => q.Points)
+        .Select(p => p.Y),
+    ];
+    return (Held(anchor, tp, low), Held(anchor, tp, high), ys.Max() - ys.Min());
+  }
+
+  [SkippableFact]
+  public void Spear_tp_projected_corners() {
+    (
+      (double X, double Y, double Z) low,
+      (double X, double Y, double Z) high,
+      double height
+    ) = AssertTpEnds("tool/spear.json", "spear-generic-iron", "spearidle");
+    // The blade's point is at the shape's far end along x.
+    var (tip, butt) = (high, low);
+    // The player faces -x: the tip is the end the more to -x, and the spear is about 1.24 player
+    // heights long.
+    Assert.True(tip.X < butt.X, $"tip x {tip.X}, butt x {butt.X}");
+    double length = Math.Sqrt(
+      Math.Pow(tip.X - butt.X, 2)
+        + Math.Pow(tip.Y - butt.Y, 2)
+        + Math.Pow(tip.Z - butt.Z, 2)
+    );
+    Assert.InRange(length / height, 1.19, 1.29);
+  }
+
+  [SkippableFact]
+  public void Rod_tp_projected_corners() {
+    AssertTpEnds("part/rod.json", "rod-iron", "helditemready");
+  }
+
+  [SkippableFact]
+  public void Held_clip_falls_from_idle_to_ready_to_the_generic_clip() {
+    ItemViews.Seraph seraph = VanillaTp("part/rod.json", "rod-iron").Seraph;
+    Assert.Equal(
+      "spearidle",
+      ItemViews.HeldClip(seraph.Shape, "spearidle", "spearready")
+    );
+    Assert.Equal(
+      "spearready",
+      ItemViews.HeldClip(seraph.Shape, "no-such-clip", "spearready")
+    );
+    Assert.Equal(
+      "helditemready",
+      ItemViews.HeldClip(seraph.Shape, "no-such-clip", null)
+    );
+    Assert.Equal(
+      ["held clip no-such-clip is not on the player shape"],
+      ItemViews.TpWarnings(seraph.Shape, "no-such-clip", "spearready")
+    );
+    Assert.Empty(ItemViews.TpWarnings(seraph.Shape, "spearidle", null));
+  }
+
+  [SkippableFact]
+  public void Seraph_null_faces_are_not_drawn() {
+    ItemViews.Seraph seraph = VanillaTp("part/rod.json", "rod-iron").Seraph;
+    Dictionary<string, Renderer.Mat4d> mats = Renderer.WorldMatricesD(
+      seraph.Shape,
+      null
+    );
+    // The shape marks 50 faces #null and leaves each disabled; none reaches a quad.
+    Assert.DoesNotContain(
+      seraph
+        .Shape.Leaves()
+        .SelectMany(el => Renderer.FaceQuadsD(el, mats[el.Path])),
+      q => q.Texture == "null"
+    );
+    using SKBitmap image = Renderer.Render(
+      [
+        new Renderer.RenderPart(
+          seraph.Shape,
+          seraph.Textures,
+          null,
+          Renderer.Mat4d.Identity,
+          seraph.UvSize
+        ),
+      ],
+      ItemViews.TpAngles[0],
+      ItemViews.TpPpu,
+      grid: false,
+      edges: false
+    );
+    Assert.False(Magenta(image), "a #null face is drawn as a missing texture");
+  }
+
+  [Fact]
+  public void A_face_textured_null_makes_no_quad() {
+    var raw = JsonConvert.DeserializeObject<Shape>(
+      """
+      {"elements":[{"name":"box","from":[0,0,0],"to":[1,1,1],
+        "faces":{"north":{"texture":"#null","uv":[0,0,1,1]},
+                 "south":{"texture":"#skin","uv":[0,0,1,1]}}}]}
+      """
+    )!;
+    LoadedShape shape = ShapeFile.FromRaw(raw, null);
+    Node box = Assert.Single(shape.Leaves());
+    Renderer.QuadD quad = Assert.Single(
+      Renderer.FaceQuadsD(box, Renderer.Mat4d.Identity)
+    );
+    Assert.Equal("skin", quad.Texture);
+  }
+
+  [Fact]
+  public void Seraph_uv_is_in_the_shapes_texture_units() {
+    var raw = JsonConvert.DeserializeObject<Shape>(
+      """
+      {"elements":[{"name":"box","from":[0,0,0],"to":[8,8,1],
+        "faces":{"north":{"texture":"#t","uv":[0,0,16,38]}}}]}
+      """
+    )!;
+    byte[,,] skin = new byte[2, 2, 4];
+    byte[][] colours =
+    [
+      [255, 0, 0],
+      [0, 255, 0],
+      [0, 0, 255],
+      [255, 255, 0],
+    ];
+    for (int i = 0; i < 4; i++) {
+      for (int c = 0; c < 3; c++)
+        skin[i / 2, i % 2, c] = colours[i][c];
+      skin[i / 2, i % 2, 3] = 255;
+    }
+    var textures = TextureSet.FromResolved(
+      new Dictionary<string, TextureRef>(),
+      _ => null,
+      new Dictionary<string, byte[,,]> { ["t"] = skin }
+    );
+    using SKBitmap image = Renderer.Render(
+      [
+        new Renderer.RenderPart(
+          ShapeFile.FromRaw(raw, null),
+          textures,
+          null,
+          Renderer.Mat4d.Identity,
+          (32, 76)
+        ),
+      ],
+      Renderer.NamedViews["north"],
+      8,
+      grid: false,
+      edges: false
+    );
+    // The face's uv spans the top-left quarter of a 32 x 76 sheet, the skin's first texel only.
+    int red = 0;
+    for (int y = 0; y < image.Height; y++)
+      for (int x = 0; x < image.Width; x++) {
+        SKColor c = image.GetPixel(x, y);
+        if (c.Red > 100 && c.Green == 0 && c.Blue == 0)
+          red++;
+        Assert.False(c.Green > 100 && c.Red < 50, "the second texel is drawn");
+        Assert.False(c.Blue > 100 && c.Red < 50, "the third texel is drawn");
+      }
+    Assert.True(red > 8 * 8 * 8 * 8 / 2, $"{red} red pixels");
+  }
+
+  [SkippableFact]
+  public void Seraph_texture_resolves_to_the_player_skin() {
+    string game = RequireClientGame();
+    BlockIndex index = BlockIndex.Build(
+      BlockIndex.DefaultRoots(
+        Path.Combine(game, "assets/survival/itemtypes/part/rod.json")
+      )
+    );
+    ItemViews.Seraph seraph = ItemViews.LoadSeraph(index)!;
+    // The player entity names the skin; the shape writes its UVs in 32 x 76 and the skin is twice
+    // that on each axis.
+    JObject player = JObject.Parse(
+      File.ReadAllText(
+        Path.Combine(game, "assets/game/entities/humanoid/player.json")
+      )
+    );
+    Assert.Equal(
+      "game:" + (string)player["client"]!["texture"]!["base"]!,
+      ItemViews.SeraphSkin
+    );
+    JObject shape = JObject.Parse(
+      File.ReadAllText(
+        Path.Combine(
+          game,
+          "assets/game/shapes/entity/humanoid/seraph-faceless.json"
+        )
+      )
+    );
+    var sizes = (JArray)shape["textureSizes"]!["seraph"]!;
+    Assert.Equal(((double)sizes[0], (double)sizes[1]), seraph.UvSize);
+    byte[,,] skin = seraph.Textures.Get("seraph");
+    Assert.Empty(seraph.Textures.Missing);
+    Assert.Equal(
+      (2 * (double)sizes[0], 2 * (double)sizes[1]),
+      ((double)skin.GetLength(1), (double)skin.GetLength(0))
+    );
+  }
+
+  [SkippableFact]
+  public void Gearpinion_tp_matches_its_golden() {
+    string game = RequireClientGame();
+    BlockIndex index = BlockIndex.Build([DemoRoot], game);
+    string file = Itemtype("gearpinion");
+    Variant variant = Assert.Single(index.ItemVariants(file));
+    (LoadedShape shape, TextureSet textures, _) = ItemViews.Compose(
+      index.ResolveVariant(variant),
+      index
+    );
+    ItemViews.Seraph seraph = ItemViews.LoadSeraph(index)!;
+    // Only the item's pixels are the golden: the player is vanilla art.
+    using (
+      SKBitmap layer = ItemViews.RenderTpItem(
+        shape,
+        textures,
+        ItemViews.ReadTransform(variant, ItemViews.TpKey),
+        seraph,
+        null,
+        null
+      )
+    ) {
+      string actualDir = OutDir("gearpinion-tp-layer");
+      Directory.CreateDirectory(actualDir);
+      using (
+        FileStream stream = File.Create(
+          Path.Combine(actualDir, "gearpinion-tp-item.png")
+        )
+      )
+        layer.Encode(SKEncodedImageFormat.Png, 100).SaveTo(stream);
+      using SKBitmap expected = SKBitmap.Decode(
+        FixturePath.Expected("item-views/gearpinion-tp-item.png")
+      );
+      PixelCompare.Assert(expected, layer, "gearpinion-tp-item");
+    }
+
+    string outDir = OutDir("gearpinion-tp");
+    JObject manifest = ItemViews.Write(
+      file,
+      variant,
+      index,
+      outDir,
+      views: ["tp"]
+    );
+    Assert.Equal(
+      ["gearpinion-tp.png"],
+      manifest["files"]!.Select(f => Path.GetFileName((string)f!))
+    );
+    Assert.Empty((JArray)manifest["warnings"]!);
+    using SKBitmap picture = SKBitmap.Decode(
+      Path.Combine(outDir, "gearpinion-tp.png")
+    );
+    Assert.True(
+      picture.Width > 2 * 8 * ItemViews.TpPpu
+        && picture.Height > 30 * ItemViews.TpPpu
+    );
+  }
+
+  [Fact]
+  public void The_tp_view_without_the_player_shape_is_a_warning() {
+    string empty = OutDir("no-game-install");
+    Directory.CreateDirectory(empty);
+    BlockIndex index = BlockIndex.Build([DemoRoot], empty);
+    Variant variant = Assert.Single(index.ItemVariants(Itemtype("gearpinion")));
+    string outDir = OutDir("gearpinion-no-player");
+    JObject manifest = ItemViews.Write(
+      Itemtype("gearpinion"),
+      variant,
+      index,
+      outDir,
+      views: ["tp", "gui"]
+    );
+    Assert.Equal(
+      ["gearpinion-gui.png"],
+      manifest["files"]!.Select(f => Path.GetFileName((string)f!))
+    );
+    Assert.Contains(
+      "demo:gearpinion: the player shape is not found; tp not drawn",
+      manifest["warnings"]!.Select(w => (string)w!)
+    );
+  }
+
   [Fact]
   public void Ground_rotates_in_y_z_x_order() {
     var transform = new ItemTransform(
@@ -491,7 +886,7 @@ public class ItemViewsTests {
     string file = Itemtype("token");
     Variant variant = Assert.Single(index.ItemVariants(file));
     Assert.Throws<ArgumentException>(() =>
-      ItemViews.Write(file, variant, index, OutDir("token-view"), views: ["tp"])
+      ItemViews.Write(file, variant, index, OutDir("token-view"), views: ["fp"])
     );
     JObject manifest = ItemViews.Write(
       file,

@@ -300,12 +300,15 @@ public static class Renderer {
 
   /// <summary>One shape of a scene drawn by the part-list overloads of <see cref="Render"/>,
   /// <see cref="Fit"/> and <see cref="Project"/>: its own textures and poses, placed by
-  /// <paramref name="Model"/> (applied after every pose, in world units).</summary>
+  /// <paramref name="Model"/> (applied after every pose, in world units). <paramref name="UvSize"/>
+  /// is the width and height the shape's face UVs are written in; null is 16 x 16, a block
+  /// shape's.</summary>
   internal sealed record RenderPart(
     LoadedShape Shape,
     TextureSet Textures,
     IReadOnlyDictionary<string, Pose>? Poses,
-    Mat4d Model
+    Mat4d Model,
+    (double Width, double Height)? UvSize = null
   );
 
   internal sealed class QuadD {
@@ -330,6 +333,9 @@ public static class Renderer {
         )
       )
         continue;
+      string texture = (spec.Texture ?? "").TrimStart('#');
+      if (texture == "null")
+        continue;
       var pts = new (double, double, double)[4];
       for (int i = 0; i < 4; i++) {
         (int cx, int cy, int cz) = corners[i];
@@ -350,7 +356,7 @@ public static class Renderer {
           Normal = n,
           Uv = uv,
           Rotation = (int)spec.Rotation,
-          Texture = (spec.Texture ?? "").TrimStart('#'),
+          Texture = texture,
           Path = el.Path,
         }
       );
@@ -442,6 +448,7 @@ public static class Renderer {
     (double U, double V) uv2,
     double shade,
     byte[,,] texture,
+    (double Width, double Height) uvSize,
     int width,
     int height
   ) {
@@ -486,8 +493,8 @@ public static class Renderer {
           continue;
         double u = w0 * uv0.U + w1 * uv1.U + w2 * uv2.U;
         double v = w0 * uv0.V + w1 * uv1.V + w2 * uv2.V;
-        double texU = u * (tw / 16.0);
-        double texV = v * (th / 16.0);
+        double texU = u * (tw / uvSize.Width);
+        double texV = v * (th / uvSize.Height);
         int texCol = Mod((int)Math.Floor(texU), tw);
         int texRow = Mod((int)Math.Floor(texV), th);
         byte alpha = texture[texRow, texCol, 3];
@@ -844,7 +851,7 @@ public static class Renderer {
   ) {
     bool IsOverlay(string path) =>
       overlay != null && path.StartsWith(overlay, StringComparison.Ordinal);
-    List<(Node El, Mat4d M, TextureSet Textures)> leaves =
+    List<(Node El, Mat4d M, RenderPart Part)> leaves =
     [
       .. parts
         .SelectMany(part =>
@@ -860,7 +867,7 @@ public static class Renderer {
               only == null
               || only.Any(p => el.Path.StartsWith(p, StringComparison.Ordinal))
             )
-            .Select(el => (el, mats[el.Path], part.Textures));
+            .Select(el => (el, mats[el.Path], part));
         })
         .OrderBy(l => IsOverlay(l.el.Path)),
     ];
@@ -872,9 +879,9 @@ public static class Renderer {
         QuadD Quad,
         (double X, double Y, double Z)[] PtsView,
         (double X, double Y, double Z) NormalView,
-        TextureSet Textures
+        RenderPart Part
       )>();
-    foreach ((Node el, Mat4d m, TextureSet partTextures) in leaves) {
+    foreach ((Node el, Mat4d m, RenderPart part) in leaves) {
       foreach (QuadD q in FaceQuadsD(el, m)) {
         var ptsView = new (double, double, double)[4];
         for (int i = 0; i < 4; i++)
@@ -884,7 +891,7 @@ public static class Renderer {
           q.Normal.Y,
           q.Normal.Z
         );
-        quads.Add((q, ptsView, normalView, partTextures));
+        quads.Add((q, ptsView, normalView, part));
       }
     }
 
@@ -947,7 +954,7 @@ public static class Renderer {
         QuadD q,
         (double, double, double)[] ptsView,
         (double, double, double) normalView,
-        TextureSet quadTextures
+        RenderPart quadPart
       ) in quads
     ) {
       if (highlight != null && highlight.Contains(q.Path))
@@ -959,7 +966,7 @@ public static class Renderer {
         modelZ ??= (double[,])zBuf.Clone();
       else
         drawn.Add(screen);
-      byte[,,] tex = quadTextures.Get(q.Texture);
+      byte[,,] tex = quadPart.Textures.Get(q.Texture);
       (double U, double V)[] uvCorners = RotateUvCorners(q.Uv, q.Rotation);
       double shade = Shading(q.Normal);
       foreach ((int a, int b, int c) in new[] { (0, 1, 2), (0, 2, 3) })
@@ -974,6 +981,7 @@ public static class Renderer {
           uvCorners[c],
           shade,
           tex,
+          quadPart.UvSize ?? (16, 16),
           width,
           height
         );

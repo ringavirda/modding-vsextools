@@ -754,7 +754,7 @@ internal static class Program {
   internal static int RunItem(string[] args) {
     (string file, string[] flags) = FileAndFlags(
       args,
-      "usage: exlib-shapes item FILE --out DIR [--variant CODE] [--views gui,ground[,iso]] [--ppu N] [--roots PATH...] [--game PATH]"
+      "usage: exlib-shapes item FILE --out DIR [--variant CODE] [--views gui,tp,ground[,iso]] [--ppu N] [--roots PATH...] [--game PATH]"
     );
     RejectUnknownFlags(
       "item",
@@ -825,7 +825,7 @@ internal static class Program {
   internal static int RunItemViews(string[] args, TextWriter stdout) {
     (string path, string[] flags) = FileAndFlags(
       args,
-      "usage: exlib-shapes item-views PATH --out DIR [--views gui,ground,iso] [--ppu N] [--roots PATH...] [--game PATH]"
+      "usage: exlib-shapes item-views PATH --out DIR [--views gui,tp,ground,iso] [--ppu N] [--roots PATH...] [--game PATH]"
     );
     RejectUnknownFlags(
       "item-views",
