@@ -142,6 +142,7 @@ function Compare-ExmodCensus($Results, [string]$Census, [bool]$AcceptDrop) {
     elseif ($r.Total -ge $was) { "was $was" }
     elseif ($AcceptDrop) { "was $was, drop accepted" }
     else { $drops += "$($r.Name) ($($r.Total), was $was)"; "was $was, a drop" }
+    if ($null -ne $was -and $r.Total -lt $was -and $r.Log) { $note += "; log: $($r.Log)" }
     Write-Host ("census  {0,-40} {1} ({2})" -f $r.Name, $r.Total, $note)
   }
   return $drops
@@ -313,6 +314,8 @@ function Invoke-Test([string[]]$Argv) {
         Project = $projects[$mod].Project
         Proj    = $projects[$mod].Proj
         Legacy  = ($GameTfms[$v] -ne 'net10.0')   # legacy TFMs need the multi-target opt-in
+        Log     = Join-Path $RepoRoot ".exmod/test-logs/$v-$($projects[$mod].Project).log"
+        Blame   = Join-Path $RepoRoot ".exmod/test-results/$v-$($projects[$mod].Project)"
       }
     }
   }
@@ -333,6 +336,10 @@ function Invoke-Test([string[]]$Argv) {
   if ($waves.Count -gt 1) {
     Write-Host "EXLIB_WRITE_GOLDENS is set: the $CurrentGameVersion lanes run first, the older series after them."
   }
+  foreach ($item in $built) {
+    if (Test-Path -LiteralPath $item.Blame) { Remove-Item -LiteralPath $item.Blame -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $item.Log) | Out-Null
+  }
   Write-Host "Running tests in parallel..."
   # A -Parallel runspace sees none of this script's functions; the parser goes in as its text.
   $failuresFn = ${function:Get-ExmodTestFailures}.ToString()
@@ -345,10 +352,11 @@ function Invoke-Test([string[]]$Argv) {
       if (-not $item.BuildOk) {
         return [pscustomobject]@{ Name = "$($item.Version)/$($item.Project)"; Ok = $false; Line = 'build failed'; Total = $null }
       }
-      $testArgs = @('test', $item.Proj, '-f', $item.Tfm, '--no-build', '--nologo')
+      $testArgs = @('test', $item.Proj, '-f', $item.Tfm, '--no-build', '--nologo', '--blame', '--results-directory', $item.Blame)
       if ($filter) { $testArgs += @('--filter', $filter) }
       if ($item.Legacy) { $testArgs += '-p:Legacy=true' }
       $out = & $dotnet @testArgs 2>&1
+      $out | Set-Content -LiteralPath $item.Log
       $ok = ($LASTEXITCODE -eq 0)
       $line = ($out | Select-String -Pattern 'Passed!|Failed!|error' | Select-Object -Last 1)
 
@@ -381,7 +389,7 @@ function Invoke-Test([string[]]$Argv) {
 
       [pscustomobject]@{
         Name = "$($item.Version)/$($item.Project)"; Ok = $ok; Line = $line; Failures = $failures
-        Total = if ($total) { [int]$total.Groups[1].Value } else { $null }
+        Total = if ($total) { [int]$total.Groups[1].Value } else { $null }; Log = $item.Log
       }
     }
   }
@@ -390,7 +398,8 @@ function Invoke-Test([string[]]$Argv) {
   Write-Host "===== Results ====="
   foreach ($r in $results | Sort-Object Name) {
     $tag = if ($r.Ok) { 'PASS' } else { 'FAIL' }
-    Write-Host ("{0}  {1,-40} {2}" -f $tag, $r.Name, ($r.Line -replace '\s+', ' ').Trim())
+    $where = if (-not $r.Ok -and $r.Log) { " (log: $($r.Log))" } else { '' }
+    Write-Host ("{0}  {1,-40} {2}{3}" -f $tag, $r.Name, ($r.Line -replace '\s+', ' ').Trim(), $where)
     foreach ($f in $r.Failures) {
       Write-Host ("         {0}: {1}" -f $f.Name, $f.Message)
     }
@@ -433,6 +442,11 @@ projects and building them at once races on the same intermediate assemblies.
 
 With EXLIB_WRITE_GOLDENS set, the current series' lanes run first and the older series' after them:
 an older series' golden write compares against the shared goldens the current series' write rewrites.
+
+Each run's full output is kept in .exmod/test-logs/<series>-<assembly>.log, overwritten by the next run,
+and a failed run or one below the census prints that log's path. dotnet test runs with --blame, its
+results in .exmod/test-results/<series>-<assembly>/, so an aborted test host names the tests it was
+running.
 
 The census, .exmod/census/<branch>.json, holds each assembly's last green test count per series.
 An unfiltered run fails on an assembly that discovers no tests and on a count below the census, and
