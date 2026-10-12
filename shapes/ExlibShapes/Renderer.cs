@@ -281,7 +281,8 @@ public static class Renderer {
 
   internal static Dictionary<string, Mat4d> WorldMatricesD(
     LoadedShape shape,
-    IReadOnlyDictionary<string, Pose>? poses
+    IReadOnlyDictionary<string, Pose>? poses,
+    Mat4d? model = null
   ) {
     var outp = new Dictionary<string, Mat4d>();
     void Rec(Node el, Mat4d parentM) {
@@ -293,9 +294,19 @@ public static class Renderer {
         Rec(c, m);
     }
     foreach (Node el in shape.Elements)
-      Rec(el, Mat4d.Identity);
+      Rec(el, model ?? Mat4d.Identity);
     return outp;
   }
+
+  /// <summary>One shape of a scene drawn by the part-list overloads of <see cref="Render"/>,
+  /// <see cref="Fit"/> and <see cref="Project"/>: its own textures and poses, placed by
+  /// <paramref name="Model"/> (applied after every pose, in world units).</summary>
+  internal sealed record RenderPart(
+    LoadedShape Shape,
+    TextureSet Textures,
+    IReadOnlyDictionary<string, Pose>? Poses,
+    Mat4d Model
+  );
 
   internal sealed class QuadD {
     public required (double X, double Y, double Z)[] Points { get; init; }
@@ -588,17 +599,28 @@ public static class Renderer {
     int margin = 2,
     IReadOnlySet<string>? only = null,
     IReadOnlyDictionary<string, Pose>? poses = null
+  ) =>
+    Project(
+      [new RenderPart(shape, TextureSet.Empty, poses, Mat4d.Identity)],
+      view,
+      ppu,
+      margin,
+      only
+    );
+
+  // The projection of a scene of parts; every part's leaves count toward the extents.
+  internal static Projection Project(
+    IReadOnlyList<RenderPart> parts,
+    View view,
+    int ppu = 24,
+    int margin = 2,
+    IReadOnlySet<string>? only = null
   ) {
     Mat3 viewRot = Mat3.RotateX(view.Pitch) * Mat3.RotateY(view.Yaw);
     double xmin = double.PositiveInfinity,
       ymax = double.NegativeInfinity;
     foreach (
-      (double X, double Y, double Z) p in ViewPoints(
-        shape,
-        viewRot,
-        only,
-        poses
-      )
+      (double X, double Y, double Z) p in ViewPoints(parts, viewRot, only)
     ) {
       xmin = Math.Min(xmin, p.X);
       ymax = Math.Max(ymax, p.Y);
@@ -648,6 +670,20 @@ public static class Renderer {
     IReadOnlyDictionary<string, Pose>? poses = null,
     IReadOnlySet<string>? only = null,
     int margin = 2
+  ) =>
+    Fit(
+      [new RenderPart(shape, TextureSet.Empty, poses, Mat4d.Identity)],
+      view,
+      only,
+      margin
+    );
+
+  // The canvas of a scene of parts, fitted over all of them.
+  internal static Canvas? Fit(
+    IReadOnlyList<RenderPart> parts,
+    View view,
+    IReadOnlySet<string>? only = null,
+    int margin = 2
   ) {
     Mat3 viewRot = Mat3.RotateX(view.Pitch) * Mat3.RotateY(view.Yaw);
     double xmin = double.PositiveInfinity,
@@ -655,22 +691,14 @@ public static class Renderer {
     double ymin = double.PositiveInfinity,
       ymax = double.NegativeInfinity;
     foreach (
-      (double X, double Y, double Z) p in ViewPoints(
-        shape,
-        viewRot,
-        only,
-        poses
-      )
+      (double X, double Y, double Z) p in ViewPoints(parts, viewRot, only)
     ) {
       xmin = Math.Min(xmin, p.X);
       xmax = Math.Max(xmax, p.X);
       ymin = Math.Min(ymin, p.Y);
       ymax = Math.Max(ymax, p.Y);
     }
-    if (
-      double.IsInfinity(xmin)
-      || GridRange(shape, WorldMatricesD(shape, poses)) is not { } g
-    )
+    if (double.IsInfinity(xmin) || GridRange(parts) is not { } g)
       return null;
     return new Canvas(
       xmin - margin,
@@ -686,22 +714,29 @@ public static class Renderer {
 
   // The world X and Z range, in whole units, of every leaf's box; null for a shape with no leaf.
   private static (int X0, int X1, int Z0, int Z1)? GridRange(
-    LoadedShape shape,
-    Dictionary<string, Mat4d> mats
+    IReadOnlyList<RenderPart> parts
   ) {
-    Dictionary<
-      string,
-      ((double X, double Y, double Z) Lo, (double X, double Y, double Z) Hi)
-    > boxes = ElementBoxesD(shape, mats);
+    List<(
+      (double X, double Y, double Z) Lo,
+      (double X, double Y, double Z) Hi
+    )> boxes =
+    [
+      .. parts.SelectMany(part =>
+        ElementBoxesD(
+          part.Shape,
+          WorldMatricesD(part.Shape, part.Poses, part.Model)
+        ).Values
+      ),
+    ];
     if (boxes.Count == 0)
       return null;
     (double X, double Y, double Z) lo = boxes
-      .Values.Select(b => b.Lo)
+      .Select(b => b.Lo)
       .Aggregate(
         (a, b) => (Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Min(a.Z, b.Z))
       );
     (double X, double Y, double Z) hi = boxes
-      .Values.Select(b => b.Hi)
+      .Select(b => b.Hi)
       .Aggregate(
         (a, b) => (Math.Max(a.X, b.X), Math.Max(a.Y, b.Y), Math.Max(a.Z, b.Z))
       );
@@ -716,21 +751,26 @@ public static class Renderer {
   // Every face corner of every drawn leaf, in view space - the points both the canvas extents and
   // the rasterizer's own screen positions come from.
   private static IEnumerable<(double X, double Y, double Z)> ViewPoints(
-    LoadedShape shape,
+    IReadOnlyList<RenderPart> parts,
     Mat3 viewRot,
-    IReadOnlySet<string>? only,
-    IReadOnlyDictionary<string, Pose>? poses
+    IReadOnlySet<string>? only
   ) {
-    Dictionary<string, Mat4d> mats = WorldMatricesD(shape, poses);
-    foreach (Node el in shape.Leaves()) {
-      if (
-        only != null
-        && !only.Any(p => el.Path.StartsWith(p, StringComparison.Ordinal))
-      )
-        continue;
-      foreach (QuadD q in FaceQuadsD(el, mats[el.Path]))
-        foreach ((double X, double Y, double Z) p in q.Points)
-          yield return viewRot.Mul(p.X, p.Y, p.Z);
+    foreach (RenderPart part in parts) {
+      Dictionary<string, Mat4d> mats = WorldMatricesD(
+        part.Shape,
+        part.Poses,
+        part.Model
+      );
+      foreach (Node el in part.Shape.Leaves()) {
+        if (
+          only != null
+          && !only.Any(p => el.Path.StartsWith(p, StringComparison.Ordinal))
+        )
+          continue;
+        foreach (QuadD q in FaceQuadsD(el, mats[el.Path]))
+          foreach ((double X, double Y, double Z) p in q.Points)
+            yield return viewRot.Mul(p.X, p.Y, p.Z);
+      }
     }
   }
 
@@ -770,18 +810,59 @@ public static class Renderer {
       shape,
       TextureRoots.Build(null, null, shape.Path)
     );
-    Dictionary<string, Mat4d> mats = WorldMatricesD(shape, poses);
+    return Render(
+      [new RenderPart(shape, textures, poses, Mat4d.Identity)],
+      view,
+      ppu,
+      cull,
+      grid,
+      highlight,
+      only,
+      margin,
+      edges,
+      transparent,
+      fitTo,
+      overlay
+    );
+  }
+
+  // Renders a scene of parts into one depth buffer: each part's leaves are placed by its model and
+  // textured from its own set; only, highlight and overlay match paths in every part.
+  internal static SKBitmap Render(
+    IReadOnlyList<RenderPart> parts,
+    View view,
+    int ppu = 24,
+    bool cull = true,
+    bool grid = true,
+    IReadOnlySet<string>? highlight = null,
+    IReadOnlySet<string>? only = null,
+    int margin = 2,
+    bool edges = true,
+    bool transparent = false,
+    Canvas? fitTo = null,
+    string? overlay = null
+  ) {
     bool IsOverlay(string path) =>
       overlay != null && path.StartsWith(overlay, StringComparison.Ordinal);
-    List<Node> leaves =
+    List<(Node El, Mat4d M, TextureSet Textures)> leaves =
     [
-      .. shape
-        .Leaves()
-        .Where(el =>
-          only == null
-          || only.Any(p => el.Path.StartsWith(p, StringComparison.Ordinal))
-        )
-        .OrderBy(el => IsOverlay(el.Path)),
+      .. parts
+        .SelectMany(part =>
+        {
+          Dictionary<string, Mat4d> mats = WorldMatricesD(
+            part.Shape,
+            part.Poses,
+            part.Model
+          );
+          return part
+            .Shape.Leaves()
+            .Where(el =>
+              only == null
+              || only.Any(p => el.Path.StartsWith(p, StringComparison.Ordinal))
+            )
+            .Select(el => (el, mats[el.Path], part.Textures));
+        })
+        .OrderBy(l => IsOverlay(l.el.Path)),
     ];
 
     Mat3 viewRot = Mat3.RotateX(view.Pitch) * Mat3.RotateY(view.Yaw);
@@ -790,10 +871,10 @@ public static class Renderer {
       new List<(
         QuadD Quad,
         (double X, double Y, double Z)[] PtsView,
-        (double X, double Y, double Z) NormalView
+        (double X, double Y, double Z) NormalView,
+        TextureSet Textures
       )>();
-    foreach (Node el in leaves) {
-      Mat4d m = mats[el.Path];
+    foreach ((Node el, Mat4d m, TextureSet partTextures) in leaves) {
       foreach (QuadD q in FaceQuadsD(el, m)) {
         var ptsView = new (double, double, double)[4];
         for (int i = 0; i < 4; i++)
@@ -803,7 +884,7 @@ public static class Renderer {
           q.Normal.Y,
           q.Normal.Z
         );
-        quads.Add((q, ptsView, normalView));
+        quads.Add((q, ptsView, normalView, partTextures));
       }
     }
 
@@ -833,7 +914,7 @@ public static class Renderer {
         fixedCanvas.YMax
       );
     else {
-      Projection projection = Project(shape, view, ppu, margin, only, poses);
+      Projection projection = Project(parts, view, ppu, margin, only);
       xmin = projection.XMin;
       ymax = projection.YMax;
       xmax = quads.SelectMany(q => q.PtsView).Max(p => p.Item1) + margin;
@@ -865,7 +946,8 @@ public static class Renderer {
       (
         QuadD q,
         (double, double, double)[] ptsView,
-        (double, double, double) normalView
+        (double, double, double) normalView,
+        TextureSet quadTextures
       ) in quads
     ) {
       if (highlight != null && highlight.Contains(q.Path))
@@ -877,7 +959,7 @@ public static class Renderer {
         modelZ ??= (double[,])zBuf.Clone();
       else
         drawn.Add(screen);
-      byte[,,] tex = textures.Get(q.Texture);
+      byte[,,] tex = quadTextures.Get(q.Texture);
       (double U, double V)[] uvCorners = RotateUvCorners(q.Uv, q.Rotation);
       double shade = Shading(q.Normal);
       foreach ((int a, int b, int c) in new[] { (0, 1, 2), (0, 2, 3) })
@@ -924,7 +1006,7 @@ public static class Renderer {
     if (grid && !transparent) {
       (int X0, int X1, int Z0, int Z1)? range = fitTo is { } c
         ? (c.GridX0, c.GridX1, c.GridZ0, c.GridZ1)
-        : GridRange(shape, mats);
+        : GridRange(parts);
       if (range is (int x0, int x1, int z0, int z1)) {
         for (int x = x0; x <= x1; x++) {
           ScreenPoint a = ToScreen(viewRot.Mul(x, 0.0, z0));

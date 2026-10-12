@@ -293,4 +293,136 @@ public class RendererTests {
       $"{differing} differing pixels exceed the tie allowance of {allowed}"
     );
   }
+
+  private static LoadedShape Block(double size) {
+    string face =
+      "{\"texture\": \"#a\", \"uv\": [0,0,16,16], \"enabled\": true}";
+    string json =
+      "{\"textures\": {\"a\": \"none\"}, \"elements\": [{\"name\": \"C\", \"from\": [0,0,0], "
+      + $"\"to\": [{size},{size},{size}], \"faces\": {{"
+      + string.Join(
+        ",",
+        new[] { "north", "east", "south", "west", "up", "down" }.Select(f =>
+          $"\"{f}\": {face}"
+        )
+      )
+      + "}}]}";
+    Shape raw = Newtonsoft.Json.JsonConvert.DeserializeObject<Shape>(json)!;
+    return ShapeFile.FromRaw(raw, null);
+  }
+
+  private static TextureSet Solid(byte r, byte g, byte b) =>
+    TextureSet.FromResolved(
+      new Dictionary<string, TextureRef>(),
+      _ => null,
+      new Dictionary<string, byte[,,]> {
+        ["a"] = new byte[,,]
+        {
+          {
+            { r, g, b, 255 },
+          },
+        },
+      }
+    );
+
+  private static void AssertDominant(SKColor c, char channel) {
+    int[] v = [c.Red, c.Green, c.Blue];
+    int i = "rgb".IndexOf(channel);
+    for (int k = 0; k < 3; k++)
+      if (k != i)
+        Assert.True(v[i] > v[k] + 40, $"{c} is not {channel}");
+  }
+
+  private static SKColor PixelAt(
+    SKBitmap bmp,
+    Renderer.Projection projection,
+    double x,
+    double y,
+    double z
+  ) {
+    (double col, double row) = projection.Screen(x, y, z);
+    Assert.InRange((int)col, 0, bmp.Width - 1);
+    Assert.InRange((int)row, 0, bmp.Height - 1);
+    return bmp.GetPixel((int)col, (int)row);
+  }
+
+  [Fact]
+  public void Two_parts_share_one_depth_buffer() {
+    View view = Renderer.NamedViews["south"];
+    System.Numerics.Vector3 eye = Renderer.Eye(view);
+    LoadedShape block = Block(16);
+    Renderer.RenderPart near = new(
+      block,
+      Solid(255, 0, 0),
+      null,
+      Renderer.Mat4d.Translate(eye.X * 20, eye.Y * 20, eye.Z * 20)
+    );
+    Renderer.RenderPart far = new(
+      block,
+      Solid(0, 255, 0),
+      null,
+      Renderer.Mat4d.Identity
+    );
+    Renderer.RenderPart[] parts = [near, far];
+    using SKBitmap bmp = Renderer.Render(
+      parts,
+      view,
+      ppu: 8,
+      grid: false,
+      edges: false
+    );
+    Renderer.Projection projection = Renderer.Project(parts, view, 8);
+    AssertDominant(
+      PixelAt(bmp, projection, 8 + eye.X * 20, 8 + eye.Y * 20, 8 + eye.Z * 20),
+      'r'
+    );
+  }
+
+  [Fact]
+  public void A_parts_model_moves_it() {
+    View view = Renderer.NamedViews["south"];
+    LoadedShape block = Block(4);
+    Renderer.RenderPart[] parts =
+    [
+      new(block, Solid(255, 0, 0), null, Renderer.Mat4d.Identity),
+      new(block, Solid(0, 0, 255), null, Renderer.Mat4d.Translate(16, 0, 0)),
+    ];
+    const int ppu = 8;
+    using SKBitmap bmp = Renderer.Render(
+      parts,
+      view,
+      ppu,
+      grid: false,
+      edges: false
+    );
+    Renderer.Projection projection = Renderer.Project(parts, view, ppu);
+    (double col0, _) = projection.Screen(2, 2, 2);
+    (double col1, _) = projection.Screen(18, 2, 2);
+    Assert.Equal(16 * ppu, Math.Abs(col1 - col0), 6);
+    AssertDominant(PixelAt(bmp, projection, 2, 2, 2), 'r');
+    AssertDominant(PixelAt(bmp, projection, 18, 2, 2), 'b');
+    Renderer.Canvas fit = Renderer.Fit(parts, view)!.Value;
+    Assert.Equal(bmp.Width, (int)Math.Ceiling((fit.XMax - fit.XMin) * ppu));
+  }
+
+  [Fact]
+  public void Colliding_texture_keys_keep_their_part() {
+    View view = Renderer.NamedViews["south"];
+    LoadedShape block = Block(4);
+    Renderer.RenderPart[] parts =
+    [
+      new(block, Solid(255, 0, 0), null, Renderer.Mat4d.Identity),
+      new(block, Solid(0, 0, 255), null, Renderer.Mat4d.Translate(8, 0, 0)),
+    ];
+    using SKBitmap bmp = Renderer.Render(
+      parts,
+      view,
+      8,
+      grid: false,
+      edges: false
+    );
+    Renderer.Projection projection = Renderer.Project(parts, view, 8);
+    AssertDominant(PixelAt(bmp, projection, 2, 2, 2), 'r');
+    AssertDominant(PixelAt(bmp, projection, 10, 2, 2), 'b');
+  }
 }

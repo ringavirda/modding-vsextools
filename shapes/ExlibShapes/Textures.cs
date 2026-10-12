@@ -221,6 +221,9 @@ public sealed class TextureSet {
     return img;
   }
 
+  // No key resolved: every Get returns MissingImage.
+  internal static TextureSet Empty => new([], []);
+
   private readonly Dictionary<string, byte[,,]> _arrays;
 
   /// <summary>Texture keys that could not be resolved to a real file.</summary>
