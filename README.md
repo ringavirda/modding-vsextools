@@ -61,16 +61,18 @@ source
 `render`, `schematic`, `scene`, `block`, `item` and `item-views` run the built shapes tool, and build it first only when its
 output is missing or older than its sources, the assets project it references, the props it imports
 or the game's `VintagestoryAPI.dll`; the tool references no exlib or mod assembly. A build rewrites
-the tool's `bin/` and `obj/`, so a workspace that serialises builds with a lock file runs renders
-side by side by holding the lock shared and building under it exclusive:
+the tool's `bin/` and `obj/`, so `exmod shapes-build` also publishes the output to a new folder under
+`.exmod/shapes/` and switches the `current` symlink to it by rename, keeping the previous publish and
+deleting older ones once they are over 10 minutes old. With `EXMOD_SHAPES_NO_BUILD` set, the commands
+run `current` with no lock, so renders side by side are not held up by a build or suite; only the
+build takes a workspace's build lock:
 
 ```sh
 flock -w 240 -o LOCK exmod shapes-build
-EXMOD_SHAPES_NO_BUILD=1 flock -s -w 240 LOCK exmod render shape.json --out=DIR
+EXMOD_SHAPES_NO_BUILD=1 exmod render shape.json --out=DIR
 ```
 
-With `EXMOD_SHAPES_NO_BUILD` set, a stale tool makes the command refuse and name `exmod shapes-build`
-instead of building, so renders started together on a stale tool never build at once.
+With `EXMOD_SHAPES_NO_BUILD` set and nothing published, the command refuses and names `exmod shapes-build`.
 
 run
 

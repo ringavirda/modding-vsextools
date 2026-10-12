@@ -7,7 +7,7 @@
 - `exmod item FILE --views gui,ground[,iso]` draws an itemtype variant the way the game places it: `gui` in the centre slot of a 3 x 3 grid of inventory slots, `ground` lying on a stone block, from the itemtype's own `guiTransform` and `groundTransform` resolved by type with the game's item defaults for a key it omits and `scale` or per-axis `scaleXyz`; without `--views` the output is as before.
 - `exmod item-views PATH --out=DIR [--views gui,ground,iso]` renders an `item-views/1` dump, or a folder of `*.views.json`, to a PNG per view from the transforms the dump carries and a `<stem>.json` manifest of the files, the view and kind, the failing gates, the missing textures and the warnings; another format is refused.
 - `exlib-shapes` reads `setup-scene/1` files and draws their cells from the four iso corners (`ne`, `nw`, `se`, `sw`, now named
-  views beside `iso`) on one shared canvas; fillers and ports draw nothing, an unresolved code is a black-and-yellow checker cube.
+  views beside `iso`) on canvases of one size, each view centred in its own; fillers and ports draw nothing, an unresolved code is a black-and-yellow checker cube.
 - `exmod scene` (`exlib-shapes scene`) renders a setup's scene dump to the corner PNGs and a plan SVG per Y layer: each cell labelled with its id over its network key, ports as arrows (red when unjoined), open faces as red ticks, and a `<stem>.json` manifest of the files, the networks and lines, the unjoined ports, the open faces, the unresolved codes, the missing textures and the warnings. Each corner view is also written tinted, cells in their network's or line's hue and grey otherwise, with port frames (red when unjoined) and red open-face stubs laid over it.
 - `exmod scenario` boots a dedicated server with the built mods and the checkout's live mod (exmod.json's
   `live` key), copies tests/live into its Scenarios folder, runs the named scenarios (every one when none is
@@ -35,9 +35,11 @@
   test host names the tests it was running, and keeps every run's full output in `.exmod/test-logs/`; a failed
   run, or one below the census, prints that log's path.
 - `exmod render`, `schematic`, `block` and `item` run the built shapes tool and build it only when
-  its output is missing or older than its inputs. `exmod shapes-build` builds it on its own, and
-  with `EXMOD_SHAPES_NO_BUILD` set a stale tool makes those commands refuse instead of building, so
-  renders can run side by side under a shared lock and the build under the exclusive one.
+  its output is missing or older than its inputs. `exmod shapes-build` builds it on its own and
+  publishes the output to a new folder under `.exmod/shapes/`, switching the `current` symlink to it
+  by rename, keeping the previous publish and deleting older ones past 10 minutes. With
+  `EXMOD_SHAPES_NO_BUILD` set those commands run `current` with no lock and refuse when nothing is
+  published, so renders are not held up by a build or suite.
 - The shapes tool's `render --anim` draws every frame of a view on one canvas sized to hold the
   whole clip, so the frames line up as an animation; each frame used to be cropped to its own pose.
 

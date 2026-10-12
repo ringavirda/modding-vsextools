@@ -9,10 +9,11 @@
 #   exmod item        itemtype file -> an iso PNG or an enlarged icon, or its gui and ground views, a manifest
 #   exmod item-views  item-views/1 dump -> a PNG per view, a manifest
 
-# Runs shapes/ExlibShapes's built tool for one subcommand, building it first only when its output is
-# missing or older than its inputs (set EXMOD_SHAPES_NO_BUILD to refuse instead, for a caller that
-# holds the build lock shared: it builds with `exmod shapes-build` under the exclusive lock, then
-# renders under the shared one). The way Invoke-Verify runs ExlibVerify: -p:GamePath resolves the tool project's own VintagestoryAPI reference, and the same
+# Runs shapes/ExlibShapes's tool for one subcommand. Without EXMOD_SHAPES_NO_BUILD it runs the built
+# output, building it first only when that is missing or older than its inputs. With it set, it runs
+# the published copy `exmod shapes-build` left under `current`, takes no lock and builds nothing, so
+# a build or suite elsewhere never holds a render up; it refuses when nothing is published.
+# The way Invoke-Verify runs ExlibVerify: -p:GamePath resolves the tool project's own VintagestoryAPI reference, and the same
 # install is passed as the tool's own --game unless the caller already named one (a modder pointing
 # at a different install than this repository's own provisioned one). This must be a client install,
 # never the default server one: the dedicated-server archive ships almost no assets/survival/textures,
@@ -24,12 +25,15 @@ function Invoke-ExlibShapes([string]$Subcommand, [string[]]$Argv) {
   $toolArgs = @($Subcommand) + $Argv
   if (-not (Get-Opt $Argv '--game' $null)) { $toolArgs += @('--game', $game) }
 
-  $dll = Get-ExlibShapesDll
-  if (Test-ExlibShapesStale $dll $game) {
-    if ($env:EXMOD_SHAPES_NO_BUILD) {
-      throw "exlib-shapes is not built or is older than its sources, and EXMOD_SHAPES_NO_BUILD forbids building under a shared lock. Build it first, under the exclusive lock: exmod shapes-build"
+  if ($env:EXMOD_SHAPES_NO_BUILD) {
+    $dir = Get-ShapesPublished (Get-ShapesPublishRoot)
+    if (-not $dir) {
+      throw "exlib-shapes is not published, and EXMOD_SHAPES_NO_BUILD forbids building. Publish it first: exmod shapes-build"
     }
-    Build-ExlibShapes $game
+    $dll = Join-Path $dir 'exlib-shapes.dll'
+  } else {
+    $dll = Get-ExlibShapesDll
+    if (Test-ExlibShapesStale $dll $game) { Build-ExlibShapes $game }
   }
   dotnet $dll @toolArgs
   if ($LASTEXITCODE -ne 0) { throw "exlib-shapes $Subcommand failed (exit $LASTEXITCODE)." }
@@ -60,13 +64,68 @@ function Test-ExlibShapesStale([string]$Dll, [string]$Game) {
   [bool]($inputs | Where-Object { $_.LastWriteTimeUtc -gt $built } | Select-Object -First 1)
 }
 
-# Builds the tool. A build rewrites bin/ and obj/, so a caller running renders side by side holds
-# the workspace build lock exclusive around this and shared around renders.
+# Builds the tool. A build rewrites bin/ and obj/, so renders side by side run from the published
+# copy, never from them.
 function Build-ExlibShapes([string]$Game) {
   $proj = Join-Path $ToolsRoot 'shapes/ExlibShapes/ExlibShapes.csproj'
   dotnet build $proj -c Debug -p:GamePath=$Game -clp:ErrorsOnly
   if ($LASTEXITCODE -ne 0) { throw "exlib-shapes build failed (exit $LASTEXITCODE)." }
   (Get-Item -LiteralPath (Get-ExlibShapesDll)).LastWriteTimeUtc = [datetime]::UtcNow
+}
+
+# The folder the published copies live under: one publish-* folder per publish and `current`, a
+# symlink to the one renders run from.
+function Get-ShapesPublishRoot { Join-Path $ToolsRoot '.exmod/shapes' }
+
+# The publish folder `current` names, resolved so a render keeps reading it after a later publish
+# moves the link; $null when nothing is published there.
+function Get-ShapesPublished([string]$Root) {
+  $link = Join-Path $Root 'current'
+  if (-not (Test-Path -LiteralPath $link)) { return $null }
+  $dir = [System.IO.Directory]::ResolveLinkTarget($link, $true)
+  if (-not $dir) { $dir = Get-Item -LiteralPath $link }
+  if (-not (Test-Path -LiteralPath (Join-Path $dir.FullName 'exlib-shapes.dll'))) { return $null }
+  $dir.FullName
+}
+
+# Copies the build output folder $BuildDir into a new publish-* folder under $Root, then points
+# `current` at it by renaming a fresh symlink over the old one, so a reader sees the old publish or
+# the new one whole (Unix: renames with mv -T). Never writes into an existing publish. Returns the new folder's path; $Stamp is
+# recorded in it for Test-ShapesPublished.
+function Publish-ExlibShapes([string]$Root, [string]$BuildDir, [string]$Stamp) {
+  New-Item -ItemType Directory -Force -Path $Root | Out-Null
+  $name = 'publish-{0:yyyyMMddHHmmssfff}-{1}' -f [datetime]::UtcNow, $PID
+  $dest = Join-Path $Root $name
+  New-Item -ItemType Directory -Path $dest | Out-Null
+  Copy-Item -Path (Join-Path $BuildDir '*') -Destination $dest -Recurse
+  Set-Content -LiteralPath (Join-Path $dest 'source-stamp') -Value $Stamp -NoNewline
+
+  $next = Join-Path $Root "current.$PID.new"
+  if (Test-Path -LiteralPath $next) { Remove-Item -LiteralPath $next -Force }
+  New-Item -ItemType SymbolicLink -Path $next -Target $name | Out-Null
+  & mv -T -- $next (Join-Path $Root 'current')
+  if ($LASTEXITCODE -ne 0) { throw "Could not switch $Root/current to $name (mv exit $LASTEXITCODE)." }
+  $dest
+}
+
+# True when `current` under $Root holds a publish made from the build stamped $Stamp.
+function Test-ShapesPublished([string]$Root, [string]$Stamp) {
+  $dir = Get-ShapesPublished $Root
+  if (-not $dir) { return $false }
+  $file = Join-Path $dir 'source-stamp'
+  (Test-Path -LiteralPath $file) -and ((Get-Content -LiteralPath $file -Raw) -eq $Stamp)
+}
+
+# Deletes the publish-* folders under $Root other than the one `current` names and the newest other
+# one, when they were last written more than $MinAgeMinutes ago.
+function Remove-OldShapesPublishes([string]$Root, [int]$MinAgeMinutes = 10) {
+  $live = Get-ShapesPublished $Root
+  $others = @(Get-ChildItem -LiteralPath $Root -Directory -Filter 'publish-*' |
+    Where-Object { $_.FullName -ne $live } | Sort-Object Name -Descending)
+  $cutoff = [datetime]::UtcNow.AddMinutes(-$MinAgeMinutes)
+  foreach ($old in ($others | Select-Object -Skip 1)) {
+    if ($old.LastWriteTimeUtc -lt $cutoff) { Remove-Item -LiteralPath $old.FullName -Recurse -Force }
+  }
 }
 
 function Invoke-Render([string[]]$Argv) { Invoke-ExlibShapes 'render' $Argv }
@@ -77,6 +136,13 @@ function Invoke-ShapesBuild([string[]]$Argv) {
   $game = Get-Opt $Argv '--game' $null
   if (-not $game) { $game = Resolve-GameInstall $CurrentGameVersion 'client' }
   if (Test-ExlibShapesStale (Get-ExlibShapesDll) $game) { Build-ExlibShapes $game } else { 'exlib-shapes is current.' }
+  $dll = Get-Item -LiteralPath (Get-ExlibShapesDll)
+  $root = Get-ShapesPublishRoot
+  $stamp = [string]$dll.LastWriteTimeUtc.Ticks
+  if (Test-ShapesPublished $root $stamp) { return }
+  $dest = Publish-ExlibShapes $root $dll.DirectoryName $stamp
+  Remove-OldShapesPublishes $root
+  "exlib-shapes published to $dest."
 }
 
 function Invoke-Item([string[]]$Argv) { Invoke-ExlibShapes 'item' $Argv }
@@ -93,10 +159,10 @@ shapes/ExlibShapes/README.md for the full option list and the standalone `exlib-
 `--out` needs the `=` form here: PowerShell's own parameter binder treats a bare `--out` token as
 an ambiguous prefix of its common `-OutVariable`/`-OutBuffer` parameters and refuses it outright.
 
-The tool is built only when its output is missing or older than its sources, so renders can run
-side by side: a render started under a shared lock (`flock -s -w 240 LOCK exmod ...` with
-EXMOD_SHAPES_NO_BUILD=1) never builds, and refuses with the build command when the tool is stale.
-Build it under the exclusive lock first: `flock -w 240 -o LOCK exmod shapes-build`.
+The tool is built only when its output is missing or older than its sources. With
+EXMOD_SHAPES_NO_BUILD=1 it runs the copy `exmod shapes-build` published, takes no lock, so renders
+run side by side while a build or suite runs, and refuses with the build command when nothing is
+published.
 
   FILE            the shape JSON to render
   --out=DIR       where the PNGs are written
@@ -124,10 +190,10 @@ shapes/ExlibShapes/README.md for the full option list and the standalone `exlib-
 `--out` needs the `=` form here: PowerShell's own parameter binder treats a bare `--out` token as
 an ambiguous prefix of its common `-OutVariable`/`-OutBuffer` parameters and refuses it outright.
 
-The tool is built only when its output is missing or older than its sources, so renders can run
-side by side: a render started under a shared lock (`flock -s -w 240 LOCK exmod ...` with
-EXMOD_SHAPES_NO_BUILD=1) never builds, and refuses with the build command when the tool is stale.
-Build it under the exclusive lock first: `flock -w 240 -o LOCK exmod shapes-build`.
+The tool is built only when its output is missing or older than its sources. With
+EXMOD_SHAPES_NO_BUILD=1 it runs the copy `exmod shapes-build` published, takes no lock, so renders
+run side by side while a build or suite runs, and refuses with the build command when nothing is
+published.
 
   FILE            the blocktype JSON to render
   --out=DIR       where the SVGs, PNGs and <stem>.json are written
@@ -153,10 +219,10 @@ than setup-scene/1. `--out` needs the `=` form here: PowerShell's own parameter 
 bare `--out` token as an ambiguous prefix of its common `-OutVariable`/`-OutBuffer` parameters and
 refuses it outright.
 
-The tool is built only when its output is missing or older than its sources, so renders can run
-side by side: a render started under a shared lock (`flock -s -w 240 LOCK exmod ...` with
-EXMOD_SHAPES_NO_BUILD=1) never builds, and refuses with the build command when the tool is stale.
-Build it under the exclusive lock first: `flock -w 240 -o LOCK exmod shapes-build`.
+The tool is built only when its output is missing or older than its sources. With
+EXMOD_SHAPES_NO_BUILD=1 it runs the copy `exmod shapes-build` published, takes no lock, so renders
+run side by side while a build or suite runs, and refuses with the build command when nothing is
+published.
 
   PATH            a .scene.json file, or a folder of them
   --out=DIR       where the PNGs, SVGs and <stem>.json are written
@@ -180,10 +246,10 @@ list and the standalone `exlib-shapes` tool. `--out` needs the `=` form here: Po
 parameter binder treats a bare `--out` token as an ambiguous prefix of its common
 `-OutVariable`/`-OutBuffer` parameters and refuses it outright.
 
-The tool is built only when its output is missing or older than its sources, so renders can run
-side by side: a render started under a shared lock (`flock -s -w 240 LOCK exmod ...` with
-EXMOD_SHAPES_NO_BUILD=1) never builds, and refuses with the build command when the tool is stale.
-Build it under the exclusive lock first: `flock -w 240 -o LOCK exmod shapes-build`.
+The tool is built only when its output is missing or older than its sources. With
+EXMOD_SHAPES_NO_BUILD=1 it runs the copy `exmod shapes-build` published, takes no lock, so renders
+run side by side while a build or suite runs, and refuses with the build command when nothing is
+published.
 
   FILE            the blocktype JSON to render
   --out=DIR       where the PNGs, the footprint SVG and <stem>.json are written
@@ -213,10 +279,10 @@ See shapes/ExlibShapes/README.md for the full option list and the standalone `ex
 `--out` needs the `=` form here: PowerShell's own parameter binder treats a bare `--out` token as
 an ambiguous prefix of its common `-OutVariable`/`-OutBuffer` parameters and refuses it outright.
 
-The tool is built only when its output is missing or older than its sources, so renders can run
-side by side: a render started under a shared lock (`flock -s -w 240 LOCK exmod ...` with
-EXMOD_SHAPES_NO_BUILD=1) never builds, and refuses with the build command when the tool is stale.
-Build it under the exclusive lock first: `flock -w 240 -o LOCK exmod shapes-build`.
+The tool is built only when its output is missing or older than its sources. With
+EXMOD_SHAPES_NO_BUILD=1 it runs the copy `exmod shapes-build` published, takes no lock, so renders
+run side by side while a build or suite runs, and refuses with the build command when nothing is
+published.
 
   FILE            the itemtype JSON to render
   --out=DIR       where the PNGs and <stem>.json are written
@@ -240,10 +306,10 @@ Exits 1 for an unreadable dump or a format other than item-views/1. `--out` need
 here: PowerShell's own parameter binder treats a bare `--out` token as an ambiguous prefix of its
 common `-OutVariable`/`-OutBuffer` parameters and refuses it outright.
 
-The tool is built only when its output is missing or older than its sources, so renders can run
-side by side: a render started under a shared lock (`flock -s -w 240 LOCK exmod ...` with
-EXMOD_SHAPES_NO_BUILD=1) never builds, and refuses with the build command when the tool is stale.
-Build it under the exclusive lock first: `flock -w 240 -o LOCK exmod shapes-build`.
+The tool is built only when its output is missing or older than its sources. With
+EXMOD_SHAPES_NO_BUILD=1 it runs the copy `exmod shapes-build` published, takes no lock, so renders
+run side by side while a build or suite runs, and refuses with the build command when nothing is
+published.
 
   PATH            a .views.json file, or a folder of them
   --out=DIR       where the PNGs and <stem>.json are written
@@ -253,20 +319,19 @@ Build it under the exclusive lock first: `flock -w 240 -o LOCK exmod shapes-buil
   --game PATH     a specific game install (default: this repository's own provisioned one)
 '@
 
-Add-ExmodCommand -Group source -Name shapes-build -Summary 'build the shapes tool when it is stale' -Action {
+Add-ExmodCommand -Group source -Name shapes-build -Summary 'build the shapes tool when it is stale and publish it' -Action {
   param([string[]]$Argv) Invoke-ShapesBuild $Argv
 } -Detail @'
 exmod shapes-build [--game PATH]
 
 Builds shapes/ExlibShapes when its output is missing or older than its sources, the ExlibAssets
-project it references, the props it imports or the game's VintagestoryAPI.dll, and says so when it
-is current. render, schematic, scene, block, item and item-views build it themselves the same way; this command is
-for a caller that runs them side by side. A build rewrites the tool's bin/ and obj/, so the build
-runs under the exclusive build lock and the renders under the shared one:
+project it references, the props it imports or the game's VintagestoryAPI.dll, then publishes the
+output to a new folder under .exmod/shapes and points the `current` symlink there by rename. The
+previous publish stays; older ones are deleted once they are more than 10 minutes old. render,
+schematic, scene, block, item and item-views build the tool themselves the same way, unless
+EXMOD_SHAPES_NO_BUILD is set: then they run `current` with no lock, and refuse when nothing is
+published. Only the build needs the exclusive build lock; the renders do not:
 
   flock -w 240 -o LOCK exmod shapes-build
-  EXMOD_SHAPES_NO_BUILD=1 flock -s -w 240 LOCK exmod render FILE --out=DIR
-
-With EXMOD_SHAPES_NO_BUILD set a stale tool makes the render refuse instead of building, so two
-renders started together on a stale tool never build at once.
+  EXMOD_SHAPES_NO_BUILD=1 exmod render FILE --out=DIR
 '@

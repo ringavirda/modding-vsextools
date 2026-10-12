@@ -17,9 +17,22 @@ public readonly record struct LocalBox(
   double Z2
 );
 
-/// <summary>One drawn box of a planned layout: the cell holding it, the box, and whether it is a
-/// control's selection box rather than a collision box.</summary>
-public readonly record struct PlannedBox(Offset At, LocalBox Box, bool Control);
+/// <summary>What a <see cref="PlannedBox"/> marks: a collision box, a control's or instrument's selection
+/// box, a door's shut leaf, or the opening an open door clears.</summary>
+public enum PlannedBoxKind {
+  Collision,
+  Control,
+  Door,
+  DoorOpening,
+  Instrument,
+}
+
+/// <summary>One drawn box of a planned layout: the cell holding it, the box, and what it marks.</summary>
+public readonly record struct PlannedBox(
+  Offset At,
+  LocalBox Box,
+  PlannedBoxKind Kind
+);
 
 /// <summary>The collision boxes of one declared cell: none, one box or several, in the cell's frame.</summary>
 public readonly record struct PlannedCell(
@@ -41,7 +54,8 @@ public sealed class PlannedLayout {
   /// <summary>Every position of the glyph grid, '.' included, one entry per glyph.</summary>
   public IReadOnlyList<(Offset At, char Glyph)> Grid { get; }
 
-  /// <summary>Every collision box of a declared cell, then every control's selection box.</summary>
+  /// <summary>Every collision box of a declared cell, then every control's, instrument's and door's
+  /// boxes: a door contributes its shut leaf boxes and its opening boxes.</summary>
   public IReadOnlyList<PlannedBox> Boxes { get; }
 
   /// <summary>The collision boxes of the principal's cell, then of each declared cell: a
@@ -127,16 +141,17 @@ public sealed class PlannedLayout {
       }
     }
 
+    var kinds = new Dictionary<string, string>();
+    foreach (JToken control in raw["planned"]!["controls"] as JArray ?? [])
+      if ((string?)control["id"] is { } id)
+        kinds[id] = (string?)control["kind"] ?? "control";
+
     var boxes = new List<PlannedBox>();
-    var controlBoxes = new List<PlannedBox>();
+    var marked = new List<PlannedBox>();
     var collision = new List<PlannedCell>();
     if (raw["planned"]?["principal"] is JObject principal) {
       collision.Add(CellOf(new Offset(0, 0, 0), principal));
-      foreach (JToken control in principal["controls"] as JArray ?? [])
-        if (control["box"] is { } selection)
-          controlBoxes.Add(
-            new PlannedBox(new Offset(0, 0, 0), BoxOf(selection), true)
-          );
+      AddMarked(marked, new Offset(0, 0, 0), principal, kinds);
     }
     foreach (
       JObject entry in (
@@ -146,10 +161,8 @@ public sealed class PlannedLayout {
       var at = new Offset((int)entry["x"]!, (int)entry["y"]!, (int)entry["z"]!);
       collision.Add(CellOf(at, entry));
       foreach (JToken box in entry["collisionBoxes"] as JArray ?? [])
-        boxes.Add(new PlannedBox(at, BoxOf(box), false));
-      foreach (JToken control in entry["controls"] as JArray ?? [])
-        if (control["box"] is { } selection)
-          controlBoxes.Add(new PlannedBox(at, BoxOf(selection), true));
+        boxes.Add(new PlannedBox(at, BoxOf(box), PlannedBoxKind.Collision));
+      AddMarked(marked, at, entry, kinds);
     }
 
     var controls = new Dictionary<char, string>();
@@ -164,7 +177,7 @@ public sealed class PlannedLayout {
     return new PlannedLayout(
       layout,
       glyphs,
-      [.. boxes, .. controlBoxes],
+      [.. boxes, .. marked],
       collision,
       controls,
       (string?)raw["planned"]!["copy"]?["path"],
@@ -173,6 +186,35 @@ public sealed class PlannedLayout {
         ? default
         : new Offset((int)anchor[0]!, (int)anchor[1]!, (int)anchor[2]!)
     );
+  }
+
+  // A cell's control boxes, kinded by the plan's entry for the control (an instrument or door entry
+  // keeps its kind), then each door's shut leaf boxes and opening boxes.
+  private static void AddMarked(
+    List<PlannedBox> into,
+    Offset at,
+    JObject entry,
+    Dictionary<string, string> kinds
+  ) {
+    foreach (JToken control in entry["controls"] as JArray ?? [])
+      if (control["box"] is { } selection)
+        into.Add(
+          new PlannedBox(
+            at,
+            BoxOf(selection),
+            kinds.GetValueOrDefault((string?)control["id"] ?? "") switch {
+              "instrument" => PlannedBoxKind.Instrument,
+              "door" => PlannedBoxKind.Door,
+              _ => PlannedBoxKind.Control,
+            }
+          )
+        );
+    foreach (JToken door in entry["doors"] as JArray ?? []) {
+      foreach (JToken box in door["shut"] as JArray ?? [])
+        into.Add(new PlannedBox(at, BoxOf(box), PlannedBoxKind.Door));
+      foreach (JToken box in door["opening"] as JArray ?? [])
+        into.Add(new PlannedBox(at, BoxOf(box), PlannedBoxKind.DoorOpening));
+    }
   }
 
   private static PlannedCell CellOf(Offset at, JObject entry) =>
@@ -213,7 +255,7 @@ public sealed class PlannedLayout {
         .. Boxes.Select(b => new PlannedBox(
           Layout.RotateOffset(b.At, angle),
           TurnBox(b.Box, angle),
-          b.Control
+          b.Kind
         )),
       ],
       [

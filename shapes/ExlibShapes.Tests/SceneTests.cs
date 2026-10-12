@@ -467,6 +467,49 @@ public class SceneTests : IDisposable {
           yield return bitmap.GetPixel(x, y);
   }
 
+  [Fact]
+  public void The_four_views_share_one_size_and_each_draws_centred_in_it() {
+    string dir = Scratch();
+    SceneRender.Write(
+      SceneFile.Load(FixturePath.Of("scene/far.scene.json")),
+      BlockIndex.Build([DemoRoot]),
+      dir,
+      "far",
+      Corners
+    );
+    foreach (string kind in new[] { "plain", "tint" }) {
+      var sizes = new HashSet<(int, int)>();
+      foreach (string view in Corners) {
+        using SKBitmap bitmap = SKBitmap.Decode(
+          Path.Combine(dir, $"far-{kind}-{view}.png")
+        );
+        sizes.Add((bitmap.Width, bitmap.Height));
+        SKColor background = bitmap.GetPixel(0, 0);
+        int x0 = int.MaxValue,
+          x1 = -1,
+          y0 = int.MaxValue,
+          y1 = -1;
+        for (int y = 0; y < bitmap.Height; y++)
+          for (int x = 0; x < bitmap.Width; x++)
+            if (bitmap.GetPixel(x, y) != background) {
+              x0 = Math.Min(x0, x);
+              x1 = Math.Max(x1, x);
+              y0 = Math.Min(y0, y);
+              y1 = Math.Max(y1, y);
+            }
+        Assert.InRange(Math.Abs((x0 + x1) / 2.0 - bitmap.Width / 2.0), 0, 4);
+        Assert.InRange(Math.Abs((y0 + y1) / 2.0 - bitmap.Height / 2.0), 0, 4);
+        Assert.True(
+          x0 >= 1
+            && y0 >= 1
+            && x1 <= bitmap.Width - 2
+            && y1 <= bitmap.Height - 2
+        );
+      }
+      Assert.Single(sizes);
+    }
+  }
+
   private static JObject DemoManifest(SceneRendered rendered) {
     SceneFile scene = SceneFile.Load(Fixture);
     IEnumerable<string> files = rendered
@@ -558,12 +601,14 @@ public class SceneTests : IDisposable {
   // The pixel of demo-tint-se.png at the top face's centre of the cell at `at`.
   private static SKColor DemoTopPixel(SKBitmap tinted, Offset at) {
     SceneFile scene = SceneFile.Load(Fixture);
-    (JObject raw, _, _) = SceneRender.Compose(
-      scene,
-      BlockIndex.Build([DemoRoot])
-    );
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+    (JObject raw, _, _) = SceneRender.Compose(scene, index);
     View view = Renderer.NamedViews["se"];
-    Renderer.Canvas canvas = Renderer.Fit(SceneRender.Load(raw), view)!.Value;
+    Renderer.Canvas canvas = SceneRender.Canvases(
+      SceneRender.Load(raw),
+      SceneRender.Marks(scene, index),
+      Corners
+    )["se"];
     (double col, double row) = new Renderer.Projection(
       canvas.XMin,
       canvas.YMax,
@@ -805,9 +850,11 @@ public class SceneTests : IDisposable {
         BlockIndex index = BlockIndex.Build([DemoRoot]);
         (JObject raw, _, _) = SceneRender.Compose(Walled(null, true), index);
         LoadedShape shape = SceneRender.Load(raw);
-        Renderer.Canvas canvas = Corners
-          .Select(v => Renderer.Fit(shape, Renderer.NamedViews[v])!.Value)
-          .Aggregate((a, b) => a.Union(b));
+        Renderer.Canvas canvas = SceneRender.Canvases(
+          shape,
+          SceneRender.Marks(Walled(null, true), index),
+          Corners
+        )[view];
         var projection = new Renderer.Projection(
           canvas.XMin,
           canvas.YMax,

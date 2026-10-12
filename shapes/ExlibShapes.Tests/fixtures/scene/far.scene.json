@@ -1,0 +1,18 @@
+{"format": "setup-scene/1", "setup": "far", "variant": null, "game": "1.22.7",
+ "cells": [
+  {"at": [20,0,7], "code": "demo:wall-east", "id": "run", "role": "block"},
+  {"at": [21,0,7], "code": "demo:wall-east", "id": "run", "role": "block"},
+  {"at": [22,0,7], "code": "demo:wall-east", "id": "run", "role": "block"},
+  {"at": [23,0,7], "code": "demo:wall-east", "id": "run", "role": "block"},
+  {"at": [24,0,7], "code": "demo:wall-east", "id": "run", "role": "block"},
+  {"at": [25,0,7], "code": "demo:wall-east", "id": "run", "role": "block"},
+  {"at": [26,0,7], "code": "demo:wall-east", "id": "run", "role": "block"},
+  {"at": [27,0,7], "code": "demo:wall-east", "id": "run", "role": "block"},
+  {"at": [28,0,7], "code": "demo:wall-east", "id": "run", "role": "block"},
+  {"at": [29,0,7], "code": "demo:wall-east", "id": "run", "role": "block"},
+  {"at": [29,1,7], "code": "demo:wall-east", "id": "run", "role": "block"},
+  {"at": [29,2,7], "code": "demo:wall-east", "id": "run", "role": "block"},
+  {"at": [29,3,7], "code": "demo:wall-east", "id": "run", "role": "block"}
+ ],
+ "networks": [],
+ "lines": []}
