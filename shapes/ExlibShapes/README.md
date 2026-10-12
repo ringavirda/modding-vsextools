@@ -111,6 +111,26 @@ whose match spanned more than one source blocktype file, named in the warning to
 one of them is drawn; or a blocktype or worldproperties file that failed to parse, named by path -
 also printed to stderr as the run happens).
 
+## scene
+
+```
+exlib-shapes scene PATH --out DIR [--views ne,nw,se,sw,plan] [--ppu N] [--roots PATH...] [--game PATH]
+```
+
+Renders a `setup-scene/1` file, a setup's scene dump (every cell of a built setup with its network or
+line key, its ports and its open faces), to `--out`. `PATH` is one file, or a folder whose every
+`*.scene.json` is rendered, in ordinal name order; the stem is the file name less `.scene.json`.
+`--views` defaults to the four corners and `plan`. Each corner `NAME` writes `<stem>-plain-NAME.png`,
+the cells as that iso corner shows them, an unresolved code drawn as a black-and-yellow checker cube.
+`plan` writes `<stem>-plan-y<Y>.svg` per Y layer: each cell filled in its network's or line's colour
+and labelled with its id over its key, fillers hatched in their principal's fill, a port an arrow on
+its face (red when unjoined), an open face a red tick, and a legend under the grid. `--ppu` is the
+corner PNGs' scale (default 4). `--roots` names extra mod repository roots that codes resolve
+against, repeatable; `--game` names the game install.
+
+A `<stem>.json` manifest is written alongside: `files` (every path written), `unresolved` (the codes
+no root resolved) and `warnings`.
+
 ## block
 
 ```

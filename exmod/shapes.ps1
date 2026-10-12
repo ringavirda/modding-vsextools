@@ -144,8 +144,8 @@ exmod scene PATH --out=DIR [--views ne,nw,se,sw,plan] [--ppu N] [--roots PATH...
 
 Renders a setup's `<setup>.scene.json` dump to a PNG per corner view, an SVG plan per Y layer
 and a `<stem>.json` manifest of the files written and the codes no root resolved. A folder PATH
-renders every `*.scene.json` directly in it, in name order. Prints each file, the manifest path
-and one `unresolved:` line per unresolved code. Exits 1 for an unreadable scene or a format other
+renders every `*.scene.json` directly in it, in name order. Prints each file and the manifest path;
+the codes no root resolved are listed in the manifest's `unresolved`. Exits 1 for an unreadable scene or a format other
 than setup-scene/1. `--out` needs the `=` form here: PowerShell's own parameter binder treats a
 bare `--out` token as an ambiguous prefix of its common `-OutVariable`/`-OutBuffer` parameters and
 refuses it outright.

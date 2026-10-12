@@ -27,22 +27,51 @@ public static class ScenePlan {
   private const int LegendRow = 14;
 
   /// <summary>
-  /// The colour of each network and line key: the schematic palette in order with the red entry
-  /// skipped, networks first and then lines in file order.
+  /// The colour of each network and line key: the schematic palette in order with the red and grey
+  /// entries skipped, networks first and then lines in file order. Past the palette, the
+  /// <see cref="Schematic.ColorFor"/> hues in the red band are skipped as well.
   /// </summary>
   public static IReadOnlyDictionary<string, string> KeyColors(SceneFile scene) {
-    string[] palette = [.. Schematic.Palette.Where(c => c != "#C44E52")];
+    string[] palette =
+    [
+      .. Schematic.Palette.Where(c => c is not ("#C44E52" or "#8C8C8C")),
+    ];
     var colors = new Dictionary<string, string>(StringComparer.Ordinal);
     int i = 0;
+    int next = Schematic.Palette.Length;
     foreach (
       string key in scene
         .Networks.Select(n => n.Key)
         .Concat(scene.Lines.Select(l => l.Key))
     ) {
-      colors[key] = i < palette.Length ? palette[i] : Schematic.ColorFor(i + 1);
+      if (i < palette.Length)
+        colors[key] = palette[i];
+      else {
+        string color = Schematic.ColorFor(next++);
+        while (RedBand(color))
+          color = Schematic.ColorFor(next++);
+        colors[key] = color;
+      }
       i++;
     }
     return colors;
+  }
+
+  private static bool RedBand(string color) {
+    double r = Convert.ToInt32(color[1..3], 16);
+    double g = Convert.ToInt32(color[3..5], 16);
+    double b = Convert.ToInt32(color[5..7], 16);
+    double max = Math.Max(r, Math.Max(g, b));
+    double min = Math.Min(r, Math.Min(g, b));
+    if (max == min)
+      return false;
+    double d = max - min;
+    double hue =
+      max == r ? (g - b) / d
+      : max == g ? 2 + (b - r) / d
+      : 4 + (r - g) / d;
+    hue = (hue * 60 + 360) % 360;
+    return hue < 20 || hue > 340;
   }
 
   /// <summary>The Y layers any cell of the scene stands on, ascending.</summary>
@@ -136,7 +165,15 @@ public static class ScenePlan {
         + $"font-family=\"sans-serif\" font-size=\"{Schematic.FontSize}\" style=\"background-color:#f0f0ec\">"
     );
     sb.Append("<defs>");
-    sb.Append(Schematic.Hatch);
+    var hatches = new SortedSet<string>(StringComparer.Ordinal);
+    foreach (SceneCell c in scene.Cells.Where(c => c.At.Y == y && c.Role is "filler" or "port"))
+      hatches.Add(FillOf(c));
+    foreach (string fill in hatches)
+      sb.Append(
+        $"<pattern id=\"hatch{fill[1..]}\" width=\"6\" height=\"6\" patternUnits=\"userSpaceOnUse\" "
+          + $"patternTransform=\"rotate(45)\"><line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"6\" "
+          + $"stroke=\"{Schematic.Ink(fill)}\" stroke-width=\"1\" /></pattern>"
+      );
     var arrows = new SortedSet<string>(StringComparer.Ordinal) { Unjoined };
     foreach (string color in colors.Values)
       arrows.Add(color);
@@ -173,7 +210,7 @@ public static class ScenePlan {
       if (filler)
         sb.Append(
           $"<rect class=\"hatched\" x=\"{Px(c.At.X)}\" y=\"{Pz(c.At.Z)}\" width=\"{Cell}\" height=\"{Cell}\" "
-            + "fill=\"url(#hatch)\" />"
+            + $"fill=\"url(#hatch{fill[1..]})\" />"
         );
       string label = LabelOf(c);
       string key = KeyOf(c);
@@ -207,6 +244,8 @@ public static class ScenePlan {
       $"<text class=\"caption\" x=\"{Schematic.Svg(width / 2.0)}\" y=\"{height + Schematic.CaptionSpace - 4}\" "
         + $"text-anchor=\"middle\">{caption}</text>"
     );
+    sb.Append("</g>");
+    sb.Append($"<g transform=\"translate({Margin},{Margin})\">");
     for (int i = 0; i < legend.Count; i++) {
       int ty = height + Schematic.CaptionSpace + 12 + i * LegendRow;
       sb.Append(
@@ -249,6 +288,11 @@ public static class ScenePlan {
   }
 
   private static void Tick(StringBuilder sb, string face, int px, int pz) {
+    if (face is "u" or "d") {
+      OpenBar(sb, px + 8, pz + 8, px + Cell - 8, pz + Cell - 8);
+      OpenBar(sb, px + Cell - 8, pz + 8, px + 8, pz + Cell - 8);
+      return;
+    }
     (int x1, int y1, int x2, int y2) = face switch {
       "n" => (px + 6, pz + 2, px + Cell - 6, pz + 2),
       "s" => (px + 6, pz + Cell - 2, px + Cell - 6, pz + Cell - 2),
@@ -258,8 +302,11 @@ public static class ScenePlan {
     };
     if (x1 == x2 && y1 == y2)
       return;
+    OpenBar(sb, x1, y1, x2, y2);
+  }
+
+  private static void OpenBar(StringBuilder sb, int x1, int y1, int x2, int y2) =>
     sb.Append(
       $"<line class=\"open\" x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" stroke=\"{Unjoined}\" stroke-width=\"3\" />"
     );
-  }
 }

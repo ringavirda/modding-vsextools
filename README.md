@@ -52,11 +52,12 @@ source
 | `clean` | delete build output (bin/obj, TestResults) |
 | `render` | render a shape file to textured views or animation frames |
 | `schematic` | render a multiblock/megablock layout to a build schematic |
+| `scene` | render a setup-scene/1 dump to corner views and layer plans |
 | `block` | render one blocktype variant to the views a page shows |
 | `item` | render one itemtype variant to its own picture |
 | `shapes-build` | build the shapes tool when its output is stale |
 
-`render`, `schematic`, `block` and `item` run the built shapes tool, and build it first only when its
+`render`, `schematic`, `scene`, `block` and `item` run the built shapes tool, and build it first only when its
 output is missing or older than its sources, the assets project it references, the props it imports
 or the game's `VintagestoryAPI.dll`; the tool references no exlib or mod assembly. A build rewrites
 the tool's `bin/` and `obj/`, so a workspace that serialises builds with a lock file runs renders

@@ -210,4 +210,104 @@ public class SceneTests {
     ];
     Assert.Equal([ScenePlan.Unjoined], ticks);
   }
+
+  [Fact]
+  public void A_filler_hatch_is_stroked_in_ink_that_differs_from_the_fill_it_covers() {
+    string svg = ScenePlan.Svg(SceneFile.Load(Fixture), 0);
+    Assert.Equal(4, Regex.Matches(svg, "<rect class=\"hatched\"").Count);
+    List<(string Fill, string Stroke)> hatches =
+    [
+      .. Regex
+        .Matches(
+          svg,
+          "<pattern id=\"hatch([0-9A-F]{6})\"[^>]*><line [^>]*stroke=\"([^\"]+)\""
+        )
+        .Select(m => ("#" + m.Groups[1].Value, m.Groups[2].Value)),
+    ];
+    Assert.Equal([("#999999", "black")], hatches);
+  }
+
+  [Fact]
+  public void An_open_top_or_bottom_face_is_a_red_cross_in_its_cell() {
+    var riser = new SceneCell(
+      new Offset(0, 0, 0),
+      "demo:wall-east",
+      "riser",
+      "block",
+      null,
+      "A",
+      null,
+      null,
+      ["u"]
+    );
+    var scene = new SceneFile(
+      "riser",
+      null,
+      null,
+      [riser],
+      [new SceneNetwork("A", "steam", 1, ["riser"])],
+      []
+    );
+    List<string> bars =
+    [
+      .. Regex
+        .Matches(
+          ScenePlan.Svg(scene, 0),
+          "<line class=\"open\"[^>]*stroke=\"(#[0-9A-F]{6})\""
+        )
+        .Select(m => m.Groups[1].Value),
+    ];
+    Assert.Equal([ScenePlan.Unjoined, ScenePlan.Unjoined], bars);
+  }
+
+  [Fact]
+  public void Keys_past_the_palette_avoid_the_red_and_grey_entries() {
+    var networks = Enumerable
+      .Range(0, 12)
+      .Select(i => new SceneNetwork(((char)('A' + i)).ToString(), "steam", 1, []))
+      .ToList();
+    IReadOnlyDictionary<string, string> colors = ScenePlan.KeyColors(
+      new SceneFile("many", null, null, [], networks, [])
+    );
+    Assert.Equal(12, colors.Values.Distinct().Count());
+    Assert.DoesNotContain("#C44E52", colors.Values);
+    Assert.DoesNotContain("#8C8C8C", colors.Values);
+    Assert.DoesNotContain("#D96262", colors.Values);
+  }
+
+  [Fact]
+  public void The_legend_starts_at_the_canvas_margin_under_a_narrow_grid() {
+    var cells = Enumerable
+      .Range(0, 4)
+      .Select(z => new SceneCell(
+        new Offset(0, 0, z),
+        "demo:wall-east",
+        "main",
+        "block",
+        null,
+        "A",
+        null,
+        null,
+        []
+      ))
+      .ToList();
+    var scene = new SceneFile(
+      "narrow",
+      null,
+      null,
+      cells,
+      [new SceneNetwork("A", "steam", 4, ["main"])],
+      []
+    );
+    string svg = ScenePlan.Svg(scene, 0);
+    int canvas = int.Parse(Regex.Match(svg, "<svg[^>]* width=\"(\\d+)\"").Groups[1].Value);
+    string beforeLegend = svg[..svg.IndexOf("class=\"legend\"", StringComparison.Ordinal)];
+    int offset = int.Parse(
+      Regex.Matches(beforeLegend, @"translate\((\d+),").Cast<Match>().Last().Groups[1].Value
+    );
+    int redRow = Schematic.CaptionWidth(
+      "red arrow: unjoined port, red tick: open face"
+    );
+    Assert.True(offset + 16 + redRow <= canvas);
+  }
 }
