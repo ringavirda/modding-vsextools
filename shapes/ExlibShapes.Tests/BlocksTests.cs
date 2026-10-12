@@ -163,6 +163,39 @@ public class BlocksTests {
   }
 
   [Fact]
+  public void A_state_list_without_a_code_is_left_out() {
+    string root = Path.Combine(
+      Path.GetTempPath(),
+      "exlib-shapes-" + Guid.NewGuid().ToString("N")
+    );
+    string assets = Path.Combine(root, "mods", "states", "assets", "states");
+    string blocktypesDir = Path.Combine(assets, "blocktypes");
+    Directory.CreateDirectory(blocktypesDir);
+    Directory.CreateDirectory(Path.Combine(assets, "worldproperties"));
+    File.WriteAllText(
+      Path.Combine(assets, "worldproperties", "bits.json"),
+      "{ \"code\": \"bits\", \"variants\": [{ \"code\": \"p1\" }, { \"code\": \"p2\" }] }"
+    );
+    string file = Path.Combine(blocktypesDir, "listed.json");
+    File.WriteAllText(
+      file,
+      "{ \"code\": \"listed\", \"variantgroups\": ["
+        + "{ \"states\": [\"a\", \"b\"] }, "
+        + "{ \"loadFromProperties\": \"states:bits\", \"states\": [\"a\", \"b\"] }] }"
+    );
+    try {
+      BlockIndex index = BlockIndex.Build([root]);
+      Assert.Equal(
+        ["states:listed-p1", "states:listed-p2"],
+        index.VariantsOf(file).Select(v => v.Code)
+      );
+      Assert.Equal(2, index.ParseWarnings.Count(w => w.Contains(file)));
+    } finally {
+      Directory.Delete(root, true);
+    }
+  }
+
+  [Fact]
   public void Wildcard_selector_spanning_two_files_is_deterministic_and_warns() {
     // aquatic/cobble-coral.json and stone/cobble/cobblestone.json both declare code "cobblestone";
     // "game:cobblestone-*" matches variants from both. Resolve must pick the same file every run:

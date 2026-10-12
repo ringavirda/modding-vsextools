@@ -100,6 +100,49 @@ public class ItemViewsTests {
     Assert.Empty((JArray)manifest["warnings"]!);
   }
 
+  [Fact]
+  public void A_singular_texture_paints_every_face() {
+    string root = Path.Combine(
+      Path.GetTempPath(),
+      "exlib-shapes-" + Guid.NewGuid().ToString("N")
+    );
+    string file = Path.Combine(
+      root,
+      "mods",
+      "paint",
+      "assets",
+      "paint",
+      "itemtypes",
+      "plate.json"
+    );
+    Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+    File.WriteAllText(
+      file,
+      "{ \"code\": \"plate\", \"shape\": { \"base\": \"demo:item/gearpinion\" }, "
+        + "\"texture\": { \"base\": \"demo:block/wall\" } }"
+    );
+    try {
+      BlockIndex index = BlockIndex.Build([DemoRoot, root]);
+      Variant variant = Assert.Single(index.ItemVariants(file));
+      JObject manifest = ItemViews.Write(
+        file,
+        variant,
+        index,
+        OutDir("singular"),
+        24,
+        ["gui"]
+      );
+      Assert.Equal(
+        ["plate-gui.png"],
+        manifest["files"]!.Select(f => Path.GetFileName((string)f!))
+      );
+      Assert.Empty((JArray)manifest["unpaintedFaces"]!);
+      Assert.Empty((JArray)manifest["missingTextures"]!);
+    } finally {
+      Directory.Delete(root, true);
+    }
+  }
+
   [SkippableFact]
   public void The_smex_burden_draws_the_shape_it_borrows_from_the_game() {
     string? file = FixturePath.Workspace(

@@ -724,9 +724,14 @@ public sealed class BlockIndex {
           (fileCode, states) = PropertyStates(reference, domainRoots, warnings);
         }
         // The game puts the group's own listed states before the file's.
-        if (g["states"] is JArray listed)
-          states = [.. listed.Select(s => (string)s!), .. states];
-        else if (g["loadFromProperties"] == null)
+        if (g["states"] is JArray listed) {
+          if (gcode == null)
+            warnings.Add(
+              $"variantgroup with a state list and no code, its states ignored: {path}"
+            );
+          else
+            states = [.. listed.Select(s => (string)s!), .. states];
+        } else if (g["loadFromProperties"] == null)
           continue;
         if ((gcode ?? fileCode) is { } axisCode)
           axes.Add((axisCode, states));

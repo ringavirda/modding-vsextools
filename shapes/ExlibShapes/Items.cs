@@ -71,7 +71,10 @@ public static partial class ItemViews {
     int ppu = 24,
     IReadOnlyList<string>? views = null
   ) {
-    ResolvedBlock item = index.ResolveVariant(variant);
+    ResolvedBlock item = WithSingularTexture(
+      index.ResolveVariant(variant),
+      variant
+    );
     Directory.CreateDirectory(outDir);
     string stem = Path.GetFileNameWithoutExtension(file);
     var files = new List<string>();
@@ -161,6 +164,20 @@ public static partial class ItemViews {
       is { } entry
       ? BlockIndex.TextureOf(entry, variant)
       : null;
+
+  // The singular `texture` is the `all` texture, set over any `all` the textures map names
+  // (CollectibleType.OnDeserialized); the shape keys the map does not name take it through `all`.
+  private static ResolvedBlock WithSingularTexture(
+    ResolvedBlock item,
+    Variant variant
+  ) =>
+    IconOf(variant) is { } all
+      ? item with {
+        Textures = new Dictionary<string, TextureRef>(item.Textures) {
+          ["all"] = all,
+        },
+      }
+      : item;
 
   // The texture drawn at IconScale pixels per texel on the renders' own paper, each texel taken as
   // it is rather than blurred between its neighbours, and its transparency laid over the paper.
