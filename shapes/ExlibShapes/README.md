@@ -191,7 +191,7 @@ the variant by full code or bare path, defaulting to the family's first; `--ppu`
 unit for the isometric render (default 24).
 
 `--views` draws exactly the views it names, each to `<stem>-<view>.png`, from the itemtype's own
-`guiTransform`, `groundTransform` and `tpHandTransform` resolved by type, a key it omits keeping the
+`guiTransform` and `groundTransform` resolved by type, a key it omits keeping the
 game's item default. `iso` is the isometric render above; `gui` puts the item in the centre slot of
 a 3 x 3 grid of grey 48 px slots, placed the way the inventory places it (25.6 px per block, the
 item 3 px left and 1 px above the slot centre, translation in pixels), at four picture pixels per

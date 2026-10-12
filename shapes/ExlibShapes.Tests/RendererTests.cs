@@ -403,6 +403,7 @@ public class RendererTests {
     AssertDominant(PixelAt(bmp, projection, 18, 2, 2), 'b');
     Renderer.Canvas fit = Renderer.Fit(parts, view)!.Value;
     Assert.Equal(bmp.Width, (int)Math.Ceiling((fit.XMax - fit.XMin) * ppu));
+    Assert.True(fit.GridX1 >= 20);
   }
 
   [Fact]

@@ -348,10 +348,7 @@ public class ItemViewsTests {
   [SkippableTheory]
   [InlineData("part/rod.json", "rod-iron")]
   [InlineData("tool/spear.json", "spear-generic-iron")]
-  public void Spear_and_rod_ground_top_face_normal_is_up(
-    string file,
-    string code
-  ) {
+  public void Spear_and_rod_lie_flat_on_the_ground(string file, string code) {
     (LoadedShape shape, _, _, ItemTransform ground) = Vanilla(file, code);
     // The item's thinnest box axis (a tie goes to y, the authored up) is its top face's normal.
     Dictionary<string, Renderer.Mat4d> mats = Renderer.WorldMatricesD(
@@ -384,33 +381,33 @@ public class ItemViewsTests {
   public void Ground_rotates_in_y_z_x_order() {
     var transform = new ItemTransform(
       (0, 0, 0),
-      (90, 45, 0),
+      (90, 45, 30),
       (0, 0, 0),
       (5, 5, 5),
       true
     );
     Renderer.Mat4d model = ItemViews.GroundModel(transform);
-    // The gearpinion hub's box (5.8, 6.24, 0) to (10.2, 9.76, 3) turned x then z then y, with
+    // The gearpinion hub's box (5.8, 6.24, 0) to (10.2, 9.76, 3) turned x, then z, then y, with
     // scale 5 so a voxel of the shape stays a voxel of the ground; worked by hand.
     (double X, double Y, double Z)[] expected =
     [
-      (8.5136, 0, 0.3111),
-      (8.5136, -3, 0.3111),
-      (11.0026, 0, 2.8001),
-      (11.0026, -3, 2.8001),
-      (11.6248, 0, -2.8001),
-      (11.6248, -3, -2.8001),
-      (14.1139, 0, -0.3111),
-      (14.1139, -3, -0.3111),
+      (7.96411, 2.90000, 0.86059),
+      (9.02477, 0.30192, -0.20007),
+      (10.45312, 2.90000, 3.34960),
+      (11.51378, 0.30192, 2.28894),
+      (10.65855, 5.10000, -1.83385),
+      (11.71921, 2.50192, -2.89451),
+      (13.14756, 5.10000, 0.65516),
+      (14.20822, 2.50192, -0.40550),
     ];
     int i = 0;
     foreach (double x in new[] { 5.8, 10.2 })
       foreach (double y in new[] { 6.24, 9.76 })
         foreach (double z in new[] { 0.0, 3.0 }) {
           (double X, double Y, double Z) posed = model.Mul(x, y, z);
-          Assert.Equal(expected[i].X, posed.X, 3);
-          Assert.Equal(expected[i].Y, posed.Y, 3);
-          Assert.Equal(expected[i].Z, posed.Z, 3);
+          Assert.InRange(posed.X, expected[i].X - 0.0005, expected[i].X + 0.0005);
+          Assert.InRange(posed.Y, expected[i].Y - 0.0005, expected[i].Y + 0.0005);
+          Assert.InRange(posed.Z, expected[i].Z - 0.0005, expected[i].Z + 0.0005);
           i++;
         }
   }
