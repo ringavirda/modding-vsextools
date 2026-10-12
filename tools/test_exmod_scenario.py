@@ -277,8 +277,8 @@ Try-Case 'serverconfig' {
     def test_a_modinfo_that_does_not_parse_is_still_staged_under_its_folder_name(self):
         # Mutation: the warning replaced by a throw, so an unreadable modinfo stops the staging. Fails here.
         got = self.results_of()["staged"]
-        self.assertIn("mod-b", got["Mods"])
         self.assertNotIn("Error", got)
+        self.assertIn("mod-b", got["Mods"])
 
     def test_the_server_config_is_written_only_when_given(self):
         # Mutation: the serverconfig.json write unconditional, so a bare scratch server gets one. Fails here.
