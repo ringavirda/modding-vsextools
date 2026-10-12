@@ -716,20 +716,22 @@ public sealed class BlockIndex {
     if (raw["variantgroups"] is JArray groups)
       foreach (JToken g in groups) {
         string? gcode = (string?)g["code"];
-        if (g["states"] is JArray states) {
-          if (gcode != null)
-            axes.Add((gcode, [.. states.Select(s => (string)s!)]));
-        } else if ((string?)g["loadFromProperties"] is { } reference) {
+        string? fileCode = null;
+        List<string> states = [];
+        if ((string?)g["loadFromProperties"] is { } reference) {
           // A group naming only a worldproperties file takes that file's own code as its axis,
           // the way the game does for `{ loadFromProperties: "abstract/horizontalorientation" }`.
-          (string? fileCode, List<string> fileStates) = PropertyStates(
-            reference,
-            domainRoots,
-            warnings
-          );
-          if ((gcode ?? fileCode) is { } axisCode)
-            axes.Add((axisCode, fileStates));
+          (fileCode, states) = PropertyStates(reference, domainRoots, warnings);
         }
+        // The game takes the file's states first and appends the group's own listed ones.
+        if (g["states"] is JArray listed)
+          states.AddRange(
+            listed.Select(s => (string)s!).Where(s => !states.Contains(s))
+          );
+        else if (g["loadFromProperties"] == null)
+          continue;
+        if ((gcode ?? fileCode) is { } axisCode)
+          axes.Add((axisCode, states));
       }
 
     List<Dictionary<string, string>> combos =

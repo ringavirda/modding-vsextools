@@ -38,9 +38,17 @@ public class ProgramArgsTests {
 
   [Fact]
   public void UnknownFlagIsRefusedInEqualsFormToo() {
-    string? message = Rejected(Program.RunItem, "--out=/tmp/x", "--views=iso");
+    string? message = Rejected(Program.RunItem, "--out=/tmp/x", "--bogus=iso");
     Assert.NotNull(message);
-    Assert.Contains("item does not take --views", message);
+    Assert.Contains("item does not take --bogus", message);
+  }
+
+  [Fact]
+  public void ItemRefusesAViewItDoesNotDraw() {
+    UsageException e = Assert.Throws<UsageException>(() =>
+      Program.RunItem([Missing, "--out=/tmp/x", "--views=gui,tp"])
+    );
+    Assert.StartsWith("no such view: tp (one of iso, gui, ground)", e.Message);
   }
 
   [Fact]
@@ -156,6 +164,7 @@ public class ProgramArgsTests {
     "item",
     "--out=/tmp/x",
     "--variant=v",
+    "--views=gui,ground",
     "--ppu=24",
     "--roots=/a",
     "--game=/g"
@@ -166,6 +175,8 @@ public class ProgramArgsTests {
     "/tmp/x",
     "--variant",
     "v",
+    "--views",
+    "gui,ground",
     "--ppu",
     "24",
     "--roots",

@@ -179,7 +179,7 @@ failed to parse).
 ## item
 
 ```
-exlib-shapes item FILE --out DIR [--variant CODE] [--ppu N] [--roots PATH...] [--game PATH]
+exlib-shapes item FILE --out DIR [--variant CODE] [--views gui,ground[,iso]] [--ppu N] [--roots PATH...] [--game PATH]
 ```
 
 Renders one variant of an itemtype file. An item that ships a shape (`shape`/`shapeByType`, its own
@@ -189,6 +189,16 @@ model; an item that ships a flat inventory texture (`texture`/`textureByType`) g
 declaring both gets both, and one declaring neither is a warning and no picture. `--variant` names
 the variant by full code or bare path, defaulting to the family's first; `--ppu` is pixels per shape
 unit for the isometric render (default 24).
+
+`--views` draws exactly the views it names, each to `<stem>-<view>.png`, from the itemtype's own
+`guiTransform`, `groundTransform` and `tpHandTransform` resolved by type, a key it omits keeping the
+game's item default. `iso` is the isometric render above; `gui` puts the item in the centre slot of
+a 3 x 3 grid of grey 48 px slots, placed the way the inventory places it (25.6 px per block, the
+item 3 px left and 1 px above the slot centre, translation in pixels), at four picture pixels per
+slot pixel, so an item larger than its slot shows running into the next; `ground` lays the item on
+a stone-grey block with no yaw and no scale jitter, from the south-east at 8 pixels per voxel. A
+view on an item with no shape is a warning and no picture, and a flat icon is written only without
+`--views`.
 
 The `<stem>.json` manifest carries `files`, `variant`, `missingTextures`, `unpaintedFaces` and
 `warnings`.

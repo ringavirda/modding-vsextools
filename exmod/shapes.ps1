@@ -6,7 +6,7 @@
 #   exmod schematic   multiblock/megablock blocktype file -> plan SVGs, an iso PNG, a manifest
 #   exmod scene       setup-scene/1 dump -> plain and tinted corner PNGs, a plan SVG per layer, a manifest
 #   exmod block       blocktype file -> a PNG per view, a footprint SVG, a manifest
-#   exmod item        itemtype file -> an iso PNG or an enlarged icon, a manifest
+#   exmod item        itemtype file -> an iso PNG or an enlarged icon, or its gui and ground views, a manifest
 
 # Runs shapes/ExlibShapes's built tool for one subcommand, building it first only when its output is
 # missing or older than its inputs (set EXMOD_SHAPES_NO_BUILD to refuse instead, for a caller that
@@ -199,11 +199,14 @@ Build it under the exclusive lock first: `flock -w 240 -o LOCK exmod shapes-buil
 Add-ExmodCommand -Group source -Name item -Summary 'render one itemtype variant to its own picture' -Action {
   param([string[]]$Argv) Invoke-Item $Argv
 } -Detail @'
-exmod item FILE --out=DIR [--variant CODE] [--ppu N] [--roots PATH...] [--game PATH]
+exmod item FILE --out=DIR [--variant CODE] [--views gui,ground[,iso]] [--ppu N] [--roots PATH...] [--game PATH]
 
 Renders one variant of an itemtype file: the isometric view of its own shape, painted with the
 itemtype's texture map, when it ships a model, and its flat inventory texture enlarged on the same
 paper when it ships one. Writes `<stem>-iso.png`, `<stem>-icon.png` and a `<stem>.json` manifest.
+With --views it writes exactly the views named, each to `<stem>-<view>.png`: `gui` is the item in
+the centre slot of a 3 x 3 grid of inventory slots, `ground` the item lying on a stone block, both
+from the itemtype's own transforms.
 See shapes/ExlibShapes/README.md for the full option list and the standalone `exlib-shapes` tool.
 `--out` needs the `=` form here: PowerShell's own parameter binder treats a bare `--out` token as
 an ambiguous prefix of its common `-OutVariable`/`-OutBuffer` parameters and refuses it outright.
@@ -216,6 +219,7 @@ Build it under the exclusive lock first: `flock -w 240 -o LOCK exmod shapes-buil
   FILE            the itemtype JSON to render
   --out=DIR       where the PNGs and <stem>.json are written
   --variant CODE  the variant to draw (default: the family's first)
+  --views LIST    comma-separated: iso, gui, ground (default: the iso render and the icon)
   --ppu N         pixels per shape unit for the isometric render (default: 24)
   --roots PATH    extra mod repository roots to resolve textures against (repeatable)
   --game PATH     a specific game install (default: this repository's own provisioned one)

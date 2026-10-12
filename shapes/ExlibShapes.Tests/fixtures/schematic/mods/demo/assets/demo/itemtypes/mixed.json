@@ -1,0 +1,10 @@
+{
+  "code": "mixed",
+  // A group that loads a worldproperties file and lists a state of its own.
+  "variantgroups": [
+    { "code": "side", "loadFromProperties": "abstract/horizontalorientation", "states": ["top"] }
+  ],
+  "textures": {
+    "all": { "base": "demo:block/wall" }
+  }
+}

@@ -54,7 +54,7 @@ source
 | `schematic` | render a multiblock/megablock layout to a build schematic |
 | `scene` | render a setup-scene/1 dump to corner views and layer plans |
 | `block` | render one blocktype variant to the views a page shows |
-| `item` | render one itemtype variant to its own picture |
+| `item` | render one itemtype variant to its own picture, or its gui and ground views |
 | `shapes-build` | build the shapes tool when its output is stale |
 
 `render`, `schematic`, `scene`, `block` and `item` run the built shapes tool, and build it first only when its

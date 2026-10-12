@@ -753,18 +753,19 @@ internal static class Program {
   internal static int RunItem(string[] args) {
     (string file, string[] flags) = FileAndFlags(
       args,
-      "usage: exlib-shapes item FILE --out DIR [--variant CODE] [--ppu N] [--roots PATH...] [--game PATH]"
+      "usage: exlib-shapes item FILE --out DIR [--variant CODE] [--views gui,ground[,iso]] [--ppu N] [--roots PATH...] [--game PATH]"
     );
     RejectUnknownFlags(
       "item",
       flags,
-      ["--out", "--variant", "--ppu"],
+      ["--out", "--variant", "--views", "--ppu"],
       ["--roots"],
       []
     );
     string outDir =
       OptOf(flags, "--out") ?? throw new UsageException("--out is required");
     string? wanted = OptOf(flags, "--variant");
+    IReadOnlyList<string>? views = ItemViewNames(OptOf(flags, "--views"));
     int ppu = int.Parse(
       OptOf(flags, "--ppu") ?? "24",
       CultureInfo.InvariantCulture
@@ -789,7 +790,14 @@ internal static class Program {
             $"no such variant: {wanted} ({string.Join(", ", variants.Select(v => v.Path))})"
           );
 
-    JObject manifest = ItemViews.Write(file, variant, index, outDir, ppu);
+    JObject manifest = ItemViews.Write(
+      file,
+      variant,
+      index,
+      outDir,
+      ppu,
+      views
+    );
 
     foreach (JToken written in (JArray)manifest["files"]!)
       Console.WriteLine((string)written!);
@@ -808,6 +816,27 @@ internal static class Program {
     foreach (JToken warning in (JArray)manifest["warnings"]!)
       Console.Error.WriteLine($"exlib-shapes: {(string)warning!}");
     return 0;
+  }
+
+  // The item command's --views list checked against the views ItemViews draws; null for a null
+  // list, which draws the default pictures.
+  private static IReadOnlyList<string>? ItemViewNames(string? views) {
+    if (views == null)
+      return null;
+    string[] names = views.Split(
+      ',',
+      StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+    );
+    foreach (string name in names)
+      if (!ItemViews.Views.Contains(name))
+        throw new UsageException(
+          $"no such view: {name} (one of {string.Join(", ", ItemViews.Views)})"
+        );
+    if (names.Length == 0)
+      throw new UsageException(
+        $"--views names no view (one of {string.Join(", ", ItemViews.Views)})"
+      );
+    return names;
   }
 
   // The --views list split and checked against the views Renderer names, so a misspelt one is a
