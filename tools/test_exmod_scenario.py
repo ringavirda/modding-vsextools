@@ -524,6 +524,8 @@ class ModIdStagingTests(unittest.TestCase):
         touch(os.path.join(self.repo, "mods", "iiex", "tests", "iiex.tests.csproj"), "<Project />")
         touch(os.path.join(self.repo, "mods", "iiex", "tests", "live", "sample.json"), "{}")
         touch(os.path.join(self.repo, "mods", "iiex", "tests", "live", "lines", "cold.json"), "{}")
+        for other in ("generic.json", "coverage-allow.json", "schematics/s.json"):
+            touch(os.path.join(self.repo, "mods", "iiex", "tests", "live", other), "{}")
         self.exlib = os.path.join(self.tmp, "exlib")
         touch(os.path.join(self.exlib, "src", "ExpandedLib.Testing.Live", "Live.csproj"), "<Project />")
 
@@ -540,14 +542,15 @@ Try-Case 'staged' {
 }
 """)
         self.assertEqual(["iiex=True", "steelindustry=False"], got["sources"])
-        self.assertEqual(["Scenarios/iiex/lines/cold.json", "Scenarios/iiex/sample.json"], got["staged"])
+        self.assertEqual(["Scenarios/iiex/coverage-allow.json", "Scenarios/iiex/generic.json", "Scenarios/iiex/lines/cold.json",
+                          "Scenarios/iiex/sample.json", "Scenarios/iiex/schematics/s.json"], got["staged"])
 
     def test_no_name_runs_every_mods_scenario_files_and_a_bare_stem_is_the_first_mods(self):
         got = run_cases(self.repo, r"""
 Try-Case 'names' { Get-ScenarioNames @(Get-ScenarioSources) }
 Try-Case 'bare' { Expand-ScenarioNames @('sample','steelindustry/x') @(Get-ScenarioSources)[0].ModId }
 """)
-        self.assertEqual(["iiex/sample"], as_list(got["names"]))
+        self.assertEqual(["iiex/lines/cold", "iiex/sample"], as_list(got["names"]))
         self.assertEqual(["iiex/sample", "steelindustry/x"], got["bare"])
 
     def test_a_manifest_with_a_live_key_stages_its_own_tests_live_under_exlib(self):
@@ -572,6 +575,35 @@ Try-Case 'project' { Split-Path (Get-ExmodLiveProject) -Leaf }
         missing = run_cases(lonely, body, ExlibRoot="")
         self.assertIn("found none", missing["project"]["Error"])
         self.assertIn("ExlibRoot", missing["project"]["Error"])
+
+    def test_the_exlib_root_is_the_workspace_exlib_found_by_walking_up_to_the_props(self):
+        # Mutation: the walk-up removed, so a lane resolves ../exlib instead of the workspace's. Fails here.
+        workspace = os.path.join(self.tmp, "ws")
+        touch(os.path.join(workspace, "Directory.Build.props"), "<Project />")
+        shutil.copytree(self.exlib, os.path.join(workspace, "exlib"))
+        lane = os.path.join(workspace, ".worktrees", "exmods-lane")
+        shutil.copytree(self.repo, lane)
+        os.makedirs(os.path.join(workspace, ".worktrees", "exlib"))
+        got = run_cases(lane, "Try-Case 'root' { Get-ScenarioExlibRoot }", ExlibRoot="")
+        self.assertEqual(os.path.join(workspace, "exlib"), got["root"])
+
+    def test_the_scenario_default_mods_replace_the_resolved_exlib_with_the_given_one(self):
+        # Mutation: the Id filter dropped, so the dependency resolution's exlib is staged beside the given one. Fails here.
+        got = run_cases(self.repo, r"""
+function Get-BuiltModDirs { @('/built/iiex') }
+function Resolve-DependencyMods { @([pscustomobject]@{ Id = 'exlib'; Path = '/dep/exlib' }, [pscustomobject]@{ Id = 'other'; Path = '/dep/other' }) }
+Try-Case 'dirs' { Get-ScenarioDefaultModDirs '/lane/exlib/mod' }
+""")
+        self.assertEqual(["/built/iiex", "/dep/other", "/lane/exlib/mod"], got["dirs"])
+
+    def test_the_keep_server_config_makes_the_default_role_an_admin_the_config_defines(self):
+        # Mutation: the Keep branch removed from Get-ScenarioServerConfig. Fails here.
+        got = run_cases(self.repo, r"""
+Try-Case 'keep' { $c = Get-ScenarioServerConfig $true; [ordered]@{ Default = $c.DefaultRoleCode; Codes = @($c.Roles | ForEach-Object { $_.Code }) } }
+Try-Case 'plain' { (Get-ScenarioServerConfig $false).DefaultRoleCode }
+""")
+        self.assertEqual({"Default": "admin", "Codes": ["suplayer", "admin"]}, got["keep"])
+        self.assertEqual("suplayer", got["plain"])
 
     def test_keep_is_a_flag_and_appends_keep_to_the_command(self):
         got = run_cases(self.repo, r"""

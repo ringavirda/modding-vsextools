@@ -733,11 +733,16 @@ function Get-ScenarioSources {
     })
 }
 
-# Every scenario file directly under a source's tests/live, as <modid>/<stem>.
+# Every scenario file under a source's tests/live, as <modid>/<path without .json>: the factory lines and
+# setups in their subfolders included, the schematics folder, generic.json and coverage-allow.json not.
 function Get-ScenarioNames($Sources) {
   return @($Sources | Where-Object { $_.Dir } | ForEach-Object {
       $modId = $_.ModId
-      Get-ChildItem $_.Dir -Filter '*.json' -File | Sort-Object Name | ForEach-Object { "$modId/$($_.BaseName)" }
+      $dir = (Resolve-Path $_.Dir).ProviderPath
+      Get-ChildItem $dir -Filter '*.json' -File -Recurse | ForEach-Object {
+        [IO.Path]::GetRelativePath($dir, $_.FullName).Replace('\', '/') -replace '\.json$', ''
+      } | Where-Object { $_ -notlike 'schematics/*' -and $_ -notin @('generic', 'coverage-allow') } |
+        Sort-Object | ForEach-Object { "$modId/$_" }
     })
 }
 
@@ -776,14 +781,25 @@ function Get-ScenarioSchematicName([string]$Name) {
   return "scenario-$($Name -replace '/', '-').json"
 }
 
+# The exlib checkout a checkout with no `live` key builds from: $env:ExlibRoot, else the exlib beside the
+# nearest ancestor's Directory.Build.props (the workspace root, as the props default ExlibRoot), else the
+# sibling exlib.
+function Get-ScenarioExlibRoot {
+  if ($env:ExlibRoot) { return $env:ExlibRoot }
+  $dir = Split-Path $RepoRoot -Parent
+  while ($dir) {
+    if ((Test-Path (Join-Path $dir 'Directory.Build.props')) -and (Test-Path (Join-Path $dir 'exlib'))) { return Join-Path $dir 'exlib' }
+    $dir = Split-Path $dir -Parent
+  }
+  return Join-Path $RepoRoot '../exlib'
+}
+
 # The live mod's project: the manifest's `live` path, resolved the way a mod's project is (Get-ExmodMods).
-# A checkout with no `live` key builds the live mod from exlib's source, found as the mods find it:
-# $env:ExlibRoot, else the sibling exlib.
+# A checkout with no `live` key builds the live mod from exlib's source, found by Get-ScenarioExlibRoot.
 function Get-ExmodLiveProject {
   $manifest = Get-ExmodManifest
   if (-not $manifest.PSObject.Properties['live'] -or -not $manifest.live) {
-    $root = if ($env:ExlibRoot) { $env:ExlibRoot } else { Join-Path $RepoRoot '../exlib' }
-    $path = Join-Path $root 'src/ExpandedLib.Testing.Live'
+    $path = Join-Path (Get-ScenarioExlibRoot) 'src/ExpandedLib.Testing.Live'
     if (-not (Test-Path $path)) {
       throw "exmod scenario builds the live mod from exlib's source and found none at ${path}: set ExlibRoot or put an exlib checkout beside this one."
     }
@@ -791,6 +807,27 @@ function Get-ExmodLiveProject {
   }
   $path = Resolve-ManifestPath 'live.path' $manifest.live.path
   return Find-SingleCsproj (Get-ModProjectDir $path) 'live'
+}
+
+# Builds the exlib mod from the checkout the live mod is built from and returns its output folder; $null
+# when the manifest names its own live mod, whose checkout is exlib itself.
+function Build-ScenarioExlibMod {
+  if ((Get-ExmodManifest).PSObject.Properties['live']) { return $null }
+  $project = Find-SingleCsproj (Join-Path (Resolve-Path (Get-ScenarioExlibRoot)).ProviderPath 'src/ExpandedLib') 'exlib'
+  $dotnet = Resolve-DotnetHost @($CurrentGameVersion)
+  Write-Host "Building the exlib mod ..."
+  & $dotnet build $project -f $GameTfms[$CurrentGameVersion] -c Debug -clp:ErrorsOnly | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw "Build of $project failed." }
+  $out = Join-Path (Split-Path $project -Parent) 'bin/Debug/Mods/mod'
+  if (-not (Test-Path (Join-Path $out 'modinfo.json'))) { throw "The exlib mod built, but $out holds no modinfo.json." }
+  return $out
+}
+
+# The mods a scenario server loads without being asked: the built mods, the dependency mods and, when
+# $ExlibDir is given, that folder in place of the dependency resolution's exlib.
+function Get-ScenarioDefaultModDirs([string]$ExlibDir) {
+  if (-not $ExlibDir) { return @(Get-ScratchDefaultModDirs) }
+  return @(Get-BuiltModDirs) + @((Resolve-DependencyMods) | Where-Object { $_.Id -ne 'exlib' } | ForEach-Object { $_.Path }) + @($ExlibDir)
 }
 
 # Builds the live mod for the current series and returns its output folder.
@@ -806,11 +843,12 @@ function Build-ScenarioLiveMod {
 }
 
 # The serverconfig.json a scenario boot writes: loopback only, a superflat world, a creative player who
-# can fly to a plot, and time that keeps moving while no client is in the world.
-function Get-ScenarioServerConfig {
+# can fly to a plot, and time that keeps moving while no client is in the world. With $Keep the default
+# role is the game's admin, so a joining client can run /exmod scenario, /tp and /gamemode.
+function Get-ScenarioServerConfig([bool]$Keep = $false) {
   # A file without Roles names no group for DefaultRoleCode and the server refuses to boot, so the
   # default role is written with the game's own suplayer definition.
-  return [ordered]@{
+  $config = [ordered]@{
     Ip                = '127.0.0.1'
     AdvertiseServer   = $false
     PassTimeWhenEmpty = $true
@@ -843,6 +881,26 @@ function Get-ScenarioServerConfig {
       }
     }
   }
+  if ($Keep) {
+    $config.DefaultRoleCode = 'admin'
+    $config.Roles += [ordered]@{
+      Code               = 'admin'
+      PrivilegeLevel     = 99999
+      Name               = 'Admin'
+      Description        = 'Has all privileges, including giving other players admin status.'
+      DefaultSpawn       = $null
+      ForcedSpawn        = $null
+      Privileges         = @('build', 'useblock', 'buildblockseverywhere', 'useblockseverywhere', 'attackplayers', 'attackcreatures', 'freemove', 'gamemode', 'pickingrange', 'chat', 'kick', 'ban', 'whitelist', 'setwelcome', 'announce', 'readlists', 'give', 'areamodify', 'setspawn', 'controlserver', 'tp', 'time', 'grantrevoke', 'root', 'commandplayer', 'controlplayergroups', 'manageplayergroups', 'selfkill', 'manageotherplayergroups', 'worldedit')
+      RuntimePrivileges  = @()
+      DefaultGameMode    = 1
+      Color              = 'LightBlue'
+      LandClaimAllowance = 2147483647
+      LandClaimMinSize   = [ordered]@{ X = 5; Y = 5; Z = 5 }
+      LandClaimMaxAreas  = 99999
+      AutoGrant          = $true
+    }
+  }
+  return $config
 }
 
 # The read of one scenario run from the server log's lines, and the rules `exmod scenario` exits by
@@ -994,16 +1052,17 @@ function Invoke-Scenario([string[]]$Argv) {
   foreach ($source in $present) { $copies[$source.Dir] = "Scenarios/$($source.ModId)" }
   $groups = Split-ScenarioShards $names $opts.Shards
 
+  $exlibDir = Build-ScenarioExlibMod
   $liveDir = Build-ScenarioLiveMod
   $serverDir = Resolve-SmokeServer $opts.Version
-  $modDirs = Get-ScenarioModDirs (Get-ScratchDefaultModDirs) $liveDir $opts.Mods
+  $modDirs = Get-ScenarioModDirs (Get-ScenarioDefaultModDirs $exlibDir) $liveDir $opts.Mods
   Write-Host "Running $($names.Count) scenario name(s) against Vintage Story $($opts.Version) at $serverDir on $($groups.Count) shard(s)"
 
   $shards = [System.Collections.Generic.List[object]]::new()
   try {
     for ($i = 0; $i -lt $groups.Count; $i++) {
       $port = $opts.Port + $i
-      $server = New-ScratchServer 'scenario' $modDirs -DataCopies $copies -ServerConfig (Get-ScenarioServerConfig)
+      $server = New-ScratchServer 'scenario' $modDirs -DataCopies $copies -ServerConfig (Get-ScenarioServerConfig $opts.Keep)
       $shards.Add([pscustomobject]@{
           Server   = $server
           Port     = $port
@@ -1039,16 +1098,7 @@ function Invoke-Scenario([string[]]$Argv) {
       Start-Sleep -Milliseconds 500
     }
 
-    if ($opts.Keep) {
-      foreach ($s in $shards) {
-        $null = Write-ScenarioProgress $s.Server $s.Printed $opts.Verbose
-        foreach ($line in (Get-ScenarioKeepLines $s.Server $s.Port)) { Write-Host $line }
-      }
-      Write-Host 'Type commands for the server console; Ctrl+C stops it.'
-      try { Send-ScenarioRelay @($shards | ForEach-Object { $_.Server }) ([Console]::In) }
-      finally { foreach ($s in $shards) { if (-not $s.Server.Proc.HasExited) { Stop-ScratchServer $s.Server } } }
-    }
-    foreach ($s in $shards) { if (-not $s.Server.Proc.HasExited) { Stop-ScratchServer $s.Server } }
+    if (-not $opts.Keep) { foreach ($s in $shards) { if (-not $s.Server.Proc.HasExited) { Stop-ScratchServer $s.Server } } }
     $reports = @()
     foreach ($s in $shards) {
       $progress = Write-ScenarioProgress $s.Server $s.Printed $opts.Verbose
@@ -1059,6 +1109,25 @@ function Invoke-Scenario([string[]]$Argv) {
     if ($countLine) { Write-Host $countLine }
     Save-ScenarioSchematics @($shards | ForEach-Object { $_.Server.Data }) @($reports | ForEach-Object { $_.FailedNames }) (Join-Path $RepoRoot '.game/.scenario-last')
     $problems = Get-ScenarioExitProblems $reports
+
+    if ($opts.Keep) {
+      foreach ($s in $shards) {
+        foreach ($line in (Get-ScenarioKeepLines $s.Server $s.Port)) { Write-Host $line }
+      }
+      Write-Host 'Type commands for the server console; Ctrl+C stops it.'
+      $relayEnded = $false
+      try {
+        Send-ScenarioRelay @($shards | ForEach-Object { $_.Server }) ([Console]::In)
+        $relayEnded = $true
+      }
+      finally {
+        foreach ($s in $shards) { if (-not $s.Server.Proc.HasExited) { Stop-ScratchServer $s.Server } }
+        if (-not $relayEnded) {
+          foreach ($s in $shards) { Remove-ScratchServer $s.Server $opts.KeepData }
+          [Environment]::Exit($(if ($problems) { 1 } else { 0 }))
+        }
+      }
+    }
     if ($problems) { throw "Scenario run failed: $($problems -join '; ')" }
   }
   finally {
@@ -1077,9 +1146,9 @@ Builds this checkout's live mod (exmod.json's `live` key), boots a dedicated ser
 and the live mod, copies tests/live into the server's Scenarios/<modid> folder, runs the named scenarios
 on it, prints the run's lines and stops the server. A name is <modid>/<stem>, such as exlib/sample, or a
 bare stem, which belongs to the repository's first mod (exlib in exlib, the first mod of exmod.json in
-exmods); with no name, every scenario file in tests/live runs. From exmods the live mod is built from
-exlib's source, found through the ExlibRoot environment variable, else the sibling exlib, and each mod's
-tests/live is copied under its own modid.
+exmods); with no name, every scenario file under tests/live runs, factory lines and setups included. From exmods the live mod is built from
+exlib's source, found through the ExlibRoot environment variable, else the workspace's exlib, and the exlib
+mod is built from the same checkout; each mod's tests/live is copied under its own modid.
 
   -Version   the game series; only the current one, which the live mod is built for (default 1.22)
   -Port      the port the server binds (default 42498), so two runs can share the machine
