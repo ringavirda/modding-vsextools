@@ -499,6 +499,7 @@ public class SceneTests : IDisposable {
             }
         Assert.InRange(Math.Abs((x0 + x1) / 2.0 - bitmap.Width / 2.0), 0, 4);
         Assert.InRange(Math.Abs((y0 + y1) / 2.0 - bitmap.Height / 2.0), 0, 4);
+        Assert.True(x0 >= 1 && y0 >= 1 && x1 <= bitmap.Width - 2 && y1 <= bitmap.Height - 2);
       }
       Assert.Single(sizes);
     }

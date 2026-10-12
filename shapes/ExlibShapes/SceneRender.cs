@@ -26,7 +26,7 @@ public sealed record SceneRendered(
 /// <summary>
 /// Draws a <see cref="SceneFile"/> the way <see cref="Schematic.Compose"/> draws a layout: one
 /// composite shape holding every cell's own block at its world position, rendered from the four
-/// iso corners on one shared canvas.
+/// iso corners on canvases of one size, each view centred in its own.
 /// </summary>
 public static class SceneRender {
   /// <summary>The iso corner views, north-east first.</summary>
@@ -150,7 +150,8 @@ public static class SceneRender {
 
   /// <summary>
   /// Writes <c>{stem}-plain-{view}.png</c> and <c>{stem}-tint-{view}.png</c> for each corner view
-  /// in <paramref name="views"/>, all on one canvas size and scale: the largest width and the largest height among the views' fits, each view centred in it. In a
+  /// in <paramref name="views"/>, all on one canvas size and scale: the largest width and the
+  /// largest height among the views' fits, each view centred in its own canvas. In a
   /// tinted view each texel takes the hue and saturation of its cell's network or line colour
   /// (<see cref="ScenePlan.KeyColors"/>) and keeps its own HSL lightness and alpha, and a cell on
   /// neither, or on a key the scene does not declare, is its texture's luminance grey;

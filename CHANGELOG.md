@@ -5,7 +5,7 @@
 ### Added
 
 - `exlib-shapes` reads `setup-scene/1` files and draws their cells from the four iso corners (`ne`, `nw`, `se`, `sw`, now named
-  views beside `iso`) on one shared canvas; fillers and ports draw nothing, an unresolved code is a black-and-yellow checker cube.
+  views beside `iso`) on canvases of one size, each view centred in its own; fillers and ports draw nothing, an unresolved code is a black-and-yellow checker cube.
 - `exmod scene` (`exlib-shapes scene`) renders a setup's scene dump to the corner PNGs and a plan SVG per Y layer: each cell labelled with its id over its network key, ports as arrows (red when unjoined), open faces as red ticks, and a `<stem>.json` manifest of the files, the networks and lines, the unjoined ports, the open faces, the unresolved codes, the missing textures and the warnings. Each corner view is also written tinted, cells in their network's or line's hue and grey otherwise, with port frames (red when unjoined) and red open-face stubs laid over it.
 - `exmod scenario` boots a dedicated server with the built mods and the checkout's live mod (exmod.json's
   `live` key), copies tests/live into its Scenarios folder, runs the named scenarios (every one when none is
