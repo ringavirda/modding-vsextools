@@ -10,7 +10,7 @@ namespace ExpandedLib.Shapes;
 
 /// <summary>
 /// The drawings of a <see cref="PlannedLayout"/>: the glyph and box overlay a plan SVG carries, the
-/// iso composite of the shape copy with the collision and control boxes outlined, and the manifest naming what was
+/// iso composite of the shape copy with the collision, control, door and instrument boxes outlined, and the manifest naming what was
 /// drawn.
 /// </summary>
 public static class PlannedSchematic {
@@ -21,17 +21,34 @@ public static class PlannedSchematic {
   /// starts with <see cref="BoxPrefix"/>, so the iso draws both as overlay.</summary>
   public const string ControlPrefix = BoxPrefix + "control";
 
+  /// <summary>The element-name prefix of the bars drawn along each door's shut leaf box.</summary>
+  public const string DoorPrefix = BoxPrefix + "door";
+
+  /// <summary>The element-name prefix of the bars drawn along the opening an open door clears.</summary>
+  public const string OpeningPrefix = BoxPrefix + "opening";
+
+  /// <summary>The element-name prefix of the bars drawn along each instrument's selection box.</summary>
+  public const string InstrumentPrefix = BoxPrefix + "instrument";
+
   /// <summary>The texture key of the collision box bars.</summary>
   public const string BoxTextureKey = "__collisionbox";
 
   /// <summary>The texture key of the control box bars.</summary>
   public const string ControlTextureKey = "__controlbox";
 
+  /// <summary>The texture key of the door leaf and opening bars.</summary>
+  public const string DoorTextureKey = "__doorbox";
+
+  /// <summary>The texture key of the instrument box bars.</summary>
+  public const string InstrumentTextureKey = "__instrumentbox";
+
   /// <summary>The thickness of a frame bar, in voxels.</summary>
   public const double FrameBar = 0.25;
 
   private const string CollisionStroke = "#c0392b";
   private const string ControlStroke = "#1f5fbf";
+  private const string DoorStroke = "#1e8449";
+  private const string InstrumentStroke = "#7d3c98";
 
   private static readonly Dictionary<char, string> Meanings = new() {
     ['O'] = "principal",
@@ -63,10 +80,17 @@ public static class PlannedSchematic {
         .Distinct()
     )
       lines.Add($"{glyph}  {Meaning(planned, glyph)}");
-    if (planned.Boxes.Any(b => b.At.Y == y && !b.Control))
+    bool On(PlannedBoxKind k) => planned.Boxes.Any(b => b.At.Y == y && b.Kind == k);
+    if (On(PlannedBoxKind.Collision))
       lines.Add("red outline  collision box");
-    if (planned.Boxes.Any(b => b.At.Y == y && b.Control))
+    if (On(PlannedBoxKind.Control))
       lines.Add("blue dashed outline  control selection box");
+    if (On(PlannedBoxKind.Door))
+      lines.Add("green outline  door, shut leaf");
+    if (On(PlannedBoxKind.DoorOpening))
+      lines.Add("green dotted outline  door opening, clear when open");
+    if (On(PlannedBoxKind.Instrument))
+      lines.Add("purple outline  instrument selection box");
     return lines;
   }
 
@@ -88,9 +112,17 @@ public static class PlannedSchematic {
           + $"x=\"{F((f.X - x0) * cell)}\" y=\"{F((f.Z - z0) * cell)}\" width=\"{cell}\" height=\"{cell}\" />"
       );
     foreach (PlannedBox b in planned.Boxes.Where(b => b.At.Y == y)) {
-      string style = b.Control
-        ? $"class=\"control-box\" stroke=\"{ControlStroke}\" stroke-width=\"1.5\" stroke-dasharray=\"3 2\""
-        : $"class=\"box\" stroke=\"{CollisionStroke}\" stroke-width=\"1\"";
+      string style = b.Kind switch {
+        PlannedBoxKind.Control =>
+          $"class=\"control-box\" stroke=\"{ControlStroke}\" stroke-width=\"1.5\" stroke-dasharray=\"3 2\"",
+        PlannedBoxKind.Door =>
+          $"class=\"door-box\" stroke=\"{DoorStroke}\" stroke-width=\"1.5\"",
+        PlannedBoxKind.DoorOpening =>
+          $"class=\"door-opening\" stroke=\"{DoorStroke}\" stroke-width=\"1.5\" stroke-dasharray=\"1 2\"",
+        PlannedBoxKind.Instrument =>
+          $"class=\"instrument-box\" stroke=\"{InstrumentStroke}\" stroke-width=\"1.5\"",
+        _ => $"class=\"box\" stroke=\"{CollisionStroke}\" stroke-width=\"1\"",
+      };
       sb.Append(
         $"<rect {style} fill=\"none\" x=\"{F((b.At.X - x0 + b.Box.X1) * cell)}\" "
           + $"y=\"{F((b.At.Z - z0 + b.Box.Z1) * cell)}\" width=\"{F((b.Box.X2 - b.Box.X1) * cell)}\" "
@@ -111,7 +143,7 @@ public static class PlannedSchematic {
   /// <paramref name="angle"/> and shifted so the frame anchor lands on the origin, and thin
   /// bars along the edges of every collision box of a cell not above <paramref name="cutAt"/>: the
   /// principal's (when the plan names it), a full cube for a cell without a box list, none for an empty list,
-  /// then of every control's selection box in such a cell, named from <see cref="ControlPrefix"/>. The copy is drawn
+  /// then of every control's, door's and instrument's box in such a cell, named from <see cref="ControlPrefix"/>, <see cref="DoorPrefix"/>, <see cref="OpeningPrefix"/> and <see cref="InstrumentPrefix"/>; opening bars are half as thick. The copy is drawn
   /// whole whatever <paramref name="cutAt"/> is. <paramref name="planned"/> is already turned by
   /// <paramref name="angle"/>.
   /// </summary>
@@ -150,18 +182,19 @@ public static class PlannedSchematic {
         )
           elements.Add(bar);
     }
-    int c = 0;
-    foreach (PlannedBox b in planned.Boxes.Where(b => b.Control)) {
+    var counts = new Dictionary<PlannedBoxKind, int>();
+    foreach (PlannedBox b in planned.Boxes.Where(b => b.Kind != PlannedBoxKind.Collision)) {
       if (cutAt != null && b.At.Y > cutAt)
         continue;
-      foreach (
-        JObject bar in Frame(
-          b.At,
-          b.Box,
-          $"{ControlPrefix}{c++}",
-          ControlTextureKey
-        )
-      )
+      (string prefix, string key, double thickness) = b.Kind switch {
+        PlannedBoxKind.Door => (DoorPrefix, DoorTextureKey, FrameBar),
+        PlannedBoxKind.DoorOpening => (OpeningPrefix, DoorTextureKey, FrameBar / 2),
+        PlannedBoxKind.Instrument => (InstrumentPrefix, InstrumentTextureKey, FrameBar),
+        _ => (ControlPrefix, ControlTextureKey, FrameBar),
+      };
+      int n = counts.GetValueOrDefault(b.Kind);
+      counts[b.Kind] = n + 1;
+      foreach (JObject bar in Frame(b.At, b.Box, $"{prefix}{n}", key, thickness))
         elements.Add(bar);
     }
     return (

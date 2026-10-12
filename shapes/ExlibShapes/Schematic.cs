@@ -862,6 +862,21 @@ public static class Schematic {
           PlannedSchematic.ControlTextureKey,
           new byte[] { 70, 150, 255 }
         ),
+        (
+          PlannedSchematic.DoorPrefix,
+          PlannedSchematic.DoorTextureKey,
+          new byte[] { 40, 170, 90 }
+        ),
+        (
+          PlannedSchematic.OpeningPrefix,
+          PlannedSchematic.DoorTextureKey,
+          new byte[] { 40, 170, 90 }
+        ),
+        (
+          PlannedSchematic.InstrumentPrefix,
+          PlannedSchematic.InstrumentTextureKey,
+          new byte[] { 170, 90, 200 }
+        ),
       }
     ) {
       if (

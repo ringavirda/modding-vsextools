@@ -18,7 +18,9 @@ public class PlannedSchematicTests {
   private static string Chosen =>
     FixturePath.Of("planned/other/chosen-copy.json");
 
-  private static string Run(params string[] extra) {
+  private static string Run(params string[] extra) => RunOn(Planned, extra);
+
+  private static string RunOn(string planned, params string[] extra) {
     string outDir = Path.Combine(
       Path.GetTempPath(),
       "exlib-shapes-" + Guid.NewGuid().ToString("N")
@@ -26,7 +28,7 @@ public class PlannedSchematicTests {
     Assert.Equal(
       0,
       Program.RunSchematic([
-        Planned,
+        planned,
         "--out",
         outDir,
         "--views",
@@ -360,6 +362,95 @@ public class PlannedSchematicTests {
       0,
       cutAt: 0
     );
+    Assert.Equal(12, ControlBarsOf(raw).Count());
+  }
+
+  private static string DoorAndGauge() =>
+    Variant(
+      File.ReadAllText(Planned)
+        .Replace(
+          "{\"x\": 0, \"y\": 1, \"z\": 0}",
+          "{\"x\": 0, \"y\": 1, \"z\": 0, "
+            + "\"doors\": [{\"control\": \"hatch\", "
+            + "\"shut\": [{\"x1\": 0, \"y1\": 0, \"z1\": 0.875, \"x2\": 1, \"y2\": 0.5, \"z2\": 1}], "
+            + "\"opening\": [{\"x1\": 0.25, \"y1\": 0, \"z1\": 0, \"x2\": 0.75, \"y2\": 0.5, \"z2\": 1}]}], "
+            + "\"controls\": [{\"id\": \"gauge\", \"box\": {\"x1\": 0.5, \"y1\": 0.5, \"z1\": 0.5, \"x2\": 0.75, \"y2\": 0.75, \"z2\": 0.75}}]}"
+        )
+        .Replace(
+          "\"controls\": [{\"id\": \"valve\"",
+          "\"controls\": [{\"id\": \"hatch\", \"glyph\": \"H\", \"kind\": \"door\"}, "
+            + "{\"id\": \"gauge\", \"glyph\": \"G\", \"kind\": \"instrument\"}, {\"id\": \"valve\""
+        )
+    );
+
+  private static IEnumerable<JObject> BarsWith(JObject raw, string prefix) =>
+    raw["elements"]!
+      .Cast<JObject>()
+      .Where(e =>
+        ((string)e["name"]!).StartsWith(prefix, StringComparison.Ordinal)
+      );
+
+  [Fact]
+  public void Plan_svg_strokes_a_door_leaf_its_opening_and_an_instrument_each_in_their_own_style() {
+    // Fails when the kinds are not carried: the door and instrument boxes would draw as blue control boxes or not at all.
+    string svg = Plan(Run(), 0);
+    Assert.DoesNotContain("door-", svg);
+    string layer1 = Plan(RunOn(DoorAndGauge(), "--shape", Chosen), 1);
+    Assert.Contains(
+      "class=\"door-box\" stroke=\"#1e8449\" stroke-width=\"1.5\" fill=\"none\" x=\"32\" y=\"28\" width=\"32\" height=\"4\"",
+      layer1
+    );
+    Assert.Contains(
+      "class=\"door-opening\" stroke=\"#1e8449\" stroke-width=\"1.5\" stroke-dasharray=\"1 2\" fill=\"none\"",
+      layer1
+    );
+    Assert.Contains(
+      "class=\"instrument-box\" stroke=\"#7d3c98\" stroke-width=\"1.5\" fill=\"none\"",
+      layer1
+    );
+    Assert.DoesNotContain("class=\"control-box\"", layer1);
+    Assert.Contains(">green outline  door, shut leaf<", layer1);
+    Assert.Contains(">green dotted outline  door opening, clear when open<", layer1);
+    Assert.Contains(">purple outline  instrument selection box<", layer1);
+  }
+
+  [Fact]
+  public void Bars_run_along_a_door_leaf_its_opening_and_an_instrument_under_their_own_prefixes() {
+    // Fails when door and instrument boxes are folded into the control prefix: the door and instrument bar counts would be zero.
+    (JObject raw, _) = PlannedSchematic.Compose(
+      PlannedLayout.Load(DoorAndGauge()),
+      Chosen,
+      0
+    );
+    Assert.Equal(12, BarsWith(raw, PlannedSchematic.DoorPrefix).Count());
+    Assert.Equal(12, BarsWith(raw, PlannedSchematic.OpeningPrefix).Count());
+    Assert.Equal(12, BarsWith(raw, PlannedSchematic.InstrumentPrefix).Count());
+    Assert.Equal(12, ControlBarsOf(raw).Count());
+    Assert.All(
+      BarsWith(raw, PlannedSchematic.DoorPrefix),
+      e => Assert.Equal("#__doorbox", (string)e["faces"]!["north"]!["texture"]!)
+    );
+    Assert.All(
+      BarsWith(raw, PlannedSchematic.InstrumentPrefix),
+      e =>
+        Assert.Equal(
+          "#__instrumentbox",
+          (string)e["faces"]!["north"]!["texture"]!
+        )
+    );
+  }
+
+  [Fact]
+  public void A_plan_without_doors_or_instruments_draws_no_door_or_instrument_bars() {
+    // Fails when a door or instrument layer is drawn unconditionally.
+    (JObject raw, _) = PlannedSchematic.Compose(
+      PlannedLayout.Load(Planned),
+      Chosen,
+      0
+    );
+    Assert.Empty(BarsWith(raw, PlannedSchematic.DoorPrefix));
+    Assert.Empty(BarsWith(raw, PlannedSchematic.OpeningPrefix));
+    Assert.Empty(BarsWith(raw, PlannedSchematic.InstrumentPrefix));
     Assert.Equal(12, ControlBarsOf(raw).Count());
   }
 
