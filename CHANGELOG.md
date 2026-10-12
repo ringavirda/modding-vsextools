@@ -4,7 +4,8 @@
 
 ### Added
 
-- `exmod item FILE --views gui,ground[,iso]` draws an itemtype variant the way the game places it: `gui` in the centre slot of a 3 x 3 grid of inventory slots, `ground` lying on a stone block, from the itemtype's own `guiTransform` and `groundTransform` resolved by type with the game's item defaults for a key it omits; without `--views` the output is as before.
+- `exmod item FILE --views gui,ground[,iso]` draws an itemtype variant the way the game places it: `gui` in the centre slot of a 3 x 3 grid of inventory slots, `ground` lying on a stone block, from the itemtype's own `guiTransform` and `groundTransform` resolved by type with the game's item defaults for a key it omits and `scale` or per-axis `scaleXyz`; without `--views` the output is as before.
+- `exmod item-views PATH --out=DIR [--views gui,ground,iso]` renders an `item-views/1` dump, or a folder of `*.views.json`, to a PNG per view from the transforms the dump carries and a `<stem>.json` manifest of the files, the view and kind, the failing gates, the missing textures and the warnings; another format is refused.
 - `exlib-shapes` reads `setup-scene/1` files and draws their cells from the four iso corners (`ne`, `nw`, `se`, `sw`, now named
   views beside `iso`) on one shared canvas; fillers and ports draw nothing, an unresolved code is a black-and-yellow checker cube.
 - `exmod scene` (`exlib-shapes scene`) renders a setup's scene dump to the corner PNGs and a plan SVG per Y layer: each cell labelled with its id over its network key, ports as arrows (red when unjoined), open faces as red ticks, and a `<stem>.json` manifest of the files, the networks and lines, the unjoined ports, the open faces, the unresolved codes, the missing textures and the warnings. Each corner view is also written tinted, cells in their network's or line's hue and grey otherwise, with port frames (red when unjoined) and red open-face stubs laid over it.
@@ -25,7 +26,8 @@
 
 ### Fixed
 
-- A variant group that names a worldproperties file and lists `states` of its own expands to the file's states and then the listed ones, as the game does; the listed states alone were used before (`ingot-iron` was not a variant of the vanilla ingot).
+- `exmod shapes-build`'s help names `scene` among the commands that build the tool themselves.
+- A variant group that names a worldproperties file and lists `states` of its own expands to its listed states and then the file's, as the game does; the listed states alone were used before (`ingot-iron` was not a variant of the vanilla ingot).
 
 ### Changed
 

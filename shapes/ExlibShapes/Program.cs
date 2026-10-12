@@ -13,7 +13,7 @@ using Vintagestory.API.Common;
 
 namespace ExpandedLib.Shapes;
 
-// exlib-shapes render|schematic|scene|block|item|tree|measure FILE [options] - renders a shape file to
+// exlib-shapes render|schematic|scene|block|item|item-views|tree|measure FILE [options] - renders a shape file to
 // textured views/animation frames, a multiblock/megablock blocktype file to a build schematic, one
 // blocktype variant to the views a wiki page shows, one itemtype variant to its own picture, or
 // prints a shape's own element tree or its measured extents; see README.md for the full option list
@@ -65,6 +65,7 @@ internal static class Program {
         "scene" => RunScene(rest),
         "block" => RunBlock(rest),
         "item" => RunItem(rest),
+        "item-views" => RunItemViews(rest),
         "tree" => RunTree(rest),
         "measure" => RunMeasure(rest),
         _ => Unknown(args[0]),
@@ -82,7 +83,7 @@ internal static class Program {
   }
 
   private const string Usage =
-    "usage: exlib-shapes {render,schematic,scene,block,item,tree,measure} FILE [options]";
+    "usage: exlib-shapes {render,schematic,scene,block,item,item-views,tree,measure} FILE [options]";
 
   private static int Unknown(string command) {
     Console.Error.WriteLine($"exlib-shapes: no such command: {command}");
@@ -815,6 +816,64 @@ internal static class Program {
     );
     foreach (JToken warning in (JArray)manifest["warnings"]!)
       Console.Error.WriteLine($"exlib-shapes: {(string)warning!}");
+    return 0;
+  }
+
+  internal static int RunItemViews(string[] args) =>
+    RunItemViews(args, Console.Out);
+
+  internal static int RunItemViews(string[] args, TextWriter stdout) {
+    (string path, string[] flags) = FileAndFlags(
+      args,
+      "usage: exlib-shapes item-views PATH --out DIR [--views gui,ground,iso] [--ppu N] [--roots PATH...] [--game PATH]"
+    );
+    RejectUnknownFlags(
+      "item-views",
+      flags,
+      ["--out", "--views", "--ppu"],
+      ["--roots"],
+      []
+    );
+    string outDir =
+      OptOf(flags, "--out") ?? throw new UsageException("--out is required");
+    IReadOnlyList<string> views = ItemViewNames(
+      OptOf(flags, "--views") ?? "gui,ground,iso"
+    )!;
+    int ppu = int.Parse(
+      OptOf(flags, "--ppu") ?? "24",
+      CultureInfo.InvariantCulture
+    );
+    List<string> extraRoots = OptAllOf(flags, "--roots");
+    string? game = OptOf(flags, "--game");
+
+    List<string> dumps = Directory.Exists(path)
+      ?
+      [
+        .. Directory
+          .EnumerateFiles(path, "*.views.json")
+          .Order(StringComparer.Ordinal),
+      ]
+      : [path];
+    if (dumps.Count == 0)
+      throw new InvalidDataException($"{path}: no .views.json file");
+    List<string> roots =
+    [
+      .. extraRoots,
+      .. BlockIndex.DefaultRoots(Path.GetFullPath(dumps[0])),
+    ];
+    BlockIndex index = BlockIndex.Build(roots, game);
+    foreach (string dump in dumps) {
+      JObject manifest = ItemViews.WriteDump(dump, index, outDir, ppu, views);
+      foreach (JToken written in (JArray)manifest["files"]!)
+        stdout.WriteLine((string)written!);
+      string name = Path.GetFileName(dump);
+      string stem = name.EndsWith(".views.json", StringComparison.Ordinal)
+        ? name[..^".views.json".Length]
+        : Path.GetFileNameWithoutExtension(name);
+      stdout.WriteLine(Path.Combine(outDir, stem + ".json"));
+      foreach (JToken warning in (JArray)manifest["warnings"]!)
+        Console.Error.WriteLine($"exlib-shapes: {(string)warning!}");
+    }
     return 0;
   }
 

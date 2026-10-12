@@ -7,12 +7,12 @@ namespace ExpandedLib.Shapes;
 
 /// <summary>One of an item's <c>guiTransform</c>, <c>tpHandTransform</c> or
 /// <c>groundTransform</c> as the game resolves it: translation and origin in blocks (the gui
-/// translation in screen pixels), rotation in degrees, one uniform scale.</summary>
+/// translation in screen pixels), rotation in degrees, scale per axis.</summary>
 internal readonly record struct ItemTransform(
   (double X, double Y, double Z) Translation,
   (double X, double Y, double Z) Rotation,
   (double X, double Y, double Z) Origin,
-  double Scale,
+  (double X, double Y, double Z) ScaleXyz,
   bool Rotate
 );
 
@@ -26,21 +26,21 @@ public static partial class ItemViews {
     (0, 0, 0),
     (0, 0, 0),
     (0.5, 0.5, 0.5),
-    1,
+    (1, 1, 1),
     false
   );
   private static readonly ItemTransform TpDefault = new(
     (-1.5, -1.6, -1.4),
     (0, -62, 18),
     (0.5, 0.5, 0.5),
-    0.33,
+    (0.33, 0.33, 0.33),
     true
   );
   private static readonly ItemTransform GroundDefault = new(
     (0, 0, 0),
     (90, 0, 0),
     (0.5, 0.5, 0.53),
-    1.5,
+    (1.5, 1.5, 1.5),
     true
   );
 
@@ -48,7 +48,8 @@ public static partial class ItemViews {
   /// The transform <paramref name="key"/> (<see cref="GuiKey"/>, <see cref="TpKey"/> or
   /// <see cref="GroundKey"/>) gives <paramref name="variant"/>: the entry its
   /// <c>&lt;key&gt;ByType</c> picks for the variant, laid over the plain key's object, laid over
-  /// the game's default for an item. A key the itemtype omits keeps the default's value.
+  /// the game's default for an item. A key the itemtype omits keeps the default's value; a vector
+  /// it authors replaces the default whole, its omitted components 0.
   /// </summary>
   internal static ItemTransform ReadTransform(Variant variant, string key) {
     ItemTransform fallback = key switch {
@@ -73,7 +74,7 @@ public static partial class ItemViews {
       Vector(entry, "translation", fallback.Translation),
       Vector(entry, "rotation", fallback.Rotation),
       Vector(entry, "origin", fallback.Origin),
-      Number(entry, "scale", fallback.Scale),
+      Scale(entry, fallback.ScaleXyz),
       BlockTypeResolution.GetCi(entry, "rotate")
         is { Type: JTokenType.Boolean } r
         ? (bool)r
@@ -87,18 +88,37 @@ public static partial class ItemViews {
       ? (double)n
       : fallback;
 
+  // The game fills a vector from the JSON object whole: a component the object omits is 0.
   private static (double X, double Y, double Z) Vector(
     JObject obj,
     string key,
     (double X, double Y, double Z) fallback
   ) =>
     BlockTypeResolution.GetCi(obj, key) is JObject v
-      ? (
-        Number(v, "x", fallback.X),
-        Number(v, "y", fallback.Y),
-        Number(v, "z", fallback.Z)
-      )
+      ? (Number(v, "x", 0), Number(v, "y", 0), Number(v, "z", 0))
       : fallback;
+
+  // `scale` sets all three axes and `scaleXyz` sets each; the one later in the object wins.
+  private static (double X, double Y, double Z) Scale(
+    JObject obj,
+    (double X, double Y, double Z) fallback
+  ) {
+    var scale = fallback;
+    foreach (JProperty p in obj.Properties()) {
+      if (
+        string.Equals(p.Name, "scale", StringComparison.OrdinalIgnoreCase)
+        && p.Value is { Type: JTokenType.Integer or JTokenType.Float }
+      ) {
+        double n = (double)p.Value;
+        scale = (n, n, n);
+      } else if (
+          string.Equals(p.Name, "scaleXyz", StringComparison.OrdinalIgnoreCase)
+          && p.Value is JObject v
+        )
+        scale = (Number(v, "x", 0), Number(v, "y", 0), Number(v, "z", 0));
+    }
+    return scale;
+  }
 
   /// <summary>
   /// The matrix the inventory slot applies to an item mesh, from the shape's voxels to the gui
@@ -118,7 +138,11 @@ public static partial class ItemViews {
         oy + t.Translation.Y,
         oz * size + t.Translation.Z
       )
-      * Renderer.Mat4d.Scale(size * t.Scale, size * t.Scale, size * t.Scale)
+      * Renderer.Mat4d.Scale(
+        size * t.ScaleXyz.X,
+        size * t.ScaleXyz.Y,
+        size * t.ScaleXyz.Z
+      )
       * Renderer.Mat4d.RotateByXyz(t.Rotation.X, t.Rotation.Y, t.Rotation.Z)
       * Renderer.Mat4d.Translate(-ox, -oy, -oz)
       * Renderer.Mat4d.Scale(1.0 / 16, 1.0 / 16, 1.0 / 16);
@@ -137,7 +161,11 @@ public static partial class ItemViews {
       t.Translation.Y,
       t.Translation.Z
     )
-    * Renderer.Mat4d.Scale(0.2 * t.Scale, 0.2 * t.Scale, 0.2 * t.Scale)
+    * Renderer.Mat4d.Scale(
+      0.2 * t.ScaleXyz.X,
+      0.2 * t.ScaleXyz.Y,
+      0.2 * t.ScaleXyz.Z
+    )
     * Renderer.Mat4d.RotateByXyz(0, t.Rotation.Y, 0)
     * Renderer.Mat4d.RotateByXyz(0, 0, t.Rotation.Z)
     * Renderer.Mat4d.RotateByXyz(t.Rotation.X, 0, 0)

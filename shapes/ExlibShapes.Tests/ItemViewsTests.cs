@@ -244,7 +244,7 @@ public class ItemViewsTests {
   }
 
   // The columns and rows, in picture pixels, the opaque pixels of the gui item layer span.
-  private static (int MinCol, int MaxCol, int MinRow, int MaxRow) Bounds(
+  internal static (int MinCol, int MaxCol, int MinRow, int MaxRow) Bounds(
     SKBitmap layer
   ) {
     int minCol = int.MaxValue,
@@ -282,8 +282,12 @@ public class ItemViewsTests {
         ),
         gui.Rotation
       );
-      cols.Add(x * 25.6 * gui.Scale + gui.Origin.X + gui.Translation.X - 3);
-      rows.Add(y * 25.6 * gui.Scale + gui.Origin.Y + gui.Translation.Y - 1);
+      cols.Add(
+        x * 25.6 * gui.ScaleXyz.X + gui.Origin.X + gui.Translation.X - 3
+      );
+      rows.Add(
+        y * 25.6 * gui.ScaleXyz.Y + gui.Origin.Y + gui.Translation.Y - 1
+      );
     }
     using SKBitmap layer = ItemViews.RenderGuiItem(shape, textures, gui);
     (int minCol, int maxCol, int minRow, int maxRow) = Bounds(layer);
@@ -382,7 +386,7 @@ public class ItemViewsTests {
       (0, 0, 0),
       (90, 45, 0),
       (0, 0, 0),
-      5,
+      (5, 5, 5),
       true
     );
     Renderer.Mat4d model = ItemViews.GroundModel(transform);
@@ -470,12 +474,12 @@ public class ItemViewsTests {
     ItemTransform tp = ItemViews.ReadTransform(variant, ItemViews.TpKey);
     Assert.Equal((-1.5, -1.6, -1.4), tp.Translation);
     Assert.Equal((0.0, -62.0, 18.0), tp.Rotation);
-    Assert.Equal(0.33, tp.Scale);
+    Assert.Equal((0.33, 0.33, 0.33), tp.ScaleXyz);
     ItemTransform ground = ItemViews.ReadTransform(
       variant,
       ItemViews.GroundKey
     );
-    Assert.Equal(3.31, ground.Scale);
+    Assert.Equal((3.31, 3.31, 3.31), ground.ScaleXyz);
     Assert.True(ground.Rotate);
   }
 
@@ -496,8 +500,8 @@ public class ItemViewsTests {
       "thing.json"
     );
     ItemTransform gui = ItemViews.ReadTransform(variant, ItemViews.GuiKey);
-    Assert.Equal(3.0, gui.Scale);
-    Assert.Equal((1.0, 0.5, 0.5), gui.Origin);
+    Assert.Equal((3.0, 3.0, 3.0), gui.ScaleXyz);
+    Assert.Equal((1.0, 0.0, 0.0), gui.Origin);
     Assert.False(gui.Rotate);
   }
 
@@ -506,13 +510,39 @@ public class ItemViewsTests {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     Assert.Equal(
       [
+        "demo:mixed-top",
         "demo:mixed-north",
         "demo:mixed-east",
         "demo:mixed-south",
         "demo:mixed-west",
-        "demo:mixed-top",
       ],
       index.ItemVariants(Itemtype("mixed")).Select(v => v.Code)
     );
+  }
+
+  [Fact]
+  public void Scale_xyz_sets_each_axis_and_the_later_key_wins() {
+    static Variant Of(string json) =>
+      new(
+        "demo:thing",
+        "demo",
+        JObject.Parse(json),
+        new Dictionary<string, string>(),
+        "thing.json"
+      );
+    ItemTransform mirrored = ItemViews.ReadTransform(
+      Of(
+        """{ "guiTransform": { "scaleXyz": { "x": -1.3, "y": 1.3, "z": 1.3 } } }"""
+      ),
+      ItemViews.GuiKey
+    );
+    Assert.Equal((-1.3, 1.3, 1.3), mirrored.ScaleXyz);
+    ItemTransform later = ItemViews.ReadTransform(
+      Of(
+        """{ "guiTransform": { "scaleXyz": { "x": 2, "y": 3, "z": 4 }, "scale": 5 } }"""
+      ),
+      ItemViews.GuiKey
+    );
+    Assert.Equal((5.0, 5.0, 5.0), later.ScaleXyz);
   }
 }

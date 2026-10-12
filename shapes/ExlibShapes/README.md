@@ -203,6 +203,22 @@ view on an item with no shape is a warning and no picture, and a flat icon is wr
 The `<stem>.json` manifest carries `files`, `variant`, `missingTextures`, `unpaintedFaces` and
 `warnings`.
 
+## item-views
+
+```
+exlib-shapes item-views PATH --out DIR [--views gui,ground,iso] [--ppu N] [--roots PATH...] [--game PATH]
+```
+
+Renders an `item-views/1` file, the dump the item-views guard writes for a group of collectibles:
+its shape and textures, and the `gui`, `tp` and `ground` transforms the game resolved for it, each
+with `translation`, `rotation`, `origin`, `scaleXyz` and `rotate` written out. The pictures are
+the `item` command's, drawn from the dump's transforms as they stand: `<stem>-gui.png`,
+`<stem>-ground.png` and `<stem>-iso.png`, the stem being the file name less `.views.json`. A
+folder PATH renders every `*.views.json` directly in it, in ordinal name order; a file of another
+format is an error. The shape resolves through the roots as `item` resolves it. The `<stem>.json`
+manifest carries `files`, `view`, `kind`, `failing` (one `<gate> <name> <target>` line per gate
+that did not pass), `missingTextures` and `warnings`.
+
 ## tree / measure
 
 `exlib-shapes tree FILE [--group PREFIX]` prints a shape's element tree (name, extent, rotation,

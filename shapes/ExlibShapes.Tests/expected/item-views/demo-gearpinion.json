@@ -1,0 +1,14 @@
+{
+  "files": [
+    "demo-gearpinion-gui.png",
+    "demo-gearpinion-ground.png",
+    "demo-gearpinion-iso.png"
+  ],
+  "view": "demo:gearpinion",
+  "kind": "plate",
+  "failing": [
+    "G2 slot.centre gui"
+  ],
+  "missingTextures": [],
+  "warnings": []
+}

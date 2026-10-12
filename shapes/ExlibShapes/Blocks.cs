@@ -450,7 +450,7 @@ public sealed class BlockIndex {
     return null;
   }
 
-  private string? ShapePath(string baseCode) {
+  internal string? ShapePath(string baseCode) {
     int colon = baseCode.IndexOf(':');
     string domain = colon >= 0 ? baseCode[..colon] : "game";
     string rel = colon >= 0 ? baseCode[(colon + 1)..] : baseCode;
@@ -723,11 +723,9 @@ public sealed class BlockIndex {
           // the way the game does for `{ loadFromProperties: "abstract/horizontalorientation" }`.
           (fileCode, states) = PropertyStates(reference, domainRoots, warnings);
         }
-        // The game takes the file's states first and appends the group's own listed ones.
+        // The game puts the group's own listed states before the file's.
         if (g["states"] is JArray listed)
-          states.AddRange(
-            listed.Select(s => (string)s!).Where(s => !states.Contains(s))
-          );
+          states = [.. listed.Select(s => (string)s!), .. states];
         else if (g["loadFromProperties"] == null)
           continue;
         if ((gcode ?? fileCode) is { } axisCode)

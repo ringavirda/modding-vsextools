@@ -94,36 +94,22 @@ public static partial class ItemViews {
         TextureSet textures,
         IReadOnlyDictionary<string, TextureRef> values
       ) = Compose(item, index);
+      ItemTransform gui = ReadTransform(variant, GuiKey);
+      ItemTransform ground = ReadTransform(variant, GroundKey);
       foreach (string view in views ?? ["iso"]) {
         string path = Path.Combine(outDir, $"{stem}-{view}.png");
-        using SKBitmap image = view switch {
-          "gui" => RenderGui(shape, textures, ReadTransform(variant, GuiKey)),
-          "ground" => RenderGround(
-            shape,
-            textures,
-            ReadTransform(variant, GroundKey)
-          ),
-          _ => Renderer.Render(
-            shape,
-            Renderer.NamedViews[Presentation.ViewName],
-            ppu: ppu,
-            textures: textures,
-            grid: false,
-            cull: false
-          ),
-        };
+        using SKBitmap image = DrawView(
+          view,
+          shape,
+          textures,
+          gui,
+          ground,
+          ppu
+        );
         Save(image, path);
         files.Add(path);
       }
-      foreach (string key in textures.Missing) {
-        string name = key[(key.IndexOf('_') + 1)..];
-        if (values[key].Unassigned)
-          unpainted.Add(
-            $"{item.Code}: face texture {name} is assigned nothing"
-          );
-        else
-          missing.Add($"{item.Code}: texture {name} ({values[key]}) not found");
-      }
+      NoteTextures(item, textures, values, missing, unpainted);
     } else if (views != null)
       warnings.Add(
         $"{item.Code}: no shape; {string.Join(", ", views)} not drawn"
@@ -221,6 +207,43 @@ public static partial class ItemViews {
     using SKData data = image.Encode(SKEncodedImageFormat.Png, 100);
     using FileStream stream = File.Create(path);
     data.SaveTo(stream);
+  }
+
+  private static SKBitmap DrawView(
+    string view,
+    LoadedShape shape,
+    TextureSet textures,
+    ItemTransform gui,
+    ItemTransform ground,
+    int ppu
+  ) =>
+    view switch {
+      "gui" => RenderGui(shape, textures, gui),
+      "ground" => RenderGround(shape, textures, ground),
+      _ => Renderer.Render(
+        shape,
+        Renderer.NamedViews[Presentation.ViewName],
+        ppu: ppu,
+        textures: textures,
+        grid: false,
+        cull: false
+      ),
+    };
+
+  private static void NoteTextures(
+    ResolvedBlock item,
+    TextureSet textures,
+    IReadOnlyDictionary<string, TextureRef> values,
+    SortedSet<string> missing,
+    SortedSet<string> unpainted
+  ) {
+    foreach (string key in textures.Missing) {
+      string name = key[(key.IndexOf('_') + 1)..];
+      if (values[key].Unassigned)
+        unpainted.Add($"{item.Code}: face texture {name} is assigned nothing");
+      else
+        missing.Add($"{item.Code}: texture {name} ({values[key]}) not found");
+    }
   }
 
   // The item's composed shape and its textures, with the texture values the itemtype assigned.

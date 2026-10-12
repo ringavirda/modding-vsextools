@@ -1,12 +1,13 @@
 # exlib-shapes: renders a shape file to textured views or animation frames, a multiblock/megablock
 # blocktype file to a build schematic, one blocktype variant to the views a wiki page shows, or one
-# itemtype variant to its own picture - the same commands the wiki's own figures call.
+# itemtype variant to its own picture, or a views dump to its pictures - the same commands the wiki's own figures call.
 #
 #   exmod render      shape file -> textured view or animation-frame PNGs
 #   exmod schematic   multiblock/megablock blocktype file -> plan SVGs, an iso PNG, a manifest
 #   exmod scene       setup-scene/1 dump -> plain and tinted corner PNGs, a plan SVG per layer, a manifest
 #   exmod block       blocktype file -> a PNG per view, a footprint SVG, a manifest
 #   exmod item        itemtype file -> an iso PNG or an enlarged icon, or its gui and ground views, a manifest
+#   exmod item-views  item-views/1 dump -> a PNG per view, a manifest
 
 # Runs shapes/ExlibShapes's built tool for one subcommand, building it first only when its output is
 # missing or older than its inputs (set EXMOD_SHAPES_NO_BUILD to refuse instead, for a caller that
@@ -79,6 +80,7 @@ function Invoke-ShapesBuild([string[]]$Argv) {
 }
 
 function Invoke-Item([string[]]$Argv) { Invoke-ExlibShapes 'item' $Argv }
+function Invoke-ItemViews([string[]]$Argv) { Invoke-ExlibShapes 'item-views' $Argv }
 
 Add-ExmodCommand -Group source -Name render -Summary 'render a shape file to textured views or animation frames' -Action {
   param([string[]]$Argv) Invoke-Render $Argv
@@ -225,6 +227,32 @@ Build it under the exclusive lock first: `flock -w 240 -o LOCK exmod shapes-buil
   --game PATH     a specific game install (default: this repository's own provisioned one)
 '@
 
+Add-ExmodCommand -Group source -Name item-views -Summary 'render an item-views/1 dump to its gui, ground and iso pictures' -Action {
+  param([string[]]$Argv) Invoke-ItemViews $Argv
+} -Detail @'
+exmod item-views PATH --out=DIR [--views gui,ground,iso] [--ppu N] [--roots PATH...] [--game PATH]
+
+Renders an item's `<domain>-<code>.views.json` dump, the transforms the game resolved for a group of
+collectibles, to a `<stem>-<view>.png` per view and a `<stem>.json` manifest of the files, the
+dump's view and kind, the gates that failed, the missing textures and the warnings. A folder PATH
+renders every `*.views.json` directly in it, in name order. Prints each file and the manifest path.
+Exits 1 for an unreadable dump or a format other than item-views/1. `--out` needs the `=` form
+here: PowerShell's own parameter binder treats a bare `--out` token as an ambiguous prefix of its
+common `-OutVariable`/`-OutBuffer` parameters and refuses it outright.
+
+The tool is built only when its output is missing or older than its sources, so renders can run
+side by side: a render started under a shared lock (`flock -s -w 240 LOCK exmod ...` with
+EXMOD_SHAPES_NO_BUILD=1) never builds, and refuses with the build command when the tool is stale.
+Build it under the exclusive lock first: `flock -w 240 -o LOCK exmod shapes-build`.
+
+  PATH            a .views.json file, or a folder of them
+  --out=DIR       where the PNGs and <stem>.json are written
+  --views LIST    comma-separated: iso, gui, ground (default: gui,ground,iso)
+  --ppu N         pixels per shape unit for the isometric render (default: 24)
+  --roots PATH    extra mod repository roots to resolve the shape and textures against (repeatable)
+  --game PATH     a specific game install (default: this repository's own provisioned one)
+'@
+
 Add-ExmodCommand -Group source -Name shapes-build -Summary 'build the shapes tool when it is stale' -Action {
   param([string[]]$Argv) Invoke-ShapesBuild $Argv
 } -Detail @'
@@ -232,7 +260,7 @@ exmod shapes-build [--game PATH]
 
 Builds shapes/ExlibShapes when its output is missing or older than its sources, the ExlibAssets
 project it references, the props it imports or the game's VintagestoryAPI.dll, and says so when it
-is current. render, schematic, block and item build it themselves the same way; this command is
+is current. render, schematic, scene, block, item and item-views build it themselves the same way; this command is
 for a caller that runs them side by side. A build rewrites the tool's bin/ and obj/, so the build
 runs under the exclusive build lock and the renders under the shared one:
 

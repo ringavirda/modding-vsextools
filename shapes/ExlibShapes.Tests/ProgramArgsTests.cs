@@ -186,6 +186,28 @@ public class ProgramArgsTests {
     "x"
   )]
   [InlineData(
+    "item-views",
+    "--out=/tmp/x",
+    "--views=gui,ground",
+    "--ppu=24",
+    "--roots=/a",
+    "--game=/g"
+  )]
+  [InlineData(
+    "item-views",
+    "--out",
+    "/tmp/x",
+    "--views",
+    "gui",
+    "--ppu",
+    "24",
+    "--roots",
+    "a",
+    "b",
+    "--game",
+    "x"
+  )]
+  [InlineData(
     "scene",
     "--out=/tmp/x",
     "--views=ne,plan",
@@ -208,6 +230,7 @@ public class ProgramArgsTests {
       "scene" => Program.RunScene,
       "block" => Program.RunBlock,
       "item" => Program.RunItem,
+      "item-views" => Program.RunItemViews,
       "tree" => Program.RunTree,
       _ => Program.RunMeasure,
     };
