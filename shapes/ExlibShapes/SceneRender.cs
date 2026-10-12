@@ -198,7 +198,15 @@ public static class SceneRender {
     var tinted = new List<string>();
     foreach (string name in corners) {
       files.Add(
-        WriteView(shape, name, textures, canvas, ppu, outDir, $"{stem}-plain-{name}.png")
+        WriteView(
+          shape,
+          name,
+          textures,
+          canvas,
+          ppu,
+          outDir,
+          $"{stem}-plain-{name}.png"
+        )
       );
       tinted.Add(
         WriteView(
@@ -273,7 +281,8 @@ public static class SceneRender {
       SceneCell c = scene.Cells[i];
       if (c.Port is { } port) {
         string color =
-          port.Joins != null && colors.TryGetValue(port.Joins, out string? joined)
+          port.Joins != null
+          && colors.TryGetValue(port.Joins, out string? joined)
             ? joined
             : ScenePlan.Unjoined;
         used.Add(color);
@@ -301,7 +310,9 @@ public static class SceneRender {
       color => Solid(color)
     );
     return (
-      Load(new JObject { ["textures"] = new JObject(), ["elements"] = elements }),
+      Load(
+        new JObject { ["textures"] = new JObject(), ["elements"] = elements }
+      ),
       TextureSet.FromResolved(values, index.ResolveTexture, extra)
     );
   }
@@ -324,7 +335,10 @@ public static class SceneRender {
     double[] origin = [at.X * 16, at.Y * 16, at.Z * 16];
     double[] lo = [origin[0] + 8, origin[1] + 8, origin[2] + 8];
     double[] size = [StubSide, StubSide, StubSide];
-    int axis = face is "e" or "w" ? 0 : face is "u" or "d" ? 1 : 2;
+    int axis =
+      face is "e" or "w" ? 0
+      : face is "u" or "d" ? 1
+      : 2;
     bool positive = face is "e" or "s" or "u";
     for (int a = 0; a < 3; a++)
       lo[a] -= StubSide / 2;
@@ -332,7 +346,9 @@ public static class SceneRender {
     lo[axis] = origin[axis] + (positive ? 16 : -StubLength);
     var faces = new JObject();
     foreach (string f in Geometry.Faces)
-      faces[f] = new JObject { ["texture"] = $"#{MarkTextureKey(ScenePlan.Unjoined)}" };
+      faces[f] = new JObject {
+        ["texture"] = $"#{MarkTextureKey(ScenePlan.Unjoined)}",
+      };
     return new JObject {
       ["name"] = name,
       ["from"] = new JArray(lo[0], lo[1], lo[2]),
@@ -382,9 +398,12 @@ public static class SceneRender {
     for (int y = 0; y < h; y++)
       for (int x = 0; x < w; x++) {
         if (hex == null) {
-          byte grey = (byte)Math.Round(
-            0.299 * image[y, x, 0] + 0.587 * image[y, x, 1] + 0.114 * image[y, x, 2]
-          );
+          byte grey = (byte)
+            Math.Round(
+              0.299 * image[y, x, 0]
+                + 0.587 * image[y, x, 1]
+                + 0.114 * image[y, x, 2]
+            );
           for (int c = 0; c < 3; c++)
             result[y, x, c] = grey;
         } else {
@@ -426,7 +445,9 @@ public static class SceneRender {
         unjoined.Add(
           new JObject {
             ["at"] = AtOf(c.At),
-            ["principal"] = c.Principal is { } p ? AtOf(p) : JValue.CreateNull(),
+            ["principal"] = c.Principal is { } p
+              ? AtOf(p)
+              : JValue.CreateNull(),
             ["id"] = IdOf(scene, c) is { } id ? id : JValue.CreateNull(),
             ["face"] = port.Face == null ? JValue.CreateNull() : port.Face,
             ["type"] = port.Type,

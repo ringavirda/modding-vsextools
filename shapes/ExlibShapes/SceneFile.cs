@@ -125,7 +125,13 @@ public sealed record SceneFile(
             )),
         ]
       );
-    } catch (Exception e) when (e is InvalidCastException or FormatException or OverflowException or ArgumentException) {
+    } catch (Exception e)
+        when (e
+            is InvalidCastException
+              or FormatException
+              or OverflowException
+              or ArgumentException
+        ) {
       throw new InvalidDataException($"not a scene file: {e.Message}", e);
     }
   }
@@ -166,10 +172,9 @@ public sealed record SceneFile(
     token is JArray list ? [.. list.Select(t => (string)t!)] : [];
 
   private static Offset? At(JToken? token) =>
-    token is JArray { Count: 3 } a
-    && a.All(t => t.Type == JTokenType.Integer)
+    token is JArray { Count: 3 } a && a.All(t => t.Type == JTokenType.Integer)
       ? new Offset((int)a[0], (int)a[1], (int)a[2])
-      : token is JArray { Count: 3 }
-        ? throw new InvalidDataException("a position is not three integers")
-        : null;
+    : token is JArray { Count: 3 }
+      ? throw new InvalidDataException("a position is not three integers")
+    : null;
 }

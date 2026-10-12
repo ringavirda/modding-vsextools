@@ -167,7 +167,11 @@ public static class ScenePlan {
     );
     sb.Append("<defs>");
     var hatches = new SortedSet<string>(StringComparer.Ordinal);
-    foreach (SceneCell c in scene.Cells.Where(c => c.At.Y == y && c.Role is "filler" or "port"))
+    foreach (
+      SceneCell c in scene.Cells.Where(c =>
+        c.At.Y == y && c.Role is "filler" or "port"
+      )
+    )
       hatches.Add(FillOf(c));
     foreach (string fill in hatches)
       sb.Append(
@@ -306,7 +310,13 @@ public static class ScenePlan {
     OpenBar(sb, x1, y1, x2, y2);
   }
 
-  private static void OpenBar(StringBuilder sb, int x1, int y1, int x2, int y2) =>
+  private static void OpenBar(
+    StringBuilder sb,
+    int x1,
+    int y1,
+    int x2,
+    int y2
+  ) =>
     sb.Append(
       $"<line class=\"open\" x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" stroke=\"{Unjoined}\" stroke-width=\"3\" />"
     );

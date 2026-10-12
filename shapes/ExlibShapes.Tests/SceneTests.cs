@@ -73,12 +73,16 @@ public class SceneTests : IDisposable {
 
   [Fact]
   public void The_reader_refuses_a_count_that_is_text() {
-    Assert.Throws<InvalidDataException>(() => SceneFile.Parse(Scene("\"nodes\": \"x\"")));
+    Assert.Throws<InvalidDataException>(() =>
+      SceneFile.Parse(Scene("\"nodes\": \"x\""))
+    );
   }
 
   [Fact]
   public void The_reader_refuses_a_fractional_count() {
-    Assert.Throws<InvalidDataException>(() => SceneFile.Parse(Scene("\"nodes\": 1.5")));
+    Assert.Throws<InvalidDataException>(() =>
+      SceneFile.Parse(Scene("\"nodes\": 1.5"))
+    );
   }
 
   [Fact]
@@ -99,7 +103,17 @@ public class SceneTests : IDisposable {
 
   [Fact]
   public void A_port_at_the_scene_edge_keeps_its_frame_inside_every_tinted_view() {
-    var core = new SceneCell(new Offset(0, 0, 0), "demo:masonry", "c", "block", null, null, null, null, []);
+    var core = new SceneCell(
+      new Offset(0, 0, 0),
+      "demo:masonry",
+      "c",
+      "block",
+      null,
+      null,
+      null,
+      null,
+      []
+    );
     var port = new SceneCell(
       new Offset(1, 0, 0),
       "demo:masonry",
@@ -113,9 +127,17 @@ public class SceneTests : IDisposable {
     );
     var scene = new SceneFile("edge", null, null, [core, port], [], []);
     string dir = Scratch();
-    SceneRender.Write(scene, BlockIndex.Build([DemoRoot]), dir, "edge", Corners);
+    SceneRender.Write(
+      scene,
+      BlockIndex.Build([DemoRoot]),
+      dir,
+      "edge",
+      Corners
+    );
     foreach (string view in Corners) {
-      using SKBitmap bitmap = SKBitmap.Decode(Path.Combine(dir, $"edge-tint-{view}.png"));
+      using SKBitmap bitmap = SKBitmap.Decode(
+        Path.Combine(dir, $"edge-tint-{view}.png")
+      );
       int reds = 0;
       for (int y = 0; y < bitmap.Height; y++)
         for (int x = 0; x < bitmap.Width; x++) {
@@ -341,7 +363,12 @@ public class SceneTests : IDisposable {
   public void Keys_past_the_palette_avoid_the_red_and_grey_entries() {
     var networks = Enumerable
       .Range(0, 12)
-      .Select(i => new SceneNetwork(((char)('A' + i)).ToString(), "steam", 1, []))
+      .Select(i => new SceneNetwork(
+        ((char)('A' + i)).ToString(),
+        "steam",
+        1,
+        []
+      ))
       .ToList();
     IReadOnlyDictionary<string, string> colors = ScenePlan.KeyColors(
       new SceneFile("many", null, null, [], networks, [])
@@ -377,10 +404,19 @@ public class SceneTests : IDisposable {
       []
     );
     string svg = ScenePlan.Svg(scene, 0);
-    int canvas = int.Parse(Regex.Match(svg, "<svg[^>]* width=\"(\\d+)\"").Groups[1].Value);
-    string beforeLegend = svg[..svg.IndexOf("class=\"legend\"", StringComparison.Ordinal)];
+    int canvas = int.Parse(
+      Regex.Match(svg, "<svg[^>]* width=\"(\\d+)\"").Groups[1].Value
+    );
+    string beforeLegend = svg[
+      ..svg.IndexOf("class=\"legend\"", StringComparison.Ordinal)
+    ];
     int offset = int.Parse(
-      Regex.Matches(beforeLegend, @"translate\((\d+),").Cast<Match>().Last().Groups[1].Value
+      Regex
+        .Matches(beforeLegend, @"translate\((\d+),")
+        .Cast<Match>()
+        .Last()
+        .Groups[1]
+        .Value
     );
     int redRow = Schematic.CaptionWidth(
       "red arrow: unjoined port, red tick: open face"
@@ -410,13 +446,7 @@ public class SceneTests : IDisposable {
       key == "A" ? [new SceneNetwork("A", "steam", 1, ["solo"])] : [],
       []
     );
-    SceneRender.Write(
-      scene,
-      BlockIndex.Build([DemoRoot]),
-      dir,
-      "solo",
-      ["se"]
-    );
+    SceneRender.Write(scene, BlockIndex.Build([DemoRoot]), dir, "solo", ["se"]);
     return SKBitmap.Decode(Path.Combine(dir, "solo-tint-se.png"));
   }
 
@@ -427,7 +457,13 @@ public class SceneTests : IDisposable {
     bool Solid(int x, int y) => bitmap.GetPixel(x, y) != background;
     for (int y = 1; y < bitmap.Height - 1; y++)
       for (int x = 1; x < bitmap.Width - 1; x++)
-        if (Solid(x, y) && Solid(x - 1, y) && Solid(x + 1, y) && Solid(x, y - 1) && Solid(x, y + 1))
+        if (
+          Solid(x, y)
+          && Solid(x - 1, y)
+          && Solid(x + 1, y)
+          && Solid(x, y - 1)
+          && Solid(x, y + 1)
+        )
           yield return bitmap.GetPixel(x, y);
   }
 
@@ -447,15 +483,9 @@ public class SceneTests : IDisposable {
     JObject expected = JObject.Parse(
       File.ReadAllText(FixturePath.Expected("scene/demo-manifest.json"))
     );
-    Assert.True(
-      JToken.DeepEquals(expected, manifest),
-      manifest.ToString()
-    );
+    Assert.True(JToken.DeepEquals(expected, manifest), manifest.ToString());
     Assert.Equal(
-      [
-        "unjoined: demo kiln s steam at 2,0,3",
-        "open: demo main e at 4,0,0",
-      ],
+      ["unjoined: demo kiln s steam at 2,0,3", "open: demo main e at 4,0,0"],
       SceneRender.FindingLines(SceneFile.Load(Fixture), "demo")
     );
   }
@@ -474,7 +504,9 @@ public class SceneTests : IDisposable {
     } finally {
       Console.SetOut(saved);
     }
-    JObject written = JObject.Parse(File.ReadAllText(Path.Combine(dir, "demo.json")));
+    JObject written = JObject.Parse(
+      File.ReadAllText(Path.Combine(dir, "demo.json"))
+    );
     written["files"] = new JArray(
       written["files"]!.Select(f => (JToken)Path.GetFileName((string)f!))
     );
@@ -482,12 +514,14 @@ public class SceneTests : IDisposable {
       File.ReadAllText(FixturePath.Expected("scene/demo-manifest.json"))
     );
     Assert.True(JToken.DeepEquals(expected, written), written.ToString());
-    string[] lines = stdout.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    string[] lines = stdout
+      .ToString()
+      .Split(
+        '\n',
+        StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+      );
     Assert.Equal(
-      [
-        "unjoined: demo kiln s steam at 2,0,3",
-        "open: demo main e at 4,0,0",
-      ],
+      ["unjoined: demo kiln s steam at 2,0,3", "open: demo main e at 4,0,0"],
       lines[^2..]
     );
     Assert.Equal(Path.Combine(dir, "demo.json"), lines[^3]);
@@ -549,16 +583,24 @@ public class SceneTests : IDisposable {
       "demo",
       ["se"]
     );
-    using SKBitmap tinted = SKBitmap.Decode(Path.Combine(dir, "demo-tint-se.png"));
-    SKColor.Parse(ScenePlan.KeyColors(SceneFile.Load(Fixture))["A"])
+    using SKBitmap tinted = SKBitmap.Decode(
+      Path.Combine(dir, "demo-tint-se.png")
+    );
+    SKColor
+      .Parse(ScenePlan.KeyColors(SceneFile.Load(Fixture))["A"])
       .ToHsl(out float keyHue, out float keySaturation, out float _);
 
-    DemoTopPixel(tinted, new Offset(2, 0, 0)).ToHsl(out float hue, out float saturation, out float _);
+    DemoTopPixel(tinted, new Offset(2, 0, 0))
+      .ToHsl(out float hue, out float saturation, out float _);
     float apart = Math.Abs(hue - keyHue);
     Assert.InRange(Math.Min(apart, 360 - apart), 0, 10);
-    Assert.True(saturation >= keySaturation / 2, $"saturation {saturation} of key's {keySaturation}");
+    Assert.True(
+      saturation >= keySaturation / 2,
+      $"saturation {saturation} of key's {keySaturation}"
+    );
 
-    DemoTopPixel(tinted, new Offset(6, 0, 5)).ToHsl(out float _, out float greySaturation, out float _);
+    DemoTopPixel(tinted, new Offset(6, 0, 5))
+      .ToHsl(out float _, out float greySaturation, out float _);
     Assert.Equal(0, greySaturation);
   }
 
@@ -567,10 +609,13 @@ public class SceneTests : IDisposable {
     using SKBitmap tinted = TintedSe(Wall("B"), "", Scratch());
     List<SKColor> pixels = [.. Drawn(tinted)];
     Assert.NotEmpty(pixels);
-    Assert.All(pixels, c => {
-      Assert.InRange(Math.Abs(c.Red - c.Green), 0, PixelCompare.Tolerance);
-      Assert.InRange(Math.Abs(c.Green - c.Blue), 0, PixelCompare.Tolerance);
-    });
+    Assert.All(
+      pixels,
+      c => {
+        Assert.InRange(Math.Abs(c.Red - c.Green), 0, PixelCompare.Tolerance);
+        Assert.InRange(Math.Abs(c.Green - c.Blue), 0, PixelCompare.Tolerance);
+      }
+    );
   }
 
   [Fact]
@@ -578,10 +623,13 @@ public class SceneTests : IDisposable {
     using SKBitmap tinted = TintedSe(Wall(null), "", Scratch());
     List<SKColor> pixels = [.. Drawn(tinted)];
     Assert.NotEmpty(pixels);
-    Assert.All(pixels, c => {
-      Assert.InRange(Math.Abs(c.Red - c.Green), 0, PixelCompare.Tolerance);
-      Assert.InRange(Math.Abs(c.Green - c.Blue), 0, PixelCompare.Tolerance);
-    });
+    Assert.All(
+      pixels,
+      c => {
+        Assert.InRange(Math.Abs(c.Red - c.Green), 0, PixelCompare.Tolerance);
+        Assert.InRange(Math.Abs(c.Green - c.Blue), 0, PixelCompare.Tolerance);
+      }
+    );
   }
 
   [Fact]
@@ -630,8 +678,25 @@ public class SceneTests : IDisposable {
   [Fact]
   public void An_unresolved_code_in_two_cells_is_listed_once() {
     SceneCell ghost(int x) =>
-      new(new Offset(x, 0, 0), "demo:nothing", "g", "block", null, null, null, null, []);
-    var scene = new SceneFile("ghosts", null, null, [ghost(0), ghost(1)], [], []);
+      new(
+        new Offset(x, 0, 0),
+        "demo:nothing",
+        "g",
+        "block",
+        null,
+        null,
+        null,
+        null,
+        []
+      );
+    var scene = new SceneFile(
+      "ghosts",
+      null,
+      null,
+      [ghost(0), ghost(1)],
+      [],
+      []
+    );
     SceneRendered rendered = SceneRender.Write(
       scene,
       BlockIndex.Build([DemoRoot]),
@@ -668,8 +733,19 @@ public class SceneTests : IDisposable {
         []
       ),
     ];
-    foreach (Offset at in new Offset[] { new(0, 0, 1), new(2, 0, 1), new(1, 0, 0), new(1, 0, 2), new(1, 1, 1) })
-      cells.Add(new(at, "demo:masonry", "guard", "block", null, null, null, null, []));
+    foreach (
+      Offset at in new Offset[]
+      {
+        new(0, 0, 1),
+        new(2, 0, 1),
+        new(1, 0, 0),
+        new(1, 0, 2),
+        new(1, 1, 1),
+      }
+    )
+      cells.Add(
+        new(at, "demo:masonry", "guard", "block", null, null, null, null, [])
+      );
     return new SceneFile(
       "walled",
       null,
@@ -682,14 +758,21 @@ public class SceneTests : IDisposable {
 
   // Runs `check` on the tinted views of a walled port and of the same scene with the port's
   // frame left out, then disposes both.
-  private void WalledViews(string? joins, Action<string, SKBitmap, SKBitmap> check) {
+  private void WalledViews(
+    string? joins,
+    Action<string, SKBitmap, SKBitmap> check
+  ) {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     string dir = Scratch();
     SceneRender.Write(Walled(joins, true), index, dir, "framed", Corners);
     SceneRender.Write(Walled(joins, false), index, dir, "bare", Corners);
     foreach (string view in Corners) {
-      using SKBitmap framed = SKBitmap.Decode(Path.Combine(dir, $"framed-tint-{view}.png"));
-      using SKBitmap bare = SKBitmap.Decode(Path.Combine(dir, $"bare-tint-{view}.png"));
+      using SKBitmap framed = SKBitmap.Decode(
+        Path.Combine(dir, $"framed-tint-{view}.png")
+      );
+      using SKBitmap bare = SKBitmap.Decode(
+        Path.Combine(dir, $"bare-tint-{view}.png")
+      );
       check(view, framed, bare);
     }
   }
@@ -708,7 +791,10 @@ public class SceneTests : IDisposable {
     WalledViews(
       null,
       (_, framed, bare) =>
-        Assert.Contains(Changed(framed, bare), c => IsShadeOf(c, ScenePlan.Unjoined))
+        Assert.Contains(
+          Changed(framed, bare),
+          c => IsShadeOf(c, ScenePlan.Unjoined)
+        )
     );
 
   [Fact]
@@ -730,7 +816,9 @@ public class SceneTests : IDisposable {
         );
         (double centreCol, _) = projection.Screen(24, 16, 24);
         int checkedPoints = 0;
-        foreach ((int dx, int dz) in new[] { (4, 4), (4, -4), (-4, 4), (-4, -4) }) {
+        foreach (
+          (int dx, int dz) in new[] { (4, 4), (4, -4), (-4, 4), (-4, -4) }
+        ) {
           (double col, double row) = projection.Screen(24 + dx, 16, 24 + dz);
           if (Math.Abs(col - centreCol) < 10)
             continue;
