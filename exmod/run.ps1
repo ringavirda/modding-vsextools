@@ -4,6 +4,7 @@
 #   exmod client    the game client with the built mods
 #   exmod server    a dedicated server with the built mods
 #   exmod smoke     boot a server, verify it, stop it
+#   exmod scenario  boot a server, run live scenarios on it, stop it
 #   exmod stage     copy built mods into a Mods folder
 #   exmod logs      the newest client or server log
 
@@ -459,6 +460,120 @@ function Resolve-SmokeServer([string]$version) {
   throw "Provisioning completed but no VintagestoryServer.dll was found in $($candidates -join ' or ') above $RepoRoot."
 }
 
+# The mods every scratch server loads when none are named: every built mod and sample in the checkout,
+# then the runtime dependency mods (see Resolve-DependencyMods).
+function Get-ScratchDefaultModDirs {
+  return @(Get-BuiltModDirs) + @((Resolve-DependencyMods) | ForEach-Object { $_.Path })
+}
+
+# Makes a scratch server's folder, .game/.<Tag>-<guid>, and fills it: each mod folder copied in under its
+# modid (read from modinfo.json; a file that does not parse is copied under its folder name so the server
+# reports it), each $DataCopies key copied into the data path at the relative path it maps to, and
+# serverconfig.json written when $ServerConfig is given. Starts nothing; returns the handle the other
+# scratch-server functions take.
+function New-ScratchServer([string]$Tag, [string[]]$ModDirs, [System.Collections.IDictionary]$DataCopies = @{}, [System.Collections.IDictionary]$ServerConfig = $null) {
+  $root = Join-Path $RepoRoot ".game/.$Tag-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+  $server = [pscustomobject]@{
+    Root = $root
+    Data = Join-Path $root 'data'
+    Mods = Join-Path $root 'mods'
+    Log  = Join-Path $root 'data/Logs/server-main.log'
+    Proc = $null
+  }
+  New-Item -ItemType Directory -Force -Path $server.Data, $server.Mods | Out-Null
+
+  foreach ($m in $ModDirs) {
+    # A modinfo.json broken enough that this can't even read it is exactly the kind of mistake the
+    # smoke lane exists to catch, so it is copied in under its folder name regardless and left for the
+    # real mod loader to report - not failed here, which would only ever say "some folder's modinfo.json
+    # doesn't parse" instead of naming the mod and the game's own error.
+    $modid = (Split-Path $m -Leaf)
+    try {
+      $modinfo = Get-Content (Join-Path $m 'modinfo.json') -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+      if ($modinfo.modid) { $modid = $modinfo.modid }
+    } catch {
+      Write-Host "Warning: $m/modinfo.json did not parse ($($_.Exception.Message)) - copying it in under '$modid' anyway so the server reports it." -ForegroundColor Yellow
+    }
+    Copy-Item -Recurse -Force -Path $m -Destination (Join-Path $server.Mods $modid)
+  }
+
+  foreach ($src in $DataCopies.Keys) {
+    $dest = Join-Path $server.Data $DataCopies[$src]
+    New-Item -ItemType Directory -Force -Path $dest | Out-Null
+    Copy-Item -Recurse -Force -Path (Join-Path $src '*') -Destination $dest
+  }
+  if ($ServerConfig) {
+    $ServerConfig | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $server.Data 'serverconfig.json')
+  }
+  return $server
+}
+
+# Boots the dedicated server in $ServerDir on $Port against a scratch server's folders.
+function Start-ScratchServer($Server, [string]$ServerDir, [int]$Port) {
+  # GLIBC_TUNABLES and MSBUILDDISABLENODEREUSE are already in $env: from the top of this script and
+  # are inherited by the child unchanged; nothing extra to set here.
+  $psi = [System.Diagnostics.ProcessStartInfo]::new()
+  $psi.FileName = 'dotnet'
+  foreach ($a in @(
+      (Join-Path $ServerDir 'VintagestoryServer.dll'), '--dataPath', $Server.Data,
+      '--addModPath', $Server.Mods, '--port', $Port
+    )) { $psi.ArgumentList.Add($a) }
+  $psi.RedirectStandardInput = $true
+  $psi.UseShellExecute = $false
+  $psi.WorkingDirectory = $ServerDir
+  $Server.Proc = [System.Diagnostics.Process]::Start($psi)
+  $Server.Proc.StandardInput.AutoFlush = $true
+}
+
+# Waits up to $Timeout seconds for the started server to log that it is running; throws with the log's
+# tail when it does not.
+function Wait-ScratchServer($Server, [int]$Timeout) {
+  Write-Host "Waiting up to ${Timeout}s for the server to come up..."
+  $deadline = [DateTime]::UtcNow.AddSeconds($Timeout)
+  $ready = $false
+  while ([DateTime]::UtcNow -lt $deadline) {
+    if ((Test-Path $Server.Log) -and (Select-String -Path $Server.Log -Pattern 'Dedicated Server now running' -Quiet)) {
+      $ready = $true
+      break
+    }
+    if ($Server.Proc.HasExited) { break }
+    Start-Sleep -Seconds 1
+  }
+  if (-not $ready) {
+    $tail = if (Test-Path $Server.Log) { Get-Content $Server.Log -Tail 60 } else { '(no log written)' }
+    throw "Server did not report ready within ${Timeout}s (exited: $($Server.Proc.HasExited)).`n$($tail -join "`n")"
+  }
+}
+
+# Sends /stop and waits for the server to exit, killing it after 30 s.
+function Stop-ScratchServer($Server) {
+  $Server.Proc.StandardInput.WriteLine('/stop')
+  if (-not $Server.Proc.WaitForExit(30000)) {
+    Write-Host "Server did not exit after /stop within 30s - killing it."
+    $Server.Proc.Kill($true)
+    $Server.Proc.WaitForExit(10000) | Out-Null
+  }
+}
+
+# Kills the server if it still runs, disposes it, and removes the scratch folder unless $KeepData, which
+# prints where it is instead.
+function Remove-ScratchServer($Server, [bool]$KeepData) {
+  if ($Server.Proc -and -not $Server.Proc.HasExited) {
+    try { $Server.Proc.Kill($true) } catch { }
+  }
+  if ($Server.Proc) { $Server.Proc.Dispose() }
+  if (-not $KeepData) {
+    Remove-Item -Recurse -Force $Server.Root -ErrorAction SilentlyContinue
+  }
+  else {
+    Write-Host "Kept scratch data at $($Server.Root)"
+  }
+}
+
+# An unusual, fixed port for every smoke boot: a game the owner is actually playing on this machine
+# binds the default 42420 (or whatever their own serverconfig.json says), and this must never collide
+# with it.
+#
 # Boots the real dedicated server with the given mods, waits for it to come up, runs /exmod verify and
 # stops it - the zero-effort rung: no test code, just "does the server load this without erroring".
 #
@@ -474,88 +589,35 @@ function Invoke-Smoke([string[]]$Argv) {
 
   $serverDir = Resolve-SmokeServer $version
 
-  $modDirs = if ($modsOpt) { Resolve-ModDirs @($modsOpt -split ',') }
-  else { @(Get-BuiltModDirs) + @((Resolve-DependencyMods) | ForEach-Object { $_.Path }) }
+  $modDirs = if ($modsOpt) { Resolve-ModDirs @($modsOpt -split ',') } else { Get-ScratchDefaultModDirs }
   if (-not $modDirs) { throw "No mods found to smoke-test (nothing under mods/*/src/bin/Debug/Mods/mod, and -Mods was not given)." }
-
-  $scratch = Join-Path $RepoRoot ".game/.smoke-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
-  $scratchData = Join-Path $scratch 'data'
-  $scratchMods = Join-Path $scratch 'mods'
-  New-Item -ItemType Directory -Force -Path $scratchData, $scratchMods | Out-Null
-
-  foreach ($m in $modDirs) {
-    # A modinfo.json broken enough that this can't even read it is exactly the kind of mistake the
-    # smoke lane exists to catch, so it is copied in under its folder name regardless and left for the
-    # real mod loader to report - not failed here, which would only ever say "some folder's modinfo.json
-    # doesn't parse" instead of naming the mod and the game's own error.
-    $modid = (Split-Path $m -Leaf)
-    try {
-      $modinfo = Get-Content (Join-Path $m 'modinfo.json') -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-      if ($modinfo.modid) { $modid = $modinfo.modid }
-    } catch {
-      Write-Host "Warning: $m/modinfo.json did not parse ($($_.Exception.Message)) - copying it in under '$modid' anyway so the server reports it." -ForegroundColor Yellow
-    }
-    Copy-Item -Recurse -Force -Path $m -Destination (Join-Path $scratchMods $modid)
-  }
   Write-Host "Smoke-testing $($modDirs.Count) mod(s) against Vintage Story $version at $serverDir"
 
-  $logPath = Join-Path $scratchData 'Logs/server-main.log'
-  $proc = $null
+  $server = $null
   try {
-    # GLIBC_TUNABLES and MSBUILDDISABLENODEREUSE are already in $env: from the top of this script and
-    # are inherited by the child unchanged; nothing extra to set here.
-    $psi = [System.Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName = 'dotnet'
-    foreach ($a in @(
-        (Join-Path $serverDir 'VintagestoryServer.dll'), '--dataPath', $scratchData,
-        '--addModPath', $scratchMods, '--port', $SmokePort
-      )) { $psi.ArgumentList.Add($a) }
-    $psi.RedirectStandardInput = $true
-    $psi.UseShellExecute = $false
-    $psi.WorkingDirectory = $serverDir
-    $proc = [System.Diagnostics.Process]::Start($psi)
-    $proc.StandardInput.AutoFlush = $true
-
-    Write-Host "Waiting up to ${timeout}s for the server to come up..."
-    $deadline = [DateTime]::UtcNow.AddSeconds($timeout)
-    $ready = $false
-    while ([DateTime]::UtcNow -lt $deadline) {
-      if ((Test-Path $logPath) -and (Select-String -Path $logPath -Pattern 'Dedicated Server now running' -Quiet)) {
-        $ready = $true
-        break
-      }
-      if ($proc.HasExited) { break }
-      Start-Sleep -Seconds 1
-    }
-    if (-not $ready) {
-      $tail = if (Test-Path $logPath) { Get-Content $logPath -Tail 60 } else { '(no log written)' }
-      throw "Server did not report ready within ${timeout}s (exited: $($proc.HasExited)).`n$($tail -join "`n")"
-    }
+    $server = New-ScratchServer 'smoke' $modDirs
+    Start-ScratchServer $server $serverDir $SmokePort
+    Wait-ScratchServer $server $timeout
     Write-Host "Server is up; running /exmod verify..."
 
-    $proc.StandardInput.WriteLine('/exmod verify')
+    $server.Proc.StandardInput.WriteLine('/exmod verify')
     $verifyDeadline = [DateTime]::UtcNow.AddSeconds(10)
     while ([DateTime]::UtcNow -lt $verifyDeadline) {
-      if (Select-String -Path $logPath -Pattern 'check\(s\) run, \d+ error\(s\) found\.' -Quiet) { break }
+      if (Select-String -Path $server.Log -Pattern 'check\(s\) run, \d+ error\(s\) found\.' -Quiet) { break }
       Start-Sleep -Milliseconds 500
     }
 
-    $proc.StandardInput.WriteLine('/stop')
-    if (-not $proc.WaitForExit(30000)) {
-      Write-Host "Server did not exit after /stop within 30s - killing it."
-      $proc.Kill($true)
-      $proc.WaitForExit(10000) | Out-Null
-    }
+    Stop-ScratchServer $server
 
-    $log = Get-Content $logPath -Raw
+    $log = Get-Content $server.Log -Raw
     Write-Host ""
     Write-Host "===== [exlib] notification lines ====="
-    Select-String -Path $logPath -Pattern '\[exlib\]' | ForEach-Object { Write-Host $_.Line }
+    Select-String -Path $server.Log -Pattern '\[exlib\]' | ForEach-Object { Write-Host $_.Line }
     Write-Host ""
     Write-Host "===== Error/Fatal lines ====="
-    Select-String -Path $logPath -Pattern '\[Error\]|\[Fatal\]' | ForEach-Object { Write-Host $_.Line }
+    Select-String -Path $server.Log -Pattern '\[Error\]|\[Fatal\]' | ForEach-Object { Write-Host $_.Line }
 
-    $hasErrors = [bool](Select-String -Path $logPath -Pattern '\[Error\]|\[Fatal\]' -Quiet)
+    $hasErrors = [bool](Select-String -Path $server.Log -Pattern '\[Error\]|\[Fatal\]' -Quiet)
     $verifyMatch = [regex]::Match($log, '(\d+) check\(s\) run, (\d+) error\(s\) found\.')
 
     Write-Host ""
@@ -566,16 +628,7 @@ function Invoke-Smoke([string[]]$Argv) {
     Write-Host "Smoke passed: server booted, verified clean and stopped."
   }
   finally {
-    if ($proc -and -not $proc.HasExited) {
-      try { $proc.Kill($true) } catch { }
-    }
-    if ($proc) { $proc.Dispose() }
-    if (-not $keepData) {
-      Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
-    }
-    else {
-      Write-Host "Kept scratch data at $scratch"
-    }
+    if ($server) { Remove-ScratchServer $server $keepData }
   }
 }
 
@@ -600,6 +653,279 @@ its own built mods, resolved or fetched first if needed.
 '@
 
 #endregion
+#region scenario
+
+# The port `exmod scenario` binds unless -Port says otherwise, and the seconds it waits for the server
+# to come up. Two runs on one machine pass different -Port values.
+$ScenarioPort = 42498
+$ScenarioBootSeconds = 180
+
+# The modid a checkout's tests/live folder is filed under: the one mod this checkout builds for its tests.
+$ScenarioMod = 'exlib'
+
+# The options `exmod scenario` takes: Names (as given, possibly none), Version (the current series only,
+# the live mod being built for it), Port and Timeout (seconds to wait for the count line, or $null for the
+# run's budget plus 60).
+function Get-ScenarioOptions([string[]]$Argv) {
+  $names = @(Get-Positional $Argv @('-Version', '-Port', '-Timeout') @())
+  $unknown = @($names | Where-Object { $_ -like '-*' })
+  if ($unknown) { throw "Unknown option $($unknown[0]) for exmod scenario." }
+  $version = Get-Opt $Argv '-Version' $CurrentGameVersion
+  if ($version -ne $CurrentGameVersion) {
+    throw "exmod scenario runs on $CurrentGameVersion only: the live mod is built for it, and $version was asked."
+  }
+  $timeout = Get-Opt $Argv '-Timeout' $null
+  return [pscustomobject]@{
+    Names   = $names
+    Version = $version
+    Port    = [int](Get-Opt $Argv '-Port' $ScenarioPort)
+    Timeout = if ($null -eq $timeout) { $null } else { [int]$timeout }
+  }
+}
+
+# Every scenario file directly under the checkout's tests/live, as <modid>/<stem>.
+function Get-ScenarioNames {
+  return @(Get-ChildItem (Join-Path $RepoRoot 'tests/live') -Filter '*.json' -File | Sort-Object Name |
+      ForEach-Object { "$ScenarioMod/$($_.BaseName)" })
+}
+
+# The stdin line that starts a run of the named scenarios.
+function Get-ScenarioCommand([string[]]$Names) {
+  return "/exmod scenario run $($Names -join ' ')"
+}
+
+# The file the runner saves a failed case's schematic to, under the data path's WorldEdit folder.
+function Get-ScenarioSchematicName([string]$Name) {
+  return "scenario-$($Name -replace '/', '-').json"
+}
+
+# The live mod's project: the manifest's `live` path, resolved the way a mod's project is (Get-ExmodMods).
+function Get-ExmodLiveProject {
+  $manifest = Get-ExmodManifest
+  if (-not $manifest.PSObject.Properties['live'] -or -not $manifest.live) { throw "exmod.json names no live mod." }
+  $path = Resolve-ManifestPath 'live.path' $manifest.live.path
+  return Find-SingleCsproj (Get-ModProjectDir $path) 'live'
+}
+
+# Builds the live mod for the current series and returns its output folder.
+function Build-ScenarioLiveMod {
+  $project = Get-ExmodLiveProject
+  $dotnet = Resolve-DotnetHost @($CurrentGameVersion)
+  Write-Host "Building the live mod ..."
+  & $dotnet build $project -f $GameTfms[$CurrentGameVersion] -c Debug -clp:ErrorsOnly | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw "Build of $project failed." }
+  $out = Join-Path (Split-Path $project -Parent) 'bin/Debug/Mods/mod'
+  if (-not (Test-Path (Join-Path $out 'modinfo.json'))) { throw "The live mod built, but $out holds no modinfo.json." }
+  return $out
+}
+
+# The serverconfig.json a scenario boot writes: loopback only, a superflat world, a creative player who
+# can fly to a plot, and time that keeps moving while no client is in the world.
+function Get-ScenarioServerConfig {
+  # A file without Roles names no group for DefaultRoleCode and the server refuses to boot, so the
+  # default role is written with the game's own suplayer definition.
+  return [ordered]@{
+    Ip                = '127.0.0.1'
+    AdvertiseServer   = $false
+    PassTimeWhenEmpty = $true
+    WhitelistMode     = 0
+    DefaultRoleCode   = 'suplayer'
+    Roles             = @([ordered]@{
+        Code              = 'suplayer'
+        PrivilegeLevel    = 0
+        Name              = 'Survival Player'
+        Description       = 'Can use/place/break blocks in unprotected areas (priv level 0), create/manage player groups and chat. Can claim an area of up to 8 chunks.'
+        DefaultSpawn      = $null
+        ForcedSpawn       = $null
+        Privileges        = @('controlplayergroups', 'manageplayergroups', 'chat', 'areamodify', 'build', 'useblock', 'attackcreatures', 'attackplayers', 'selfkill')
+        RuntimePrivileges = @()
+        DefaultGameMode   = 1
+        Color             = 'White'
+        LandClaimAllowance = 262144
+        LandClaimMinSize  = [ordered]@{ X = 5; Y = 5; Z = 5 }
+        LandClaimMaxAreas = 3
+        AutoGrant         = $false
+      })
+    WorldConfig       = [ordered]@{
+      WorldType          = 'superflat'
+      PlayStyle          = 'surviveandbuild'
+      WorldConfiguration = [ordered]@{
+        gameMode           = 'creative'
+        snowAccum          = $true
+        temporalStorms     = 'off'
+        temporalStability  = $false
+      }
+    }
+  }
+}
+
+# The read of one scenario run from the server log's lines, and the rules `exmod scenario` exits by
+# (scenarios.md, `exmod scenario` step 7). Shown: the lines to print, in log order - the run and count
+# lines, each passing case's pass line, and each failed or errored case with every line it logged - plus
+# every [Error] or [Fatal] line outside a case. Pending: the lines of a case the log has not closed.
+# Problems: one reason per rule the run breaks, none when it passes. Budget: the run line's budget in
+# seconds, $null before that line. FailedNames: the cases that failed, errored or never finished.
+function Get-ScenarioReport([string[]]$Lines) {
+  $shown = [System.Collections.Generic.List[string]]::new()
+  $problems = [System.Collections.Generic.List[string]]::new()
+  $failedNames = [System.Collections.Generic.List[string]]::new()
+  $block = $null
+  $budget = $null
+  $done = $null
+
+  foreach ($line in $Lines) {
+    if ($null -ne $block -and $line -match '\[scenario\] (case \S+ plot |done: )') {
+      $shown.AddRange($block.Lines)
+      $problems.Add("case $($block.Name) did not finish")
+      $failedNames.Add($block.Name)
+      $block = $null
+    }
+    if ($null -ne $block -and $line -notmatch '\[scenario\] (pass|fail|error) ') {
+      $block.Lines.Add($line)
+      continue
+    }
+    if ($line -match '\[scenario\] case (\S+) plot ') {
+      $block = @{ Name = $Matches[1]; Lines = [System.Collections.Generic.List[string]]::new() }
+      $block.Lines.Add($line)
+      continue
+    }
+    if ($line -match '\[scenario\] pass ') {
+      $block = $null
+      $shown.Add($line)
+      continue
+    }
+    if ($line -match '\[scenario\] (fail|error) ([^:\s]+)') {
+      if ($null -ne $block) { $shown.AddRange($block.Lines); $block = $null }
+      $shown.Add($line)
+      $problems.Add($line)
+      $failedNames.Add($Matches[2])
+      continue
+    }
+    if ($line -match '\[Error\]|\[Fatal\]') {
+      $shown.Add($line)
+      $problems.Add("error outside a case: $line")
+      continue
+    }
+    if ($line -match '\[scenario\] run: .* budget (\d+) s') {
+      $budget = [int]$Matches[1]
+      $shown.Add($line)
+      continue
+    }
+    if ($line -match '\[scenario\] done: (\d+) case\(s\) run, (\d+) passed, (\d+) failed\.') {
+      $done = [pscustomobject]@{ Run = [int]$Matches[1]; Passed = [int]$Matches[2]; Failed = [int]$Matches[3] }
+      $shown.Add($line)
+      continue
+    }
+  }
+
+  $pending = @()
+  if ($null -ne $block) {
+    $pending = @($block.Lines)
+    $problems.Add("case $($block.Name) did not finish")
+    $failedNames.Add($block.Name)
+  }
+  if ($null -eq $done) { $problems.Add('no count line') }
+  elseif ($done.Run -eq 0) { $problems.Add('0 cases run') }
+  if ($null -ne $done -and $done.Failed -gt 0) { $problems.Add("$($done.Failed) case(s) failed") }
+
+  $exitCode = if ($problems.Count -eq 0) { 0 } else { 1 }
+  return [pscustomobject]@{
+    Shown       = $shown.ToArray()
+    Pending     = $pending
+    Problems    = $problems.ToArray()
+    Budget      = $budget
+    Done        = ($null -ne $done)
+    FailedNames = $failedNames.ToArray()
+    ExitCode    = $exitCode
+  }
+}
+
+# Reads the server log so far and prints the report lines not printed yet; $Printed counts those.
+function Write-ScenarioProgress($Server, [int]$Printed) {
+  $report = Get-ScenarioReport @(Get-Content $Server.Log -ErrorAction SilentlyContinue)
+  $new = @($report.Shown | Select-Object -Skip $Printed)
+  foreach ($line in $new) { Write-Host $line }
+  return [pscustomobject]@{ Report = $report; Printed = $Printed + $new.Count }
+}
+
+# Copies each failed case's schematic from $DataDir's WorldEdit folder into $Dest, which is emptied first.
+function Save-ScenarioSchematics([string]$DataDir, [string[]]$Names, [string]$Dest) {
+  if (Test-Path $Dest) { Remove-Item -Recurse -Force $Dest }
+  New-Item -ItemType Directory -Force -Path $Dest | Out-Null
+  foreach ($name in $Names) {
+    $file = Join-Path $DataDir "WorldEdit/$(Get-ScenarioSchematicName $name)"
+    if (Test-Path $file) { Copy-Item -Path $file -Destination $Dest }
+  }
+}
+
+# Boots the server with the built mods and the live mod, runs the named scenarios (every one in tests/live
+# when none is named), prints the run's lines, stops the server and throws when the run does not pass.
+function Invoke-Scenario([string[]]$Argv) {
+  $opts = Get-ScenarioOptions $Argv
+  $names = if ($opts.Names) { $opts.Names } else { Get-ScenarioNames }
+  $scenarios = Join-Path $RepoRoot 'tests/live'
+  if (-not (Test-Path $scenarios)) { throw "No tests/live under $RepoRoot." }
+  $command = Get-ScenarioCommand $names
+
+  $liveDir = Build-ScenarioLiveMod
+  $serverDir = Resolve-SmokeServer $opts.Version
+  $modDirs = @(Get-ScratchDefaultModDirs) + @($liveDir)
+  Write-Host "Running $($names.Count) scenario name(s) against Vintage Story $($opts.Version) at $serverDir on port $($opts.Port)"
+
+  $server = $null
+  try {
+    $server = New-ScratchServer 'scenario' $modDirs -DataCopies @{ $scenarios = "Scenarios/$ScenarioMod" } -ServerConfig (Get-ScenarioServerConfig)
+    Start-ScratchServer $server $serverDir $opts.Port
+    Wait-ScratchServer $server $ScenarioBootSeconds
+    $server.Proc.StandardInput.WriteLine($command)
+
+    $sent = [DateTime]::UtcNow
+    $printed = 0
+    $runSeen = $null
+    while ($true) {
+      $progress = Write-ScenarioProgress $server $printed
+      $printed = $progress.Printed
+      if ($progress.Report.Done -or $server.Proc.HasExited) { break }
+      if ($null -eq $runSeen -and $null -ne $progress.Report.Budget) { $runSeen = [DateTime]::UtcNow }
+      $anchor = if ($null -ne $runSeen) { $runSeen } else { $sent }
+      $span = if ($null -ne $opts.Timeout) { $opts.Timeout } elseif ($null -ne $runSeen) { $progress.Report.Budget + 60 } else { $ScenarioBootSeconds }
+      if ([DateTime]::UtcNow -gt $anchor.AddSeconds($span)) { break }
+      Start-Sleep -Milliseconds 500
+    }
+
+    if (-not $server.Proc.HasExited) { Stop-ScratchServer $server }
+    $progress = Write-ScenarioProgress $server $printed
+    $report = $progress.Report
+    foreach ($line in $report.Pending) { Write-Host $line }
+    Save-ScenarioSchematics $server.Data $report.FailedNames (Join-Path $RepoRoot '.game/.scenario-last')
+    if ($report.ExitCode -ne 0) { throw "Scenario run failed: $($report.Problems -join '; ')" }
+  }
+  finally {
+    if ($server) { Remove-ScratchServer $server $false }
+  }
+}
+
+
+Add-ExmodCommand -Group run -Name scenario -Summary 'run live scenarios on a booted server' -Action {
+  param([string[]]$Argv) Invoke-Scenario $Argv
+} -Detail @'
+exmod scenario [<name>...] [-Version <x.y>] [-Port <n>] [-Timeout <seconds>]
+
+Builds this checkout's live mod (exmod.json's `live` key), boots a dedicated server with the built mods
+and the live mod, copies tests/live into the server's Scenarios/exlib folder, runs the named scenarios
+on it, prints the run's lines and stops the server. A name is <modid>/<stem>, such as exlib/sample;
+with no name, every scenario file in tests/live runs.
+
+  -Version   the game series; only the current one, which the live mod is built for (default 1.22)
+  -Port      the port the server binds (default 42498), so two runs can share the machine
+  -Timeout   seconds to wait for the count line, in place of the run's budget plus 60
+
+Exits 1 when the count line is missing or reports no case run, a case fails or errors, or an [Error] or
+[Fatal] line falls outside a case. The schematics of the failed cases are copied to .game/.scenario-last.
+'@
+
+#endregion
+
 #region stage
 
 # Copies built mods into a Mods folder for a manual playtest, or for `client`/`server` to launch
