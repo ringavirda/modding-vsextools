@@ -94,6 +94,11 @@ Try-Case 'verbose' { $o = Get-ScenarioOptions @('-Verbose','exlib/sample'); [ord
 Try-Case 'hostVerbose' { $VerbosePreference = 'Continue'; (Get-ScenarioOptions @('exlib/sample')).Verbose }
 Try-Case 'unknown' { Get-ScenarioOptions @('-Keep','exlib/sample') | Out-Null; 'no error' }
 Try-Case 'series' { Get-ScenarioOptions @('-Version','1.21') | Out-Null; 'no error' }
+Try-Case 'shardsMods' { $o = Get-ScenarioOptions @('-Shards','3','-Mods','a,b','-KeepData','exlib/sample'); [ordered]@{ Shards = $o.Shards; Mods = @($o.Mods); KeepData = $o.KeepData } }
+Try-Case 'shardDefaults' { $o = Get-ScenarioOptions @('exlib/sample'); [ordered]@{ Shards = $o.Shards; Mods = @($o.Mods); KeepData = $o.KeepData } }
+Try-Case 'shardsZero' { Get-ScenarioOptions @('-Shards','0') | Out-Null; 'no error' }
+Try-Case 'modDirs' { Get-ScenarioModDirs @('default-a') 'live-dir' @(Join-Path $RepoRoot 'build/mod-a') }
+Try-Case 'tooManyShards' { Invoke-Scenario @('-Shards','3','exlib/sample') | Out-Null; 'no error' }
 """)
         return self.results
 
@@ -130,6 +135,36 @@ Try-Case 'series' { Get-ScenarioOptions @('-Version','1.21') | Out-Null; 'no err
         # Mutation: the series throw removed, so -Version 1.21 is accepted. Fails here.
         self.assertIn("runs on 1.22 only", self.results_of()["series"].get("Error", "no error"))
 
+    def test_shards_mods_and_keep_data_are_read(self):
+        # Mutation: '-Shards' removed from the value options, so 3 is refused as an unknown option. Fails here.
+        # Mutation: KeepData set to $false in Get-ScenarioOptions, so -KeepData is ignored. Fails here.
+        got = self.results_of()["shardsMods"]
+        self.assertEqual(3, got["Shards"])
+        self.assertEqual(["a", "b"], as_list(got["Mods"]))
+        self.assertTrue(got["KeepData"])
+
+    def test_one_shard_no_extra_mods_and_no_keep_by_default(self):
+        # Mutation: the default shard count set to 2. Fails here.
+        got = self.results_of()["shardDefaults"]
+        self.assertEqual(1, got["Shards"])
+        self.assertEqual([], got["Mods"])
+        self.assertFalse(got["KeepData"])
+
+    def test_zero_shards_is_refused(self):
+        # Mutation: the -Shards minimum check removed, so 0 shards boots nothing and passes. Fails here.
+        self.assertIn("-Shards must be 1 or more", self.results_of()["shardsZero"].get("Error", "no error"))
+
+    def test_extra_mod_folders_are_staged_after_the_live_mod(self):
+        # Mutation: the -Mods folders dropped from Get-ScenarioModDirs. Fails here.
+        got = as_list(self.results_of()["modDirs"])
+        self.assertEqual(3, len(got))
+        self.assertEqual(["default-a", "live-dir"], got[:2])
+        self.assertTrue(got[2].endswith(os.path.join("build", "mod-a")))
+
+    def test_more_shards_than_cases_is_refused_before_anything_is_built(self):
+        # Mutation: the shard count check removed, so the run goes on to the live build and fails elsewhere. Fails here.
+        self.assertIn("-Shards 3 is more than the 1 case(s) to run.", self.results_of()["tooManyShards"].get("Error", "no error"))
+
 
 @unittest.skipUnless(PWSH, "pwsh not found")
 class CommandAndNamesTests(FixtureRepo):
@@ -160,6 +195,18 @@ Try-Case 'expand' { Expand-ScenarioNames @('sample','exlib/sample-2','other/x') 
 Try-Case 'schematic' { Get-ScenarioSchematicName 'exlib/sample-fails' }
 """)["schematic"]
         self.assertEqual("scenario-exlib-sample-fails.json", got)
+
+    def test_names_are_dealt_out_over_the_shards_in_turn(self):
+        # Mutation: the stride set to 1 rather than the shard count, so each shard takes every name after its own. Fails here.
+        # Mutation: the inner loop's bound removed, so a shard past the last name reads past the array. Fails here.
+        got = run_cases(self.repo, r"""
+Try-Case 'deal' { $g = Split-ScenarioShards @('a','b','c','d','e') 2; @($g | ForEach-Object { $_ -join ',' }) }
+Try-Case 'one' { $g = Split-ScenarioShards @('a','b') 1; @($g | ForEach-Object { $_ -join ',' }) }
+Try-Case 'past' { $g = Split-ScenarioShards @('a') 2; @($g | ForEach-Object { $_ -join ',' }) }
+""")
+        self.assertEqual(["a,c,e", "b,d"], got["deal"])
+        self.assertEqual(["a,b"], as_list(got["one"]))
+        self.assertEqual(["a", ""], got["past"])
 
 
 @unittest.skipUnless(PWSH, "pwsh not found")
@@ -383,6 +430,92 @@ Try-Case 'passSteps' { Get-ScenarioReport @($cases.pass) $true }
         r = self.report("census")
         self.assertEqual([RUN, CENSUS, PASS_A, done(1, 1, 0), COVERAGE, UNCOVERED], r["Shown"])
         self.assertEqual(0, r["ExitCode"])
+
+
+SHARD_CASES = {
+    "passA": [RUN, CASE_A, STEP_OK, PASS_A, done(1, 1, 0)],
+    "failF": [RUN, CASE_F, STEP_BAD, FAIL_F, done(1, 0, 1)],
+    "noCount": [RUN, CASE_A, PASS_A],
+    "progress": [RUN, CASE_A, PASS_A, done(1, 1, 0)],
+}
+
+
+@unittest.skipUnless(PWSH, "pwsh not found")
+class ShardTests(FixtureRepo):
+    """The per-shard reports merged into one count line and one exit rule, the progress printer that
+    leaves the count line to the merge, and the schematic copy over every shard's data path."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.results = None
+
+    def results_of(self):
+        if self.results is None:
+            cases = os.path.join(self.tmp, "cases.json")
+            with open(cases, "w") as f:
+                json.dump(SHARD_CASES, f)
+            type(self).results = run_cases(self.repo, r"""
+$cases = Get-Content -Raw -LiteralPath $env:CASES | ConvertFrom-Json
+$passA = Get-ScenarioReport @($cases.passA)
+$failF = Get-ScenarioReport @($cases.failF)
+$noCount = Get-ScenarioReport @($cases.noCount)
+Try-Case 'line' { Get-ScenarioCountLine @($passA, $failF) }
+Try-Case 'lineOne' { Get-ScenarioCountLine @($passA) }
+Try-Case 'lineNone' { Get-ScenarioCountLine @($noCount) }
+Try-Case 'lineSkipsMissing' { Get-ScenarioCountLine @($noCount, $passA) }
+Try-Case 'problemsOne' { Get-ScenarioExitProblems @($failF) }
+Try-Case 'problemsTwo' { Get-ScenarioExitProblems @($passA, $failF) }
+Try-Case 'problemsPass' { @(Get-ScenarioExitProblems @($passA, $passA)).Count }
+Try-Case 'problemsNoCount' { Get-ScenarioExitProblems @($passA, $noCount) }
+Try-Case 'progressOut' {
+  $log = Join-Path $RepoRoot 'progress.log'
+  Set-Content -Path $log -Value @($cases.progress)
+  @(Write-ScenarioProgress ([pscustomobject]@{ Log = $log }) 0 $false 6>&1 |
+    Where-Object { $_ -is [System.Management.Automation.InformationRecord] } | ForEach-Object { "$_" })
+}
+Try-Case 'twoDirs' {
+  $a = Join-Path $RepoRoot 'dir-a'
+  $b = Join-Path $RepoRoot 'dir-b'
+  New-Item -ItemType Directory -Force -Path (Join-Path $a 'WorldEdit'), (Join-Path $b 'WorldEdit') | Out-Null
+  Set-Content -Path (Join-Path $b 'WorldEdit/scenario-exlib-sample-fails.json') -Value '{}'
+  $dest = Join-Path $RepoRoot 'last-two'
+  Save-ScenarioSchematics @($a, $b) @('exlib/sample-fails') $dest
+  @(Get-ChildItem $dest | ForEach-Object Name)
+}
+""", CASES=cases)
+        return self.results
+
+    def test_the_count_line_sums_the_shards(self):
+        # Mutation: the sum replaced by the first shard's totals. Fails here.
+        self.assertEqual(done(2, 1, 1), self.results_of()["line"])
+
+    def test_no_count_line_from_any_shard_gives_no_line(self):
+        # Mutation: the early return of $null removed, so a summed zero count line is printed. Fails here.
+        self.assertIsNone(self.results_of()["lineNone"])
+
+    def test_one_shard_reasons_are_not_prefixed(self):
+        # Mutation: the prefix added for one shard too. Fails here.
+        self.assertEqual([FAIL_F, "1 case(s) failed"], as_list(self.results_of()["problemsOne"]))
+
+    def test_each_reason_names_its_shard_when_there_are_several(self):
+        # Mutation: the prefix dropped. Fails here. Mutation: only the first report read. Fails here too.
+        self.assertEqual([f"shard 2: {FAIL_F}", "shard 2: 1 case(s) failed"], self.results_of()["problemsTwo"])
+
+    def test_passing_shards_give_no_reasons(self):
+        # Mutation: an extra reason added per shard report. Fails here.
+        self.assertEqual(0, self.results_of()["problemsPass"])
+
+    def test_a_shard_without_a_count_line_is_a_reason(self):
+        # Mutation: only the first report's reasons read. Fails here.
+        self.assertEqual(["shard 2: no count line"], as_list(self.results_of()["problemsNoCount"]))
+
+    def test_progress_prints_every_line_but_the_count_line(self):
+        # Mutation: the count line filter removed in Write-ScenarioProgress, so each shard prints its own. Fails here.
+        self.assertEqual([RUN, PASS_A], self.results_of()["progressOut"])
+
+    def test_a_schematic_is_found_in_any_shards_data_path(self):
+        # Mutation: only the first data path searched in Save-ScenarioSchematics. Fails here.
+        self.assertEqual(["scenario-exlib-sample-fails.json"], as_list(self.results_of()["twoDirs"]))
 
 
 if __name__ == "__main__":

@@ -667,10 +667,12 @@ $ScenarioBootSeconds = 180
 $ScenarioMod = 'exlib'
 
 # The options `exmod scenario` takes: Names (as given, possibly none), Version (the current series only,
-# the live mod being built for it), Port and Timeout (seconds to wait for the count line, or $null for the
-# run's budget plus 60), Verbose (print every step line of passing cases too).
+# the live mod being built for it), Port (the first port; shard i binds Port + i), Timeout (seconds to wait
+# for the count line, or $null for the run's budget plus 60), Shards (servers to boot, 1 or more), Mods (extra
+# mod folders, as given), Verbose (print every step line of passing cases too) and KeepData (keep each
+# scratch data path).
 function Get-ScenarioOptions([string[]]$Argv) {
-  $names = @(Get-Positional $Argv @('-Version', '-Port', '-Timeout') @('-Verbose'))
+  $names = @(Get-Positional $Argv @('-Version', '-Port', '-Timeout', '-Shards', '-Mods') @('-Verbose', '-KeepData'))
   $unknown = @($names | Where-Object { $_ -like '-*' })
   if ($unknown) { throw "Unknown option $($unknown[0]) for exmod scenario." }
   $version = Get-Opt $Argv '-Version' $CurrentGameVersion
@@ -678,13 +680,34 @@ function Get-ScenarioOptions([string[]]$Argv) {
     throw "exmod scenario runs on $CurrentGameVersion only: the live mod is built for it, and $version was asked."
   }
   $timeout = Get-Opt $Argv '-Timeout' $null
+  $shards = [int](Get-Opt $Argv '-Shards' 1)
+  if ($shards -lt 1) { throw "-Shards must be 1 or more, and $shards was asked." }
+  $mods = Get-Opt $Argv '-Mods' $null
   return [pscustomobject]@{
-    Names   = $names
-    Version = $version
-    Port    = [int](Get-Opt $Argv '-Port' $ScenarioPort)
-    Verbose = ((Get-Flag $Argv '-Verbose') -or ($VerbosePreference -eq 'Continue'))
-    Timeout = if ($null -eq $timeout) { $null } else { [int]$timeout }
+    Names    = $names
+    Version  = $version
+    Port     = [int](Get-Opt $Argv '-Port' $ScenarioPort)
+    Verbose  = ((Get-Flag $Argv '-Verbose') -or ($VerbosePreference -eq 'Continue'))
+    Timeout  = if ($null -eq $timeout) { $null } else { [int]$timeout }
+    Shards   = $shards
+    Mods     = if ($null -eq $mods) { @() } else { @($mods -split ',') }
+    KeepData = (Get-Flag $Argv '-KeepData')
   }
+}
+
+# Deals the names out over $Count shards in turn: shard i takes names i, i+$Count, and so on. Returns one
+# array of names per shard, in shard order; a shard past the last name gets an empty array.
+function Split-ScenarioShards([string[]]$Names, [int]$Count) {
+  $groups = @()
+  for ($i = 0; $i -lt $Count; $i++) {
+    $groups += ,@(for ($j = $i; $j -lt $Names.Count; $j += $Count) { $Names[$j] })
+  }
+  return ,$groups
+}
+
+# The mod folders a scenario boot stages: the defaults, the live mod, then the -Mods folders as given.
+function Get-ScenarioModDirs([string[]]$Defaults, [string]$LiveDir, [string[]]$Extra) {
+  return @($Defaults) + @($LiveDir) + @(Resolve-ModDirs $Extra)
 }
 
 # Every scenario file directly under the checkout's tests/live, as <modid>/<stem>.
@@ -850,73 +873,130 @@ function Get-ScenarioReport([string[]]$Lines, [bool]$Steps = $false) {
     Problems    = $problems.ToArray()
     Budget      = $budget
     Done        = ($null -ne $done)
+    Totals      = $done
     FailedNames = $failedNames.ToArray()
     ExitCode    = $exitCode
   }
 }
 
-# Reads the server log so far and prints the report lines not printed yet; $Printed counts those.
+# Reads the server log so far and prints the report lines not printed yet, except a count line, which
+# the caller prints once over every shard; $Printed counts the report lines already handled.
 function Write-ScenarioProgress($Server, [int]$Printed, [bool]$Steps = $false) {
   $report = Get-ScenarioReport @(Get-Content $Server.Log -ErrorAction SilentlyContinue) $Steps
   $new = @($report.Shown | Select-Object -Skip $Printed)
-  foreach ($line in $new) { Write-Host $line }
+  foreach ($line in $new) {
+    if ($line -notmatch '^\[scenario\] done: ') { Write-Host $line }
+  }
   return [pscustomobject]@{ Report = $report; Printed = $Printed + $new.Count }
 }
 
-# Copies each failed case's schematic from $DataDir's WorldEdit folder into $Dest, which is emptied first.
-function Save-ScenarioSchematics([string]$DataDir, [string[]]$Names, [string]$Dest) {
+# Copies each failed case's schematic from the first of $DataDirs' WorldEdit folders that holds it into
+# $Dest, which is emptied first.
+function Save-ScenarioSchematics([string[]]$DataDirs, [string[]]$Names, [string]$Dest) {
   if (Test-Path $Dest) { Remove-Item -Recurse -Force $Dest }
   New-Item -ItemType Directory -Force -Path $Dest | Out-Null
   foreach ($name in $Names) {
-    $file = Join-Path $DataDir "WorldEdit/$(Get-ScenarioSchematicName $name)"
-    if (Test-Path $file) { Copy-Item -Path $file -Destination $Dest }
+    foreach ($dir in $DataDirs) {
+      $file = Join-Path $dir "WorldEdit/$(Get-ScenarioSchematicName $name)"
+      if (Test-Path $file) { Copy-Item -Path $file -Destination $Dest; break }
+    }
   }
 }
 
-# Boots the server with the built mods and the live mod, runs the named scenarios (every one in tests/live
-# when none is named), prints the run's lines, stops the server and throws when the run does not pass.
+# The count line over the shards that printed one: the sums of their run, passed and failed cases. $null
+# when no shard printed one.
+function Get-ScenarioCountLine($Reports) {
+  $totals = @($Reports | Where-Object { $null -ne $_.Totals } | ForEach-Object { $_.Totals })
+  if ($totals.Count -eq 0) { return $null }
+  $run = ($totals | Measure-Object -Property Run -Sum).Sum
+  $passed = ($totals | Measure-Object -Property Passed -Sum).Sum
+  $failed = ($totals | Measure-Object -Property Failed -Sum).Sum
+  return "[scenario] done: $run case(s) run, $passed passed, $failed failed."
+}
+
+# The reasons the run does not pass, over every shard's report, each prefixed "shard <n>: " when there is
+# more than one shard. Empty when the run passes.
+function Get-ScenarioExitProblems($Reports) {
+  $out = @()
+  for ($i = 0; $i -lt $Reports.Count; $i++) {
+    foreach ($p in $Reports[$i].Problems) {
+      $out += if ($Reports.Count -gt 1) { "shard $($i + 1): $p" } else { $p }
+    }
+  }
+  return $out
+}
+
+# Boots one server per shard with the built mods, the live mod and the -Mods folders, deals the named
+# scenarios out over them (every one in tests/live when none is named), prints the run's lines, stops the
+# servers and throws when the run does not pass.
 function Invoke-Scenario([string[]]$Argv) {
   $opts = Get-ScenarioOptions $Argv
   $names = if ($opts.Names) { Expand-ScenarioNames $opts.Names } else { Get-ScenarioNames }
+  if ($opts.Shards -gt $names.Count) { throw "-Shards $($opts.Shards) is more than the $($names.Count) case(s) to run." }
   $scenarios = Join-Path $RepoRoot 'tests/live'
   if (-not (Test-Path $scenarios)) { throw "No tests/live under $RepoRoot." }
-  $command = Get-ScenarioCommand $names
+  $groups = Split-ScenarioShards $names $opts.Shards
 
   $liveDir = Build-ScenarioLiveMod
   $serverDir = Resolve-SmokeServer $opts.Version
-  $modDirs = @(Get-ScratchDefaultModDirs) + @($liveDir)
-  Write-Host "Running $($names.Count) scenario name(s) against Vintage Story $($opts.Version) at $serverDir on port $($opts.Port)"
+  $modDirs = Get-ScenarioModDirs (Get-ScratchDefaultModDirs) $liveDir $opts.Mods
+  Write-Host "Running $($names.Count) scenario name(s) against Vintage Story $($opts.Version) at $serverDir on $($groups.Count) shard(s)"
 
-  $server = $null
+  $shards = [System.Collections.Generic.List[object]]::new()
   try {
-    $server = New-ScratchServer 'scenario' $modDirs -DataCopies @{ $scenarios = "Scenarios/$ScenarioMod" } -ServerConfig (Get-ScenarioServerConfig)
-    Start-ScratchServer $server $serverDir $opts.Port $true
-    Wait-ScratchServer $server $ScenarioBootSeconds
-    $server.Proc.StandardInput.WriteLine($command)
+    for ($i = 0; $i -lt $groups.Count; $i++) {
+      $port = $opts.Port + $i
+      $server = New-ScratchServer 'scenario' $modDirs -DataCopies @{ $scenarios = "Scenarios/$ScenarioMod" } -ServerConfig (Get-ScenarioServerConfig)
+      $shards.Add([pscustomobject]@{
+          Server   = $server
+          Port     = $port
+          Command  = (Get-ScenarioCommand $groups[$i])
+          Printed  = 0
+          Sent     = $null
+          RunSeen  = $null
+          Finished = $false
+          Report   = $null
+        })
+      Write-Host "shard $($i + 1) on port ${port}: $($groups[$i] -join ' ')"
+    }
+    foreach ($s in $shards) { Start-ScratchServer $s.Server $serverDir $s.Port $true }
+    foreach ($s in $shards) { Wait-ScratchServer $s.Server $ScenarioBootSeconds }
+    foreach ($s in $shards) {
+      $s.Server.Proc.StandardInput.WriteLine($s.Command)
+      $s.Sent = [DateTime]::UtcNow
+    }
 
-    $sent = [DateTime]::UtcNow
-    $printed = 0
-    $runSeen = $null
     while ($true) {
-      $progress = Write-ScenarioProgress $server $printed $opts.Verbose
-      $printed = $progress.Printed
-      if ($progress.Report.Done -or $server.Proc.HasExited) { break }
-      if ($null -eq $runSeen -and $null -ne $progress.Report.Budget) { $runSeen = [DateTime]::UtcNow }
-      $anchor = if ($null -ne $runSeen) { $runSeen } else { $sent }
-      $span = if ($null -ne $opts.Timeout) { $opts.Timeout } elseif ($null -ne $runSeen) { $progress.Report.Budget + 60 } else { $ScenarioBootSeconds }
-      if ([DateTime]::UtcNow -gt $anchor.AddSeconds($span)) { break }
+      $running = @($shards | Where-Object { -not $_.Finished })
+      if ($running.Count -eq 0) { break }
+      foreach ($s in $running) {
+        $progress = Write-ScenarioProgress $s.Server $s.Printed $opts.Verbose
+        $s.Printed = $progress.Printed
+        $s.Report = $progress.Report
+        if ($progress.Report.Done -or $s.Server.Proc.HasExited) { $s.Finished = $true; continue }
+        if ($null -eq $s.RunSeen -and $null -ne $progress.Report.Budget) { $s.RunSeen = [DateTime]::UtcNow }
+        $anchor = if ($null -ne $s.RunSeen) { $s.RunSeen } else { $s.Sent }
+        $span = if ($null -ne $opts.Timeout) { $opts.Timeout } elseif ($null -ne $s.RunSeen) { $progress.Report.Budget + 60 } else { $ScenarioBootSeconds }
+        if ([DateTime]::UtcNow -gt $anchor.AddSeconds($span)) { $s.Finished = $true }
+      }
       Start-Sleep -Milliseconds 500
     }
 
-    if (-not $server.Proc.HasExited) { Stop-ScratchServer $server }
-    $progress = Write-ScenarioProgress $server $printed $opts.Verbose
-    $report = $progress.Report
-    foreach ($line in $report.Pending) { Write-Host $line }
-    Save-ScenarioSchematics $server.Data $report.FailedNames (Join-Path $RepoRoot '.game/.scenario-last')
-    if ($report.ExitCode -ne 0) { throw "Scenario run failed: $($report.Problems -join '; ')" }
+    foreach ($s in $shards) { if (-not $s.Server.Proc.HasExited) { Stop-ScratchServer $s.Server } }
+    $reports = @()
+    foreach ($s in $shards) {
+      $progress = Write-ScenarioProgress $s.Server $s.Printed $opts.Verbose
+      foreach ($line in $progress.Report.Pending) { Write-Host $line }
+      $reports += $progress.Report
+    }
+    $countLine = Get-ScenarioCountLine $reports
+    if ($countLine) { Write-Host $countLine }
+    Save-ScenarioSchematics @($shards | ForEach-Object { $_.Server.Data }) @($reports | ForEach-Object { $_.FailedNames }) (Join-Path $RepoRoot '.game/.scenario-last')
+    $problems = Get-ScenarioExitProblems $reports
+    if ($problems) { throw "Scenario run failed: $($problems -join '; ')" }
   }
   finally {
-    if ($server) { Remove-ScratchServer $server $false }
+    foreach ($s in $shards) { Remove-ScratchServer $s.Server $opts.KeepData }
   }
 }
 
@@ -924,19 +1004,26 @@ function Invoke-Scenario([string[]]$Argv) {
 Add-ExmodCommand -Group run -Name scenario -Summary 'run live scenarios on a booted server' -Action {
   param([string[]]$Argv) Invoke-Scenario $Argv
 } -Detail @'
-exmod scenario [<name>...] [-Version <x.y>] [-Port <n>] [-Timeout <seconds>]
+exmod scenario [<name>...] [-Version <x.y>] [-Port <n>] [-Timeout <seconds>] [-Shards <n>]
+               [-Mods <dir>[,...]] [-KeepData] [-Verbose]
 
 Builds this checkout's live mod (exmod.json's `live` key), boots a dedicated server with the built mods
 and the live mod, copies tests/live into the server's Scenarios/exlib folder, runs the named scenarios
-on it, prints the run's lines and stops the server. A name is <modid>/<stem>, such as exlib/sample, or a bare stem of this checkout's own;
-with no name, every scenario file in tests/live runs.
+on it, prints the run's lines and stops the server. A name is <modid>/<stem>, such as exlib/sample, or a
+bare stem of this checkout's own; with no name, every scenario file in tests/live runs.
 
   -Version   the game series; only the current one, which the live mod is built for (default 1.22)
   -Port      the port the server binds (default 42498), so two runs can share the machine
   -Timeout   seconds to wait for the count line, in place of the run's budget plus 60
+  -Shards    servers to boot, each on the next port up from -Port; the names are dealt out over them in
+             turn, each server runs its own, and one count line covers all (default 1)
+  -Mods      extra mod folder(s), or folder(s) of mod folders, staged beside the live mod
+  -KeepData  keep each scratch data path and print it, instead of deleting it
+  -Verbose   print every step line, passing cases too
 
 Exits 1 when the count line is missing or reports no case run, a case fails or errors, or an [Error] or
-[Fatal] line falls outside a case. The schematics of the failed cases are copied to .game/.scenario-last.
+[Fatal] line falls outside a case, on any shard. The schematics of the failed cases are copied to
+.game/.scenario-last.
 '@
 
 #endregion

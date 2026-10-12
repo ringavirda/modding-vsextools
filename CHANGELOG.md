@@ -9,6 +9,7 @@
   named), prints the run's lines (every step line under `-Verbose`) and stops the server. It exits 1 when the count line is missing or reports no
   case, a case fails or errors, or an [Error] or [Fatal] line falls outside a case. `exmod smoke` and it share
   the scratch-server steps.
+- `exmod scenario` takes `-Shards <n>` (n servers on consecutive ports from `-Port`, the names dealt out over them, one count line over all), `-Mods <dir>[,...]` (extra mod folders staged beside the live mod) and `-KeepData` (each scratch data path kept and printed).
 - The shapes tool's `schematic` draws a planned layout (`layout-recap/1`, one per machine from
   `vsshape layout`): a plan SVG per layer with each grid glyph in its cell, the cells' collision
   boxes and the controls' selection boxes outlined and a key of the glyphs on the layer, and an iso
