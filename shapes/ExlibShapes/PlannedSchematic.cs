@@ -80,7 +80,8 @@ public static class PlannedSchematic {
         .Distinct()
     )
       lines.Add($"{glyph}  {Meaning(planned, glyph)}");
-    bool On(PlannedBoxKind k) => planned.Boxes.Any(b => b.At.Y == y && b.Kind == k);
+    bool On(PlannedBoxKind k) =>
+      planned.Boxes.Any(b => b.At.Y == y && b.Kind == k);
     if (On(PlannedBoxKind.Collision))
       lines.Add("red outline  collision box");
     if (On(PlannedBoxKind.Control))
@@ -183,18 +184,32 @@ public static class PlannedSchematic {
           elements.Add(bar);
     }
     var counts = new Dictionary<PlannedBoxKind, int>();
-    foreach (PlannedBox b in planned.Boxes.Where(b => b.Kind != PlannedBoxKind.Collision)) {
+    foreach (
+      PlannedBox b in planned.Boxes.Where(b =>
+        b.Kind != PlannedBoxKind.Collision
+      )
+    ) {
       if (cutAt != null && b.At.Y > cutAt)
         continue;
       (string prefix, string key, double thickness) = b.Kind switch {
         PlannedBoxKind.Door => (DoorPrefix, DoorTextureKey, FrameBar),
-        PlannedBoxKind.DoorOpening => (OpeningPrefix, DoorTextureKey, FrameBar / 2),
-        PlannedBoxKind.Instrument => (InstrumentPrefix, InstrumentTextureKey, FrameBar),
+        PlannedBoxKind.DoorOpening => (
+          OpeningPrefix,
+          DoorTextureKey,
+          FrameBar / 2
+        ),
+        PlannedBoxKind.Instrument => (
+          InstrumentPrefix,
+          InstrumentTextureKey,
+          FrameBar
+        ),
         _ => (ControlPrefix, ControlTextureKey, FrameBar),
       };
       int n = counts.GetValueOrDefault(b.Kind);
       counts[b.Kind] = n + 1;
-      foreach (JObject bar in Frame(b.At, b.Box, $"{prefix}{n}", key, thickness))
+      foreach (
+        JObject bar in Frame(b.At, b.Box, $"{prefix}{n}", key, thickness)
+      )
         elements.Add(bar);
     }
     return (

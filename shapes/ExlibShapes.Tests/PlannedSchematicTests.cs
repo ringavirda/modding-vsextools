@@ -410,7 +410,10 @@ public class PlannedSchematicTests {
     );
     Assert.DoesNotContain("class=\"control-box\"", layer1);
     Assert.Contains(">green outline  door, shut leaf<", layer1);
-    Assert.Contains(">green dotted outline  door opening, clear when open<", layer1);
+    Assert.Contains(
+      ">green dotted outline  door opening, clear when open<",
+      layer1
+    );
     Assert.Contains(">purple outline  instrument selection box<", layer1);
   }
 
