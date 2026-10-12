@@ -122,8 +122,8 @@ line key, its ports and its open faces), to `--out`. `PATH` is one file, or a fo
 `*.scene.json` is rendered, in ordinal name order; the stem is the file name less `.scene.json`.
 `--views` defaults to the four corners and `plan`. Each corner `NAME` writes `<stem>-plain-NAME.png`,
 the cells as that iso corner shows them, an unresolved code drawn as a black-and-yellow checker cube,
-and `<stem>-tint-NAME.png` on the same canvas: each texel's colour averaged with its network's or
-line's colour, a cell on neither in its texture's grey. Over the tinted picture, never hidden by a
+and `<stem>-tint-NAME.png` on the same canvas: each texel takes the hue and saturation of its
+network's or line's colour and keeps its own lightness, a cell on neither in its texture's grey. Over the tinted picture, never hidden by a
 machine in front, each port cell is framed along its edges in its network's or line's colour (red
 when it joins none) and each open face carries a red stub, a short square bar leaving the middle
 of the face.
@@ -134,7 +134,7 @@ corner PNGs' scale (default 4). `--roots` names extra mod repository roots that 
 against, repeatable; `--game` names the game install.
 
 A `<stem>.json` manifest is written alongside: `files` (every path written), `networks` and `lines`
-(key, type or member count, ids, colour), `unjoined` (ports that join nothing: at, principal, id,
+(key, type, `nodes` or member count, ids, colour), `unjoined` (ports that join nothing: at, principal, id,
 face, type), `open` (connector faces nothing joins: at, id, face), `unresolved` (the codes no root
 resolved), `missingTextures` and `warnings`. The tool prints each finding as
 `unjoined: STEM ID FACE TYPE at x,y,z` or `open: STEM ID FACE at x,y,z`.

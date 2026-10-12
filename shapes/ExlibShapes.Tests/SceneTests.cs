@@ -521,49 +521,56 @@ public class SceneTests : IDisposable {
     Assert.Equal([line], manifest["missingTextures"]!.Select(t => (string)t!));
   }
 
+  // The pixel of demo-tint-se.png at the top face's centre of the cell at `at`.
+  private static SKColor DemoTopPixel(SKBitmap tinted, Offset at) {
+    SceneFile scene = SceneFile.Load(Fixture);
+    (JObject raw, _, _) = SceneRender.Compose(
+      scene,
+      BlockIndex.Build([DemoRoot])
+    );
+    View view = Renderer.NamedViews["se"];
+    Renderer.Canvas canvas = Renderer.Fit(SceneRender.Load(raw), view)!.Value;
+    (double col, double row) = new Renderer.Projection(
+      canvas.XMin,
+      canvas.YMax,
+      4,
+      view
+    ).Screen(at.X * 16 + 8, 16, at.Z * 16 + 8);
+    return tinted.GetPixel((int)col, (int)row);
+  }
+
   [Fact]
-  public void A_run_cells_top_face_is_its_texel_averaged_with_the_networks_colour() {
+  public void A_run_cells_top_face_takes_the_networks_hue_and_a_no_key_cell_is_grey() {
     string dir = Scratch();
-    using SKBitmap tinted = TintedSe(Wall("A"), "A", dir);
-    using SKBitmap texture = SKBitmap.Decode(
-      Path.Combine(
-        DemoRoot,
-        "mods/demo/assets/demo/textures/block/wall.png"
-      )
+    SceneRender.Write(
+      SceneFile.Load(Fixture),
+      BlockIndex.Build([DemoRoot]),
+      dir,
+      "demo",
+      ["se"]
     );
-    SKColor key = SKColor.Parse(
-      ScenePlan.KeyColors(
-        new SceneFile(
-          "solo",
-          null,
-          null,
-          [],
-          [new SceneNetwork("A", "steam", 1, [])],
-          []
-        )
-      )["A"]
-    );
-    var expected = new HashSet<SKColor>();
-    for (int y = 0; y < texture.Height; y++)
-      for (int x = 0; x < texture.Width; x++) {
-        SKColor t = texture.GetPixel(x, y);
-        expected.Add(
-          new SKColor(
-            (byte)((t.Red + key.Red + 1) / 2),
-            (byte)((t.Green + key.Green + 1) / 2),
-            (byte)((t.Blue + key.Blue + 1) / 2)
-          )
-        );
-      }
-    Assert.Contains(
-      Drawn(tinted),
-      c =>
-        expected.Any(e =>
-          Math.Abs(c.Red - e.Red) <= PixelCompare.Tolerance
-          && Math.Abs(c.Green - e.Green) <= PixelCompare.Tolerance
-          && Math.Abs(c.Blue - e.Blue) <= PixelCompare.Tolerance
-        )
-    );
+    using SKBitmap tinted = SKBitmap.Decode(Path.Combine(dir, "demo-tint-se.png"));
+    SKColor.Parse(ScenePlan.KeyColors(SceneFile.Load(Fixture))["A"])
+      .ToHsl(out float keyHue, out float keySaturation, out float _);
+
+    DemoTopPixel(tinted, new Offset(2, 0, 0)).ToHsl(out float hue, out float saturation, out float _);
+    float apart = Math.Abs(hue - keyHue);
+    Assert.InRange(Math.Min(apart, 360 - apart), 0, 10);
+    Assert.True(saturation >= keySaturation / 2, $"saturation {saturation} of key's {keySaturation}");
+
+    DemoTopPixel(tinted, new Offset(6, 0, 5)).ToHsl(out float _, out float greySaturation, out float _);
+    Assert.Equal(0, greySaturation);
+  }
+
+  [Fact]
+  public void A_cell_naming_a_key_the_scene_does_not_declare_is_grey_in_the_tint() {
+    using SKBitmap tinted = TintedSe(Wall("B"), "", Scratch());
+    List<SKColor> pixels = [.. Drawn(tinted)];
+    Assert.NotEmpty(pixels);
+    Assert.All(pixels, c => {
+      Assert.InRange(Math.Abs(c.Red - c.Green), 0, PixelCompare.Tolerance);
+      Assert.InRange(Math.Abs(c.Green - c.Blue), 0, PixelCompare.Tolerance);
+    });
   }
 
   [Fact]
@@ -673,17 +680,18 @@ public class SceneTests : IDisposable {
     );
   }
 
-  // The tinted views of a walled port, and of the same scene with the port's frame left out.
-  private IEnumerable<(SKBitmap Framed, SKBitmap Bare)> WalledViews(string? joins) {
+  // Runs `check` on the tinted views of a walled port and of the same scene with the port's
+  // frame left out, then disposes both.
+  private void WalledViews(string? joins, Action<string, SKBitmap, SKBitmap> check) {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     string dir = Scratch();
     SceneRender.Write(Walled(joins, true), index, dir, "framed", Corners);
     SceneRender.Write(Walled(joins, false), index, dir, "bare", Corners);
-    foreach (string view in Corners)
-      yield return (
-        SKBitmap.Decode(Path.Combine(dir, $"framed-tint-{view}.png")),
-        SKBitmap.Decode(Path.Combine(dir, $"bare-tint-{view}.png"))
-      );
+    foreach (string view in Corners) {
+      using SKBitmap framed = SKBitmap.Decode(Path.Combine(dir, $"framed-tint-{view}.png"));
+      using SKBitmap bare = SKBitmap.Decode(Path.Combine(dir, $"bare-tint-{view}.png"));
+      check(view, framed, bare);
+    }
   }
 
   private static List<SKColor> Changed(SKBitmap framed, SKBitmap bare) {
@@ -696,33 +704,59 @@ public class SceneTests : IDisposable {
   }
 
   [Fact]
-  public void A_walled_unjoined_ports_frame_shows_red_in_each_tinted_view() {
-    foreach ((SKBitmap framed, SKBitmap bare) in WalledViews(null)) {
-      List<SKColor> changed = Changed(framed, bare);
-      Assert.Contains(changed, c => IsShadeOf(c, ScenePlan.Unjoined));
-    }
-  }
+  public void A_walled_unjoined_ports_frame_shows_red_in_each_tinted_view() =>
+    WalledViews(
+      null,
+      (_, framed, bare) =>
+        Assert.Contains(Changed(framed, bare), c => IsShadeOf(c, ScenePlan.Unjoined))
+    );
 
   [Fact]
-  public void Pixels_a_frame_changes_are_its_own_colour_and_the_tint_inside_it_stays() {
-    foreach ((SKBitmap framed, SKBitmap bare) in WalledViews(null)) {
-      List<SKColor> changed = Changed(framed, bare);
-      Assert.NotEmpty(changed);
-      Assert.True(
-        changed.Count(c => IsShadeOf(c, ScenePlan.Unjoined)) * 5 >= changed.Count * 4,
-        $"{changed.Count(c => !IsShadeOf(c, ScenePlan.Unjoined))} of {changed.Count} changed pixels are not the frame's"
-      );
-    }
-  }
+  public void The_top_face_of_a_walled_port_cell_keeps_the_tint_inside_its_frame() =>
+    WalledViews(
+      null,
+      (view, framed, bare) => {
+        BlockIndex index = BlockIndex.Build([DemoRoot]);
+        (JObject raw, _, _) = SceneRender.Compose(Walled(null, true), index);
+        LoadedShape shape = SceneRender.Load(raw);
+        Renderer.Canvas canvas = Corners
+          .Select(v => Renderer.Fit(shape, Renderer.NamedViews[v])!.Value)
+          .Aggregate((a, b) => a.Union(b));
+        var projection = new Renderer.Projection(
+          canvas.XMin,
+          canvas.YMax,
+          4,
+          Renderer.NamedViews[view]
+        );
+        (double centreCol, _) = projection.Screen(24, 16, 24);
+        int checkedPoints = 0;
+        foreach ((int dx, int dz) in new[] { (4, 4), (4, -4), (-4, 4), (-4, -4) }) {
+          (double col, double row) = projection.Screen(24 + dx, 16, 24 + dz);
+          if (Math.Abs(col - centreCol) < 10)
+            continue;
+          checkedPoints++;
+          SKColor inside = bare.GetPixel((int)col, (int)row);
+          Assert.NotEqual(bare.GetPixel(0, 0), inside);
+          Assert.True(
+            inside == framed.GetPixel((int)col, (int)row),
+            $"{view} at {col},{row}: {inside} vs {framed.GetPixel((int)col, (int)row)}"
+          );
+        }
+        Assert.Equal(2, checkedPoints);
+      }
+    );
 
   [Fact]
   public void A_joined_ports_frame_is_its_networks_colour_and_not_red() {
     string joins = ScenePlan.KeyColors(Walled("A", true))["A"];
-    foreach ((SKBitmap framed, SKBitmap bare) in WalledViews("A")) {
-      List<SKColor> changed = Changed(framed, bare);
-      Assert.Contains(changed, c => IsShadeOf(c, joins));
-      Assert.DoesNotContain(changed, c => IsShadeOf(c, ScenePlan.Unjoined));
-    }
+    WalledViews(
+      "A",
+      (_, framed, bare) => {
+        List<SKColor> changed = Changed(framed, bare);
+        Assert.Contains(changed, c => IsShadeOf(c, joins));
+        Assert.DoesNotContain(changed, c => IsShadeOf(c, ScenePlan.Unjoined));
+      }
+    );
   }
 
   [Theory]

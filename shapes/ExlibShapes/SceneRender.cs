@@ -151,8 +151,9 @@ public static class SceneRender {
   /// <summary>
   /// Writes <c>{stem}-plain-{view}.png</c> and <c>{stem}-tint-{view}.png</c> for each corner view
   /// in <paramref name="views"/>, all on one canvas: the union of the views' fitted canvases. In a
-  /// tinted view each texel's RGB is the mean of itself and its cell's network or line colour
-  /// (<see cref="ScenePlan.KeyColors"/>), and a cell on neither is its texture's luminance grey;
+  /// tinted view each texel takes the hue and saturation of its cell's network or line colour
+  /// (<see cref="ScenePlan.KeyColors"/>) and keeps its own HSL lightness and alpha, and a cell on
+  /// neither, or on a key the scene does not declare, is its texture's luminance grey;
   /// a missing texture keeps its magenta and an unresolved cube its checker. Names in
   /// <paramref name="views"/> that are not corner views are left to the caller.
   /// </summary>
@@ -162,6 +163,8 @@ public static class SceneRender {
   /// <param name="stem">The scene file's name less <c>.scene.json</c>.</param>
   /// <param name="views">View names; those in <see cref="CornerViews"/> are drawn.</param>
   /// <param name="ppu">Pixels per unit, above 0.</param>
+  /// <returns>The paths written and the findings of the drawing.</returns>
+  /// <exception cref="IOException">A folder or a PNG cannot be created or written.</exception>
   public static SceneRendered Write(
     SceneFile scene,
     BlockIndex index,
@@ -353,7 +356,10 @@ public static class SceneRender {
         continue;
       SceneCell cell = scene.Cells[CellOf(key)];
       string? hex = cell.Network ?? cell.Line;
-      extra[key] = Tint(plain.Get(key), hex == null ? null : colors[hex]);
+      extra[key] = Tint(
+        plain.Get(key),
+        hex != null && colors.TryGetValue(hex, out string? color) ? color : null
+      );
     }
     return TextureSet.FromResolved(values, index.ResolveTexture, extra);
   }
@@ -369,14 +375,10 @@ public static class SceneRender {
     int h = image.GetLength(0),
       w = image.GetLength(1);
     var result = new byte[h, w, 4];
-    int[] key =
-      hex == null
-        ? []
-        : [
-          .. Enumerable
-            .Range(0, 3)
-            .Select(c => Convert.ToInt32(hex.Substring(1 + 2 * c, 2), 16)),
-        ];
+    float hue = 0,
+      saturation = 0;
+    if (hex != null)
+      SKColor.Parse(hex).ToHsl(out hue, out saturation, out float _);
     for (int y = 0; y < h; y++)
       for (int x = 0; x < w; x++) {
         if (hex == null) {
@@ -386,8 +388,15 @@ public static class SceneRender {
           for (int c = 0; c < 3; c++)
             result[y, x, c] = grey;
         } else {
-          for (int c = 0; c < 3; c++)
-            result[y, x, c] = (byte)((image[y, x, c] + key[c] + 1) / 2);
+          new SKColor(image[y, x, 0], image[y, x, 1], image[y, x, 2]).ToHsl(
+            out float _,
+            out float _,
+            out float lightness
+          );
+          SKColor tinted = SKColor.FromHsl(hue, saturation, lightness);
+          result[y, x, 0] = tinted.Red;
+          result[y, x, 1] = tinted.Green;
+          result[y, x, 2] = tinted.Blue;
         }
         result[y, x, 3] = image[y, x, 3];
       }
@@ -402,6 +411,7 @@ public static class SceneRender {
   /// <param name="files">Every file written, as the manifest lists them.</param>
   /// <param name="rendered">What <see cref="Write"/> returned.</param>
   /// <param name="warnings">The index's parse warnings.</param>
+  /// <returns>The manifest object, ready to serialise.</returns>
   public static JObject Manifest(
     SceneFile scene,
     IReadOnlyList<string> files,
@@ -463,6 +473,9 @@ public static class SceneRender {
   /// <c>unjoined: {stem} {id} {face} {type} at x,y,z</c> and <c>open: {stem} {id} {face} at
   /// x,y,z</c>. An absent id or face reads <c>-</c>.
   /// </summary>
+  /// <param name="scene">The scene drawn.</param>
+  /// <param name="stem">The scene file's name less <c>.scene.json</c>.</param>
+  /// <returns>The finding lines; empty when the scene has none.</returns>
   public static IReadOnlyList<string> FindingLines(SceneFile scene, string stem) {
     var lines = new List<string>();
     foreach (SceneCell c in scene.Cells)
