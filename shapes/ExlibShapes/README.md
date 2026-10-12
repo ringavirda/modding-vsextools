@@ -186,7 +186,8 @@ Renders one variant of an itemtype file. An item that ships a shape (`shape`/`sh
 textures map overridden by the itemtype's) gets `<stem>-iso.png`, the isometric render of that
 model; an item that ships a flat inventory texture (`texture`/`textureByType`) gets
 `<stem>-icon.png`, that texture at four pixels to the texel on the renders' own paper. An item
-declaring both gets both, and one declaring neither is a warning and no picture. `--variant` names
+declaring both gets both, and one declaring neither is a warning and no picture. A singular `texture`
+is the `all` texture: it paints every shape face the item's `textures` map leaves unnamed. `--variant` names
 the variant by full code or bare path, defaulting to the family's first; `--ppu` is pixels per shape
 unit for the isometric render (default 24).
 
