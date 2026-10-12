@@ -136,33 +136,27 @@ Try-Case 'tooManyShards' { Invoke-Scenario @('-Shards','3','exlib/sample') | Out
         self.assertIn("runs on 1.22 only", self.results_of()["series"].get("Error", "no error"))
 
     def test_shards_mods_and_keep_data_are_read(self):
-        # Mutation: '-Shards' removed from the value options, so 3 is refused as an unknown option. Fails here.
-        # Mutation: KeepData set to $false in Get-ScenarioOptions, so -KeepData is ignored. Fails here.
         got = self.results_of()["shardsMods"]
         self.assertEqual(3, got["Shards"])
         self.assertEqual(["a", "b"], as_list(got["Mods"]))
         self.assertTrue(got["KeepData"])
 
     def test_one_shard_no_extra_mods_and_no_keep_by_default(self):
-        # Mutation: the default shard count set to 2. Fails here.
         got = self.results_of()["shardDefaults"]
         self.assertEqual(1, got["Shards"])
         self.assertEqual([], got["Mods"])
         self.assertFalse(got["KeepData"])
 
     def test_zero_shards_is_refused(self):
-        # Mutation: the -Shards minimum check removed, so 0 shards boots nothing and passes. Fails here.
         self.assertIn("-Shards must be 1 or more", self.results_of()["shardsZero"].get("Error", "no error"))
 
     def test_extra_mod_folders_are_staged_after_the_live_mod(self):
-        # Mutation: the -Mods folders dropped from Get-ScenarioModDirs. Fails here.
         got = as_list(self.results_of()["modDirs"])
         self.assertEqual(3, len(got))
         self.assertEqual(["default-a", "live-dir"], got[:2])
         self.assertTrue(got[2].endswith(os.path.join("build", "mod-a")))
 
     def test_more_shards_than_cases_is_refused_before_anything_is_built(self):
-        # Mutation: the shard count check removed, so the run goes on to the live build and fails elsewhere. Fails here.
         self.assertIn("-Shards 3 is more than the 1 case(s) to run.", self.results_of()["tooManyShards"].get("Error", "no error"))
 
 
@@ -197,8 +191,6 @@ Try-Case 'schematic' { Get-ScenarioSchematicName 'exlib/sample-fails' }
         self.assertEqual("scenario-exlib-sample-fails.json", got)
 
     def test_names_are_dealt_out_over_the_shards_in_turn(self):
-        # Mutation: the stride set to 1 rather than the shard count, so each shard takes every name after its own. Fails here.
-        # Mutation: the inner loop's bound removed, so a shard past the last name reads past the array. Fails here.
         got = run_cases(self.repo, r"""
 Try-Case 'deal' { $g = Split-ScenarioShards @('a','b','c','d','e') 2; @($g | ForEach-Object { $_ -join ',' }) }
 Try-Case 'one' { $g = Split-ScenarioShards @('a','b') 1; @($g | ForEach-Object { $_ -join ',' }) }
@@ -486,35 +478,27 @@ Try-Case 'twoDirs' {
         return self.results
 
     def test_the_count_line_sums_the_shards(self):
-        # Mutation: the sum replaced by the first shard's totals. Fails here.
         self.assertEqual(done(2, 1, 1), self.results_of()["line"])
 
     def test_no_count_line_from_any_shard_gives_no_line(self):
-        # Mutation: the early return of $null removed, so a summed zero count line is printed. Fails here.
         self.assertIsNone(self.results_of()["lineNone"])
 
     def test_one_shard_reasons_are_not_prefixed(self):
-        # Mutation: the prefix added for one shard too. Fails here.
         self.assertEqual([FAIL_F, "1 case(s) failed"], as_list(self.results_of()["problemsOne"]))
 
     def test_each_reason_names_its_shard_when_there_are_several(self):
-        # Mutation: the prefix dropped. Fails here. Mutation: only the first report read. Fails here too.
         self.assertEqual([f"shard 2: {FAIL_F}", "shard 2: 1 case(s) failed"], self.results_of()["problemsTwo"])
 
     def test_passing_shards_give_no_reasons(self):
-        # Mutation: an extra reason added per shard report. Fails here.
         self.assertEqual(0, self.results_of()["problemsPass"])
 
     def test_a_shard_without_a_count_line_is_a_reason(self):
-        # Mutation: only the first report's reasons read. Fails here.
         self.assertEqual(["shard 2: no count line"], as_list(self.results_of()["problemsNoCount"]))
 
     def test_progress_prints_every_line_but_the_count_line(self):
-        # Mutation: the count line filter removed in Write-ScenarioProgress, so each shard prints its own. Fails here.
         self.assertEqual([RUN, PASS_A], self.results_of()["progressOut"])
 
     def test_a_schematic_is_found_in_any_shards_data_path(self):
-        # Mutation: only the first data path searched in Save-ScenarioSchematics. Fails here.
         self.assertEqual(["scenario-exlib-sample-fails.json"], as_list(self.results_of()["twoDirs"]))
 
 
