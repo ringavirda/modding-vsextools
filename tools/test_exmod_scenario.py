@@ -47,6 +47,9 @@ FAIL_F = "[scenario] fail exlib/sample-fails step 2 suspect mod (4.0 s)"
 ERR_CASE = "[scenario] error exlib/sample: its plot never loaded"
 ERR_RUN = "[scenario] error run: no case selected"
 ERR_OUT = "[Error] Mod loader: the file is missing"
+CENSUS = "[scenario] census exlib: 3 blocktype(s), 2 covered"
+COVERAGE = "[scenario] coverage 41 hook(s), 38 reached"
+UNCOVERED = "[scenario] uncovered exlib:boiler OnTick"
 
 
 def as_list(value):
@@ -87,6 +90,7 @@ class ArgumentTests(FixtureRepo):
             type(self).results = run_cases(self.repo, r"""
 Try-Case 'ports' { $o = Get-ScenarioOptions @('-Port','42500','exlib/sample','-Version','1.22','exlib/sample-2','-Timeout','90'); [ordered]@{ Names = $o.Names; Port = $o.Port; Timeout = $o.Timeout } }
 Try-Case 'defaults' { $o = Get-ScenarioOptions @('exlib/sample'); [ordered]@{ Port = $o.Port; Timeout = $o.Timeout; Version = $o.Version } }
+Try-Case 'verbose' { $o = Get-ScenarioOptions @('-Verbose','exlib/sample'); [ordered]@{ Names = $o.Names; Verbose = $o.Verbose; Off = (Get-ScenarioOptions @('exlib/sample')).Verbose } }
 Try-Case 'unknown' { Get-ScenarioOptions @('-Keep','exlib/sample') | Out-Null; 'no error' }
 Try-Case 'series' { Get-ScenarioOptions @('-Version','1.21') | Out-Null; 'no error' }
 """)
@@ -105,6 +109,13 @@ Try-Case 'series' { Get-ScenarioOptions @('-Version','1.21') | Out-Null; 'no err
         self.assertEqual(42498, got["Port"])
         self.assertIsNone(got["Timeout"])
         self.assertEqual("1.22", got["Version"])
+
+    def test_verbose_is_a_switch_and_not_a_name(self):
+        # Mutation: '-Verbose' removed from the flag options, so it is refused as unknown. Fails here.
+        got = self.results_of()["verbose"]
+        self.assertEqual(["exlib/sample"], as_list(got["Names"]))
+        self.assertTrue(got["Verbose"])
+        self.assertFalse(got["Off"])
 
     def test_an_unknown_option_is_refused(self):
         # Mutation: the unknown-option throw removed, so -Keep is passed on as a scenario name. Fails here.
@@ -246,6 +257,7 @@ REPORT_CASES = {
     "errorOutsideCase": [RUN, CASE_A, PASS_A, ERR_OUT, done(1, 1, 0)],
     "unfinishedCase": [RUN, CASE_A, STEP_OK, done(1, 0, 0)],
     "openAtEnd": [RUN, CASE_A, STEP_OK],
+    "census": [RUN, CENSUS, CASE_A, STEP_OK, PASS_A, done(1, 1, 0), COVERAGE, UNCOVERED],
     "twoCasesInARow": [CASE_A, STEP_OK, CASE_F, STEP_BAD, FAIL_F, done(2, 0, 1)],
 }
 
@@ -264,6 +276,7 @@ class ReportTests(FixtureRepo):
             type(self).results = run_cases(self.repo, r"""
 $cases = Get-Content -Raw -LiteralPath $env:CASES | ConvertFrom-Json
 foreach ($p in $cases.PSObject.Properties) { Try-Case $p.Name { Get-ScenarioReport @($p.Value) } }
+Try-Case 'passSteps' { Get-ScenarioReport @($cases.pass) $true }
 """, CASES=cases)
         return self.results
 
@@ -345,6 +358,18 @@ foreach ($p in $cases.PSObject.Properties) { Try-Case $p.Name { Get-ScenarioRepo
         r = self.report("twoCasesInARow")
         self.assertEqual([CASE_A, STEP_OK, CASE_F, STEP_BAD, FAIL_F, done(2, 0, 1)], r["Shown"])
         self.assertEqual(["case exlib/sample did not finish", FAIL_F, "1 case(s) failed"], r["Problems"])
+
+    def test_verbose_shows_a_passing_cases_step_lines(self):
+        # Mutation: the block lines not added on a pass line when Steps is set. Fails here.
+        r = self.report("passSteps")
+        self.assertEqual([RUN, CASE_A, STEP_OK, PASS_A, done(1, 1, 0)], r["Shown"])
+        self.assertEqual(0, r["ExitCode"])
+
+    def test_the_census_coverage_and_uncovered_lines_are_shown(self):
+        # Mutation: the census/coverage/uncovered branch removed, so those lines are dropped. Fails here.
+        r = self.report("census")
+        self.assertEqual([RUN, CENSUS, PASS_A, done(1, 1, 0), COVERAGE, UNCOVERED], r["Shown"])
+        self.assertEqual(0, r["ExitCode"])
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@
 
 - `exmod scenario` boots a dedicated server with the built mods and the checkout's live mod (exmod.json's
   `live` key), copies tests/live into its Scenarios folder, runs the named scenarios (every one when none is
-  named), prints the run's lines and stops the server. It exits 1 when the count line is missing or reports no
+  named), prints the run's lines (every step line under `-Verbose`) and stops the server. It exits 1 when the count line is missing or reports no
   case, a case fails or errors, or an [Error] or [Fatal] line falls outside a case. `exmod smoke` and it share
   the scratch-server steps.
 - The shapes tool's `schematic` draws a planned layout (`layout-recap/1`, one per machine from

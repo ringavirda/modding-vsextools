@@ -508,8 +508,9 @@ function New-ScratchServer([string]$Tag, [string[]]$ModDirs, [System.Collections
   return $server
 }
 
-# Boots the dedicated server in $ServerDir on $Port against a scratch server's folders.
-function Start-ScratchServer($Server, [string]$ServerDir, [int]$Port) {
+# Boots the dedicated server in $ServerDir on $Port against a scratch server's folders. With $Quiet the
+# server's console output is discarded, the log file being what callers read.
+function Start-ScratchServer($Server, [string]$ServerDir, [int]$Port, [bool]$Quiet = $false) {
   # GLIBC_TUNABLES and MSBUILDDISABLENODEREUSE are already in $env: from the top of this script and
   # are inherited by the child unchanged; nothing extra to set here.
   $psi = [System.Diagnostics.ProcessStartInfo]::new()
@@ -519,9 +520,11 @@ function Start-ScratchServer($Server, [string]$ServerDir, [int]$Port) {
       '--addModPath', $Server.Mods, '--port', $Port
     )) { $psi.ArgumentList.Add($a) }
   $psi.RedirectStandardInput = $true
+  $psi.RedirectStandardOutput = $Quiet
   $psi.UseShellExecute = $false
   $psi.WorkingDirectory = $ServerDir
   $Server.Proc = [System.Diagnostics.Process]::Start($psi)
+  if ($Quiet) { $null = $Server.Proc.StandardOutput.BaseStream.CopyToAsync([System.IO.Stream]::Null) }
   $Server.Proc.StandardInput.AutoFlush = $true
 }
 
@@ -665,9 +668,9 @@ $ScenarioMod = 'exlib'
 
 # The options `exmod scenario` takes: Names (as given, possibly none), Version (the current series only,
 # the live mod being built for it), Port and Timeout (seconds to wait for the count line, or $null for the
-# run's budget plus 60).
+# run's budget plus 60), Verbose (print every step line of passing cases too).
 function Get-ScenarioOptions([string[]]$Argv) {
-  $names = @(Get-Positional $Argv @('-Version', '-Port', '-Timeout') @())
+  $names = @(Get-Positional $Argv @('-Version', '-Port', '-Timeout') @('-Verbose'))
   $unknown = @($names | Where-Object { $_ -like '-*' })
   if ($unknown) { throw "Unknown option $($unknown[0]) for exmod scenario." }
   $version = Get-Opt $Argv '-Version' $CurrentGameVersion
@@ -679,6 +682,7 @@ function Get-ScenarioOptions([string[]]$Argv) {
     Names   = $names
     Version = $version
     Port    = [int](Get-Opt $Argv '-Port' $ScenarioPort)
+    Verbose = ((Get-Flag $Argv '-Verbose') -or ($VerbosePreference -eq 'Continue'))
     Timeout = if ($null -eq $timeout) { $null } else { [int]$timeout }
   }
 }
@@ -761,11 +765,12 @@ function Get-ScenarioServerConfig {
 
 # The read of one scenario run from the server log's lines, and the rules `exmod scenario` exits by
 # (scenarios.md, `exmod scenario` step 7). Shown: the lines to print, in log order - the run and count
-# lines, each passing case's pass line, and each failed or errored case with every line it logged - plus
-# every [Error] or [Fatal] line outside a case. Pending: the lines of a case the log has not closed.
+# lines, the census, coverage and uncovered lines, each passing case's pass line, and each failed or
+# errored case with every line it logged - plus every [Error] or [Fatal] line outside a case. With $Steps
+# a passing case shows every line it logged too. Pending: the lines of a case the log has not closed.
 # Problems: one reason per rule the run breaks, none when it passes. Budget: the run line's budget in
 # seconds, $null before that line. FailedNames: the cases that failed, errored or never finished.
-function Get-ScenarioReport([string[]]$Lines) {
+function Get-ScenarioReport([string[]]$Lines, [bool]$Steps = $false) {
   $shown = [System.Collections.Generic.List[string]]::new()
   $problems = [System.Collections.Generic.List[string]]::new()
   $failedNames = [System.Collections.Generic.List[string]]::new()
@@ -790,6 +795,7 @@ function Get-ScenarioReport([string[]]$Lines) {
       continue
     }
     if ($line -match '\[scenario\] pass ') {
+      if ($Steps -and $null -ne $block) { $shown.AddRange($block.Lines) }
       $block = $null
       $shown.Add($line)
       continue
@@ -804,6 +810,10 @@ function Get-ScenarioReport([string[]]$Lines) {
     if ($line -match '\[Error\]|\[Fatal\]') {
       $shown.Add($line)
       $problems.Add("error outside a case: $line")
+      continue
+    }
+    if ($line -match '\[scenario\] (census|coverage|uncovered)\b') {
+      $shown.Add($line)
       continue
     }
     if ($line -match '\[scenario\] run: .* budget (\d+) s') {
@@ -841,8 +851,8 @@ function Get-ScenarioReport([string[]]$Lines) {
 }
 
 # Reads the server log so far and prints the report lines not printed yet; $Printed counts those.
-function Write-ScenarioProgress($Server, [int]$Printed) {
-  $report = Get-ScenarioReport @(Get-Content $Server.Log -ErrorAction SilentlyContinue)
+function Write-ScenarioProgress($Server, [int]$Printed, [bool]$Steps = $false) {
+  $report = Get-ScenarioReport @(Get-Content $Server.Log -ErrorAction SilentlyContinue) $Steps
   $new = @($report.Shown | Select-Object -Skip $Printed)
   foreach ($line in $new) { Write-Host $line }
   return [pscustomobject]@{ Report = $report; Printed = $Printed + $new.Count }
@@ -875,7 +885,7 @@ function Invoke-Scenario([string[]]$Argv) {
   $server = $null
   try {
     $server = New-ScratchServer 'scenario' $modDirs -DataCopies @{ $scenarios = "Scenarios/$ScenarioMod" } -ServerConfig (Get-ScenarioServerConfig)
-    Start-ScratchServer $server $serverDir $opts.Port
+    Start-ScratchServer $server $serverDir $opts.Port $true
     Wait-ScratchServer $server $ScenarioBootSeconds
     $server.Proc.StandardInput.WriteLine($command)
 
@@ -883,7 +893,7 @@ function Invoke-Scenario([string[]]$Argv) {
     $printed = 0
     $runSeen = $null
     while ($true) {
-      $progress = Write-ScenarioProgress $server $printed
+      $progress = Write-ScenarioProgress $server $printed $opts.Verbose
       $printed = $progress.Printed
       if ($progress.Report.Done -or $server.Proc.HasExited) { break }
       if ($null -eq $runSeen -and $null -ne $progress.Report.Budget) { $runSeen = [DateTime]::UtcNow }
@@ -894,7 +904,7 @@ function Invoke-Scenario([string[]]$Argv) {
     }
 
     if (-not $server.Proc.HasExited) { Stop-ScratchServer $server }
-    $progress = Write-ScenarioProgress $server $printed
+    $progress = Write-ScenarioProgress $server $printed $opts.Verbose
     $report = $progress.Report
     foreach ($line in $report.Pending) { Write-Host $line }
     Save-ScenarioSchematics $server.Data $report.FailedNames (Join-Path $RepoRoot '.game/.scenario-last')
