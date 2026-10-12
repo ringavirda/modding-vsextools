@@ -642,26 +642,26 @@ internal static class Program {
       views,
       ppu
     );
-    List<string> files = [.. rendered.Files];
+    List<string> files = [.. rendered.Files, .. rendered.Tinted];
     if (views.Contains("plan"))
       foreach (int y in ScenePlan.Layers(scene)) {
         string svg = Path.Combine(outDir, $"{stem}-plan-y{y}.svg");
         File.WriteAllText(svg, ScenePlan.Svg(scene, y));
         files.Add(svg);
       }
-    var warnings = new JArray(
-      rendered.MissingTextures.Concat(index.ParseWarnings)
+    JObject manifest = SceneRender.Manifest(
+      scene,
+      files,
+      rendered,
+      [.. index.ParseWarnings]
     );
-    var manifest = new JObject {
-      ["files"] = new JArray(files),
-      ["unresolved"] = new JArray(rendered.Unresolved),
-      ["warnings"] = warnings,
-    };
     string manifestPath = Path.Combine(outDir, $"{stem}.json");
     File.WriteAllText(manifestPath, manifest.ToString(Formatting.Indented));
     foreach (string f in files)
       Console.WriteLine(f);
     Console.WriteLine(manifestPath);
+    foreach (string line in SceneRender.FindingLines(scene, stem))
+      Console.WriteLine(line);
   }
 
   internal static int RunBlock(string[] args) {

@@ -11,12 +11,14 @@ using Vintagestory.API.Common;
 namespace ExpandedLib.Shapes;
 
 /// <summary>What <see cref="SceneRender.Write"/> produced for one scene.</summary>
-/// <param name="Files">The PNG paths written, in view order.</param>
+/// <param name="Files">The plain PNG paths written, in view order.</param>
+/// <param name="Tinted">The tinted PNG paths written, in view order.</param>
 /// <param name="Unresolved">Each code no root resolves, once, sorted.</param>
 /// <param name="MissingTextures">One line per texture value of a drawn cell that names no file,
 /// sorted.</param>
 public sealed record SceneRendered(
   IReadOnlyList<string> Files,
+  IReadOnlyList<string> Tinted,
   IReadOnlyList<string> Unresolved,
   IReadOnlyList<string> MissingTextures
 );
@@ -139,9 +141,12 @@ public static class SceneRender {
     );
 
   /// <summary>
-  /// Writes <c>{stem}-plain-{view}.png</c> for each corner view in <paramref name="views"/>, all on
-  /// one canvas: the union of the views' fitted canvases. Names in <paramref name="views"/> that
-  /// are not corner views are left to the caller.
+  /// Writes <c>{stem}-plain-{view}.png</c> and <c>{stem}-tint-{view}.png</c> for each corner view
+  /// in <paramref name="views"/>, all on one canvas: the union of the views' fitted canvases. In a
+  /// tinted view each texel's RGB is the mean of itself and its cell's network or line colour
+  /// (<see cref="ScenePlan.KeyColors"/>), and a cell on neither is its texture's luminance grey;
+  /// a missing texture keeps its magenta and an unresolved cube its checker. Names in
+  /// <paramref name="views"/> that are not corner views are left to the caller.
   /// </summary>
   /// <param name="scene">The scene to draw.</param>
   /// <param name="index">Resolves cell codes and texture values.</param>
@@ -170,27 +175,201 @@ public static class SceneRender {
       if (Renderer.Fit(shape, Renderer.NamedViews[name]) is { } fit)
         canvas = canvas?.Union(fit) ?? fit;
     Directory.CreateDirectory(outDir);
+    TextureSet tint = TintedTextures(scene, values, index, textures);
     var files = new List<string>();
+    var tinted = new List<string>();
     foreach (string name in corners) {
-      using SKBitmap bitmap = Renderer.Render(
-        shape,
-        Renderer.NamedViews[name],
-        ppu: ppu,
-        textures: textures,
-        fitTo: canvas
+      files.Add(
+        WriteView(shape, name, textures, canvas, ppu, outDir, $"{stem}-plain-{name}.png")
       );
-      string path = Path.Combine(outDir, $"{stem}-plain-{name}.png");
-      using SKData data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
-      using FileStream stream = File.Create(path);
-      data.SaveTo(stream);
-      files.Add(path);
+      tinted.Add(
+        WriteView(shape, name, tint, canvas, ppu, outDir, $"{stem}-tint-{name}.png")
+      );
     }
     return new SceneRendered(
       files,
+      tinted,
       unresolved,
       MissingLines(scene, values, textures)
     );
   }
+
+  private static string WriteView(
+    LoadedShape shape,
+    string view,
+    TextureSet textures,
+    Renderer.Canvas? canvas,
+    int ppu,
+    string outDir,
+    string fileName
+  ) {
+    using SKBitmap bitmap = Renderer.Render(
+      shape,
+      Renderer.NamedViews[view],
+      ppu: ppu,
+      textures: textures,
+      fitTo: canvas
+    );
+    string path = Path.Combine(outDir, fileName);
+    using SKData data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
+    using FileStream stream = File.Create(path);
+    data.SaveTo(stream);
+    return path;
+  }
+
+  private static TextureSet TintedTextures(
+    SceneFile scene,
+    Dictionary<string, TextureRef> values,
+    BlockIndex index,
+    TextureSet plain
+  ) {
+    IReadOnlyDictionary<string, string> colors = ScenePlan.KeyColors(scene);
+    var extra = new Dictionary<string, byte[,,]> {
+      [UnresolvedTextureKey] = UnresolvedImage(),
+    };
+    foreach (string key in values.Keys) {
+      if (plain.Missing.Contains(key))
+        continue;
+      SceneCell cell = scene.Cells[CellOf(key)];
+      string? hex = cell.Network ?? cell.Line;
+      extra[key] = Tint(plain.Get(key), hex == null ? null : colors[hex]);
+    }
+    return TextureSet.FromResolved(values, index.ResolveTexture, extra);
+  }
+
+  // Cell keys are `c{i}_{face key}`.
+  private static int CellOf(string textureKey) =>
+    int.Parse(
+      textureKey[1..textureKey.IndexOf('_')],
+      CultureInfo.InvariantCulture
+    );
+
+  private static byte[,,] Tint(byte[,,] image, string? hex) {
+    int h = image.GetLength(0),
+      w = image.GetLength(1);
+    var result = new byte[h, w, 4];
+    int[] key =
+      hex == null
+        ? []
+        : [
+          .. Enumerable
+            .Range(0, 3)
+            .Select(c => Convert.ToInt32(hex.Substring(1 + 2 * c, 2), 16)),
+        ];
+    for (int y = 0; y < h; y++)
+      for (int x = 0; x < w; x++) {
+        if (hex == null) {
+          byte grey = (byte)Math.Round(
+            0.299 * image[y, x, 0] + 0.587 * image[y, x, 1] + 0.114 * image[y, x, 2]
+          );
+          for (int c = 0; c < 3; c++)
+            result[y, x, c] = grey;
+        } else {
+          for (int c = 0; c < 3; c++)
+            result[y, x, c] = (byte)((image[y, x, c] + key[c] + 1) / 2);
+        }
+        result[y, x, 3] = image[y, x, 3];
+      }
+    return result;
+  }
+
+  /// <summary>
+  /// The scene's <c>{stem}.json</c> manifest: files, networks and lines with their colours, the
+  /// unjoined ports, the open faces, the unresolved codes, the missing textures and the warnings.
+  /// </summary>
+  /// <param name="scene">The scene drawn.</param>
+  /// <param name="files">Every file written, as the manifest lists them.</param>
+  /// <param name="rendered">What <see cref="Write"/> returned.</param>
+  /// <param name="warnings">The index's parse warnings.</param>
+  public static JObject Manifest(
+    SceneFile scene,
+    IReadOnlyList<string> files,
+    SceneRendered rendered,
+    IReadOnlyList<string> warnings
+  ) {
+    IReadOnlyDictionary<string, string> colors = ScenePlan.KeyColors(scene);
+    var unjoined = new JArray();
+    var open = new JArray();
+    foreach (SceneCell c in scene.Cells) {
+      if (c.Port is { Joins: null } port)
+        unjoined.Add(
+          new JObject {
+            ["at"] = AtOf(c.At),
+            ["principal"] = c.Principal is { } p ? AtOf(p) : JValue.CreateNull(),
+            ["id"] = IdOf(scene, c) is { } id ? id : JValue.CreateNull(),
+            ["face"] = port.Face == null ? JValue.CreateNull() : port.Face,
+            ["type"] = port.Type,
+          }
+        );
+      foreach (string face in c.Open)
+        open.Add(
+          new JObject {
+            ["at"] = AtOf(c.At),
+            ["id"] = IdOf(scene, c) is { } id ? id : JValue.CreateNull(),
+            ["face"] = face,
+          }
+        );
+    }
+    return new JObject {
+      ["files"] = new JArray(files),
+      ["networks"] = new JArray(
+        scene.Networks.Select(n => new JObject {
+          ["key"] = n.Key,
+          ["type"] = n.Type,
+          ["nodes"] = n.Nodes,
+          ["ids"] = new JArray(n.Ids),
+          ["color"] = colors[n.Key],
+        })
+      ),
+      ["lines"] = new JArray(
+        scene.Lines.Select(l => new JObject {
+          ["key"] = l.Key,
+          ["members"] = l.Members,
+          ["ids"] = new JArray(l.Ids),
+          ["color"] = colors[l.Key],
+        })
+      ),
+      ["unjoined"] = unjoined,
+      ["open"] = open,
+      ["unresolved"] = new JArray(rendered.Unresolved),
+      ["missingTextures"] = new JArray(rendered.MissingTextures),
+      ["warnings"] = new JArray(warnings),
+    };
+  }
+
+  /// <summary>
+  /// One line per finding of the scene, unjoined ports first and then open faces, in cell order:
+  /// <c>unjoined: {stem} {id} {face} {type} at x,y,z</c> and <c>open: {stem} {id} {face} at
+  /// x,y,z</c>. An absent id or face reads <c>-</c>.
+  /// </summary>
+  public static IReadOnlyList<string> FindingLines(SceneFile scene, string stem) {
+    var lines = new List<string>();
+    foreach (SceneCell c in scene.Cells)
+      if (c.Port is { Joins: null } port)
+        lines.Add(
+          $"unjoined: {stem} {IdOf(scene, c) ?? "-"} {port.Face ?? "-"} "
+            + $"{port.Type} at {Position(c.At)}"
+        );
+    foreach (SceneCell c in scene.Cells)
+      foreach (string face in c.Open)
+        lines.Add(
+          $"open: {stem} {IdOf(scene, c) ?? "-"} {face} at {Position(c.At)}"
+        );
+    return lines;
+  }
+
+  private static string Position(Offset at) => $"{at.X},{at.Y},{at.Z}";
+
+  private static JArray AtOf(Offset at) => new(at.X, at.Y, at.Z);
+
+  // A filler or port is counted under its principal's id.
+  private static string? IdOf(SceneFile scene, SceneCell cell) =>
+    cell.Id
+    ?? (
+      cell.Principal is { } p
+        ? scene.Cells.FirstOrDefault(c => c.At == p && c.Id != null)?.Id
+        : null
+    );
 
   private static IReadOnlyList<string> MissingLines(
     SceneFile scene,

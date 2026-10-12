@@ -1,0 +1,70 @@
+{
+  "files": [
+    "demo-plain-ne.png",
+    "demo-plain-nw.png",
+    "demo-plain-se.png",
+    "demo-plain-sw.png",
+    "demo-tint-ne.png",
+    "demo-tint-nw.png",
+    "demo-tint-se.png",
+    "demo-tint-sw.png",
+    "demo-plan-y0.svg",
+    "demo-plan-y1.svg"
+  ],
+  "networks": [
+    {
+      "key": "A",
+      "type": "steam",
+      "nodes": 4,
+      "ids": [
+        "kiln",
+        "main",
+        "riser"
+      ],
+      "color": "#4C72B0"
+    }
+  ],
+  "lines": [
+    {
+      "key": "M1",
+      "members": 2,
+      "ids": [
+        "shaft"
+      ],
+      "color": "#DD8452"
+    }
+  ],
+  "unjoined": [
+    {
+      "at": [
+        2,
+        0,
+        3
+      ],
+      "principal": [
+        0,
+        0,
+        0
+      ],
+      "id": "kiln",
+      "face": "s",
+      "type": "steam"
+    }
+  ],
+  "open": [
+    {
+      "at": [
+        4,
+        0,
+        0
+      ],
+      "id": "main",
+      "face": "e"
+    }
+  ],
+  "unresolved": [
+    "demo:nothing"
+  ],
+  "missingTextures": [],
+  "warnings": []
+}

@@ -310,4 +310,175 @@ public class SceneTests {
     );
     Assert.True(offset + 16 + redRow <= canvas);
   }
+
+  private static SceneCell Wall(string? network, string? line = null) =>
+    new(
+      new Offset(0, 0, 0),
+      "demo:wall-east",
+      "solo",
+      "block",
+      null,
+      network,
+      line,
+      null,
+      []
+    );
+
+  private static SKBitmap TintedSe(SceneCell cell, string key, string dir) {
+    var scene = new SceneFile(
+      "solo",
+      null,
+      null,
+      [cell],
+      key == "A" ? [new SceneNetwork("A", "steam", 1, ["solo"])] : [],
+      []
+    );
+    SceneRender.Write(
+      scene,
+      BlockIndex.Build([DemoRoot]),
+      dir,
+      "solo",
+      ["se"]
+    );
+    return SKBitmap.Decode(Path.Combine(dir, "solo-tint-se.png"));
+  }
+
+  // The pixels whose four neighbours are drawn too, so the silhouette's blend with the
+  // background is left out.
+  private static IEnumerable<SKColor> Drawn(SKBitmap bitmap) {
+    SKColor background = bitmap.GetPixel(0, 0);
+    bool Solid(int x, int y) => bitmap.GetPixel(x, y) != background;
+    for (int y = 1; y < bitmap.Height - 1; y++)
+      for (int x = 1; x < bitmap.Width - 1; x++)
+        if (Solid(x, y) && Solid(x - 1, y) && Solid(x + 1, y) && Solid(x, y - 1) && Solid(x, y + 1))
+          yield return bitmap.GetPixel(x, y);
+  }
+
+  private static JObject DemoManifest(SceneRendered rendered) {
+    SceneFile scene = SceneFile.Load(Fixture);
+    IEnumerable<string> files = rendered
+      .Files.Concat(rendered.Tinted)
+      .Select(f => Path.GetFileName(f))
+      .Concat(ScenePlan.Layers(scene).Select(y => $"demo-plan-y{y}.svg"));
+    return SceneRender.Manifest(scene, [.. files], rendered, []);
+  }
+
+  [Fact]
+  public void The_manifest_equals_its_reference_and_the_printed_lines_name_the_findings() {
+    string dir = Scratch();
+    JObject manifest = DemoManifest(Render(dir));
+    JObject expected = JObject.Parse(
+      File.ReadAllText(FixturePath.Expected("scene/demo-manifest.json"))
+    );
+    Assert.True(
+      JToken.DeepEquals(expected, manifest),
+      manifest.ToString()
+    );
+    Assert.Equal(
+      [
+        "unjoined: demo kiln s steam at 2,0,3",
+        "open: demo main e at 4,0,0",
+      ],
+      SceneRender.FindingLines(SceneFile.Load(Fixture), "demo")
+    );
+  }
+
+  [Fact]
+  public void The_manifest_lists_a_block_whose_texture_has_no_file() {
+    var rusty = new SceneCell(
+      new Offset(0, 0, 0),
+      "demo:rusty",
+      "r",
+      "block",
+      null,
+      null,
+      null,
+      null,
+      []
+    );
+    var scene = new SceneFile("rusty", null, null, [rusty], [], []);
+    SceneRendered rendered = SceneRender.Write(
+      scene,
+      BlockIndex.Build([DemoRoot]),
+      Scratch(),
+      "rusty",
+      ["se"]
+    );
+    string line = "demo:rusty: texture rust (demo:block/nonexistent) not found";
+    Assert.Equal([line], rendered.MissingTextures);
+    JObject manifest = SceneRender.Manifest(scene, [], rendered, []);
+    Assert.Equal([line], manifest["missingTextures"]!.Select(t => (string)t!));
+  }
+
+  [Fact]
+  public void A_run_cells_top_face_is_its_texel_averaged_with_the_networks_colour() {
+    string dir = Scratch();
+    using SKBitmap tinted = TintedSe(Wall("A"), "A", dir);
+    using SKBitmap texture = SKBitmap.Decode(
+      Path.Combine(
+        DemoRoot,
+        "mods/demo/assets/demo/textures/block/wall.png"
+      )
+    );
+    SKColor key = SKColor.Parse(
+      ScenePlan.KeyColors(
+        new SceneFile(
+          "solo",
+          null,
+          null,
+          [],
+          [new SceneNetwork("A", "steam", 1, [])],
+          []
+        )
+      )["A"]
+    );
+    var expected = new HashSet<SKColor>();
+    for (int y = 0; y < texture.Height; y++)
+      for (int x = 0; x < texture.Width; x++) {
+        SKColor t = texture.GetPixel(x, y);
+        expected.Add(
+          new SKColor(
+            (byte)((t.Red + key.Red + 1) / 2),
+            (byte)((t.Green + key.Green + 1) / 2),
+            (byte)((t.Blue + key.Blue + 1) / 2)
+          )
+        );
+      }
+    Assert.Contains(
+      Drawn(tinted),
+      c =>
+        expected.Any(e =>
+          Math.Abs(c.Red - e.Red) <= PixelCompare.Tolerance
+          && Math.Abs(c.Green - e.Green) <= PixelCompare.Tolerance
+          && Math.Abs(c.Blue - e.Blue) <= PixelCompare.Tolerance
+        )
+    );
+  }
+
+  [Fact]
+  public void A_cell_on_no_key_is_grey_in_the_tint() {
+    using SKBitmap tinted = TintedSe(Wall(null), "", Scratch());
+    List<SKColor> pixels = [.. Drawn(tinted)];
+    Assert.NotEmpty(pixels);
+    Assert.All(pixels, c => {
+      Assert.InRange(Math.Abs(c.Red - c.Green), 0, PixelCompare.Tolerance);
+      Assert.InRange(Math.Abs(c.Green - c.Blue), 0, PixelCompare.Tolerance);
+    });
+  }
+
+  [Fact]
+  public void The_four_tinted_views_share_the_plain_views_size() {
+    string dir = Scratch();
+    SceneRendered rendered = Render(dir);
+    Assert.Equal(4, rendered.Tinted.Count);
+    foreach (string view in Corners) {
+      using SKBitmap plain = SKBitmap.Decode(
+        Path.Combine(dir, $"demo-plain-{view}.png")
+      );
+      using SKBitmap tint = SKBitmap.Decode(
+        Path.Combine(dir, $"demo-tint-{view}.png")
+      );
+      Assert.Equal((plain.Width, plain.Height), (tint.Width, tint.Height));
+    }
+  }
 }

@@ -4,7 +4,7 @@
 #
 #   exmod render      shape file -> textured view or animation-frame PNGs
 #   exmod schematic   multiblock/megablock blocktype file -> plan SVGs, an iso PNG, a manifest
-#   exmod scene       setup-scene/1 dump -> four corner PNGs, a plan SVG per layer, a manifest
+#   exmod scene       setup-scene/1 dump -> plain and tinted corner PNGs, a plan SVG per layer, a manifest
 #   exmod block       blocktype file -> a PNG per view, a footprint SVG, a manifest
 #   exmod item        itemtype file -> an iso PNG or an enlarged icon, a manifest
 
@@ -142,10 +142,11 @@ Add-ExmodCommand -Group source -Name scene -Summary 'render a setup-scene/1 dump
 } -Detail @'
 exmod scene PATH --out=DIR [--views ne,nw,se,sw,plan] [--ppu N] [--roots PATH...] [--game PATH]
 
-Renders a setup's `<setup>.scene.json` dump to a PNG per corner view, an SVG plan per Y layer
-and a `<stem>.json` manifest of the files written and the codes no root resolved. A folder PATH
-renders every `*.scene.json` directly in it, in name order. Prints each file and the manifest path;
-the codes no root resolved are listed in the manifest's `unresolved`. Exits 1 for an unreadable scene or a format other
+Renders a setup's `<setup>.scene.json` dump to a plain and a tinted PNG per corner view, an SVG
+plan per Y layer and a `<stem>.json` manifest of the files, the networks and lines, the unjoined
+ports, the open faces and the codes no root resolved. A folder PATH renders every `*.scene.json`
+directly in it, in name order. Prints each file and the manifest path, then one `unjoined:` or
+`open:` line per finding. Exits 1 for an unreadable scene or a format other
 than setup-scene/1. `--out` needs the `=` form here: PowerShell's own parameter binder treats a
 bare `--out` token as an ambiguous prefix of its common `-OutVariable`/`-OutBuffer` parameters and
 refuses it outright.
