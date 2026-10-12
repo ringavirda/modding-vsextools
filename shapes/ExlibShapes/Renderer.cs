@@ -62,7 +62,9 @@ public static class Renderer {
   /// <summary>World units a grid line repeats a darker line at (a chunk width).</summary>
   public const int GridCell = 16;
 
-  /// <summary>The seven named views a shape is conventionally rendered from.</summary>
+  /// <summary>The eleven named views a shape is conventionally rendered from; <c>iso</c> and
+  /// <c>se</c> are the same south-east corner, and <c>ne</c>, <c>nw</c> and <c>sw</c> are its
+  /// three siblings.</summary>
   public static readonly IReadOnlyDictionary<string, View> NamedViews =
     new Dictionary<string, View> {
       ["south"] = new(0, 0),
@@ -72,6 +74,10 @@ public static class Renderer {
       ["up"] = new(0, 90),
       ["down"] = new(0, -90),
       ["iso"] = new(-45, 30),
+      ["ne"] = new(-135, 30),
+      ["nw"] = new(135, 30),
+      ["se"] = new(-45, 30),
+      ["sw"] = new(45, 30),
     };
 
   /// <summary>
