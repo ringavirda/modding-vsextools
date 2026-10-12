@@ -228,6 +228,79 @@ public class RendererTests {
       yield return [view];
   }
 
+  [Fact]
+  public void Perspective_divides_by_depth() {
+    var camera = new Renderer.Perspective(100, 200, 100);
+    Renderer.Projection projection = Renderer.Project(
+      [],
+      new View(0, 0),
+      perspective: camera
+    );
+    (double nearCol, double nearRow) = projection.Screen(4, 2, -20);
+    (double farCol, double farRow) = projection.Screen(4, 2, -40);
+    Assert.Equal(100 + 100 * 4.0 / 20, nearCol, 6);
+    Assert.Equal(50 - 100 * 2.0 / 20, nearRow, 6);
+    Assert.Equal(farCol - 100, (nearCol - 100) / 2, 6);
+    Assert.Equal(farRow - 50, (nearRow - 50) / 2, 6);
+  }
+
+  [Fact]
+  public void A_perspective_render_draws_the_nearer_box_larger() {
+    LoadedShape shape = UnitCubeShape("south");
+    var camera = new Renderer.Perspective(100, 200, 100);
+    int Width(double depth) {
+      using SKBitmap image = Renderer.Render(
+        [
+          new Renderer.RenderPart(
+            shape,
+            TextureSet.ForShape(shape, TextureRoots.Build(null, null, null)),
+            null,
+            Renderer.Mat4d.Translate(-8, -8, -depth - 16)
+          ),
+        ],
+        new View(0, 0),
+        grid: false,
+        edges: false,
+        transparent: true,
+        perspective: camera
+      );
+      (int minCol, int maxCol, _, _) = ItemViewsTests.Bounds(image);
+      Assert.Equal(200, image.Width);
+      Assert.Equal(100, image.Height);
+      return maxCol - minCol + 1;
+    }
+    int near = Width(24),
+      far = Width(48);
+    Assert.InRange(near, 64, 69);
+    Assert.InRange(far, 32, 36);
+  }
+
+  [Fact]
+  public void A_perspective_face_across_the_near_plane_is_cut_there() {
+    LoadedShape shape = UnitCubeShape("down");
+    var camera = new Renderer.Perspective(100, 200, 100);
+    using SKBitmap image = Renderer.Render(
+      [
+        new Renderer.RenderPart(
+          shape,
+          TextureSet.ForShape(shape, TextureRoots.Build(null, null, null)),
+          null,
+          Renderer.Mat4d.Translate(-8, 0.4, -8)
+        ),
+      ],
+      new View(0, 0),
+      grid: false,
+      edges: false,
+      transparent: true,
+      perspective: camera
+    );
+    // The floor-facing face lies 0.4 above the eye from depth -8 to 8; the cut is at depth 1, 40
+    // pixels above the centre row.
+    (_, _, int minRow, int maxRow) = ItemViewsTests.Bounds(image);
+    Assert.InRange(minRow, 49 - 40, 51 - 40);
+    Assert.InRange(maxRow, 40, 46);
+  }
+
   // The renders this run produced, beside the binary.
   private static string ActualDir {
     get {

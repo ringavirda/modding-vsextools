@@ -192,6 +192,44 @@ public class ItemViewsDumpTests {
   }
 
   [Fact]
+  public void The_fp_view_of_a_dump_without_the_player_shape_is_a_warning() {
+    string empty = Scratch("no-game-install-fp");
+    Directory.CreateDirectory(empty);
+    BlockIndex index = BlockIndex.Build([DemoRoot], empty);
+    JObject manifest = ItemViews.WriteDump(
+      Dump,
+      index,
+      Scratch("no-player-fp"),
+      24,
+      ["fp"]
+    );
+    Assert.Empty((JArray)manifest["files"]!);
+    Assert.Equal(
+      ["demo:gearpinion: the player shape is not found; fp not drawn"],
+      manifest["warnings"]!.Select(w => (string)w!)
+    );
+  }
+
+  [SkippableFact]
+  public void The_fp_view_of_a_dump_is_one_picture_of_the_views_size() {
+    BlockIndex index = BlockIndex.Build([DemoRoot], RequireClientGame());
+    string outDir = Scratch("fp");
+    JObject manifest = ItemViews.WriteDump(Dump, index, outDir, 24, ["fp"]);
+    Assert.Equal(
+      ["demo-gearpinion-fp.png"],
+      manifest["files"]!.Select(f => Path.GetFileName((string)f!))
+    );
+    Assert.Empty((JArray)manifest["warnings"]!);
+    using SKBitmap picture = SKBitmap.Decode(
+      Path.Combine(outDir, "demo-gearpinion-fp.png")
+    );
+    Assert.Equal(
+      (ItemViews.FpWidth, ItemViews.FpHeight),
+      (picture.Width, picture.Height)
+    );
+  }
+
+  [Fact]
   public void Command_writes_views_and_manifest() {
     string dir = Scratch("command");
     var stdout = new StringWriter();

@@ -54,7 +54,7 @@ source
 | `schematic` | render a multiblock/megablock layout to a build schematic |
 | `scene` | render a setup-scene/1 dump to corner views and layer plans |
 | `block` | render one blocktype variant to the views a page shows |
-| `item` | render one itemtype variant to its own picture, or its gui, tp and ground views |
+| `item` | render one itemtype variant to its own picture, or its gui, tp, fp and ground views |
 | `item-views` | render an item-views/1 dump to its gui, ground and iso pictures |
 | `shapes-build` | build the shapes tool when its output is stale |
 

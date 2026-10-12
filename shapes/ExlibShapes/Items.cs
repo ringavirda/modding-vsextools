@@ -20,13 +20,14 @@ public static partial class ItemViews {
   /// size of a page's other figures rather than as a thumbnail.</summary>
   public const int IconScale = 4;
 
-  /// <summary>The views <see cref="Write"/> draws for a shape: <c>iso</c>, <c>gui</c>, <c>tp</c>
-  /// and <c>ground</c>.</summary>
+  /// <summary>The views <see cref="Write"/> draws for a shape: <c>iso</c>, <c>gui</c>, <c>tp</c>,
+  /// <c>fp</c> and <c>ground</c>.</summary>
   public static readonly IReadOnlyList<string> Views =
   [
     "iso",
     "gui",
     "tp",
+    "fp",
     "ground",
   ];
 
@@ -67,9 +68,9 @@ public static partial class ItemViews {
   /// <param name="views">Null draws the pictures above. A list draws exactly the views it names,
   /// each to <c>&lt;stem&gt;-&lt;view&gt;.png</c>: <c>iso</c> is the isometric render of the shape,
   /// <c>gui</c> the item in the centre slot of a 3 x 3 grid of inventory slots, <c>tp</c> the
-  /// player holding the item seen from the right side and from the front right, <c>ground</c> the
-  /// item lying on a stone block. A view needing a shape on an itemtype without one is a warning
-  /// and no picture, and <c>tp</c> needs the game's player shape among the index's assets.</param>
+  /// player holding the item seen from the right side and from the front right, <c>fp</c> the
+  /// player's hands holding it seen from the eye, <c>ground</c> the item lying on a stone block. A view needing a shape on an itemtype without one is a warning
+  /// and no picture, and <c>tp</c> and <c>fp</c> need the game's player shape among the index's assets.</param>
   public static JObject Write(
     string file,
     Variant variant,
@@ -109,11 +110,12 @@ public static partial class ItemViews {
       ItemTransform ground = ReadTransform(variant, GroundKey);
       string? idle = ClipOf(variant, "heldTpIdleAnimation");
       string? ready = ClipOf(variant, "heldRightReadyAnimation");
-      Seraph? seraph = views?.Contains("tp") == true ? LoadSeraph(index) : null;
+      Seraph? seraph =
+        views?.Any(v => v is "tp" or "fp") == true ? LoadSeraph(index) : null;
       foreach (string view in views ?? ["iso"]) {
-        if (view == "tp" && seraph == null) {
+        if (view is "tp" or "fp" && seraph == null) {
           warnings.Add(
-            $"{item.Code}: the player shape is not found; tp not drawn"
+            $"{item.Code}: the player shape is not found; {view} not drawn"
           );
           continue;
         }
@@ -135,6 +137,8 @@ public static partial class ItemViews {
       }
       if (seraph != null)
         warnings.AddRange(TpWarnings(seraph.Shape, idle, ready));
+      if (seraph != null && views?.Contains("fp") == true)
+        warnings.AddRange(FpWarnings(seraph.Shape, idle, ready));
       NoteTextures(item, textures, values, missing, unpainted);
     } else if (views != null)
       warnings.Add(
@@ -271,6 +275,7 @@ public static partial class ItemViews {
     view switch {
       "gui" => RenderGui(shape, textures, gui),
       "tp" => RenderTp(shape, textures, tp, seraph!, idle, ready),
+      "fp" => RenderFp(shape, textures, tp, seraph!, idle, ready),
       "ground" => RenderGround(shape, textures, ground),
       _ => Renderer.Render(
         shape,

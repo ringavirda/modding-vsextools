@@ -179,7 +179,7 @@ failed to parse).
 ## item
 
 ```
-exlib-shapes item FILE --out DIR [--variant CODE] [--views gui,tp,ground[,iso]] [--ppu N] [--roots PATH...] [--game PATH]
+exlib-shapes item FILE --out DIR [--variant CODE] [--views gui,tp,fp,ground[,iso]] [--ppu N] [--roots PATH...] [--game PATH]
 ```
 
 Renders one variant of an itemtype file. An item that ships a shape (`shape`/`shapeByType`, its own
@@ -201,7 +201,14 @@ a stone-grey block with no yaw and no scale jitter, from the south-east at 8 pix
 (`game:entity/humanoid/seraph-faceless`, skinned with the player entity's texture) in the held clip's
 frame 0 (`heldTpIdleAnimation`, else `heldRightReadyAnimation`, else `helditemready`) with the item on
 its right hand's anchor, drawn from the player's right side and from the front right side by side at
-8 pixels per voxel, so every item is drawn to the same player; it needs the game assets and is a
+8 pixels per voxel, so every item is drawn to the same player; `fp` draws the player's arms (the
+meshes under `UpperArmR` and `UpperArmL`, which the game keeps for first person) posed at frame 0 of the held
+clip's `-fp` twin (the clip itself, with a warning, when the shape has no twin) with the item on the anchor
+through the same `tpHandTransform`, seen from the eye 1.7 blocks up at a level gaze by a pinhole camera of
+75 degrees vertical field of view in a 480 x 270 picture, the hands' height offset 0 (the `fpHandsFoV` and
+`fpHandsYOffset` of a stock settings file) and their pitch follow 0.75 (`heldItemPitchFollow`'s default); at
+a level gaze the pitch follow turns nothing, and under the spear's clip the arms lie outside the picture, so
+the item is what shows. `tp` and `fp` need the game assets and are a
 warning and no picture without them. A
 view on an item with no shape is a warning and no picture, and a flat icon is written only without
 `--views`.
@@ -212,14 +219,14 @@ The `<stem>.json` manifest carries `files`, `variant`, `missingTextures`, `unpai
 ## item-views
 
 ```
-exlib-shapes item-views PATH --out DIR [--views gui,tp,ground,iso] [--ppu N] [--roots PATH...] [--game PATH]
+exlib-shapes item-views PATH --out DIR [--views gui,tp,fp,ground,iso] [--ppu N] [--roots PATH...] [--game PATH]
 ```
 
 Renders an `item-views/1` file, the dump the item-views guard writes for a group of collectibles:
 its shape and textures, and the `gui`, `tp` and `ground` transforms the game resolved for it, each
 with `translation`, `rotation`, `origin`, `scaleXyz` and `rotate` written out. The pictures are
 the `item` command's, drawn from the dump's transforms as they stand: `<stem>-gui.png`,
-`<stem>-tp.png` (the dump's `clips` pose the player), `<stem>-ground.png` and `<stem>-iso.png`, the stem being the file name less `.views.json`. A
+`<stem>-tp.png` and `<stem>-fp.png` (the dump's `clips` pose the player), `<stem>-ground.png` and `<stem>-iso.png`, the stem being the file name less `.views.json`. A
 folder PATH renders every `*.views.json` directly in it, in ordinal name order; a file of another
 format is an error. The shape resolves through the roots as `item` resolves it. The `<stem>.json`
 manifest carries `files`, `view`, `kind`, `failing` (one `<gate> <name> <target>` line per gate

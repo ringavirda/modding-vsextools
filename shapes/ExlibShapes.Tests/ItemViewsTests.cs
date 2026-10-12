@@ -570,6 +570,211 @@ public class ItemViewsTests {
     AssertTpEnds("part/rod.json", "rod-iron", "helditemready");
   }
 
+  // Where a point of the player's voxels lands in the fp picture, worked from the game's model
+  // matrix: the hands move up by the offset, turn about the eye by the share of the gaze pitch
+  // they follow, and the camera turns by the whole pitch; then a pinhole with the eye at the origin.
+  private static (double Col, double Row, double Depth) FpPixel(
+    (double X, double Y, double Z) p,
+    double pitchDeg,
+    double follow,
+    double offset
+  ) {
+    const double eyeY = 27.2;
+    (double x, double y, double z) = (
+      p.X - 8,
+      p.Y + offset * 16 - eyeY,
+      p.Z - 8
+    );
+    double a = pitchDeg * follow * Math.PI / 180;
+    (x, y) = (
+      x * Math.Cos(a) - y * Math.Sin(a),
+      x * Math.Sin(a) + y * Math.Cos(a)
+    );
+    (double vx, double vy, double vz) = (-z, y, x);
+    double c = pitchDeg * Math.PI / 180;
+    (vy, vz) = (
+      vy * Math.Cos(c) - vz * Math.Sin(c),
+      vy * Math.Sin(c) + vz * Math.Cos(c)
+    );
+    double focal = ItemViews.FpCamera.Focal;
+    return (
+      ItemViews.FpWidth / 2.0 + focal * vx / -vz,
+      ItemViews.FpHeight / 2.0 - focal * vy / -vz,
+      -vz
+    );
+  }
+
+  // The item's two ends drawn in the fp view lie within a pixel of where the hand chain, the
+  // hands' offset and pitch follow put them.
+  private static (
+    (double Col, double Row, double Depth) Low,
+    (double Col, double Row, double Depth) High
+  ) AssertFpEnds(
+    string file,
+    string code,
+    string clip,
+    double pitchDeg = 0,
+    double follow = ItemViews.FpPitchFollow,
+    double offset = ItemViews.FpHandsYOffset
+  ) {
+    (
+      LoadedShape shape,
+      TextureSet textures,
+      ItemTransform tp,
+      ItemViews.Seraph seraph
+    ) = VanillaTp(file, code);
+    Renderer.RenderPart[] parts = ItemViews.FpParts(
+      shape,
+      textures,
+      tp,
+      seraph,
+      clip,
+      pitchDeg,
+      follow,
+      offset
+    );
+    Renderer.Projection projection = Renderer.Project(
+      parts,
+      new View(ItemViews.FpLevel.Yaw, pitchDeg),
+      perspective: ItemViews.FpCamera
+    );
+    Renderer.Mat4d anchor = Anchor(seraph, clip + "-fp");
+    ((double, double, double) low, (double, double, double) high) = Ends(shape);
+    var pixels = new List<(double Col, double Row, double Depth)>();
+    foreach ((double, double, double) end in new[] { low, high }) {
+      (double col, double row, double depth) = FpPixel(
+        Held(anchor, tp, end),
+        pitchDeg,
+        follow,
+        offset
+      );
+      (double mx, double my, double mz) = parts[1]
+        .Model.Mul(end.Item1, end.Item2, end.Item3);
+      (double actualCol, double actualRow) = projection.Screen(mx, my, mz);
+      Assert.InRange(actualCol, col - 1, col + 1);
+      Assert.InRange(actualRow, row - 1, row + 1);
+      pixels.Add((col, row, depth));
+    }
+    return (pixels[0], pixels[1]);
+  }
+
+  [SkippableFact]
+  public void Spear_fp_projected_corners() {
+    var (butt, tip) = AssertFpEnds(
+      "tool/spear.json",
+      "spear-generic-iron",
+      "spearidle",
+      offset: 0.1
+    );
+    // The tip is ahead of the eye and in the picture's lower right; the butt, 1.24 player heights
+    // behind it, is behind the eye.
+    Assert.True(tip.Depth > 0 && butt.Depth < 0, $"{tip} {butt}");
+    Assert.InRange(tip.Col, ItemViews.FpWidth / 2, ItemViews.FpWidth);
+    Assert.InRange(tip.Row, ItemViews.FpHeight / 2, ItemViews.FpHeight);
+  }
+
+  [SkippableFact]
+  public void Rod_fp_projected_corners() {
+    AssertFpEnds("part/rod.json", "rod-iron", "helditemready", pitchDeg: 30);
+  }
+
+  [SkippableFact]
+  public void Hands_at_full_follow_stay_where_they_are_with_the_gaze() {
+    (
+      LoadedShape shape,
+      TextureSet textures,
+      ItemTransform tp,
+      ItemViews.Seraph seraph
+    ) = VanillaTp("part/rod.json", "rod-iron");
+    (double, double) At(double pitchDeg) {
+      Renderer.RenderPart[] parts = ItemViews.FpParts(
+        shape,
+        textures,
+        tp,
+        seraph,
+        "helditemready",
+        pitchDeg,
+        follow: 1
+      );
+      Renderer.Projection projection = Renderer.Project(
+        parts,
+        new View(ItemViews.FpLevel.Yaw, pitchDeg),
+        perspective: ItemViews.FpCamera
+      );
+      (double x, double y, double z) = parts[1].Model.Mul(0, 0, 0);
+      return projection.Screen(x, y, z);
+    }
+    (double level, double levelRow) = At(0);
+    (double down, double downRow) = At(40);
+    Assert.Equal(level, down, 3);
+    Assert.Equal(levelRow, downRow, 3);
+  }
+
+  [SkippableFact]
+  public void The_fp_hands_are_the_arms_alone() {
+    (
+      LoadedShape shape,
+      TextureSet textures,
+      ItemTransform tp,
+      ItemViews.Seraph seraph
+    ) = VanillaTp("part/rod.json", "rod-iron");
+    Renderer.RenderPart hands = ItemViews.FpParts(
+      shape,
+      textures,
+      tp,
+      seraph,
+      "helditemready",
+      90,
+      follow: 0
+    )[0];
+    Assert.NotNull(hands.Only);
+    Assert.All(
+      hands.Only!,
+      path => Assert.Contains("UpperArm", path, StringComparison.Ordinal)
+    );
+    int Opaque(Renderer.RenderPart part) {
+      using SKBitmap image = Renderer.Render(
+        [part],
+        new View(ItemViews.FpLevel.Yaw, 90),
+        ItemViews.FpCamera.Focal,
+        grid: false,
+        edges: false,
+        transparent: true,
+        perspective: ItemViews.FpCamera
+      );
+      int count = 0;
+      for (int y = 0; y < image.Height; y++)
+        for (int x = 0; x < image.Width; x++)
+          if (image.GetPixel(x, y).Alpha > 0)
+            count++;
+      return count;
+    }
+    Assert.InRange(Opaque(hands), 1, Opaque(hands with { Only = null }) - 1);
+  }
+
+  [SkippableFact]
+  public void A_held_clip_with_no_fp_twin_warns_and_falls_back_to_itself() {
+    ItemViews.Seraph seraph = VanillaTp("part/rod.json", "rod-iron").Seraph;
+    Assert.Equal(
+      "helditemready-fp",
+      ItemViews.FpClip(seraph.Shape, "helditemready")
+    );
+    string bare = seraph
+      .Shape.Animations.Select(a => a.Code ?? a.Name)
+      .First(name =>
+        !name.EndsWith("-fp", StringComparison.Ordinal)
+        && seraph.Shape.Animations.All(a =>
+          a.Code != name + "-fp" && a.Name != name + "-fp"
+        )
+      );
+    Assert.Equal(bare, ItemViews.FpClip(seraph.Shape, bare));
+    Assert.Equal(
+      [$"held clip {bare} has no {bare}-fp twin on the player shape"],
+      ItemViews.FpWarnings(seraph.Shape, bare, null)
+    );
+    Assert.Empty(ItemViews.FpWarnings(seraph.Shape, "spearidle", null));
+  }
+
   [SkippableFact]
   public void Held_clip_falls_from_idle_to_ready_to_the_generic_clip() {
     ItemViews.Seraph seraph = VanillaTp("part/rod.json", "rod-iron").Seraph;
@@ -791,6 +996,63 @@ public class ItemViewsTests {
     );
   }
 
+  [SkippableFact]
+  public void Gearpinion_fp_matches_its_golden() {
+    string game = RequireClientGame();
+    BlockIndex index = BlockIndex.Build([DemoRoot], game);
+    string file = Itemtype("gearpinion");
+    Variant variant = Assert.Single(index.ItemVariants(file));
+    (LoadedShape shape, TextureSet textures, _) = ItemViews.Compose(
+      index.ResolveVariant(variant),
+      index
+    );
+    ItemViews.Seraph seraph = ItemViews.LoadSeraph(index)!;
+    using (
+      SKBitmap layer = ItemViews.RenderFpItem(
+        shape,
+        textures,
+        ItemViews.ReadTransform(variant, ItemViews.TpKey),
+        seraph,
+        null,
+        null
+      )
+    ) {
+      string actualDir = OutDir("gearpinion-fp-layer");
+      Directory.CreateDirectory(actualDir);
+      using (
+        FileStream stream = File.Create(
+          Path.Combine(actualDir, "gearpinion-fp-item.png")
+        )
+      )
+        layer.Encode(SKEncodedImageFormat.Png, 100).SaveTo(stream);
+      using SKBitmap expected = SKBitmap.Decode(
+        FixturePath.Expected("item-views/gearpinion-fp-item.png")
+      );
+      PixelCompare.Assert(expected, layer, "gearpinion-fp-item");
+    }
+
+    string outDir = OutDir("gearpinion-fp");
+    JObject manifest = ItemViews.Write(
+      file,
+      variant,
+      index,
+      outDir,
+      views: ["fp"]
+    );
+    Assert.Equal(
+      ["gearpinion-fp.png"],
+      manifest["files"]!.Select(f => Path.GetFileName((string)f!))
+    );
+    Assert.Empty((JArray)manifest["warnings"]!);
+    using SKBitmap picture = SKBitmap.Decode(
+      Path.Combine(outDir, "gearpinion-fp.png")
+    );
+    Assert.Equal(
+      (ItemViews.FpWidth, ItemViews.FpHeight),
+      (picture.Width, picture.Height)
+    );
+  }
+
   [Fact]
   public void The_tp_view_without_the_player_shape_is_a_warning() {
     string empty = OutDir("no-game-install");
@@ -886,7 +1148,13 @@ public class ItemViewsTests {
     string file = Itemtype("token");
     Variant variant = Assert.Single(index.ItemVariants(file));
     Assert.Throws<ArgumentException>(() =>
-      ItemViews.Write(file, variant, index, OutDir("token-view"), views: ["fp"])
+      ItemViews.Write(
+        file,
+        variant,
+        index,
+        OutDir("token-view"),
+        views: ["side"]
+      )
     );
     JObject manifest = ItemViews.Write(
       file,

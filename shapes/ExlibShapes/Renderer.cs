@@ -302,14 +302,45 @@ public static class Renderer {
   /// <see cref="Fit"/> and <see cref="Project"/>: its own textures and poses, placed by
   /// <paramref name="Model"/> (applied after every pose, in world units). <paramref name="UvSize"/>
   /// is the width and height the shape's face UVs are written in; null is 16 x 16, a block
-  /// shape's.</summary>
+  /// shape's. <paramref name="Only"/> limits the part to the leaves under a path it holds; null
+  /// draws them all.</summary>
   internal sealed record RenderPart(
     LoadedShape Shape,
     TextureSet Textures,
     IReadOnlyDictionary<string, Pose>? Poses,
     Mat4d Model,
-    (double Width, double Height)? UvSize = null
-  );
+    (double Width, double Height)? UvSize = null,
+    IReadOnlySet<string>? Only = null
+  ) {
+    internal bool Keeps(Node leaf) =>
+      Only == null
+      || Only.Any(p => leaf.Path.StartsWith(p, StringComparison.Ordinal));
+  }
+
+  /// <summary>
+  /// A pinhole camera at the view-space origin looking along -z_view, in place of the orthographic
+  /// projection: a point at depth d lands <c>Focal * x / d</c> pixels right and <c>Focal * y / d</c>
+  /// above the canvas centre, which is <paramref name="Width"/> x <paramref name="Height"/> pixels.
+  /// The caller moves the eye to the origin through each part's model.
+  /// </summary>
+  internal sealed record Perspective(int Focal, int Width, int Height) {
+    /// <summary>Nearest depth, in world units, a face may have and still be drawn.</summary>
+    public const double Near = 1.0;
+
+    /// <summary>The camera whose vertical field of view is <paramref name="fovDeg"/> degrees over a
+    /// canvas of the given size.</summary>
+    public static Perspective FromFov(double fovDeg, int width, int height) =>
+      new(
+        (int)Math.Round(height / 2.0 / Math.Tan(fovDeg * Math.PI / 360)),
+        width,
+        height
+      );
+
+    internal double XMin => -Width / 2.0 / Focal;
+    internal double XMax => Width / 2.0 / Focal;
+    internal double YMin => -Height / 2.0 / Focal;
+    internal double YMax => Height / 2.0 / Focal;
+  }
 
   internal sealed class QuadD {
     public required (double X, double Y, double Z)[] Points { get; init; }
@@ -584,12 +615,19 @@ public static class Renderer {
     int Ppu,
     View View
   ) {
+    internal Perspective? Perspective { get; init; }
+
     /// <summary>The (column, row) a world point falls on, in pixels from the canvas's top left.
-    /// Points outside the rendered shape project outside the canvas.</summary>
+    /// Points outside the rendered shape project outside the canvas; with a perspective camera a
+    /// point at or behind the eye has no pixel and the result is meaningless.</summary>
     public (double Col, double Row) Screen(double x, double y, double z) {
-      (double vx, double vy, double _) = (
+      (double vx, double vy, double vz) = (
         Mat3.RotateX(View.Pitch) * Mat3.RotateY(View.Yaw)
       ).Mul(x, y, z);
+      if (Perspective != null) {
+        double depth = -vz;
+        return ((vx / depth - XMin) * Ppu, (YMax - vy / depth) * Ppu);
+      }
       return ((vx - XMin) * Ppu, (YMax - vy) * Ppu);
     }
   }
@@ -621,8 +659,18 @@ public static class Renderer {
     View view,
     int ppu = 24,
     int margin = 2,
-    IReadOnlySet<string>? only = null
+    IReadOnlySet<string>? only = null,
+    Perspective? perspective = null
   ) {
+    if (perspective != null)
+      return new Projection(
+        perspective.XMin,
+        perspective.YMax,
+        perspective.Focal,
+        view
+      ) {
+        Perspective = perspective,
+      };
     Mat3 viewRot = Mat3.RotateX(view.Pitch) * Mat3.RotateY(view.Yaw);
     double xmin = double.PositiveInfinity,
       ymax = double.NegativeInfinity;
@@ -690,8 +738,22 @@ public static class Renderer {
     IReadOnlyList<RenderPart> parts,
     View view,
     IReadOnlySet<string>? only = null,
-    int margin = 2
+    int margin = 2,
+    Perspective? perspective = null
   ) {
+    if (perspective != null)
+      return GridRange(parts) is not { } fixedGrid
+        ? null
+        : new Canvas(
+          perspective.XMin,
+          perspective.XMax,
+          perspective.YMin,
+          perspective.YMax,
+          fixedGrid.X0,
+          fixedGrid.X1,
+          fixedGrid.Z0,
+          fixedGrid.Z1
+        );
     Mat3 viewRot = Mat3.RotateX(view.Pitch) * Mat3.RotateY(view.Yaw);
     double xmin = double.PositiveInfinity,
       xmax = double.NegativeInfinity;
@@ -730,9 +792,11 @@ public static class Renderer {
     [
       .. parts.SelectMany(part =>
         ElementBoxesD(
-          part.Shape,
-          WorldMatricesD(part.Shape, part.Poses, part.Model)
-        ).Values
+            part.Shape,
+            WorldMatricesD(part.Shape, part.Poses, part.Model)
+          )
+          .Where(b => part.Shape.Find(b.Key) is { } n && part.Keeps(n))
+          .Select(b => b.Value)
       ),
     ];
     if (boxes.Count == 0)
@@ -768,7 +832,7 @@ public static class Renderer {
         part.Poses,
         part.Model
       );
-      foreach (Node el in part.Shape.Leaves()) {
+      foreach (Node el in part.Shape.Leaves().Where(part.Keeps)) {
         if (
           only != null
           && !only.Any(p => el.Path.StartsWith(p, StringComparison.Ordinal))
@@ -833,6 +897,40 @@ public static class Renderer {
     );
   }
 
+  // The polygon cut at the near plane, a vertex's texture coordinates carried to the cut; fewer
+  // than three vertices left means the face is wholly nearer than the plane.
+  private static (
+    (double X, double Y, double Z)[] Points,
+    (double U, double V)[] Uv
+  ) ClipNear((double X, double Y, double Z)[] points, (double U, double V)[] uv) {
+    var outPoints = new List<(double X, double Y, double Z)>();
+    var outUv = new List<(double U, double V)>();
+    for (int i = 0; i < points.Length; i++) {
+      int j = (i + 1) % points.Length;
+      bool insideI = -points[i].Z >= Perspective.Near,
+        insideJ = -points[j].Z >= Perspective.Near;
+      if (insideI) {
+        outPoints.Add(points[i]);
+        outUv.Add(uv[i]);
+      }
+      if (insideI != insideJ) {
+        double t =
+          (-Perspective.Near - points[i].Z) / (points[j].Z - points[i].Z);
+        outPoints.Add(
+          (
+            points[i].X + (points[j].X - points[i].X) * t,
+            points[i].Y + (points[j].Y - points[i].Y) * t,
+            -Perspective.Near
+          )
+        );
+        outUv.Add(
+          (uv[i].U + (uv[j].U - uv[i].U) * t, uv[i].V + (uv[j].V - uv[i].V) * t)
+        );
+      }
+    }
+    return ([.. outPoints], [.. outUv]);
+  }
+
   // Renders a scene of parts into one depth buffer: each part's leaves are placed by its model and
   // textured from its own set; only, highlight and overlay match paths in every part.
   internal static SKBitmap Render(
@@ -847,7 +945,8 @@ public static class Renderer {
     bool edges = true,
     bool transparent = false,
     Canvas? fitTo = null,
-    string? overlay = null
+    string? overlay = null,
+    Perspective? perspective = null
   ) {
     bool IsOverlay(string path) =>
       overlay != null && path.StartsWith(overlay, StringComparison.Ordinal);
@@ -863,6 +962,7 @@ public static class Renderer {
           );
           return part
             .Shape.Leaves()
+            .Where(part.Keeps)
             .Where(el =>
               only == null
               || only.Any(p => el.Path.StartsWith(p, StringComparison.Ordinal))
@@ -878,27 +978,52 @@ public static class Renderer {
       new List<(
         QuadD Quad,
         (double X, double Y, double Z)[] PtsView,
+        (double U, double V)[] Uv,
         (double X, double Y, double Z) NormalView,
         RenderPart Part
       )>();
     foreach ((Node el, Mat4d m, RenderPart part) in leaves) {
       foreach (QuadD q in FaceQuadsD(el, m)) {
-        var ptsView = new (double, double, double)[4];
-        for (int i = 0; i < 4; i++)
-          ptsView[i] = viewRot.Mul(q.Points[i].X, q.Points[i].Y, q.Points[i].Z);
+        (double, double, double)[] ptsView =
+        [
+          .. q.Points.Select(p => viewRot.Mul(p.X, p.Y, p.Z)),
+        ];
+        (double U, double V)[] uv = RotateUvCorners(q.Uv, q.Rotation);
         (double, double, double) normalView = viewRot.Mul(
           q.Normal.X,
           q.Normal.Y,
           q.Normal.Z
         );
-        quads.Add((q, ptsView, normalView, part));
+        if (perspective != null) {
+          // Facing the eye at the origin: the normal against the vector to the face, as the
+          // orthographic z of the normal, which the cull below reads.
+          normalView = (
+            normalView.Item1,
+            normalView.Item2,
+            -(
+              normalView.Item1 * ptsView[0].Item1
+              + normalView.Item2 * ptsView[0].Item2
+              + normalView.Item3 * ptsView[0].Item3
+            )
+          );
+          (ptsView, uv) = ClipNear(ptsView, uv);
+          if (ptsView.Length < 3)
+            continue;
+          ptsView =
+          [
+            .. ptsView.Select(p =>
+              (p.Item1 / -p.Item3, p.Item2 / -p.Item3, 1 / -p.Item3)
+            ),
+          ];
+        }
+        quads.Add((q, ptsView, uv, normalView, part));
       }
     }
 
     if (quads.Count == 0) {
       var empty = new SKBitmap(
-        16,
-        16,
+        perspective?.Width ?? 16,
+        perspective?.Height ?? 16,
         SKColorType.Rgba8888,
         SKAlphaType.Unpremul
       );
@@ -913,7 +1038,13 @@ public static class Renderer {
       ymax,
       xmax,
       ymin;
-    if (fitTo is { } fixedCanvas)
+    if (perspective != null) {
+      xmin = perspective.XMin;
+      xmax = perspective.XMax;
+      ymin = perspective.YMin;
+      ymax = perspective.YMax;
+      ppu = perspective.Focal;
+    } else if (fitTo is { } fixedCanvas)
       (xmin, xmax, ymin, ymax) = (
         fixedCanvas.XMin,
         fixedCanvas.XMax,
@@ -928,8 +1059,11 @@ public static class Renderer {
       ymin = quads.SelectMany(q => q.PtsView).Min(p => p.Item2) - margin;
     }
 
-    int width = Math.Max(1, (int)Math.Ceiling((xmax - xmin) * ppu));
-    int height = Math.Max(1, (int)Math.Ceiling((ymax - ymin) * ppu));
+    int width =
+      perspective?.Width ?? Math.Max(1, (int)Math.Ceiling((xmax - xmin) * ppu));
+    int height =
+      perspective?.Height
+      ?? Math.Max(1, (int)Math.Ceiling((ymax - ymin) * ppu));
 
     ScreenPoint ToScreen((double X, double Y, double Z) pv) =>
       new((pv.X - xmin) * ppu, (ymax - pv.Y) * ppu, pv.Z);
@@ -953,6 +1087,7 @@ public static class Renderer {
       (
         QuadD q,
         (double, double, double)[] ptsView,
+        (double U, double V)[] uvCorners,
         (double, double, double) normalView,
         RenderPart quadPart
       ) in quads
@@ -967,9 +1102,9 @@ public static class Renderer {
       else
         drawn.Add(screen);
       byte[,,] tex = quadPart.Textures.Get(q.Texture);
-      (double U, double V)[] uvCorners = RotateUvCorners(q.Uv, q.Rotation);
       double shade = Shading(q.Normal);
-      foreach ((int a, int b, int c) in new[] { (0, 1, 2), (0, 2, 3) })
+      for (int fan = 1; fan < screen.Length - 1; fan++) {
+        (int a, int b, int c) = (0, fan, fan + 1);
         RasterizeTriangle(
           colorBuf,
           zBuf,
@@ -985,6 +1120,7 @@ public static class Renderer {
           width,
           height
         );
+      }
     }
 
     FillHoles(colorBuf, zBuf, modelZ ?? zBuf, width, height);
@@ -993,10 +1129,10 @@ public static class Renderer {
       // Face outlines darken the surface they lie on, so two parts of one texture keep their
       // silhouettes; the small depth bias keeps an edge on its own face instead of losing to it.
       foreach (ScreenPoint[] screen in drawn)
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < screen.Length; i++) {
           ScreenPoint a = screen[i] with { Z = screen[i].Z + EdgeBias };
-          ScreenPoint b = screen[(i + 1) % 4] with {
-            Z = screen[(i + 1) % 4].Z + EdgeBias,
+          ScreenPoint b = screen[(i + 1) % screen.Length] with {
+            Z = screen[(i + 1) % screen.Length].Z + EdgeBias,
           };
           DrawLine(
             colorBuf,

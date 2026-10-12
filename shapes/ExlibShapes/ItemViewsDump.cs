@@ -56,11 +56,13 @@ public static partial class ItemViews {
         TextureSet textures,
         IReadOnlyDictionary<string, TextureRef> values
       ) = Compose(item, index);
-      Seraph? seraph = views.Contains("tp") ? LoadSeraph(index) : null;
+      Seraph? seraph = views.Any(v => v is "tp" or "fp")
+        ? LoadSeraph(index)
+        : null;
       foreach (string view in views) {
-        if (view == "tp" && seraph == null) {
+        if (view is "tp" or "fp" && seraph == null) {
           warnings.Add(
-            $"{dump.View}: the player shape is not found; tp not drawn"
+            $"{dump.View}: the player shape is not found; {view} not drawn"
           );
           continue;
         }
@@ -83,6 +85,10 @@ public static partial class ItemViews {
       if (seraph != null)
         warnings.AddRange(
           TpWarnings(seraph.Shape, dump.Clips?.Idle, dump.Clips?.Ready)
+        );
+      if (seraph != null && views.Contains("fp"))
+        warnings.AddRange(
+          FpWarnings(seraph.Shape, dump.Clips?.Idle, dump.Clips?.Ready)
         );
       NoteTextures(item, textures, values, missing, unpainted);
     } else

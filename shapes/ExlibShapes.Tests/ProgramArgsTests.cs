@@ -46,10 +46,10 @@ public class ProgramArgsTests {
   [Fact]
   public void ItemRefusesAViewItDoesNotDraw() {
     UsageException e = Assert.Throws<UsageException>(() =>
-      Program.RunItem([Missing, "--out=/tmp/x", "--views=gui,fp"])
+      Program.RunItem([Missing, "--out=/tmp/x", "--views=gui,side"])
     );
     Assert.StartsWith(
-      "no such view: fp (one of iso, gui, tp, ground)",
+      "no such view: side (one of iso, gui, tp, fp, ground)",
       e.Message
     );
   }

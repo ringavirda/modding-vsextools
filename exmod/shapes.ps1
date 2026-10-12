@@ -267,14 +267,15 @@ published.
 Add-ExmodCommand -Group source -Name item -Summary 'render one itemtype variant to its own picture' -Action {
   param([string[]]$Argv) Invoke-Item $Argv
 } -Detail @'
-exmod item FILE --out=DIR [--variant CODE] [--views gui,tp,ground[,iso]] [--ppu N] [--roots PATH...] [--game PATH]
+exmod item FILE --out=DIR [--variant CODE] [--views gui,tp,fp,ground[,iso]] [--ppu N] [--roots PATH...] [--game PATH]
 
 Renders one variant of an itemtype file: the isometric view of its own shape, painted with the
 itemtype's texture map, when it ships a model, and its flat inventory texture enlarged on the same
 paper when it ships one. Writes `<stem>-iso.png`, `<stem>-icon.png` and a `<stem>.json` manifest.
 With --views it writes exactly the views named, each to `<stem>-<view>.png`: `gui` is the item in
 the centre slot of a 3 x 3 grid of inventory slots, `tp` the player holding it, seen from the right
-side and from the front right side by side (needs the game's player shape among the assets), `ground`
+side and from the front right side by side, `fp` its hands holding it seen from the eye (both need the game's player shape among
+the assets), `ground`
 the item lying on a stone block, all from the itemtype's own transforms and held clips.
 See shapes/ExlibShapes/README.md for the full option list and the standalone `exlib-shapes` tool.
 `--out` needs the `=` form here: PowerShell's own parameter binder treats a bare `--out` token as
@@ -288,7 +289,7 @@ published.
   FILE            the itemtype JSON to render
   --out=DIR       where the PNGs and <stem>.json are written
   --variant CODE  the variant to draw (default: the family's first)
-  --views LIST    comma-separated: iso, gui, tp, ground (default: the iso render and the icon)
+  --views LIST    comma-separated: iso, gui, tp, fp, ground (default: the iso render and the icon)
   --ppu N         pixels per shape unit for the isometric render (default: 24)
   --roots PATH    extra mod repository roots to resolve textures against (repeatable)
   --game PATH     a specific game install (default: this repository's own provisioned one)
@@ -297,7 +298,7 @@ published.
 Add-ExmodCommand -Group source -Name item-views -Summary 'render an item-views/1 dump to its gui, ground and iso pictures' -Action {
   param([string[]]$Argv) Invoke-ItemViews $Argv
 } -Detail @'
-exmod item-views PATH --out=DIR [--views gui,tp,ground,iso] [--ppu N] [--roots PATH...] [--game PATH]
+exmod item-views PATH --out=DIR [--views gui,tp,fp,ground,iso] [--ppu N] [--roots PATH...] [--game PATH]
 
 Renders an item's `<domain>-<code>.views.json` dump, the transforms the game resolved for a group of
 collectibles, to a `<stem>-<view>.png` per view and a `<stem>.json` manifest of the files, the
@@ -314,7 +315,7 @@ published.
 
   PATH            a .views.json file, or a folder of them
   --out=DIR       where the PNGs and <stem>.json are written
-  --views LIST    comma-separated: iso, gui, tp, ground (default: gui,ground,iso)
+  --views LIST    comma-separated: iso, gui, tp, fp, ground (default: gui,ground,iso)
   --ppu N         pixels per shape unit for the isometric render (default: 24)
   --roots PATH    extra mod repository roots to resolve the shape and textures against (repeatable)
   --game PATH     a specific game install (default: this repository's own provisioned one)
