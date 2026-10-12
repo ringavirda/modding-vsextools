@@ -309,6 +309,20 @@ public class ItemViewsTests {
       (72 + rows.Max()) * ppu - tolerance,
       (72 + rows.Max()) * ppu + tolerance
     );
+
+    // The bounds alone are the same mirrored top to bottom; the highest corner fixes which end of
+    // the rod is up.
+    int top = rows.IndexOf(rows.Min());
+    double topCol = (72 + cols[top]) * ppu;
+    bool atTop = false;
+    for (int x = 0; x < layer.Width; x++)
+      for (int y = minRow; y < minRow + 2 * ppu; y++)
+        atTop |=
+          layer.GetPixel(x, y).Alpha > 0 && Math.Abs(x - topCol) <= 2 * tolerance;
+    Assert.True(
+      atTop,
+      "the rod's highest corner is drawn at the top of its bounds"
+    );
   }
 
   [SkippableFact]
