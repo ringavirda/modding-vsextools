@@ -42,7 +42,7 @@ public sealed class LegendEntry {
 /// any other shape.
 /// </summary>
 public static class Schematic {
-  private static readonly string[] Palette =
+  internal static readonly string[] Palette =
   [
     "#4C72B0",
     "#DD8452",
@@ -88,7 +88,7 @@ public static class Schematic {
   // The fixed palette for the first ten numbers; past that, a hue spaced by the golden ratio so
   // two structures with more than ten numbers (the family carries two: 11 each) still get
   // visually distinct colours instead of the palette wrapping and repeating one.
-  private static string ColorFor(int i) {
+  internal static string ColorFor(int i) {
     if (i < Palette.Length)
       return Palette[i];
     double hue = ((i - Palette.Length) * 0.61803398875) % 1.0;
@@ -284,19 +284,19 @@ public static class Schematic {
   }
 
   // Pixels reserved under a grid for the edge label and the caption below it.
-  private const int CaptionSpace = 30;
+  internal const int CaptionSpace = 30;
 
   // Pixels per line of a planned plan's key under the caption.
   private const int KeyRow = 14;
 
   // A light diagonal hatch over the paper, the fill of a cell the player may leave as air.
-  private const string Hatch =
+  internal const string Hatch =
     "<pattern id=\"hatch\" width=\"6\" height=\"6\" patternUnits=\"userSpaceOnUse\" "
     + "patternTransform=\"rotate(45)\">"
     + "<line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"6\" stroke=\"#999999\" stroke-width=\"1\" /></pattern>";
 
   // Black on a light fill, white on a dark one, by the fill's own luminance.
-  private static string Ink(string color) {
+  internal static string Ink(string color) {
     int r = Convert.ToInt32(color.Substring(1, 2), 16);
     int g = Convert.ToInt32(color.Substring(3, 2), 16);
     int b = Convert.ToInt32(color.Substring(5, 2), 16);
@@ -306,7 +306,7 @@ public static class Schematic {
   // The edges named for the machine rather than the compass: the side a player stands at is the
   // front, the one opposite it the back, each written against its own edge. North is the top of
   // every grid and is marked there in small text unless the back already stands for it.
-  private static void Edges(
+  internal static void Edges(
     StringBuilder sb,
     int width,
     int height,
@@ -410,7 +410,7 @@ public static class Schematic {
 
   // .NET's default double.ToString() omits the decimal point for a whole number (16, not
   // 16.0); appended back so every coordinate in the SVG text shows one.
-  private static string Svg(double v) {
+  internal static string Svg(double v) {
     string s = v.ToString("R", CultureInfo.InvariantCulture);
     return s.Contains('.') || s.Contains('e') || s.Contains('E') ? s : s + ".0";
   }

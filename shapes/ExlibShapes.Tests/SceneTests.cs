@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using SkiaSharp;
 using Xunit;
@@ -104,8 +105,16 @@ public class SceneTests {
       [],
       []
     );
-    SceneRender.Write(ghost, BlockIndex.Build([DemoRoot]), dir, "ghost", ["se"]);
-    using SKBitmap bitmap = SKBitmap.Decode(Path.Combine(dir, "ghost-plain-se.png"));
+    SceneRender.Write(
+      ghost,
+      BlockIndex.Build([DemoRoot]),
+      dir,
+      "ghost",
+      ["se"]
+    );
+    using SKBitmap bitmap = SKBitmap.Decode(
+      Path.Combine(dir, "ghost-plain-se.png")
+    );
     var colours = new HashSet<SKColor>();
     for (int y = 0; y < bitmap.Height; y++)
       for (int x = 0; x < bitmap.Width; x++)
@@ -129,9 +138,10 @@ public class SceneTests {
     );
     Assert.Equal(["demo:nothing"], unresolved);
     List<string> names = [.. Names(raw)];
-    List<int> hidden = [
-      .. scene.Cells
-        .Select((c, i) => (c, i))
+    List<int> hidden =
+    [
+      .. scene
+        .Cells.Select((c, i) => (c, i))
         .Where(t => t.c.Role is "filler" or "port")
         .Select(t => t.i),
     ];
@@ -144,12 +154,60 @@ public class SceneTests {
   [Fact]
   public void A_fluid_under_a_solid_entry_draws_nothing_and_a_lone_fluid_draws() {
     SceneFile scene = SceneFile.Load(Fixture);
-    (JObject raw, _, _) = SceneRender.Compose(scene, BlockIndex.Build([DemoRoot]));
+    (JObject raw, _, _) = SceneRender.Compose(
+      scene,
+      BlockIndex.Build([DemoRoot])
+    );
     List<string> names = [.. Names(raw)];
     List<SceneCell> cells = [.. scene.Cells];
-    int under = cells.FindIndex(c => c.Role == "fluid" && c.At == new Offset(4, 0, 4));
-    int alone = cells.FindIndex(c => c.Role == "fluid" && c.At == new Offset(6, 0, 5));
+    int under = cells.FindIndex(c =>
+      c.Role == "fluid" && c.At == new Offset(4, 0, 4)
+    );
+    int alone = cells.FindIndex(c =>
+      c.Role == "fluid" && c.At == new Offset(6, 0, 5)
+    );
     Assert.DoesNotContain($"c{under}", names);
     Assert.Contains($"c{alone}", names);
+  }
+
+  [Theory]
+  [InlineData(0)]
+  [InlineData(1)]
+  public void Each_layers_plan_equals_its_reference(int y) {
+    string svg = ScenePlan.Svg(SceneFile.Load(Fixture), y);
+    string expected = File.ReadAllText(
+      FixturePath.Expected($"scene/demo-plan-y{y}.svg")
+    );
+    Assert.Equal(expected, svg);
+  }
+
+  [Fact]
+  public void The_plan_labels_come_from_the_ids_and_a_filler_takes_its_principals() {
+    string svg = ScenePlan.Svg(SceneFile.Load(Fixture), 0);
+    Assert.DoesNotContain("demo:", svg);
+    Assert.Equal(5, Regex.Matches(svg, @">kiln</text>").Count);
+    Assert.Equal(3, Regex.Matches(svg, @">main</text>").Count);
+  }
+
+  [Fact]
+  public void The_unjoined_port_and_the_open_face_are_red_and_the_joined_port_takes_its_networks_colour() {
+    SceneFile scene = SceneFile.Load(Fixture);
+    string svg = ScenePlan.Svg(scene, 0);
+    string joins = ScenePlan.KeyColors(scene)["A"];
+    Assert.NotEqual(ScenePlan.Unjoined, joins);
+    List<string> arrows =
+    [
+      .. Regex
+        .Matches(svg, "<line class=\"connector\"[^>]*stroke=\"(#[0-9A-F]{6})\"")
+        .Select(m => m.Groups[1].Value),
+    ];
+    Assert.Equal([joins, ScenePlan.Unjoined], arrows);
+    List<string> ticks =
+    [
+      .. Regex
+        .Matches(svg, "<line class=\"open\"[^>]*stroke=\"(#[0-9A-F]{6})\"")
+        .Select(m => m.Groups[1].Value),
+    ];
+    Assert.Equal([ScenePlan.Unjoined], ticks);
   }
 }

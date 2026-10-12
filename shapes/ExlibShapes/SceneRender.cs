@@ -28,7 +28,13 @@ public sealed record SceneRendered(
 /// </summary>
 public static class SceneRender {
   /// <summary>The iso corner views, north-east first.</summary>
-  public static readonly IReadOnlyList<string> CornerViews = ["ne", "nw", "se", "sw"];
+  public static readonly IReadOnlyList<string> CornerViews =
+  [
+    "ne",
+    "nw",
+    "se",
+    "sw",
+  ];
 
   /// <summary>The element-name and texture-key prefix of an unresolved cell's cube.</summary>
   internal const string UnresolvedPrefix = "unresolved";
@@ -54,7 +60,9 @@ public static class SceneRender {
     var solid = new HashSet<Offset>(
       scene.Cells.Where(c => c.Role != "fluid").Select(c => c.At)
     );
-    var resolved = new Dictionary<string, ResolvedBlock?>(StringComparer.Ordinal);
+    var resolved = new Dictionary<string, ResolvedBlock?>(
+      StringComparer.Ordinal
+    );
     for (int i = 0; i < scene.Cells.Count; i++) {
       SceneCell c = scene.Cells[i];
       if (c.Role is "filler" or "port")
@@ -149,8 +157,11 @@ public static class SceneRender {
     IReadOnlyList<string> views,
     int ppu = 4
   ) {
-    (JObject raw, Dictionary<string, TextureRef> values, IReadOnlyList<string> unresolved) =
-      Compose(scene, index);
+    (
+      JObject raw,
+      Dictionary<string, TextureRef> values,
+      IReadOnlyList<string> unresolved
+    ) = Compose(scene, index);
     LoadedShape shape = Load(raw);
     TextureSet textures = TexturesOf(values, index);
     List<string> corners = [.. CornerViews.Where(views.Contains)];
@@ -174,7 +185,11 @@ public static class SceneRender {
       data.SaveTo(stream);
       files.Add(path);
     }
-    return new SceneRendered(files, unresolved, MissingLines(scene, values, textures));
+    return new SceneRendered(
+      files,
+      unresolved,
+      MissingLines(scene, values, textures)
+    );
   }
 
   private static IReadOnlyList<string> MissingLines(
@@ -184,10 +199,15 @@ public static class SceneRender {
   ) {
     var lines = new SortedSet<string>(StringComparer.Ordinal);
     foreach (string prefixed in textures.Missing) {
-      if (!values.TryGetValue(prefixed, out TextureRef? value) || value.Unassigned)
+      if (
+        !values.TryGetValue(prefixed, out TextureRef? value) || value.Unassigned
+      )
         continue;
       int underscore = prefixed.IndexOf('_');
-      int cell = int.Parse(prefixed[1..underscore], CultureInfo.InvariantCulture);
+      int cell = int.Parse(
+        prefixed[1..underscore],
+        CultureInfo.InvariantCulture
+      );
       lines.Add(
         $"{scene.Cells[cell].Code}: texture {prefixed[(underscore + 1)..]} ({value}) not found"
       );

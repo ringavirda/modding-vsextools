@@ -13,7 +13,7 @@ using Vintagestory.API.Common;
 
 namespace ExpandedLib.Shapes;
 
-// exlib-shapes render|schematic|block|item|tree|measure FILE [options] - renders a shape file to
+// exlib-shapes render|schematic|scene|block|item|tree|measure FILE [options] - renders a shape file to
 // textured views/animation frames, a multiblock/megablock blocktype file to a build schematic, one
 // blocktype variant to the views a wiki page shows, one itemtype variant to its own picture, or
 // prints a shape's own element tree or its measured extents; see README.md for the full option list
@@ -62,6 +62,7 @@ internal static class Program {
       return args[0] switch {
         "render" => RunRender(rest),
         "schematic" => RunSchematic(rest),
+        "scene" => RunScene(rest),
         "block" => RunBlock(rest),
         "item" => RunItem(rest),
         "tree" => RunTree(rest),
@@ -81,7 +82,7 @@ internal static class Program {
   }
 
   private const string Usage =
-    "usage: exlib-shapes {render,schematic,block,item,tree,measure} FILE [options]";
+    "usage: exlib-shapes {render,schematic,scene,block,item,tree,measure} FILE [options]";
 
   private static int Unknown(string command) {
     Console.Error.WriteLine($"exlib-shapes: no such command: {command}");
@@ -562,6 +563,105 @@ internal static class Program {
           + "]"
       );
     return 0;
+  }
+
+  internal static int RunScene(string[] args) {
+    (string path, string[] flags) = FileAndFlags(
+      args,
+      "usage: exlib-shapes scene PATH --out DIR [--views ne,nw,se,sw,plan] [--ppu N] "
+        + "[--roots PATH...] [--game PATH]"
+    );
+    RejectUnknownFlags(
+      "scene",
+      flags,
+      ["--out", "--views", "--ppu"],
+      ["--roots"],
+      []
+    );
+    string outDir =
+      OptOf(flags, "--out") ?? throw new UsageException("--out is required");
+    List<string> views =
+    [
+      .. (OptOf(flags, "--views") ?? "ne,nw,se,sw,plan").Split(
+        ',',
+        StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+      ),
+    ];
+    foreach (string view in views)
+      if (view != "plan" && !SceneRender.CornerViews.Contains(view))
+        throw new UsageException(
+          $"scene: no such view: {view} (ne, nw, se, sw, plan)"
+        );
+    int ppu = int.Parse(
+      OptOf(flags, "--ppu") ?? "4",
+      CultureInfo.InvariantCulture
+    );
+    List<string> extraRoots = OptAllOf(flags, "--roots");
+    string? game = OptOf(flags, "--game");
+
+    List<string> scenes = Directory.Exists(path)
+      ?
+      [
+        .. Directory
+          .EnumerateFiles(path, "*.scene.json")
+          .Order(StringComparer.Ordinal),
+      ]
+      : [path];
+    if (scenes.Count == 0)
+      throw new InvalidDataException($"{path}: no .scene.json file");
+    List<string> roots =
+    [
+      .. extraRoots,
+      .. BlockIndex.DefaultRoots(Path.GetFullPath(scenes[0])),
+    ];
+    BlockIndex index = BlockIndex.Build(roots, game);
+    foreach (string scenePath in scenes)
+      RenderScene(scenePath, index, outDir, views, ppu);
+    foreach (string line in index.ParseWarnings)
+      Console.Error.WriteLine($"exlib-shapes: {line}");
+    return 0;
+  }
+
+  private static void RenderScene(
+    string scenePath,
+    BlockIndex index,
+    string outDir,
+    List<string> views,
+    int ppu
+  ) {
+    SceneFile scene = SceneFile.Load(scenePath);
+    string name = Path.GetFileName(scenePath);
+    string stem = name.EndsWith(".scene.json", StringComparison.Ordinal)
+      ? name[..^".scene.json".Length]
+      : Path.GetFileNameWithoutExtension(name);
+    SceneRendered rendered = SceneRender.Write(
+      scene,
+      index,
+      outDir,
+      stem,
+      views,
+      ppu
+    );
+    List<string> files = [.. rendered.Files];
+    if (views.Contains("plan"))
+      foreach (int y in ScenePlan.Layers(scene)) {
+        string svg = Path.Combine(outDir, $"{stem}-plan-y{y}.svg");
+        File.WriteAllText(svg, ScenePlan.Svg(scene, y));
+        files.Add(svg);
+      }
+    var warnings = new JArray(
+      rendered.MissingTextures.Concat(index.ParseWarnings)
+    );
+    var manifest = new JObject {
+      ["files"] = new JArray(files),
+      ["unresolved"] = new JArray(rendered.Unresolved),
+      ["warnings"] = warnings,
+    };
+    string manifestPath = Path.Combine(outDir, $"{stem}.json");
+    File.WriteAllText(manifestPath, manifest.ToString(Formatting.Indented));
+    foreach (string f in files)
+      Console.WriteLine(f);
+    Console.WriteLine(manifestPath);
   }
 
   internal static int RunBlock(string[] args) {

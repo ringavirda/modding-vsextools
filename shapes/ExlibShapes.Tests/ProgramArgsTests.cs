@@ -30,6 +30,13 @@ public class ProgramArgsTests {
   }
 
   [Fact]
+  public void SceneRefusesAFlagItDoesNotRead() {
+    string? message = Rejected(Program.RunScene, "--out=/tmp/x", "--angle=90");
+    Assert.NotNull(message);
+    Assert.StartsWith("scene does not take --angle (it takes --out", message);
+  }
+
+  [Fact]
   public void UnknownFlagIsRefusedInEqualsFormToo() {
     string? message = Rejected(Program.RunItem, "--out=/tmp/x", "--views=iso");
     Assert.NotNull(message);
@@ -167,6 +174,15 @@ public class ProgramArgsTests {
     "--game",
     "x"
   )]
+  [InlineData(
+    "scene",
+    "--out=/tmp/x",
+    "--views=ne,plan",
+    "--ppu=4",
+    "--roots=/r",
+    "--game=/g"
+  )]
+  [InlineData("scene", "--out", "/tmp/x", "--roots", "a", "b", "--game", "x")]
   [InlineData("tree", "--group=a", "--game=/g")]
   [InlineData("tree", "--group", "a", "--game", "x")]
   [InlineData("measure", "--group=a", "--cells=0,0,0", "--game=/g")]
@@ -178,6 +194,7 @@ public class ProgramArgsTests {
     Func<string[], int> run = command switch {
       "render" => Program.RunRender,
       "schematic" => Program.RunSchematic,
+      "scene" => Program.RunScene,
       "block" => Program.RunBlock,
       "item" => Program.RunItem,
       "tree" => Program.RunTree,

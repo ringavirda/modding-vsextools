@@ -4,6 +4,7 @@
 #
 #   exmod render      shape file -> textured view or animation-frame PNGs
 #   exmod schematic   multiblock/megablock blocktype file -> plan SVGs, an iso PNG, a manifest
+#   exmod scene       setup-scene/1 dump -> four corner PNGs, a plan SVG per layer, a manifest
 #   exmod block       blocktype file -> a PNG per view, a footprint SVG, a manifest
 #   exmod item        itemtype file -> an iso PNG or an enlarged icon, a manifest
 
@@ -69,6 +70,7 @@ function Build-ExlibShapes([string]$Game) {
 
 function Invoke-Render([string[]]$Argv) { Invoke-ExlibShapes 'render' $Argv }
 function Invoke-Schematic([string[]]$Argv) { Invoke-ExlibShapes 'schematic' $Argv }
+function Invoke-Scene([string[]]$Argv) { Invoke-ExlibShapes 'scene' $Argv }
 function Invoke-Block([string[]]$Argv) { Invoke-ExlibShapes 'block' $Argv }
 function Invoke-ShapesBuild([string[]]$Argv) {
   $game = Get-Opt $Argv '--game' $null
@@ -132,6 +134,32 @@ Build it under the exclusive lock first: `flock -w 240 -o LOCK exmod shapes-buil
   --layer N|all   an iso render cut at Y layer N, or one per layer with "all"
   --ppu N         pixels per shape unit for the iso render (default: 8)
   --roots PATH    extra mod repository roots to resolve selectors against (repeatable)
+  --game PATH     a specific game install (default: this repository's own provisioned one)
+'@
+
+Add-ExmodCommand -Group source -Name scene -Summary 'render a setup-scene/1 dump to corner views and layer plans' -Action {
+  param([string[]]$Argv) Invoke-Scene $Argv
+} -Detail @'
+exmod scene PATH --out=DIR [--views ne,nw,se,sw,plan] [--ppu N] [--roots PATH...] [--game PATH]
+
+Renders a setup's `<setup>.scene.json` dump to a PNG per corner view, an SVG plan per Y layer
+and a `<stem>.json` manifest of the files written and the codes no root resolved. A folder PATH
+renders every `*.scene.json` directly in it, in name order. Prints each file, the manifest path
+and one `unresolved:` line per unresolved code. Exits 1 for an unreadable scene or a format other
+than setup-scene/1. `--out` needs the `=` form here: PowerShell's own parameter binder treats a
+bare `--out` token as an ambiguous prefix of its common `-OutVariable`/`-OutBuffer` parameters and
+refuses it outright.
+
+The tool is built only when its output is missing or older than its sources, so renders can run
+side by side: a render started under a shared lock (`flock -s -w 240 LOCK exmod ...` with
+EXMOD_SHAPES_NO_BUILD=1) never builds, and refuses with the build command when the tool is stale.
+Build it under the exclusive lock first: `flock -w 240 -o LOCK exmod shapes-build`.
+
+  PATH            a .scene.json file, or a folder of them
+  --out=DIR       where the PNGs, SVGs and <stem>.json are written
+  --views a,b     ne, nw, se, sw and plan (default: ne,nw,se,sw,plan)
+  --ppu N         pixels per shape unit for the corner views (default: 4)
+  --roots PATH    extra mod repository roots to resolve block codes against (repeatable)
   --game PATH     a specific game install (default: this repository's own provisioned one)
 '@
 
