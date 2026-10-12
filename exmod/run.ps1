@@ -669,10 +669,10 @@ $ScenarioMod = 'exlib'
 # The options `exmod scenario` takes: Names (as given, possibly none), Version (the current series only,
 # the live mod being built for it), Port (the first port; shard i binds Port + i), Timeout (seconds to wait
 # for the count line, or $null for the run's budget plus 60), Shards (servers to boot, 1 or more), Mods (extra
-# mod folders, as given), Verbose (print every step line of passing cases too) and KeepData (keep each
-# scratch data path).
+# mod folders, as given), Verbose (print every step line of passing cases too), Keep (leave the server up
+# and relay the terminal to it) and KeepData (keep each scratch data path).
 function Get-ScenarioOptions([string[]]$Argv) {
-  $names = @(Get-Positional $Argv @('-Version', '-Port', '-Timeout', '-Shards', '-Mods') @('-Verbose', '-KeepData'))
+  $names = @(Get-Positional $Argv @('-Version', '-Port', '-Timeout', '-Shards', '-Mods') @('-Verbose', '-Keep', '-KeepData'))
   $unknown = @($names | Where-Object { $_ -like '-*' })
   if ($unknown) { throw "Unknown option $($unknown[0]) for exmod scenario." }
   $version = Get-Opt $Argv '-Version' $CurrentGameVersion
@@ -691,6 +691,7 @@ function Get-ScenarioOptions([string[]]$Argv) {
     Timeout  = if ($null -eq $timeout) { $null } else { [int]$timeout }
     Shards   = $shards
     Mods     = if ($null -eq $mods) { @() } else { @($mods -split ',') }
+    Keep     = (Get-Flag $Argv '-Keep')
     KeepData = (Get-Flag $Argv '-KeepData')
   }
 }
@@ -710,20 +711,64 @@ function Get-ScenarioModDirs([string[]]$Defaults, [string]$LiveDir, [string[]]$E
   return @($Defaults) + @($LiveDir) + @(Resolve-ModDirs $Extra)
 }
 
-# Every scenario file directly under the checkout's tests/live, as <modid>/<stem>.
-function Get-ScenarioNames {
-  return @(Get-ChildItem (Join-Path $RepoRoot 'tests/live') -Filter '*.json' -File | Sort-Object Name |
-      ForEach-Object { "$ScenarioMod/$($_.BaseName)" })
+# The modid of the mod at $Path: read from the modinfo.json beside its project (<path>/src, else <path>).
+function Get-ScenarioModId([string]$Path) {
+  foreach ($dir in @((Join-Path $Path 'src'), $Path)) {
+    $file = Join-Path $dir 'modinfo.json'
+    if (Test-Path $file) { return (Get-Content $file -Raw | ConvertFrom-Json).modid }
+  }
+  throw "No modinfo.json under $Path to read the modid from."
 }
 
-# A bare stem is filed under the checkout's modid; a name with a slash is taken as given.
-function Expand-ScenarioNames([string[]]$Names) {
-  return @($Names | ForEach-Object { if ($_ -like '*/*') { $_ } else { "$ScenarioMod/$_" } })
+# The scenario folders this checkout stages, in order, as ModId and Dir (Dir is $null for a mod without a
+# tests/live). A checkout whose manifest names a live mod is the framework's own: its tests/live is filed
+# under $ScenarioMod. Any other checkout stages each manifest mod's tests/live under that mod's modid.
+function Get-ScenarioSources {
+  if ((Get-ExmodManifest).PSObject.Properties['live']) {
+    return @([pscustomobject]@{ ModId = $ScenarioMod; Dir = Join-Path $RepoRoot 'tests/live' })
+  }
+  return @((Get-ExmodMods).GetEnumerator() | ForEach-Object {
+      $dir = Join-Path $_.Value.Path 'tests/live'
+      [pscustomobject]@{ ModId = Get-ScenarioModId $_.Value.Path; Dir = if (Test-Path $dir) { $dir } else { $null } }
+    })
 }
 
-# The stdin line that starts a run of the named scenarios.
-function Get-ScenarioCommand([string[]]$Names) {
-  return "/exmod scenario run $($Names -join ' ')"
+# Every scenario file directly under a source's tests/live, as <modid>/<stem>.
+function Get-ScenarioNames($Sources) {
+  return @($Sources | Where-Object { $_.Dir } | ForEach-Object {
+      $modId = $_.ModId
+      Get-ChildItem $_.Dir -Filter '*.json' -File | Sort-Object Name | ForEach-Object { "$modId/$($_.BaseName)" }
+    })
+}
+
+# A bare stem is filed under $DefaultMod, the repository's first mod; a name with a slash is taken as given.
+function Expand-ScenarioNames([string[]]$Names, [string]$DefaultMod = $ScenarioMod) {
+  return @($Names | ForEach-Object { if ($_ -like '*/*') { $_ } else { "$DefaultMod/$_" } })
+}
+
+# The stdin line that starts a run of the named scenarios; `keep` leaves the plots standing.
+function Get-ScenarioCommand([string[]]$Names, [bool]$Keep = $false) {
+  $line = "/exmod scenario run $($Names -join ' ')"
+  if ($Keep) { $line += ' keep' }
+  return $line
+}
+
+# The lines -Keep prints for a server left up: its port, its data path and how to join.
+function Get-ScenarioKeepLines($Server, [int]$Port) {
+  return @("Server kept up on port $Port, data at $($Server.Data)",
+    "Join: exmod client, Multiplayer, localhost:$Port")
+}
+
+# Writes each line read from $In to every server's console until $In ends (Ctrl+C or a closed stdin).
+function Send-ScenarioRelay($Servers, [System.IO.TextReader]$In) {
+  while ($null -ne ($line = $In.ReadLine())) {
+    foreach ($server in $Servers) {
+      if (-not $server.Proc.HasExited) {
+        $server.Proc.StandardInput.WriteLine($line)
+        $server.Proc.StandardInput.Flush()
+      }
+    }
+  }
 }
 
 # The file the runner saves a failed case's schematic to, under the data path's WorldEdit folder.
@@ -732,9 +777,18 @@ function Get-ScenarioSchematicName([string]$Name) {
 }
 
 # The live mod's project: the manifest's `live` path, resolved the way a mod's project is (Get-ExmodMods).
+# A checkout with no `live` key builds the live mod from exlib's source, found as the mods find it:
+# $env:ExlibRoot, else the sibling exlib.
 function Get-ExmodLiveProject {
   $manifest = Get-ExmodManifest
-  if (-not $manifest.PSObject.Properties['live'] -or -not $manifest.live) { throw "exmod.json names no live mod." }
+  if (-not $manifest.PSObject.Properties['live'] -or -not $manifest.live) {
+    $root = if ($env:ExlibRoot) { $env:ExlibRoot } else { Join-Path $RepoRoot '../exlib' }
+    $path = Join-Path $root 'src/ExpandedLib.Testing.Live'
+    if (-not (Test-Path $path)) {
+      throw "exmod scenario builds the live mod from exlib's source and found none at ${path}: set ExlibRoot or put an exlib checkout beside this one."
+    }
+    return Find-SingleCsproj (Resolve-Path $path).ProviderPath 'live'
+  }
   $path = Resolve-ManifestPath 'live.path' $manifest.live.path
   return Find-SingleCsproj (Get-ModProjectDir $path) 'live'
 }
@@ -931,10 +985,13 @@ function Get-ScenarioExitProblems($Reports) {
 # servers and throws when the run does not pass.
 function Invoke-Scenario([string[]]$Argv) {
   $opts = Get-ScenarioOptions $Argv
-  $names = if ($opts.Names) { Expand-ScenarioNames $opts.Names } else { Get-ScenarioNames }
+  $sources = @(Get-ScenarioSources)
+  $present = @($sources | Where-Object { $_.Dir -and (Test-Path $_.Dir) })
+  if (-not $present) { throw "No tests/live under $RepoRoot." }
+  $names = if ($opts.Names) { Expand-ScenarioNames $opts.Names $sources[0].ModId } else { Get-ScenarioNames $present }
   if ($opts.Shards -gt $names.Count) { throw "-Shards $($opts.Shards) is more than the $($names.Count) case(s) to run." }
-  $scenarios = Join-Path $RepoRoot 'tests/live'
-  if (-not (Test-Path $scenarios)) { throw "No tests/live under $RepoRoot." }
+  $copies = @{}
+  foreach ($source in $present) { $copies[$source.Dir] = "Scenarios/$($source.ModId)" }
   $groups = Split-ScenarioShards $names $opts.Shards
 
   $liveDir = Build-ScenarioLiveMod
@@ -946,11 +1003,11 @@ function Invoke-Scenario([string[]]$Argv) {
   try {
     for ($i = 0; $i -lt $groups.Count; $i++) {
       $port = $opts.Port + $i
-      $server = New-ScratchServer 'scenario' $modDirs -DataCopies @{ $scenarios = "Scenarios/$ScenarioMod" } -ServerConfig (Get-ScenarioServerConfig)
+      $server = New-ScratchServer 'scenario' $modDirs -DataCopies $copies -ServerConfig (Get-ScenarioServerConfig)
       $shards.Add([pscustomobject]@{
           Server   = $server
           Port     = $port
-          Command  = (Get-ScenarioCommand $groups[$i])
+          Command  = (Get-ScenarioCommand $groups[$i] $opts.Keep)
           Printed  = 0
           Sent     = $null
           RunSeen  = $null
@@ -982,6 +1039,15 @@ function Invoke-Scenario([string[]]$Argv) {
       Start-Sleep -Milliseconds 500
     }
 
+    if ($opts.Keep) {
+      foreach ($s in $shards) {
+        $null = Write-ScenarioProgress $s.Server $s.Printed $opts.Verbose
+        foreach ($line in (Get-ScenarioKeepLines $s.Server $s.Port)) { Write-Host $line }
+      }
+      Write-Host 'Type commands for the server console; Ctrl+C stops it.'
+      try { Send-ScenarioRelay @($shards | ForEach-Object { $_.Server }) ([Console]::In) }
+      finally { foreach ($s in $shards) { if (-not $s.Server.Proc.HasExited) { Stop-ScratchServer $s.Server } } }
+    }
     foreach ($s in $shards) { if (-not $s.Server.Proc.HasExited) { Stop-ScratchServer $s.Server } }
     $reports = @()
     foreach ($s in $shards) {
@@ -1005,12 +1071,15 @@ Add-ExmodCommand -Group run -Name scenario -Summary 'run live scenarios on a boo
   param([string[]]$Argv) Invoke-Scenario $Argv
 } -Detail @'
 exmod scenario [<name>...] [-Version <x.y>] [-Port <n>] [-Timeout <seconds>] [-Shards <n>]
-               [-Mods <dir>[,...]] [-KeepData] [-Verbose]
+               [-Mods <dir>[,...]] [-Keep] [-KeepData] [-Verbose]
 
 Builds this checkout's live mod (exmod.json's `live` key), boots a dedicated server with the built mods
-and the live mod, copies tests/live into the server's Scenarios/exlib folder, runs the named scenarios
+and the live mod, copies tests/live into the server's Scenarios/<modid> folder, runs the named scenarios
 on it, prints the run's lines and stops the server. A name is <modid>/<stem>, such as exlib/sample, or a
-bare stem of this checkout's own; with no name, every scenario file in tests/live runs.
+bare stem, which belongs to the repository's first mod (exlib in exlib, the first mod of exmod.json in
+exmods); with no name, every scenario file in tests/live runs. From exmods the live mod is built from
+exlib's source, found through the ExlibRoot environment variable, else the sibling exlib, and each mod's
+tests/live is copied under its own modid.
 
   -Version   the game series; only the current one, which the live mod is built for (default 1.22)
   -Port      the port the server binds (default 42498), so two runs can share the machine
@@ -1018,6 +1087,9 @@ bare stem of this checkout's own; with no name, every scenario file in tests/liv
   -Shards    servers to boot, each on the next port up from -Port; the names are dealt out over them in
              turn, each server runs its own, and one count line covers all (default 1)
   -Mods      extra mod folder(s), or folder(s) of mod folders, staged beside the live mod
+  -Keep      leave the plots standing and the server up: prints the port, the data path and how to join,
+             relays the terminal's lines to the server console until Ctrl+C (or stdin closes), then stops
+             it; the exit code is the one a run without -Keep gives
   -KeepData  keep each scratch data path and print it, instead of deleting it
   -Verbose   print every step line, passing cases too
 

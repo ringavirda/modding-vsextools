@@ -62,7 +62,7 @@ def done(run, passed, failed):
 
 
 class FixtureRepo(unittest.TestCase):
-    """A temporary checkout with exmod.json, a built mod folder named build/mod-a whose modinfo names
+    """A temporary checkout with an exmod.json naming a live mod, a built mod folder named build/mod-a whose modinfo names
     exliblive, a mod folder build/mod-b whose modinfo does not parse, and tests/live with one scenario
     and one schematic."""
 
@@ -70,7 +70,7 @@ class FixtureRepo(unittest.TestCase):
         self.tmp = os.path.realpath(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp)
         self.repo = os.path.join(self.tmp, "checkout")
-        touch(os.path.join(self.repo, "exmod.json"), "{}")
+        touch(os.path.join(self.repo, "exmod.json"), '{"live": {"path": "src/Live"}}')
         touch(os.path.join(self.repo, "build", "mod-a", "modinfo.json"), '{"modid": "exliblive"}')
         touch(os.path.join(self.repo, "build", "mod-a", "ExpandedLib.Testing.Live.dll"), "")
         touch(os.path.join(self.repo, "build", "mod-b", "modinfo.json"), "{ not json")
@@ -92,7 +92,7 @@ Try-Case 'ports' { $o = Get-ScenarioOptions @('-Port','42500','exlib/sample','-V
 Try-Case 'defaults' { $o = Get-ScenarioOptions @('exlib/sample'); [ordered]@{ Port = $o.Port; Timeout = $o.Timeout; Version = $o.Version } }
 Try-Case 'verbose' { $o = Get-ScenarioOptions @('-Verbose','exlib/sample'); [ordered]@{ Names = $o.Names; Verbose = $o.Verbose; Off = (Get-ScenarioOptions @('exlib/sample')).Verbose } }
 Try-Case 'hostVerbose' { $VerbosePreference = 'Continue'; (Get-ScenarioOptions @('exlib/sample')).Verbose }
-Try-Case 'unknown' { Get-ScenarioOptions @('-Keep','exlib/sample') | Out-Null; 'no error' }
+Try-Case 'unknown' { Get-ScenarioOptions @('-Bogus','exlib/sample') | Out-Null; 'no error' }
 Try-Case 'series' { Get-ScenarioOptions @('-Version','1.21') | Out-Null; 'no error' }
 Try-Case 'shardsMods' { $o = Get-ScenarioOptions @('-Shards','3','-Mods','a,b','-KeepData','exlib/sample'); [ordered]@{ Shards = $o.Shards; Mods = @($o.Mods); KeepData = $o.KeepData } }
 Try-Case 'shardDefaults' { $o = Get-ScenarioOptions @('exlib/sample'); [ordered]@{ Shards = $o.Shards; Mods = @($o.Mods); KeepData = $o.KeepData } }
@@ -129,7 +129,7 @@ Try-Case 'tooManyShards' { Invoke-Scenario @('-Shards','3','exlib/sample') | Out
 
     def test_an_unknown_option_is_refused(self):
         # Mutation: the unknown-option throw removed, so -Keep is passed on as a scenario name. Fails here.
-        self.assertIn("Unknown option -Keep", self.results_of()["unknown"].get("Error", "no error"))
+        self.assertIn("Unknown option -Bogus", self.results_of()["unknown"].get("Error", "no error"))
 
     def test_another_game_series_is_refused(self):
         # Mutation: the series throw removed, so -Version 1.21 is accepted. Fails here.
@@ -172,7 +172,7 @@ Try-Case 'command' { Get-ScenarioCommand @('exlib/sample','exlib/sample-2') }
     def test_no_name_lists_every_scenario_file_directly_under_tests_live(self):
         # Mutation: -Filter '*.json' replaced by a recursive search, so schematics/s.json is listed. Fails here.
         got = run_cases(self.repo, r"""
-Try-Case 'names' { Get-ScenarioNames }
+Try-Case 'names' { Get-ScenarioNames @([pscustomobject]@{ ModId = 'exlib'; Dir = Join-Path $RepoRoot 'tests/live' }) }
 """)["names"]
         self.assertEqual(["exlib/sample", "exlib/sample-2"], sorted(got))
 
@@ -500,6 +500,114 @@ Try-Case 'twoDirs' {
 
     def test_a_schematic_is_found_in_any_shards_data_path(self):
         self.assertEqual(["scenario-exlib-sample-fails.json"], as_list(self.results_of()["twoDirs"]))
+
+
+EXMODS_JSON = {
+    "mods": {"iiex": {"path": "mods/iiex"}, "siex": {"path": "mods/siex"}},
+    "samples": {},
+}
+
+
+@unittest.skipUnless(PWSH, "pwsh not found")
+class ModIdStagingTests(unittest.TestCase):
+    """The scenario folders of an exmods-shaped checkout, the live mod found through ExlibRoot, the -Keep
+    lines and the console relay."""
+
+    def setUp(self):
+        self.tmp = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.repo = os.path.join(self.tmp, "exmods")
+        touch(os.path.join(self.repo, "exmod.json"), json.dumps(EXMODS_JSON))
+        for mod, modid in (("iiex", "iiex"), ("siex", "steelindustry")):
+            touch(os.path.join(self.repo, "mods", mod, "src", f"{mod}.csproj"), "<Project />")
+            touch(os.path.join(self.repo, "mods", mod, "src", "modinfo.json"), json.dumps({"modid": modid}))
+        touch(os.path.join(self.repo, "mods", "iiex", "tests", "iiex.tests.csproj"), "<Project />")
+        touch(os.path.join(self.repo, "mods", "iiex", "tests", "live", "sample.json"), "{}")
+        touch(os.path.join(self.repo, "mods", "iiex", "tests", "live", "lines", "cold.json"), "{}")
+        self.exlib = os.path.join(self.tmp, "exlib")
+        touch(os.path.join(self.exlib, "src", "ExpandedLib.Testing.Live", "Live.csproj"), "<Project />")
+
+    def test_each_mods_tests_live_is_staged_under_its_modid(self):
+        got = run_cases(self.repo, r"""
+Try-Case 'sources' { @(Get-ScenarioSources | ForEach-Object { "$($_.ModId)=$([bool]$_.Dir)" }) }
+Try-Case 'staged' {
+  $copies = @{}
+  foreach ($source in @(Get-ScenarioSources | Where-Object { $_.Dir })) { $copies[$source.Dir] = "Scenarios/$($source.ModId)" }
+  $s = New-ScratchServer 'scenario' @() -DataCopies $copies
+  $data = @(Get-ChildItem -Recurse -File $s.Data | ForEach-Object { [IO.Path]::GetRelativePath($s.Data, $_.FullName).Replace('\', '/') } | Sort-Object)
+  Remove-ScratchServer $s $false
+  $data
+}
+""")
+        self.assertEqual(["iiex=True", "steelindustry=False"], got["sources"])
+        self.assertEqual(["Scenarios/iiex/lines/cold.json", "Scenarios/iiex/sample.json"], got["staged"])
+
+    def test_no_name_runs_every_mods_scenario_files_and_a_bare_stem_is_the_first_mods(self):
+        got = run_cases(self.repo, r"""
+Try-Case 'names' { Get-ScenarioNames @(Get-ScenarioSources) }
+Try-Case 'bare' { Expand-ScenarioNames @('sample','steelindustry/x') @(Get-ScenarioSources)[0].ModId }
+""")
+        self.assertEqual(["iiex/sample"], as_list(got["names"]))
+        self.assertEqual(["iiex/sample", "steelindustry/x"], got["bare"])
+
+    def test_a_manifest_with_a_live_key_stages_its_own_tests_live_under_exlib(self):
+        touch(os.path.join(self.repo, "exmod.json"), json.dumps({"mods": {}, "live": {"path": "x"}}))
+        got = run_cases(self.repo, r"""
+Try-Case 'sources' { @(Get-ScenarioSources | ForEach-Object { "$($_.ModId)=$($_.Dir.Substring($RepoRoot.Length).Replace('\', '/'))" }) }
+""")
+        self.assertEqual(["exlib=/tests/live"], as_list(got["sources"]))
+
+    def test_the_live_project_is_found_through_exlibroot_then_the_sibling_and_a_missing_one_is_refused(self):
+        body = r"""
+Try-Case 'project' { Split-Path (Get-ExmodLiveProject) -Leaf }
+"""
+        shutil.copytree(self.exlib, os.path.join(self.tmp, "sibling-parent", "exlib"))
+        moved = os.path.join(self.tmp, "sibling-parent", "exmods")
+        shutil.copytree(self.repo, moved)
+        self.assertEqual("Live.csproj", run_cases(moved, body, ExlibRoot="")["project"])
+        lonely = os.path.join(self.tmp, "lonely", "exmods")
+        shutil.copytree(self.repo, lonely)
+        env_got = run_cases(lonely, body, ExlibRoot=self.exlib + "/")
+        self.assertEqual("Live.csproj", env_got["project"])
+        missing = run_cases(lonely, body, ExlibRoot="")
+        self.assertIn("found none", missing["project"]["Error"])
+        self.assertIn("ExlibRoot", missing["project"]["Error"])
+
+    def test_keep_is_a_flag_and_appends_keep_to_the_command(self):
+        got = run_cases(self.repo, r"""
+Try-Case 'flag' { $o = Get-ScenarioOptions @('-Keep','iiex/sample'); [ordered]@{ Keep = $o.Keep; Names = @($o.Names); Off = (Get-ScenarioOptions @('iiex/sample')).Keep } }
+Try-Case 'on' { Get-ScenarioCommand @('iiex/sample') $true }
+Try-Case 'off' { Get-ScenarioCommand @('iiex/sample') $false }
+""")
+        self.assertEqual({"Keep": True, "Names": ["iiex/sample"], "Off": False}, got["flag"])
+        self.assertEqual("/exmod scenario run iiex/sample keep", got["on"])
+        self.assertEqual("/exmod scenario run iiex/sample", got["off"])
+
+    def test_the_keep_lines_give_the_port_the_data_path_and_how_to_join(self):
+        got = run_cases(self.repo, r"""
+Try-Case 'lines' { Get-ScenarioKeepLines ([pscustomobject]@{ Data = '/scratch/data' }) 42501 }
+""")
+        self.assertEqual(["Server kept up on port 42501, data at /scratch/data",
+                          "Join: exmod client, Multiplayer, localhost:42501"], got["lines"])
+
+    def test_the_relay_writes_each_line_to_every_live_server_and_ends_with_the_input(self):
+        got = run_cases(self.repo, r"""
+function Fake([bool]$Exited) {
+  $ms = [System.IO.MemoryStream]::new()
+  $w = [System.IO.StreamWriter]::new($ms)
+  [pscustomobject]@{ Ms = $ms; Proc = [pscustomobject]@{ HasExited = $Exited; StandardInput = $w } }
+}
+Try-Case 'relay' {
+  $live = Fake $false
+  $dead = Fake $true
+  Send-ScenarioRelay @($live, $dead) ([System.IO.StringReader]::new("/time set day`n/stop`n"))
+  [ordered]@{
+    Live = [System.Text.Encoding]::UTF8.GetString($live.Ms.ToArray()).Replace("`r", '')
+    Dead = $dead.Ms.Length
+  }
+}
+""")
+        self.assertEqual({"Live": "/time set day\n/stop\n", "Dead": 0}, got["relay"])
 
 
 if __name__ == "__main__":
