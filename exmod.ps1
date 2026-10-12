@@ -553,25 +553,40 @@ function Get-VersionCore([string]$Version) {
   return [version](($Version -split '-', 2)[0])
 }
 
-# The workspace-sibling build output for a dependency id, or $null when no directory beside
-# $RepoRoot names it. A sibling is a directory next to this checkout holding its own exmod.json
-# whose `mods` names $Id; its manifest is read raw rather than through Get-ExmodManifest, which is
-# fixed to this checkout's $RepoRoot.
+# The project of the mod $Id in the checkout at $Dir, or $null when $Dir holds no exmod.json, does
+# not list $Id under `mods` or lacks the mod's folder. The manifest is read raw rather than through
+# Get-ExmodManifest, which is fixed to this checkout's $RepoRoot.
+function Get-ExmodDirMod([string]$Dir, [string]$Id) {
+  $manifestPath = Join-Path $Dir 'exmod.json'
+  if (-not (Test-Path $manifestPath -ErrorAction SilentlyContinue)) { return $null }
+  $sib = $null
+  try { $sib = Get-Content $manifestPath -Raw -ErrorAction Stop | ConvertFrom-Json } catch { return $null }
+  if (-not $sib.PSObject.Properties['mods']) { return $null }
+  $entry = $sib.mods.PSObject.Properties[$Id]
+  if (-not $entry) { return $null }
+  $modPath = Join-Path $Dir $entry.Value.path
+  if (-not (Test-Path $modPath)) { return $null }
+  return Find-SingleCsproj (Get-ModProjectDir $modPath) "sibling mods.$Id"
+}
+
+# The workspace-sibling project for a dependency id, or $null when none names it. The exlib checkout
+# the build compiles against (Get-ScenarioExlibRoot: $env:ExlibRoot, else the exlib beside the
+# nearest Directory.Build.props) is asked first, so a run stages what it compiled; otherwise the
+# first directory next to this checkout whose exmod.json lists $Id under `mods`.
 function Get-ExmodDependencySiblingProject([string]$Id) {
+  if (Get-Command Get-ScenarioExlibRoot -ErrorAction SilentlyContinue) {
+    $root = Get-ScenarioExlibRoot
+    if ($root -and (Test-Path $root) -and (Join-Path (Resolve-Path $root).ProviderPath '.') -ne (Join-Path $RepoRoot '.')) {
+      $found = Get-ExmodDirMod (Resolve-Path $root).ProviderPath $Id
+      if ($found) { return $found }
+    }
+  }
   $parent = Split-Path $RepoRoot -Parent
   if (-not $parent -or -not (Test-Path $parent)) { return $null }
   foreach ($dir in Get-ChildItem $parent -Directory -ErrorAction SilentlyContinue) {
     if ($dir.FullName -eq $RepoRoot) { continue }
-    $manifestPath = Join-Path $dir.FullName 'exmod.json'
-    if (-not (Test-Path $manifestPath -ErrorAction SilentlyContinue)) { continue }
-    $sib = $null
-    try { $sib = Get-Content $manifestPath -Raw -ErrorAction Stop | ConvertFrom-Json } catch { continue }
-    if (-not $sib.PSObject.Properties['mods']) { continue }
-    $entry = $sib.mods.PSObject.Properties[$Id]
-    if (-not $entry) { continue }
-    $modPath = Join-Path $dir.FullName $entry.Value.path
-    if (-not (Test-Path $modPath)) { continue }
-    return Find-SingleCsproj (Get-ModProjectDir $modPath) "sibling mods.$Id"
+    $found = Get-ExmodDirMod $dir.FullName $Id
+    if ($found) { return $found }
   }
   return $null
 }
@@ -609,7 +624,8 @@ function Expand-DependencyZip([string]$Zip, [string]$Dest) {
   Remove-Item -Recurse -Force $inner.FullName
 }
 
-# One dependency, resolved: a workspace sibling's build output (built first if missing), else a
+# One dependency, resolved: a workspace sibling's build output (built first if missing; the exlib
+# checkout Get-ScenarioExlibRoot names first, then the directories beside this checkout), else a
 # cached extraction reused when its version already matches the floor, else a fresh download - the
 # manifest's depends.<Id>.url (with {version}/{id} substituted), else depends.<Id>.github
 # (owner/repo, resolved against its v<version> release tag), else the ModDB API. Downloads land

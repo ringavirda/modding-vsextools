@@ -605,6 +605,42 @@ Try-Case 'project' { Split-Path (Get-ExmodLiveProject) -Leaf }
         got = run_cases(lane, "Try-Case 'root' { Get-ScenarioExlibRoot }", ExlibRoot="")
         self.assertEqual(os.path.join(workspace, "exlib"), got["root"])
 
+    def sibling_exlib(self, root, project):
+        touch(os.path.join(root, "exmod.json"), json.dumps({"mods": {"exlib": {"path": "src/ExpandedLib"}}}))
+        touch(os.path.join(root, "src", "ExpandedLib", project), "<Project />")
+
+    def test_a_dependency_is_taken_from_the_exlibroot_checkout_before_the_parent_directory(self):
+        # Mutation: the Get-ScenarioExlibRoot lookup removed from Get-ExmodDependencySiblingProject. Fails here.
+        body = "Try-Case 'dep' { Split-Path (Get-ExmodDependencySiblingProject 'exlib') -Leaf }"
+        self.sibling_exlib(os.path.join(self.tmp, "parent", "exlib"), "Beside.csproj")
+        self.sibling_exlib(os.path.join(self.tmp, "elsewhere", "exlib"), "Built.csproj")
+        lane = os.path.join(self.tmp, "parent", "exmods")
+        shutil.copytree(self.repo, lane)
+        got = run_cases(lane, body, ExlibRoot=os.path.join(self.tmp, "elsewhere", "exlib") + "/")
+        self.assertEqual("Built.csproj", got["dep"])
+
+    def test_a_dependency_is_taken_from_the_exlib_beside_the_props_before_the_parent_directory(self):
+        # Mutation: the walk-up removed from Get-ScenarioExlibRoot, so the parent directory's exlib wins. Fails here.
+        body = "Try-Case 'dep' { Split-Path (Get-ExmodDependencySiblingProject 'exlib') -Leaf }"
+        workspace = os.path.join(self.tmp, "ws")
+        touch(os.path.join(workspace, "Directory.Build.props"), "<Project />")
+        self.sibling_exlib(os.path.join(workspace, "exlib"), "Built.csproj")
+        self.sibling_exlib(os.path.join(workspace, ".worktrees", "exlib"), "Beside.csproj")
+        lane = os.path.join(workspace, ".worktrees", "exmods-lane")
+        shutil.copytree(self.repo, lane)
+        self.assertEqual("Built.csproj", run_cases(lane, body, ExlibRoot="")["dep"])
+
+    def test_a_dependency_the_exlibroot_checkout_does_not_list_is_found_beside_the_checkout(self):
+        # Mutation: the parent-directory scan removed from Get-ExmodDependencySiblingProject. Fails here.
+        body = "Try-Case 'dep' { Split-Path (Get-ExmodDependencySiblingProject 'other') -Leaf }"
+        self.sibling_exlib(os.path.join(self.tmp, "elsewhere", "exlib"), "Built.csproj")
+        touch(os.path.join(self.tmp, "parent", "other", "exmod.json"), json.dumps({"mods": {"other": {"path": "o"}}}))
+        touch(os.path.join(self.tmp, "parent", "other", "o", "Other.csproj"), "<Project />")
+        lane = os.path.join(self.tmp, "parent", "exmods")
+        shutil.copytree(self.repo, lane)
+        got = run_cases(lane, body, ExlibRoot=os.path.join(self.tmp, "elsewhere", "exlib"))
+        self.assertEqual("Other.csproj", got["dep"])
+
     def test_the_scenario_default_mods_replace_the_resolved_exlib_with_the_given_one(self):
         # Mutation: the Id filter dropped, so the dependency resolution's exlib is staged beside the given one. Fails here.
         got = run_cases(self.repo, r"""
