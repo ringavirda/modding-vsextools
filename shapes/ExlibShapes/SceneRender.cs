@@ -150,7 +150,7 @@ public static class SceneRender {
 
   /// <summary>
   /// Writes <c>{stem}-plain-{view}.png</c> and <c>{stem}-tint-{view}.png</c> for each corner view
-  /// in <paramref name="views"/>, all on one canvas: the union of the views' fitted canvases. In a
+  /// in <paramref name="views"/>, all on one canvas size and scale: the largest width and the largest height among the views' fits, each view centred in it. In a
   /// tinted view each texel takes the hue and saturation of its cell's network or line colour
   /// (<see cref="ScenePlan.KeyColors"/>) and keeps its own HSL lightness and alpha, and a cell on
   /// neither, or on a key the scene does not declare, is its texture's luminance grey;
@@ -182,21 +182,15 @@ public static class SceneRender {
     TextureSet textures = TexturesOf(values, index);
     List<string> corners = [.. CornerViews.Where(views.Contains)];
     (LoadedShape Shape, TextureSet Textures)? marks = Marks(scene, index);
-    Renderer.Canvas? canvas = null;
-    foreach (string name in corners) {
-      if (Renderer.Fit(shape, Renderer.NamedViews[name]) is { } fit)
-        canvas = canvas?.Union(fit) ?? fit;
-      if (
-        marks is { } m
-        && Renderer.Fit(m.Shape, Renderer.NamedViews[name]) is { } markFit
-      )
-        canvas = canvas?.Union(markFit) ?? markFit;
-    }
+    Dictionary<string, Renderer.Canvas> canvases = Canvases(shape, marks, corners);
     Directory.CreateDirectory(outDir);
     TextureSet tint = TintedTextures(scene, values, index, textures);
     var files = new List<string>();
     var tinted = new List<string>();
     foreach (string name in corners) {
+      Renderer.Canvas? canvas = canvases.TryGetValue(name, out var fit)
+        ? fit
+        : null;
       files.Add(
         WriteView(
           shape,
@@ -227,6 +221,53 @@ public static class SceneRender {
       unresolved,
       MissingLines(scene, values, textures)
     );
+  }
+
+  /// <summary>
+  /// The canvas of each view in <paramref name="corners"/> that draws a face: one size, the largest
+  /// width and the largest height among the views' fits of the shape and its marks, each fit
+  /// centred in it.
+  /// </summary>
+  internal static Dictionary<string, Renderer.Canvas> Canvases(
+    LoadedShape shape,
+    (LoadedShape Shape, TextureSet Textures)? marks,
+    IEnumerable<string> corners
+  ) {
+    var fits = new Dictionary<string, Renderer.Canvas>();
+    foreach (string name in corners) {
+      Renderer.Canvas? fit = Renderer.Fit(shape, Renderer.NamedViews[name]);
+      if (
+        marks is { } m
+        && Renderer.Fit(m.Shape, Renderer.NamedViews[name]) is { } markFit
+      )
+        fit = fit?.Union(markFit) ?? markFit;
+      if (fit is { } f)
+        fits[name] = f;
+    }
+    double width = fits
+      .Values.Select(f => f.XMax - f.XMin)
+      .DefaultIfEmpty(0)
+      .Max();
+    double height = fits
+      .Values.Select(f => f.YMax - f.YMin)
+      .DefaultIfEmpty(0)
+      .Max();
+    return fits.ToDictionary(kv => kv.Key, kv => Centred(kv.Value, width, height));
+  }
+
+  private static Renderer.Canvas Centred(
+    Renderer.Canvas fit,
+    double width,
+    double height
+  ) {
+    double xMin = (fit.XMin + fit.XMax - width) / 2;
+    double yMin = (fit.YMin + fit.YMax - height) / 2;
+    return fit with {
+      XMin = xMin,
+      XMax = xMin + width,
+      YMin = yMin,
+      YMax = yMin + height,
+    };
   }
 
   private static string WriteView(
@@ -270,7 +311,7 @@ public static class SceneRender {
 
   // The port frames and open stubs as bars of their own shape, so they are rendered apart from the
   // cells and laid over the tinted picture.
-  private static (LoadedShape Shape, TextureSet Textures)? Marks(
+  internal static (LoadedShape Shape, TextureSet Textures)? Marks(
     SceneFile scene,
     BlockIndex index
   ) {
