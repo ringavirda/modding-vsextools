@@ -276,10 +276,11 @@ public static partial class ItemViews {
     int ppu,
     Seraph? seraph,
     string? idle,
-    string? ready
+    string? ready,
+    bool block = false
   ) =>
     view switch {
-      "gui" => RenderGui(shape, textures, gui),
+      "gui" => RenderGui(shape, textures, gui, block),
       "tp" => RenderTp(shape, textures, tp, seraph!, idle, ready),
       "fp" => RenderFp(shape, textures, tp, seraph!, idle, ready),
       "ground" => RenderGround(shape, textures, ground),
@@ -343,16 +344,25 @@ public static partial class ItemViews {
   /// The item layer of the gui view: <paramref name="shape"/> placed by
   /// <see cref="SlotModel"/> on a transparent canvas covering the 3 x 3 slot grid, at
   /// <see cref="GuiPpu"/> pixels per screen pixel, so the centre slot is the square from
-  /// <c>SlotSize * GuiPpu</c> to <c>2 * SlotSize * GuiPpu</c> on both axes.
+  /// <c>SlotSize * GuiPpu</c> to <c>2 * SlotSize * GuiPpu</c> on both axes. <paramref name="block"/>
+  /// is as in <see cref="SlotModel"/>.
   /// </summary>
   internal static SKBitmap RenderGuiItem(
     LoadedShape shape,
     TextureSet textures,
-    ItemTransform transform
+    ItemTransform transform,
+    bool block = false
   ) {
     double half = 1.5 * SlotSize;
     return Renderer.Render(
-      [new Renderer.RenderPart(shape, textures, null, SlotModel(transform))],
+      [
+        new Renderer.RenderPart(
+          shape,
+          textures,
+          null,
+          SlotModel(transform, block)
+        ),
+      ],
       Renderer.NamedViews["south"],
       GuiPpu,
       grid: false,
@@ -367,9 +377,10 @@ public static partial class ItemViews {
   internal static SKBitmap RenderGui(
     LoadedShape shape,
     TextureSet textures,
-    ItemTransform transform
+    ItemTransform transform,
+    bool block = false
   ) {
-    using SKBitmap item = RenderGuiItem(shape, textures, transform);
+    using SKBitmap item = RenderGuiItem(shape, textures, transform, block);
     var image = new SKBitmap(
       item.Width,
       item.Height,

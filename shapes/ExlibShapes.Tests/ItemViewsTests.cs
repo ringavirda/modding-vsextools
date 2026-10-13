@@ -1140,6 +1140,80 @@ public class ItemViewsTests {
     );
   }
 
+  // The game's gui chain, InventoryItemRenderer.RenderItemstackToGui without the origRotate spin,
+  // written in the game's order on a y-down slot and turned y up for the renderer.
+  private static Renderer.Mat4d GameSlotChain(ItemTransform t, bool block) {
+    const double size = 25.6;
+    return Renderer.Mat4d.Scale(1, -1, 1)
+      * Renderer.Mat4d.Translate(block ? 0 : -3, block ? 0 : -1, 0)
+      * Renderer.Mat4d.Translate(
+        t.Origin.X + t.Translation.X,
+        t.Origin.Y + t.Translation.Y,
+        t.Origin.Z * size + t.Translation.Z
+      )
+      * Renderer.Mat4d.Scale(
+        size * t.ScaleXyz.X,
+        size * t.ScaleXyz.Y,
+        size * t.ScaleXyz.Z
+      )
+      * Renderer.Mat4d.RotateByXyz(
+        t.Rotation.X + (block ? 180 : 0),
+        t.Rotation.Y,
+        t.Rotation.Z
+      )
+      * Renderer.Mat4d.Translate(-t.Origin.X, -t.Origin.Y, -t.Origin.Z)
+      * Renderer.Mat4d.Scale(1.0 / 16, 1.0 / 16, 1.0 / 16);
+  }
+
+  private static readonly ItemTransform SlotSample = new(
+    (2, -3, 1),
+    (-22.6, -45.3, 7),
+    (0.5, 0.4, 0.5),
+    (0.8, 0.9, 1.1),
+    true
+  );
+
+  [Theory]
+  [InlineData(true)]
+  [InlineData(false)]
+  public void Slot_matrix_is_the_games_chain_per_class(bool block) {
+    Renderer.Mat4d expected = GameSlotChain(SlotSample, block);
+    Renderer.Mat4d actual = ItemViews.SlotModel(SlotSample, block);
+    foreach (double x in new[] { 0.0, 16.0 })
+      foreach (double y in new[] { 0.0, 16.0 })
+        foreach (double z in new[] { 0.0, 16.0 }) {
+          (double X, double Y, double Z) e = expected.Mul(x, y, z);
+          (double X, double Y, double Z) a = actual.Mul(x, y, z);
+          Assert.InRange(a.X, e.X - 1e-9, e.X + 1e-9);
+          Assert.InRange(a.Y, e.Y - 1e-9, e.Y + 1e-9);
+          Assert.InRange(a.Z, e.Z - 1e-9, e.Z + 1e-9);
+        }
+  }
+
+  [Fact]
+  public void Block_slot_centres_on_the_slot_and_stands_on_its_base() {
+    var flat = new ItemTransform(
+      (0, 0, 0),
+      (0, 0, 0),
+      (0.5, 0.5, 0.5),
+      (1, 1, 1),
+      false
+    );
+    Renderer.Mat4d model = ItemViews.SlotModel(flat, true);
+    (double X, double Y, double Z) centre = model.Mul(8, 8, 8);
+    (double X, double Y, double Z) bottom = model.Mul(8, 0, 8);
+    // The game adds the origin's x and y in pixels, unscaled: half a pixel off the slot centre.
+    Assert.InRange(centre.X, 0.5 - 1e-9, 0.5 + 1e-9);
+    Assert.InRange(centre.Y, -0.5 - 1e-9, -0.5 + 1e-9);
+    Assert.InRange(bottom.Y, -13.3 - 1e-9, -13.3 + 1e-9);
+
+    (double X, double Y, double Z) itemCentre = ItemViews
+      .SlotModel(flat)
+      .Mul(8, 8, 8);
+    Assert.InRange(itemCentre.X, -2.5 - 1e-9, -2.5 + 1e-9);
+    Assert.InRange(itemCentre.Y, 0.5 - 1e-9, 0.5 + 1e-9);
+  }
+
   [Fact]
   public void Ground_rotates_in_y_z_x_order() {
     var transform = new ItemTransform(

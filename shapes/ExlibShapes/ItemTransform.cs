@@ -124,15 +124,18 @@ public static partial class ItemViews {
   /// The matrix the inventory slot applies to an item mesh, from the shape's voxels to the gui
   /// view's units: screen pixels from the slot centre, x right, y up, z toward the viewer. The
   /// game's slot is Y down with no flip of the mesh, so the last factor turns its y up for the
-  /// renderer. The item sits 3 px left and 1 px above the slot centre; the translation is in
-  /// pixels, the item scales to 25.6 px per block, and rotation turns x, then y, then z in call
-  /// order (a vertex takes z first).
+  /// renderer. An item sits 3 px left and 1 px above the slot centre; a block sits on it and
+  /// turns a further 180 degrees about x. The translation is in pixels, the mesh scales to
+  /// 25.6 px per block, and rotation turns x, then y, then z in call order (a vertex takes z
+  /// first).
   /// </summary>
-  internal static Renderer.Mat4d SlotModel(ItemTransform t) {
+  /// <param name="t">The collectible's resolved gui transform.</param>
+  /// <param name="block">True when the collectible is a block, false for an item.</param>
+  internal static Renderer.Mat4d SlotModel(ItemTransform t, bool block = false) {
     const double size = 25.6;
     (double ox, double oy, double oz) = t.Origin;
     return Renderer.Mat4d.Scale(1, -1, 1)
-      * Renderer.Mat4d.Translate(-3, -1, 0)
+      * (block ? Renderer.Mat4d.Identity : Renderer.Mat4d.Translate(-3, -1, 0))
       * Renderer.Mat4d.Translate(
         ox + t.Translation.X,
         oy + t.Translation.Y,
@@ -143,7 +146,11 @@ public static partial class ItemViews {
         size * t.ScaleXyz.Y,
         size * t.ScaleXyz.Z
       )
-      * Renderer.Mat4d.RotateByXyz(t.Rotation.X, t.Rotation.Y, t.Rotation.Z)
+      * Renderer.Mat4d.RotateByXyz(
+        t.Rotation.X + (block ? 180 : 0),
+        t.Rotation.Y,
+        t.Rotation.Z
+      )
       * Renderer.Mat4d.Translate(-ox, -oy, -oz)
       * Renderer.Mat4d.Scale(1.0 / 16, 1.0 / 16, 1.0 / 16);
   }

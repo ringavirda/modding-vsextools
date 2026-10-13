@@ -77,7 +77,8 @@ public static partial class ItemViews {
           ppu,
           seraph,
           dump.Clips?.Idle,
-          dump.Clips?.Ready
+          dump.Clips?.Ready,
+          dump.Type == "block"
         );
         Save(image, path);
         files.Add(path);
