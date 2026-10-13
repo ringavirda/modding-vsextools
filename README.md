@@ -184,7 +184,7 @@ editing its own `"tools"` pin.
 
 `bash scripts/exmod.sh test latest` builds and tests the verify and shapes tools against a
 provisioned game install (`bash scripts/exmod.sh provision game -Kind server` fetches the
-dedicated-server archive, which needs no licence). `exmod test -NoBuild` runs the suites against
+dedicated-server archive, which needs no licence). A series' test projects build in one parallel MSBuild call. `exmod test -NoBuild` runs the suites against
 what is already built and fails a lane whose test assembly is missing. The scripts are PowerShell 7; `exmod.sh`
 installs `pwsh` when the machine has none, into the workspace root's `.dotnet/tools` when an
 `exmod.workspace.json` is above the checkout, else into the checkout's own.

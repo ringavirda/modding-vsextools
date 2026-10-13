@@ -27,9 +27,9 @@ function Get-ExmodSourceRoots {
 }
 
 # Compiles the mod projects (and, with -Tests, the test projects) for one or more game series.
-# Builds are always serial, across mods and across series: the projects share intermediate
-# assemblies (exlib -> iiex -> siex, and every test project against its mod), so building two of
-# them at once races on the same obj/ files and fails with CS2012. Warnings are never suppressed -
+# Mods build serially, across mods and across series: the projects share intermediate
+# assemblies (exlib -> iiex -> siex), so building two of them in separate calls at once races on the
+# same obj/ files and fails with CS2012. A series' test projects build in one MSBuild call instead. Warnings are never suppressed -
 # a warning count is the point of this command - so nothing here passes -clp:ErrorsOnly or -v q.
 # A project last built on another platform starts from clean. MSBuild's incremental clean reads
 # the previous build's file list, whose paths from the other platform resolve here to the files
@@ -38,6 +38,44 @@ function Reset-ForeignBuildState([string]$ProjectDir) {
   if (-not (Test-ForeignBuildState $ProjectDir)) { return }
   Write-Host "$(Split-Path (Split-Path $ProjectDir -Parent) -Leaf): last built on another platform - starting from clean"
   Remove-Item -Recurse -Force (Join-Path $ProjectDir 'bin'), (Join-Path $ProjectDir 'obj') -ErrorAction SilentlyContinue
+}
+
+# Builds one series' test projects in a single MSBuild call, restored one after another (parallel restores
+# of a shared project write its project.assets.json at once) and built across cores, so a project the
+# test projects share (the mod, exlib) builds once instead of once per test project. $Items carry
+# Proj, Tfm and Legacy, all of one series. Returns the Proj of every item whose project failed: when the
+# call fails, each project is built again on its own (an up-to-date one costs seconds) and the ones
+# that still fail are named. $QuietArgs is passed to the dotnet build lines as given; $Discard drops
+# their output.
+function Invoke-ExmodParallelBuild([string]$Dotnet, [object[]]$Items, [string]$Configuration, [string[]]$QuietArgs, [bool]$Discard = $false) {
+  $first = $Items[0]
+  $props = "Configuration=$Configuration;TargetFramework=$($first.Tfm)"
+  if ($first.Legacy) { $props += ';Legacy=true' }
+  $list = ($Items | ForEach-Object { [Security.SecurityElement]::Escape([IO.Path]::GetFullPath($_.Proj, $PWD.ProviderPath)) }) -join ';'
+  $dir = Join-Path $RepoRoot '.exmod'
+  New-Item -ItemType Directory -Force -Path $dir | Out-Null
+  $traversal = Join-Path $dir "parallel-build-$($first.Version).proj"
+  Set-Content -LiteralPath $traversal -Value @"
+<Project>
+  <ItemGroup><TestProject Include="$list" /></ItemGroup>
+  <Target Name="Restore">
+    <MSBuild Projects="@(TestProject)" Targets="Restore" Properties="$props" BuildInParallel="false" />
+  </Target>
+  <Target Name="Build">
+    <MSBuild Projects="@(TestProject)" Targets="Build" Properties="$props" BuildInParallel="true" StopOnFirstFailure="false" />
+  </Target>
+</Project>
+"@
+  if ($Discard) { & $Dotnet build $traversal -m @QuietArgs | Out-Null } else { & $Dotnet build $traversal -m @QuietArgs | Out-Host }
+  if ($LASTEXITCODE -eq 0) { return @() }
+  Write-Host "parallel build failed: building each test project alone ($($first.Version))"
+  $failed = foreach ($item in $Items) {
+    $buildArgs = @('build', $item.Proj, '-f', $item.Tfm, '-c', $Configuration) + $QuietArgs
+    if ($item.Legacy) { $buildArgs += '-p:Legacy=true' }
+    if ($Discard) { & $Dotnet @buildArgs | Out-Null } else { & $Dotnet @buildArgs | Out-Host }
+    if ($LASTEXITCODE -ne 0) { $item.Proj }
+  }
+  return @($failed)
 }
 
 function Invoke-Build([string[]]$Argv) {
@@ -82,16 +120,20 @@ function Invoke-Build([string[]]$Argv) {
     }
 
     if ($withTests) {
-      foreach ($mod in $testTargets.Keys) {
+      $seriesItems = foreach ($mod in $testTargets.Keys) {
         if ($v -notin $testTargets[$mod].Series) {
           Write-Host "-- $($testTargets[$mod].Project) ($v) skipped, targets $($GameTfms[$CurrentGameVersion]) only --"
           continue
         }
-        $buildArgs = @('build', $testTargets[$mod].Proj, '-f', $tfm, '-c', $configuration)
-        if ($tfm -ne 'net10.0') { $buildArgs += '-p:Legacy=true' }
-        Write-Host "-- $($testTargets[$mod].Project) ($v/$tfm) --"
-        & $dotnet @buildArgs
-        if ($LASTEXITCODE -ne 0) { throw "Build failed: $($testTargets[$mod].Project) ($v/$tfm)." }
+        [pscustomobject]@{ Version = $v; Tfm = $tfm; Legacy = ($tfm -ne 'net10.0'); Proj = $testTargets[$mod].Proj; Project = $testTargets[$mod].Project }
+      }
+      if ($seriesItems) {
+        Write-Host "-- test projects ($v/$tfm) --"
+        $failed = @(Invoke-ExmodParallelBuild $dotnet @($seriesItems) $configuration @())
+        if ($failed.Count -gt 0) {
+          $names = ($seriesItems | Where-Object { $_.Proj -in $failed } | ForEach-Object { $_.Project }) -join ', '
+          throw "Build failed: $names ($v/$tfm)."
+        }
       }
     }
   }
@@ -106,15 +148,16 @@ Add-ExmodCommand -Group source -Name build -Summary 'compile the mods for one or
 exmod build [latest|all|1.22|1.21|1.20] [-Mod <name>] [-Configuration Debug|Release] [-Tests]
 
 Compiles the mod projects, in their dependency order (exlib -> iiex -> siex, then the
-HelloExpanded sample), for the requested series. Builds are serial, on purpose: the projects
-share intermediate assemblies, and building two of them at once races on the same obj/ files
+HelloExpanded sample), for the requested series. Mods build one after another, on purpose: the
+projects share intermediate assemblies, and separate builds at once race on the same obj/ files
 (CS2012). Warnings are never suppressed - a warning count is exactly what this command is for.
 
   latest          1.22 only (the default)
   all             every supported series
   -Mod <name>     build just one mod or sample (see exmod.json's mods and samples)
   -Configuration  Debug (the default) or Release
-  -Tests          also build the test projects `exmod test` would build, for the same series(es)
+  -Tests          also build the test projects `exmod test` would build, for the same series(es), each
+                  series in one parallel MSBuild call
 '@
 
 #endregion
@@ -322,12 +365,17 @@ function Invoke-Test([string[]]$Argv) {
   }
   if ($throttle -le 0) { $throttle = $work.Count }
 
-  # Build serially: the test projects share the mod projects, so building concurrently races on the
-  # same intermediate DLLs (CS2012). This also auto-provisions each version's game binaries once, up
+  # One parallel MSBuild call per series builds the shared mod projects once. This also auto-provisions each version's game binaries once, up
   # front, letting the test phase run in parallel with --no-build. With -NoBuild nothing is built:
   # an item counts as built when its Debug test assembly for the TFM exists.
   if ($noBuild) { Write-Host "Not building: testing $($work.Count) target(s) across version(s): $($wanted -join ', ')" }
   else { Write-Host "Building $($work.Count) test target(s) across version(s): $($wanted -join ', ')" }
+  $failedProj = @()
+  if (-not $noBuild) {
+    foreach ($group in ($work | Group-Object Version)) {
+      $failedProj += @(Invoke-ExmodParallelBuild $dotnet @($group.Group) 'Debug' @('--nologo', '-v', 'q') $true)
+    }
+  }
   $built = foreach ($item in $work) {
     if ($noBuild) {
       $projDir = if (Test-Path -LiteralPath $item.Proj -PathType Container) { $item.Proj } else { Split-Path -Parent $item.Proj }
@@ -337,10 +385,7 @@ function Invoke-Test([string[]]$Argv) {
         Add-Member -NotePropertyName BuildLine -NotePropertyValue "Not built for $($item.Version): $dll is missing; drop -NoBuild or build first" -PassThru
       continue
     }
-    $buildArgs = @('build', $item.Proj, '-f', $item.Tfm, '--nologo', '-v', 'q')
-    if ($item.Legacy) { $buildArgs += '-p:Legacy=true' }
-    & $dotnet @buildArgs | Out-Null
-    $item | Add-Member -NotePropertyName BuildOk -NotePropertyValue ($LASTEXITCODE -eq 0) -PassThru |
+    $item | Add-Member -NotePropertyName BuildOk -NotePropertyValue ($item.Proj -notin $failedProj) -PassThru |
       Add-Member -NotePropertyName BuildLine -NotePropertyValue 'build failed' -PassThru
   }
 
@@ -442,8 +487,8 @@ exmod test [latest|all|1.22|1.21|1.20] [-Filter <expr>] [-Throttle <n>] [-Covera
 
 Builds every test project for the requested series (unless -NoBuild), then runs the suites in parallel - one lane per
 (series, project). Missing runtimes and game binaries are provisioned on demand, so a fresh clone
-needs nothing installed first. Builds are serial on purpose: the test projects share the mod
-projects and building them at once races on the same intermediate assemblies.
+needs nothing installed first. A series' test projects build in one parallel MSBuild call, so the
+mod projects they share build once.
 
   latest      1.22 only (the default)
   all         every supported series
@@ -456,7 +501,7 @@ projects and building them at once races on the same intermediate assemblies.
               client-guarded block needs a covered line or an entry in side-gate-allowlist.json
               beside the floors file
   -AcceptDrop record a test count below the census instead of failing on it
-  -NoBuild    skip the serial build and run the lanes against what is already built; a lane whose
+  -NoBuild    skip the build and run the lanes against what is already built; a lane whose
               Debug test assembly for its framework is missing fails with 'Not built'.
               Ignored by -Coverage
 

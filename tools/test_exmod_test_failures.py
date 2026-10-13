@@ -342,5 +342,129 @@ class RunOutputTests(unittest.TestCase):
         self.assertTrue([l for l in lines if l.startswith("census") and "a drop" in l], lines)
 
 
+# Invoke-Test over three test projects on $env:TEST_SERIES (1.22 and 1.21 by default), with a dotnet stub
+# that appends each build's arguments on one line to $env:TEST_BUILDS, fails a build whose arguments
+# contain $env:TEST_FAIL_PROJ or whose traversal project lists it, and
+# appends the project of each test run to $env:TEST_ARGS.
+SERIES = r"""
+$Manifest = [pscustomobject]@{ series = @($env:TEST_SERIES -split ',') }
+$CurrentGameVersion = '1.22'
+function Resolve-DotnetHost { $env:TEST_STUB }
+function Get-ExmodBuildTargets { [ordered]@{} }
+function Get-ExmodSamples { [ordered]@{} }
+function Get-ExmodTestProjects {
+  $out = [ordered]@{}
+  foreach ($n in 'A', 'B', 'C') {
+    $out[$n] = [pscustomobject]@{ Project = "$n.Tests"; Proj = (Join-Path $env:TEST_REPO "$n.Tests.csproj"); Series = $Manifest.series }
+  }
+  $out
+}
+if ($env:TEST_VERB -eq 'build') { Invoke-Build @('all', '-Tests') } else { Invoke-Test @('all') }
+"""
+
+SERIES_STUB = """#!/bin/sh
+if [ "$1" = build ]; then
+  echo "$*" >> "$TEST_BUILDS"
+  echo "stub-build-output: $2"
+  [ -n "$TEST_FAIL_PROJ" ] || exit 0
+  case "$*" in *"$TEST_FAIL_PROJ"*) exit 1;; esac
+  case "$2" in *.proj) grep -q "$TEST_FAIL_PROJ" "$2" && exit 1;; esac
+  exit 0
+fi
+[ "$1" = test ] || exit 0
+echo "$2" >> "$TEST_ARGS"
+echo "Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1"
+"""
+
+
+@unittest.skipUnless(PWSH, "pwsh not found")
+@unittest.skipIf(sys.platform == "win32", "the dotnet stub is a shell script")
+class ParallelBuildTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.repo = os.path.join(self.tmp, "repo")
+        touch(os.path.join(self.repo, "exmod.json"), "{}")
+        for n in "ABC":
+            touch(os.path.join(self.repo, f"{n}.Tests.csproj"), "<Project />")
+        self.stub = os.path.join(self.tmp, "dotnet")
+        touch(self.stub, SERIES_STUB)
+        os.chmod(self.stub, os.stat(self.stub).st_mode | stat.S_IEXEC)
+        self.args = os.path.join(self.tmp, "args.txt")
+        self.builds = os.path.join(self.tmp, "builds.txt")
+
+    def run_series(self, series="1.22,1.21", fail="", verb="test"):
+        env = exmod_env(os.path.join(self.tmp, "local"), TEST_REPO=self.repo, TEST_STUB=self.stub,
+                        TEST_ARGS=self.args, TEST_BUILDS=self.builds, TEST_SERIES=series, TEST_FAIL_PROJ=fail, TEST_VERB=verb)
+        env.pop("EXLIB_WRITE_GOLDENS", None)
+        out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", exmod_script(SERIES)],
+                             env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        builds, tested = [], []
+        if os.path.exists(self.builds):
+            with open(self.builds) as f:
+                builds = f.read().splitlines()
+        if os.path.exists(self.args):
+            with open(self.args) as f:
+                tested = f.read().splitlines()
+        return out.returncode, out.stdout.splitlines(), builds, tested
+
+    def test_a_series_builds_all_its_test_projects_in_one_parallel_call(self):
+        # Fails if a project is built on its own again: more than one build line per series, a
+        # project missing from the traversal project, or -m dropped from the call.
+        code, lines, builds, tested = self.run_series()
+        self.assertEqual(0, code, lines)
+        self.assertEqual(2, len(builds), builds)
+        for series in ("1.22", "1.21"):
+            line = [b for b in builds if f"parallel-build-{series}.proj" in b]
+            self.assertEqual(1, len(line), builds)
+            self.assertIn(" -m", line[0])
+        with open(os.path.join(self.repo, ".exmod", "parallel-build-1.22.proj")) as f:
+            proj = f.read()
+        for n in "ABC":
+            self.assertIn(os.path.join(self.repo, f"{n}.Tests.csproj"), proj)
+        self.assertIn("TargetFramework=net10.0", proj)
+        restore = [l for l in proj.splitlines() if 'Targets="Restore"' in l]
+        self.assertEqual(1, len(restore), proj)
+        self.assertIn('BuildInParallel="false"', restore[0])
+        self.assertIn('Targets="Build"', proj)
+        self.assertNotIn("Legacy=true", proj)
+        with open(os.path.join(self.repo, ".exmod", "parallel-build-1.21.proj")) as f:
+            legacy = f.read()
+        self.assertIn("Legacy=true", legacy)
+        self.assertEqual(6, len(tested), tested)
+        self.assertEqual(6, len([l for l in lines if l.startswith("PASS")]), lines)
+
+    def test_a_failing_project_marks_only_its_own_lanes_failed(self):
+        # Fails if a failed call fails every lane, or the failing project is not found by building
+        # the projects on their own afterwards.
+        code, lines, builds, tested = self.run_series(series="1.22", fail="B.Tests.csproj")
+        self.assertEqual(1, code, lines)
+        fail = [l for l in lines if l.startswith("FAIL")]
+        self.assertEqual(1, len(fail), lines)
+        self.assertIn("1.22/B.Tests", fail[0])
+        self.assertIn("build failed", fail[0])
+        self.assertEqual(2, len(tested), tested)
+        self.assertFalse([t for t in tested if "B.Tests" in t], tested)
+        self.assertEqual(4, len(builds), builds)
+
+
+    def test_build_tests_builds_a_series_in_one_call_and_names_the_failed_projects(self):
+        # Fails if `build -Tests` builds the projects one by one again, or the build output is
+        # returned with the failed projects so a green call reads as a failure.
+        code, lines, builds, _ = self.run_series(series="1.22", verb="build")
+        self.assertEqual(0, code, lines)
+        self.assertEqual(1, len(builds), builds)
+        self.assertIn("parallel-build-1.22.proj", builds[0])
+        self.assertTrue([l for l in lines if l.startswith("stub-build-output")], lines)
+        self.assertIn("Build succeeded.", lines)
+
+    def test_build_tests_names_only_the_projects_that_failed(self):
+        # Fails if the failure message lists projects whose own build passed.
+        code, lines, _, _ = self.run_series(series="1.22", fail="B.Tests.csproj", verb="build")
+        self.assertEqual(1, code, lines)
+        text = "\n".join(lines)
+        self.assertRegex(text, r"Build failed: B\.Tests \(1\.22/net10\.0\)\.")
+
+
 if __name__ == "__main__":
     unittest.main()
