@@ -153,19 +153,20 @@ class GoldenWriteOrderTests(unittest.TestCase):
 
 # Invoke-Test all over one assembly on the 1.22 series, with a dotnet stub that appends its test
 # arguments, one per line, to $env:TEST_ARGS, prints a VSTest summary with $env:TEST_TOTAL when that
-# is set, and exits with $env:TEST_EXIT (0 when unset); a build exits with $env:TEST_BUILD_EXIT.
+# is set, and exits with $env:TEST_EXIT (0 when unset); a build appends a line to $env:TEST_BUILDS and
+# exits with $env:TEST_BUILD_EXIT.
 OUTPUT = r"""
 $Manifest = [pscustomobject]@{ series = @('1.22') }
 $CurrentGameVersion = '1.22'
 function Resolve-DotnetHost { $env:TEST_STUB }
 function Get-ExmodTestProjects {
-  [ordered]@{ a = [pscustomobject]@{ Project = 'A.Tests'; Proj = 'a.csproj'; Series = $Manifest.series } }
+  [ordered]@{ a = [pscustomobject]@{ Project = 'A.Tests'; Proj = $env:TEST_PROJ; Series = $Manifest.series } }
 }
-Invoke-Test (@('all') + $(if ($env:TEST_FILTER) { @('-Filter', $env:TEST_FILTER) }))
+Invoke-Test (@('all') + $(if ($env:TEST_FILTER) { @('-Filter', $env:TEST_FILTER) }) + $(if ($env:TEST_NOBUILD) { @('-NoBuild') }))
 """
 
 OUTPUT_STUB = """#!/bin/sh
-if [ "$1" = build ]; then exit "${TEST_BUILD_EXIT:-0}"; fi
+if [ "$1" = build ]; then echo built >> "$TEST_BUILDS"; exit "${TEST_BUILD_EXIT:-0}"; fi
 [ "$1" = test ] || exit 0
 printf '%s\\n' "$@" >> "$TEST_ARGS"
 echo "stub-output: $*"
@@ -187,16 +188,20 @@ class RunOutputTests(unittest.TestCase):
         touch(self.stub, OUTPUT_STUB)
         os.chmod(self.stub, os.stat(self.stub).st_mode | stat.S_IEXEC)
         self.args = os.path.join(self.tmp, "args.txt")
+        self.builds = os.path.join(self.tmp, "builds.txt")
+        self.proj = os.path.join(self.repo, "tests", "A.Tests", "A.Tests.csproj")
+        self.dll = os.path.join(self.repo, "tests", "A.Tests", "bin", "Debug", "net10.0", "A.Tests.dll")
         self.results = os.path.join(self.repo, ".exmod", "test-results", "1.22-A.Tests")
         self.log = os.path.join(self.repo, ".exmod", "test-logs", "1.22-A.Tests.log")
         self.census = os.path.join(self.repo, ".exmod", "census", "detached.json")
 
-    def run_all(self, total="1", exit_code="0", build_exit="0", census=None, filter=None, extra=None):
+    def run_all(self, total="1", exit_code="0", build_exit="0", census=None, filter=None, extra=None,
+                no_build=False):
         # A repository outside git has no branch, so its census is detached.json.
         if census is not None:
             touch(self.census, json.dumps(census))
         env = exmod_env(os.path.join(self.tmp, "local"), TEST_REPO=self.repo, TEST_STUB=self.stub,
-                        TEST_ARGS=self.args, TEST_TOTAL=total, TEST_EXIT=exit_code, TEST_BUILD_EXIT=build_exit)
+                        TEST_ARGS=self.args, TEST_BUILDS=self.builds, TEST_PROJ=self.proj, TEST_TOTAL=total, TEST_EXIT=exit_code, TEST_BUILD_EXIT=build_exit)
         env.pop("EXLIB_WRITE_GOLDENS", None)
         if total == "":
             del env["TEST_TOTAL"]
@@ -204,6 +209,8 @@ class RunOutputTests(unittest.TestCase):
             env["TEST_FILTER"] = filter
         if extra:
             env["TEST_EXTRA"] = extra
+        if no_build:
+            env["TEST_NOBUILD"] = "1"
         out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", exmod_script(OUTPUT)],
                              env=env, capture_output=True, text=True)
         return out.returncode, out.stdout.splitlines()
@@ -297,6 +304,42 @@ class RunOutputTests(unittest.TestCase):
         code, lines = self.run_all(total="", filter="FullyQualifiedName~Boiler", extra=no_match)
         self.assertEqual(0, code, lines)
         self.assertTrue([l for l in lines if l.startswith("PASS") and "no test matched the filter" in l], lines)
+
+    def test_no_build_runs_the_tests_of_a_built_assembly_without_building(self):
+        # Fails if -NoBuild still runs dotnet build, or does not reach dotnet test --no-build.
+        touch(self.dll, "")
+        code, lines = self.run_all(no_build=True)
+        self.assertEqual(0, code, lines)
+        self.assertFalse(os.path.exists(self.builds), "dotnet build ran under -NoBuild")
+        with open(self.args) as f:
+            args = f.read().splitlines()
+        self.assertIn("--no-build", args)
+        self.assertTrue([l for l in lines if l.startswith("PASS")], lines)
+
+    def test_a_run_without_no_build_builds_first(self):
+        # Fails if the build loop is skipped when -NoBuild is not given.
+        touch(self.dll, "")
+        code, lines = self.run_all()
+        self.assertEqual(0, code, lines)
+        self.assertTrue(os.path.exists(self.builds), "dotnet build did not run")
+
+    def test_no_build_fails_a_lane_whose_test_assembly_is_missing(self):
+        # Fails if a missing assembly passes under -NoBuild, or the lane still runs dotnet test.
+        code, lines = self.run_all(no_build=True)
+        self.assertEqual(1, code, lines)
+        fail = [l for l in lines if l.startswith("FAIL")]
+        self.assertEqual(1, len(fail), lines)
+        self.assertIn("Not built for 1.22", fail[0])
+        self.assertIn("drop -NoBuild or build first", fail[0])
+        self.assertFalse(os.path.exists(self.args), "dotnet test ran for a missing assembly")
+        self.assertFalse(os.path.exists(self.builds), "dotnet build ran under -NoBuild")
+
+    def test_no_build_keeps_the_census_drop_check(self):
+        # Fails if -NoBuild skips the count-drop gate that follows the lanes.
+        touch(self.dll, "")
+        code, lines = self.run_all(no_build=True, census={"1.22/A.Tests": 5})
+        self.assertEqual(1, code, lines)
+        self.assertTrue([l for l in lines if l.startswith("census") and "a drop" in l], lines)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@
 
 ### Added
 
+- `exmod test -NoBuild` skips the serial build and runs the lanes against what is already built; a lane whose Debug test assembly for its framework is missing fails with a `Not built` line. The census, count-drop, discovery and golden-wave checks after the build are unchanged.
 - `exmod item-views --sheet` also writes `sheet.png`, the contact sheet: a row per dump with a column per requested view in the order gui, tp, fp, ground, iso (all five when `--views` is not given), the dump's view and kind under it, each failing gate named in red and a red frame round a row with any failing gate.
 - `exmod item` and `exmod item-views` take `--views fp`: the player's arms posed at frame 0 of the held clip's `-fp` twin with the item on the anchor, seen from the eye through a pinhole camera of the game's 75 degree `fpHandsFoV` in a 480 x 270 picture; the renderer gained a perspective projection, which clips a face at the near plane, and its orthographic path is unchanged.
 - `exmod item` and `exmod item-views` take `--views tp`: the game's player shape posed at frame 0 of the item's held clip (`heldRightTpIdleAnimation`, else `heldTpIdleAnimation`, else `heldRightReadyAnimation`, else `helditemready`) with the item on its right hand's anchor through `tpHandTransform`, drawn from the player's right side and from the front right at a fixed scale.

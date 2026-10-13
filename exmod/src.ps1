@@ -219,11 +219,12 @@ function Get-ExmodTestWave([string]$Version) {
 }
 
 function Invoke-Test([string[]]$Argv) {
-  $positional = @(Get-Positional $Argv @('-Throttle', '-Filter') @('-Coverage', '-AcceptDrop'))
+  $positional = @(Get-Positional $Argv @('-Throttle', '-Filter') @('-Coverage', '-AcceptDrop', '-NoBuild'))
   $version = if ($positional.Count -gt 0) { $positional[0] } else { 'latest' }
   $throttle = [int](Get-Opt $Argv '-Throttle' 0)
   $coverage = Get-Flag $Argv '-Coverage'
   $acceptDrop = Get-Flag $Argv '-AcceptDrop'
+  $noBuild = Get-Flag $Argv '-NoBuild'
   # Passed straight to `dotnet test --filter`, so it takes that expression grammar
   # (`FullyQualifiedName~Boiler`, `Name=X|Name=Y`). A bare class name works because the runner treats
   # an unqualified term as a substring match on the fully qualified name.
@@ -323,13 +324,24 @@ function Invoke-Test([string[]]$Argv) {
 
   # Build serially: the test projects share the mod projects, so building concurrently races on the
   # same intermediate DLLs (CS2012). This also auto-provisions each version's game binaries once, up
-  # front, letting the test phase run in parallel with --no-build.
-  Write-Host "Building $($work.Count) test target(s) across version(s): $($wanted -join ', ')"
+  # front, letting the test phase run in parallel with --no-build. With -NoBuild nothing is built:
+  # an item counts as built when its Debug test assembly for the TFM exists.
+  if ($noBuild) { Write-Host "Not building: testing $($work.Count) target(s) across version(s): $($wanted -join ', ')" }
+  else { Write-Host "Building $($work.Count) test target(s) across version(s): $($wanted -join ', ')" }
   $built = foreach ($item in $work) {
+    if ($noBuild) {
+      $projDir = if (Test-Path -LiteralPath $item.Proj -PathType Container) { $item.Proj } else { Split-Path -Parent $item.Proj }
+      $dll = Join-Path $projDir "bin/Debug/$($item.Tfm)/$($item.Project).dll"
+      $have = Test-Path -LiteralPath $dll -PathType Leaf
+      $item | Add-Member -NotePropertyName BuildOk -NotePropertyValue $have -PassThru |
+        Add-Member -NotePropertyName BuildLine -NotePropertyValue "Not built for $($item.Version): $dll is missing; drop -NoBuild or build first" -PassThru
+      continue
+    }
     $buildArgs = @('build', $item.Proj, '-f', $item.Tfm, '--nologo', '-v', 'q')
     if ($item.Legacy) { $buildArgs += '-p:Legacy=true' }
     & $dotnet @buildArgs | Out-Null
-    $item | Add-Member -NotePropertyName BuildOk -NotePropertyValue ($LASTEXITCODE -eq 0) -PassThru
+    $item | Add-Member -NotePropertyName BuildOk -NotePropertyValue ($LASTEXITCODE -eq 0) -PassThru |
+      Add-Member -NotePropertyName BuildLine -NotePropertyValue 'build failed' -PassThru
   }
 
   $waves = @($built | ForEach-Object { Get-ExmodTestWave $_.Version } | Sort-Object -Unique)
@@ -350,7 +362,7 @@ function Invoke-Test([string[]]$Argv) {
       ${function:Get-ExmodTestFailures} = $using:failuresFn
       $item = $_
       if (-not $item.BuildOk) {
-        return [pscustomobject]@{ Name = "$($item.Version)/$($item.Project)"; Ok = $false; Line = 'build failed'; Total = $null }
+        return [pscustomobject]@{ Name = "$($item.Version)/$($item.Project)"; Ok = $false; Line = $item.BuildLine; Total = $null }
       }
       $testArgs = @('test', $item.Proj, '-f', $item.Tfm, '--no-build', '--nologo', '--blame', '--results-directory', $item.Blame)
       if ($filter) { $testArgs += @('--filter', $filter) }
@@ -426,9 +438,9 @@ function Invoke-Test([string[]]$Argv) {
 Add-ExmodCommand -Group source -Name test -Summary 'run the test suites, one lane per game version' -Action {
   param([string[]]$Argv) Invoke-Test $Argv
 } -Detail @'
-exmod test [latest|all|1.22|1.21|1.20] [-Filter <expr>] [-Throttle <n>] [-Coverage] [-AcceptDrop]
+exmod test [latest|all|1.22|1.21|1.20] [-Filter <expr>] [-Throttle <n>] [-Coverage] [-AcceptDrop] [-NoBuild]
 
-Builds every test project for the requested series, then runs the suites in parallel - one lane per
+Builds every test project for the requested series (unless -NoBuild), then runs the suites in parallel - one lane per
 (series, project). Missing runtimes and game binaries are provisioned on demand, so a fresh clone
 needs nothing installed first. Builds are serial on purpose: the test projects share the mod
 projects and building them at once races on the same intermediate assemblies.
@@ -444,6 +456,9 @@ projects and building them at once races on the same intermediate assemblies.
               client-guarded block needs a covered line or an entry in side-gate-allowlist.json
               beside the floors file
   -AcceptDrop record a test count below the census instead of failing on it
+  -NoBuild    skip the serial build and run the lanes against what is already built; a lane whose
+              Debug test assembly for its framework is missing fails with 'Not built'.
+              Ignored by -Coverage
 
 With EXLIB_WRITE_GOLDENS set, the current series' lanes run first and the older series' after them:
 an older series' golden write compares against the shared goldens the current series' write rewrites.
