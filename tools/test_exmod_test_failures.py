@@ -419,7 +419,8 @@ class ParallelBuildTests(unittest.TestCase):
     def test_a_series_builds_all_its_test_projects_in_one_parallel_call(self):
         # Fails if a project is built on its own again: more than one build line per series, a
         # project missing from the traversal project, -m dropped from the call, or the traversal's default
-        # target anything but Build (its first target, Restore, ran twice and nothing compiled).
+        # target anything but Build (its first target, Restore, ran twice and nothing compiled), or the restore
+        # given the test framework (the generators' netstandard2.0 assets go missing and the call fails).
         code, lines, builds, tested = self.run_series()
         self.assertEqual(0, code, lines)
         self.assertEqual(2, len(builds), builds)
@@ -435,12 +436,14 @@ class ParallelBuildTests(unittest.TestCase):
         restore = [l for l in proj.splitlines() if 'Targets="Restore"' in l]
         self.assertEqual(1, len(restore), proj)
         self.assertIn('BuildInParallel="false"', restore[0])
+        self.assertNotIn("TargetFramework", restore[0])
         self.assertIn('Targets="Build"', proj)
         self.assertNotIn("Legacy=true", proj)
         self.assertEqual("Build", default_target(proj))
         with open(os.path.join(self.repo, ".exmod", "parallel-build-1.21.proj")) as f:
             legacy = f.read()
         self.assertIn("Legacy=true", legacy)
+        self.assertIn("Legacy=true", [l for l in legacy.splitlines() if 'Targets="Restore"' in l][0])
         self.assertEqual(6, len(tested), tested)
         self.assertEqual(6, len([l for l in lines if l.startswith("PASS")]), lines)
 

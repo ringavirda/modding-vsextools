@@ -49,8 +49,11 @@ function Reset-ForeignBuildState([string]$ProjectDir) {
 # their output.
 function Invoke-ExmodParallelBuild([string]$Dotnet, [object[]]$Items, [string]$Configuration, [string[]]$QuietArgs, [bool]$Discard = $false) {
   $first = $Items[0]
-  $props = "Configuration=$Configuration;TargetFramework=$($first.Tfm)"
-  if ($first.Legacy) { $props += ';Legacy=true' }
+  # Restore leaves TargetFramework out, as `dotnet build -f` does: restored under the test projects' framework, a
+  # project they reference on another one (the generators, netstandard2.0) has no assets for its own.
+  $restoreProps = "Configuration=$Configuration"
+  if ($first.Legacy) { $restoreProps += ';Legacy=true' }
+  $props = "$restoreProps;TargetFramework=$($first.Tfm)"
   $list = ($Items | ForEach-Object { [Security.SecurityElement]::Escape([IO.Path]::GetFullPath($_.Proj, $PWD.ProviderPath)) }) -join ';'
   $dir = Join-Path $RepoRoot '.exmod'
   New-Item -ItemType Directory -Force -Path $dir | Out-Null
@@ -59,7 +62,7 @@ function Invoke-ExmodParallelBuild([string]$Dotnet, [object[]]$Items, [string]$C
 <Project DefaultTargets="Build">
   <ItemGroup><TestProject Include="$list" /></ItemGroup>
   <Target Name="Restore">
-    <MSBuild Projects="@(TestProject)" Targets="Restore" Properties="$props" BuildInParallel="false" />
+    <MSBuild Projects="@(TestProject)" Targets="Restore" Properties="$restoreProps" BuildInParallel="false" />
   </Target>
   <Target Name="Build">
     <MSBuild Projects="@(TestProject)" Targets="Build" Properties="$props" BuildInParallel="true" StopOnFirstFailure="false" />
