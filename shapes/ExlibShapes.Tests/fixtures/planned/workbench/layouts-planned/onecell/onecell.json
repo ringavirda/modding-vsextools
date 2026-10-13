@@ -1,0 +1,12 @@
+{
+  "schema": "layout-recap/1",
+  "code": "onecell",
+  "attributes": {"fillerOffsets": []},
+  "planned": {
+    "machine": "onecell",
+    "copy": {"path": "workbench/shapes-finished/onecell/onecell-copy.json"},
+    "frame": {"turn": 0, "anchor": [0, 0, 0]},
+    "principal": {"collisionBoxes": [{"x1": 0.25, "y1": 0.0, "z1": 0.25, "x2": 0.75, "y2": 1.5, "z2": 0.75}]},
+    "grid": {"origin": [0, 0], "layers": {"0": "O"}}
+  }
+}

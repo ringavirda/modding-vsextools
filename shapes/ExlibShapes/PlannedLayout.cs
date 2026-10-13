@@ -120,8 +120,8 @@ public sealed class PlannedLayout {
   /// space between glyphs, the first row at <c>planned.grid.origin</c>'s z and each next row one
   /// further +z; a layer's key is its y.
   /// </summary>
-  /// <exception cref="LayoutError">The file has no <c>planned.grid</c> or no
-  /// <c>fillerOffsets</c>.</exception>
+  /// <exception cref="LayoutError">The file has no <c>planned.grid</c>, or neither
+  /// <c>fillerOffsets</c> nor a one-cell plan (see <see cref="Layout.Load"/>).</exception>
   public static PlannedLayout Load(string path) {
     JObject raw = (JObject)JToken.Parse(File.ReadAllText(path));
     Layout layout = Layout.Load(path);
@@ -151,11 +151,19 @@ public sealed class PlannedLayout {
     var collision = new List<PlannedCell>();
     if (raw["planned"]?["principal"] is JObject principal) {
       collision.Add(CellOf(new Offset(0, 0, 0), principal));
+      foreach (JToken box in principal["collisionBoxes"] as JArray ?? [])
+        boxes.Add(
+          new PlannedBox(
+            new Offset(0, 0, 0),
+            BoxOf(box),
+            PlannedBoxKind.Collision
+          )
+        );
       AddMarked(marked, new Offset(0, 0, 0), principal, kinds);
     }
     foreach (
       JObject entry in (
-        (JArray)raw["attributes"]!["fillerOffsets"]!
+        raw["attributes"]?["fillerOffsets"] as JArray ?? []
       ).Cast<JObject>()
     ) {
       var at = new Offset((int)entry["x"]!, (int)entry["y"]!, (int)entry["z"]!);

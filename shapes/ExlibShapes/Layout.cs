@@ -104,7 +104,10 @@ public sealed class Layout {
   /// path, domain and <c>#</c>-segments stripped), defaulting to the first declared entry when
   /// <paramref name="variant"/> is null.
   /// </summary>
-  /// <exception cref="LayoutError">The file has neither a structure table nor any fillers.</exception>
+  /// <remarks>A file with no structure table and an empty <c>fillerOffsets</c> array, or a
+  /// <c>planned</c> object, loads as a one-cell layout: no cells and no fillers, the principal alone.</remarks>
+  /// <exception cref="LayoutError">The file has neither a structure table, any fillers, a
+  /// <c>fillerOffsets</c> array nor a <c>planned</c> object.</exception>
   public static Layout Load(string path, string? variant = null) {
     JObject raw = (JObject)JToken.Parse(File.ReadAllText(path));
     JObject? attrs = raw["attributes"] as JObject;
@@ -112,7 +115,7 @@ public sealed class Layout {
     List<Offset> fillers = ReadFillerOffsets(attrs, raw, variant);
 
     if (structure == null) {
-      if (fillers.Count == 0)
+      if (fillers.Count == 0 && !IsOneCell(raw, attrs))
         throw new LayoutError(
           $"{path}: no attributes.multiblockStructure and no fillerOffsets"
         );
@@ -168,6 +171,9 @@ public sealed class Layout {
       PrincipalOf(path, raw, variant)
     );
   }
+
+  private static bool IsOneCell(JObject raw, JObject? attrs) =>
+    attrs?["fillerOffsets"] is JArray || raw["planned"] is JObject;
 
   // The file's own top-level attributesByType entry (a sibling of "attributes", the same
   // shape/shapeByType and textures/texturesByType keep) whose wildcard key the game's

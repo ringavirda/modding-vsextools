@@ -129,6 +129,22 @@ public class LayoutTests {
   }
 
   [Fact]
+  public void Load_of_a_one_cell_plan_keeps_the_principal_alone_and_a_box_past_the_cell() {
+    // Fails when the no-fillers throw is restored for a plan with an empty fillerOffsets.
+    string one = FixturePath.Of(
+      "planned/workbench/layouts-planned/onecell/onecell.json"
+    );
+    Layout layout = Layout.Load(one);
+    Assert.Empty(layout.Cells);
+    Assert.Empty(layout.Fillers);
+    PlannedLayout planned = PlannedLayout.Load(one);
+    PlannedCell principal = Assert.Single(planned.Collision);
+    Assert.Equal(new Offset(0, 0, 0), principal.At);
+    Assert.Equal(1.5, Assert.Single(principal.Boxes).Y2);
+    Assert.Equal(1.5, Assert.Single(planned.Boxes).Box.Y2);
+  }
+
+  [Fact]
   public void Load_of_a_megablock_with_no_structure_table_uses_the_first_attributesByType_filler() {
     if (Flywheel is not { } flywheel)
       return; // skips when the sibling exmods checkout is absent
