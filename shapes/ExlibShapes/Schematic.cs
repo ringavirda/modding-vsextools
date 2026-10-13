@@ -513,10 +513,15 @@ public static class Schematic {
     [
       .. shapeTextures.Keys.Concat(FaceTextureKeys(elements)).Distinct(),
     ];
-    foreach ((string shorthand, IReadOnlyList<string>? faces) in Shorthands)
-      if (block.Textures.TryGetValue(shorthand, out TextureRef? stands))
-        foreach (string key in faces == null ? keys : keys.Intersect(faces))
-          textures[key] = stands;
+    if (block.ItemTextures) {
+      if (block.Textures.TryGetValue("all", out TextureRef? all))
+        foreach (string key in keys.Except(shapeTextures.Keys))
+          textures[key] = all;
+    } else
+      foreach ((string shorthand, IReadOnlyList<string>? faces) in Shorthands)
+        if (block.Textures.TryGetValue(shorthand, out TextureRef? stands))
+          foreach (string key in faces == null ? keys : keys.Intersect(faces))
+            textures[key] = stands;
     foreach ((string key, TextureRef value) in block.Textures)
       textures[key] = value;
     // A face whose key nothing assigns is painted with the placeholder wherever a picture shows it;

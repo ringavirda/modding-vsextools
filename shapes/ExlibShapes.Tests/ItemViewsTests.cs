@@ -103,7 +103,43 @@ public class ItemViewsTests {
   }
 
   [Fact]
-  public void A_singular_texture_paints_every_face() {
+  public void A_singular_texture_paints_the_face_keys_no_map_names() {
+    IReadOnlyDictionary<string, TextureRef> values = SingularValues(
+      "\"textures\": { \"own\": \"demo:block/wall\" }"
+    );
+    Assert.Equal("paint:block/top", values["block_face"].Base);
+  }
+
+  [Fact]
+  public void A_singular_texture_leaves_the_key_the_shape_declares() {
+    IReadOnlyDictionary<string, TextureRef> values = SingularValues(
+      "\"textures\": { \"own\": \"demo:block/wall\" }"
+    );
+    Assert.Equal("demo:block/wall", values["block_own"].Base);
+  }
+
+  [Fact]
+  public void An_item_texture_map_key_outranks_the_singular_texture() {
+    IReadOnlyDictionary<string, TextureRef> values = SingularValues(
+      "\"textures\": { \"own\": \"demo:block/wall\" }",
+      ", \"textures\": { \"face\": \"paint:block/named\" }"
+    );
+    Assert.Equal("paint:block/named", values["block_face"].Base);
+  }
+
+  [Fact]
+  public void A_held_clip_key_of_the_current_schema_outranks_the_obsolete_one() {
+    Variant variant = ClipVariant(
+      "\"heldRightTpIdleAnimation\": \"newidle\", \"heldTpIdleAnimation\": \"oldidle\""
+    );
+    Assert.Equal("newidle", ItemViews.IdleClipOf(variant));
+    Assert.Equal(
+      "oldidle",
+      ItemViews.IdleClipOf(ClipVariant("\"heldTpIdleAnimation\": \"oldidle\""))
+    );
+  }
+
+  private static Variant ClipVariant(string entries) {
     string root = Path.Combine(
       Path.GetTempPath(),
       "exlib-shapes-" + Guid.NewGuid().ToString("N")
@@ -111,35 +147,58 @@ public class ItemViewsTests {
     string file = Path.Combine(
       root,
       "mods",
-      "paint",
+      "clip",
       "assets",
-      "paint",
+      "clip",
       "itemtypes",
-      "plate.json"
+      "rod.json"
     );
     Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+    File.WriteAllText(file, "{ \"code\": \"rod\", " + entries + " }");
+    try {
+      return Assert.Single(BlockIndex.Build([root]).ItemVariants(file));
+    } finally {
+      Directory.Delete(root, true);
+    }
+  }
+
+  // The texture values an item with the singular texture paint:block/top and a shape declaring
+  // `own` and using `own` and `face` composes; shapeEntries is the shape's extra top-level JSON,
+  // itemEntries the itemtype's.
+  private static IReadOnlyDictionary<string, TextureRef> SingularValues(
+    string shapeEntries,
+    string itemEntries = ""
+  ) {
+    string root = Path.Combine(
+      Path.GetTempPath(),
+      "exlib-shapes-" + Guid.NewGuid().ToString("N")
+    );
+    string assets = Path.Combine(root, "mods", "paint", "assets", "paint");
+    string file = Path.Combine(assets, "itemtypes", "plate.json");
+    Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+    Directory.CreateDirectory(Path.Combine(assets, "shapes", "item"));
+    File.WriteAllText(
+      Path.Combine(assets, "shapes", "item", "plate.json"),
+      "{ "
+        + shapeEntries
+        + ", \"elements\": [ { \"name\": \"box\", \"from\": [0,0,0], \"to\": [4,4,4], "
+        + "\"faces\": { \"north\": { \"texture\": \"#own\", \"uv\": [0,0,4,4] }, "
+        + "\"south\": { \"texture\": \"#face\", \"uv\": [0,0,4,4] } } } ] }"
+    );
     File.WriteAllText(
       file,
-      "{ \"code\": \"plate\", \"shape\": { \"base\": \"demo:item/gearpinion\" }, "
-        + "\"texture\": { \"base\": \"demo:block/wall\" } }"
+      "{ \"code\": \"plate\", \"shape\": { \"base\": \"paint:item/plate\" }, "
+        + "\"texture\": { \"base\": \"paint:block/top\" }"
+        + itemEntries
+        + " }"
     );
     try {
       BlockIndex index = BlockIndex.Build([DemoRoot, root]);
       Variant variant = Assert.Single(index.ItemVariants(file));
-      JObject manifest = ItemViews.Write(
-        file,
-        variant,
-        index,
-        OutDir("singular"),
-        24,
-        ["gui"]
-      );
-      Assert.Equal(
-        ["plate-gui.png"],
-        manifest["files"]!.Select(f => Path.GetFileName((string)f!))
-      );
-      Assert.Empty((JArray)manifest["unpaintedFaces"]!);
-      Assert.Empty((JArray)manifest["missingTextures"]!);
+      ResolvedBlock item = index.ResolveVariant(variant);
+      return ItemViews
+        .Compose(ItemViews.WithSingularTexture(item, variant), index)
+        .Values;
     } finally {
       Directory.Delete(root, true);
     }
@@ -830,20 +889,24 @@ public class ItemViewsTests {
   }
 
   [Fact]
-  public void A_face_textured_null_makes_no_quad() {
+  public void An_enabled_null_face_is_drawn_and_a_disabled_one_is_not() {
     var raw = JsonConvert.DeserializeObject<Shape>(
       """
       {"elements":[{"name":"box","from":[0,0,0],"to":[1,1,1],
-        "faces":{"north":{"texture":"#null","uv":[0,0,1,1]},
+        "faces":{"north":{"texture":"#null","uv":[0,0,1,1],"enabled":false},
+                 "east":{"texture":"#null","uv":[0,0,1,1]},
                  "south":{"texture":"#skin","uv":[0,0,1,1]}}}]}
       """
     )!;
     LoadedShape shape = ShapeFile.FromRaw(raw, null);
     Node box = Assert.Single(shape.Leaves());
-    Renderer.QuadD quad = Assert.Single(
-      Renderer.FaceQuadsD(box, Renderer.Mat4d.Identity)
+    Assert.Equal(
+      ["null", "skin"],
+      Renderer
+        .FaceQuadsD(box, Renderer.Mat4d.Identity)
+        .Select(q => q.Texture)
+        .Order(StringComparer.Ordinal)
     );
-    Assert.Equal("skin", quad.Texture);
   }
 
   [Fact]

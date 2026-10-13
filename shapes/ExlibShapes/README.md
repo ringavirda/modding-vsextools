@@ -187,7 +187,7 @@ textures map overridden by the itemtype's) gets `<stem>-iso.png`, the isometric 
 model; an item that ships a flat inventory texture (`texture`/`textureByType`) gets
 `<stem>-icon.png`, that texture at four pixels to the texel on the renders' own paper. An item
 declaring both gets both, and one declaring neither is a warning and no picture. A singular `texture`
-is the `all` texture: it paints every shape face the item's `textures` map leaves unnamed. `--variant` names
+is the `all` texture: it paints the shape face keys that neither the item's `textures` map nor the shape's own `textures` map names; a key the shape declares keeps the shape's texture. `--variant` names
 the variant by full code or bare path, defaulting to the family's first; `--ppu` is pixels per shape
 unit for the isometric render (default 24).
 
@@ -199,7 +199,7 @@ item 3 px left and 1 px above the slot centre, translation in pixels), at four p
 slot pixel, so an item larger than its slot shows running into the next; `ground` lays the item on
 a stone-grey block with no yaw and no scale jitter, from the south-east at 8 pixels per voxel; `tp` seats the game's player shape
 (`game:entity/humanoid/seraph-faceless`, skinned with the player entity's texture) in the held clip's
-frame 0 (`heldTpIdleAnimation`, else `heldRightReadyAnimation`, else `helditemready`) with the item on
+frame 0 (`heldRightTpIdleAnimation`, else `heldTpIdleAnimation`, else `heldRightReadyAnimation`, else `helditemready`) with the item on
 its right hand's anchor, drawn from the player's right side and from the front right side by side at
 8 pixels per voxel, so every item is drawn to the same player; `fp` draws the player's arms (the
 meshes under `UpperArmR` and `UpperArmL`, which the game keeps for first person) posed at frame 0 of the held
@@ -232,7 +232,7 @@ format is an error. The shape resolves through the roots as `item` resolves it. 
 manifest carries `files`, `view`, `kind`, `failing` (one `<gate> <name> <target>` line per gate
 that did not pass), `missingTextures` and `warnings`. `--sheet` also writes `sheet.png` to `--out`,
 the contact sheet: one row per dump with a column for each requested view in the order gui, tp, fp,
-ground, iso, the dump's view and kind under it, every failing gate named in red and a red frame
+ground, iso (all five when `--views` is not given), the dump's view and kind under it, every failing gate named in red and a red frame
 round a row with any failing gate.
 
 ## tree / measure

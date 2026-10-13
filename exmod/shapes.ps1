@@ -316,7 +316,7 @@ published.
 
   PATH            a .views.json file, or a folder of them
   --out=DIR       where the PNGs and <stem>.json are written
-  --views LIST    comma-separated: iso, gui, tp, fp, ground (default: gui,ground,iso)
+  --views LIST    comma-separated: iso, gui, tp, fp, ground (default: gui,ground,iso; gui,tp,fp,ground,iso with --sheet)
   --sheet         also write sheet.png to --out: a row per dump, a column per view, failing gates in red
   --ppu N         pixels per shape unit for the isometric render (default: 24)
   --roots PATH    extra mod repository roots to resolve the shape and textures against (repeatable)

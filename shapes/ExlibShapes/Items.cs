@@ -108,7 +108,7 @@ public static partial class ItemViews {
       ItemTransform gui = ReadTransform(variant, GuiKey);
       ItemTransform tp = ReadTransform(variant, TpKey);
       ItemTransform ground = ReadTransform(variant, GroundKey);
-      string? idle = ClipOf(variant, "heldTpIdleAnimation");
+      string? idle = IdleClipOf(variant);
       string? ready = ClipOf(variant, "heldRightReadyAnimation");
       Seraph? seraph =
         views?.Any(v => v is "tp" or "fp") == true ? LoadSeraph(index) : null;
@@ -193,8 +193,9 @@ public static partial class ItemViews {
       : null;
 
   // The singular `texture` is the `all` texture, set over any `all` the textures map names
-  // (CollectibleType.OnDeserialized); the shape keys the map does not name take it through `all`.
-  private static ResolvedBlock WithSingularTexture(
+  // (CollectibleType.OnDeserialized). An item's `all` paints only the face keys that neither the
+  // item nor the shape's own textures map name.
+  internal static ResolvedBlock WithSingularTexture(
     ResolvedBlock item,
     Variant variant
   ) =>
@@ -253,6 +254,11 @@ public static partial class ItemViews {
     data.SaveTo(stream);
   }
 
+  // The idle clip: the current schema's key, else the obsolete one the game copies from.
+  internal static string? IdleClipOf(Variant variant) =>
+    ClipOf(variant, "heldRightTpIdleAnimation")
+    ?? ClipOf(variant, "heldTpIdleAnimation");
+
   // The clip an itemtype names under key, read through the ByType rule; null when it sets none.
   private static string? ClipOf(Variant variant, string key) =>
     BlockTypeResolution.ByType(variant.Raw, key, variant.Path)
@@ -310,7 +316,9 @@ public static partial class ItemViews {
     IReadOnlyDictionary<string, TextureRef> Values
   ) Compose(ResolvedBlock item, BlockIndex index) {
     (JObject raw, Dictionary<string, TextureRef> values) = BlockViews.Compose(
-      item
+      item with {
+        ItemTextures = true,
+      }
     );
     Shape shape =
       JsonConvert.DeserializeObject<Shape>(raw.ToString())

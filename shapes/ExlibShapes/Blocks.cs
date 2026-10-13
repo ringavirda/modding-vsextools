@@ -36,7 +36,8 @@ public sealed record ResolvedBlock(
   double RotateY,
   double RotateZ,
   IReadOnlyDictionary<string, TextureRef> Textures,
-  IReadOnlyList<string>? SelectiveElements = null
+  IReadOnlyList<string>? SelectiveElements = null,
+  bool ItemTextures = false
 ) {
   /// <summary>The <c>selectiveElements</c> patterns the shape entry carries, empty when it draws
   /// the whole shape.</summary>

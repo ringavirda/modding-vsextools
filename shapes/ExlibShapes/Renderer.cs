@@ -365,8 +365,6 @@ public static class Renderer {
       )
         continue;
       string texture = (spec.Texture ?? "").TrimStart('#');
-      if (texture == "null")
-        continue;
       var pts = new (double, double, double)[4];
       for (int i = 0; i < 4; i++) {
         (int cx, int cy, int cz) = corners[i];

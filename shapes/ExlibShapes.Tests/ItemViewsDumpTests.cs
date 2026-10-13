@@ -78,6 +78,20 @@ public class ItemViewsDumpTests {
   }
 
   [Fact]
+  public void Sheet_without_views_has_a_column_for_each_of_the_five() {
+    string outDir = Scratch("sheet-default");
+    Assert.Equal(
+      0,
+      Program.RunItemViews(
+        [Dump, $"--out={outDir}", "--sheet", $"--roots={DemoRoot}"],
+        new StringWriter()
+      )
+    );
+    using SKBitmap sheet = SKBitmap.Decode(Path.Combine(outDir, "sheet.png"));
+    Assert.Equal(5 * 192, sheet.Width);
+  }
+
+  [Fact]
   public void Sheet_has_a_row_per_dump_and_frames_failures() {
     string dumps = Scratch("sheet-dumps");
     Directory.CreateDirectory(dumps);

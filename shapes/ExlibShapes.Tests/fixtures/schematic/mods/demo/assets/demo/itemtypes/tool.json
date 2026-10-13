@@ -6,6 +6,6 @@
   ],
   "shape": { "base": "demo:block/masonry" },
   "textures": {
-    "all": { "base": "demo:block/wall" }
+    "brick": { "base": "demo:block/wall" }
   }
 }

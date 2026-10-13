@@ -837,7 +837,10 @@ internal static class Program {
     string outDir =
       OptOf(flags, "--out") ?? throw new UsageException("--out is required");
     IReadOnlyList<string> views = ItemViewNames(
-      OptOf(flags, "--views") ?? "gui,ground,iso"
+      OptOf(flags, "--views")
+        ?? (
+          flags.Contains("--sheet") ? "gui,tp,fp,ground,iso" : "gui,ground,iso"
+        )
     )!;
     int ppu = int.Parse(
       OptOf(flags, "--ppu") ?? "24",
