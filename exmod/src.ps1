@@ -360,19 +360,24 @@ function Invoke-Test([string[]]$Argv) {
       $ok = ($LASTEXITCODE -eq 0)
       $line = ($out | Select-String -Pattern 'Passed!|Failed!|error' | Select-Object -Last 1)
 
-      # The exit code is not enough. An assembly that fails to load during discovery prints
-      # "No test is available in ..." and exits 0 with no summary line, so the run reads as a blank PASS
-      # while every test in the suite has silently vanished. Treat a missing summary as the failure it is.
+      # The exit code is not enough. An assembly that fails to load during discovery exits 0 with no
+      # summary line, so the run would read as a blank PASS while every test in the suite had vanished.
+      # Xunit names the cause on a "Skipping:" line and dotnet adds "No test is available in ...".
       $total = ($out | Select-String -Pattern 'Total:\s*(\d+)' -AllMatches |
         ForEach-Object { $_.Matches } | Select-Object -Last 1)
       if (-not $total) {
+        $skipped = ($out | Select-String -Pattern 'Skipping:' | Select-Object -Last 1)
+        $unavailable = ($out | Select-String -Pattern 'No test is available in' | Select-Object -Last 1)
+        $noMatch = ($out | Select-String -Pattern 'No test matches the given testcase filter' | Select-Object -Last 1)
         # Under a filter, a suite holding nothing that matches is the ordinary case - the filter names a
-        # class that lives in one project of three - so it reports zero rather than failing. Without one,
-        # a missing summary is the failure it looks like: an assembly that fails to load during discovery
-        # prints "No test is available in ..." and exits 0 with no summary line, so the run would
-        # otherwise read as a blank PASS while every test in the suite had silently vanished.
-        if ($filter -and $ok) {
+        # class that lives in one project of three - and reports zero. Only dotnet's no-match line shows it:
+        # a skipped or unavailable assembly fails with its reason.
+        if ($filter -and $ok -and $noMatch -and -not $skipped -and -not $unavailable) {
           $line = 'no test matched the filter'
+        }
+        elseif ($skipped) {
+          $ok = $false
+          $line = 'DISCOVERY SKIPPED THE ASSEMBLY - ' + ($skipped.Line -replace '^.*?Skipping:\s*', '')
         }
         else {
           $ok = $false

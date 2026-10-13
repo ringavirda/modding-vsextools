@@ -161,7 +161,7 @@ function Resolve-DotnetHost { $env:TEST_STUB }
 function Get-ExmodTestProjects {
   [ordered]@{ a = [pscustomobject]@{ Project = 'A.Tests'; Proj = 'a.csproj'; Series = $Manifest.series } }
 }
-Invoke-Test @('all')
+Invoke-Test (@('all') + $(if ($env:TEST_FILTER) { @('-Filter', $env:TEST_FILTER) }))
 """
 
 OUTPUT_STUB = """#!/bin/sh
@@ -169,6 +169,7 @@ if [ "$1" = build ]; then exit "${TEST_BUILD_EXIT:-0}"; fi
 [ "$1" = test ] || exit 0
 printf '%s\\n' "$@" >> "$TEST_ARGS"
 echo "stub-output: $*"
+[ -n "$TEST_EXTRA" ] && echo "$TEST_EXTRA"
 if [ -n "$TEST_TOTAL" ]; then echo "Passed!  - Failed:     0, Passed:     $TEST_TOTAL, Skipped:     0, Total:     $TEST_TOTAL"; fi
 exit "${TEST_EXIT:-0}"
 """
@@ -190,7 +191,7 @@ class RunOutputTests(unittest.TestCase):
         self.log = os.path.join(self.repo, ".exmod", "test-logs", "1.22-A.Tests.log")
         self.census = os.path.join(self.repo, ".exmod", "census", "detached.json")
 
-    def run_all(self, total="1", exit_code="0", build_exit="0", census=None):
+    def run_all(self, total="1", exit_code="0", build_exit="0", census=None, filter=None, extra=None):
         # A repository outside git has no branch, so its census is detached.json.
         if census is not None:
             touch(self.census, json.dumps(census))
@@ -199,6 +200,10 @@ class RunOutputTests(unittest.TestCase):
         env.pop("EXLIB_WRITE_GOLDENS", None)
         if total == "":
             del env["TEST_TOTAL"]
+        if filter:
+            env["TEST_FILTER"] = filter
+        if extra:
+            env["TEST_EXTRA"] = extra
         out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", exmod_script(OUTPUT)],
                              env=env, capture_output=True, text=True)
         return out.returncode, out.stdout.splitlines()
@@ -272,6 +277,26 @@ class RunOutputTests(unittest.TestCase):
         line = [l for l in lines if l.startswith("census")]
         self.assertEqual(1, len(line), lines)
         self.assertNotIn("log:", line[0])
+
+    def test_a_filtered_run_whose_assembly_discovery_skipped_fails_naming_it(self):
+        # Fails if a filtered run with no summary passes whatever the output says, as it did when a
+        # type-load failure skipped the whole assembly and the run read "no test matched the filter".
+        skip = ("[xUnit.net 00:00:00.50]   Skipping: A.Tests (could not find dependent assembly "
+                "'VintagestoryAPI, Version=1.22.6')")
+        code, lines = self.run_all(total="", filter="FullyQualifiedName~Boiler", extra=skip)
+        self.assertEqual(1, code, lines)
+        fail = [l for l in lines if l.startswith("FAIL")]
+        self.assertEqual(1, len(fail), lines)
+        self.assertIn("DISCOVERY SKIPPED", fail[0])
+        self.assertIn("A.Tests (could not find dependent assembly 'VintagestoryAPI, Version=1.22.6')", fail[0])
+
+    def test_a_filtered_run_with_the_no_match_line_still_passes_as_no_test_matched(self):
+        # Fails if every missing summary fails under a filter, so a filter naming a class of another
+        # project turns that project red.
+        no_match = "No test matches the given testcase filter `FullyQualifiedName~Boiler` in /x/A.Tests.dll"
+        code, lines = self.run_all(total="", filter="FullyQualifiedName~Boiler", extra=no_match)
+        self.assertEqual(0, code, lines)
+        self.assertTrue([l for l in lines if l.startswith("PASS") and "no test matched the filter" in l], lines)
 
 
 if __name__ == "__main__":

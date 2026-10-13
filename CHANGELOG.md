@@ -29,6 +29,7 @@
 
 ### Fixed
 
+- A filtered `exmod test` run with no summary line passes as `no test matched the filter` only when dotnet printed its no-match line; an assembly xunit skipped in discovery (`Skipping: ... could not find dependent assembly`) or reported as `No test is available in` fails the run, naming the skip reason.
 - `exmod shapes-build`'s help names `scene` among the commands that build the tool themselves.
 - A variant group that names a worldproperties file and lists `states` of its own expands to its listed states and then the file's, as the game does; the listed states alone were used before (`ingot-iron` was not a variant of the vanilla ingot).
 - A variant group with a `states` list and no `code` drops the listed states with a warning, as the game does; it no longer takes the worldproperties file's code for them.
