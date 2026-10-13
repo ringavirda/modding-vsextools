@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from exmod_harness import PWSH, ROOT, exmod_env, exmod_script, touch  # noqa: E402
@@ -377,6 +378,13 @@ echo "Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1"
 """
 
 
+def default_target(proj):
+    # The target `dotnet build` runs after its restore: the project's DefaultTargets, else its first target.
+    root = ET.fromstring(proj)
+    named = root.get("DefaultTargets")
+    return named.split(";")[0].strip() if named else root.find("Target").get("Name")
+
+
 @unittest.skipUnless(PWSH, "pwsh not found")
 @unittest.skipIf(sys.platform == "win32", "the dotnet stub is a shell script")
 class ParallelBuildTests(unittest.TestCase):
@@ -410,7 +418,8 @@ class ParallelBuildTests(unittest.TestCase):
 
     def test_a_series_builds_all_its_test_projects_in_one_parallel_call(self):
         # Fails if a project is built on its own again: more than one build line per series, a
-        # project missing from the traversal project, or -m dropped from the call.
+        # project missing from the traversal project, -m dropped from the call, or the traversal's default
+        # target anything but Build (its first target, Restore, ran twice and nothing compiled).
         code, lines, builds, tested = self.run_series()
         self.assertEqual(0, code, lines)
         self.assertEqual(2, len(builds), builds)
@@ -428,6 +437,7 @@ class ParallelBuildTests(unittest.TestCase):
         self.assertIn('BuildInParallel="false"', restore[0])
         self.assertIn('Targets="Build"', proj)
         self.assertNotIn("Legacy=true", proj)
+        self.assertEqual("Build", default_target(proj))
         with open(os.path.join(self.repo, ".exmod", "parallel-build-1.21.proj")) as f:
             legacy = f.read()
         self.assertIn("Legacy=true", legacy)

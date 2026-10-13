@@ -56,7 +56,7 @@ function Invoke-ExmodParallelBuild([string]$Dotnet, [object[]]$Items, [string]$C
   New-Item -ItemType Directory -Force -Path $dir | Out-Null
   $traversal = Join-Path $dir "parallel-build-$($first.Version).proj"
   Set-Content -LiteralPath $traversal -Value @"
-<Project>
+<Project DefaultTargets="Build">
   <ItemGroup><TestProject Include="$list" /></ItemGroup>
   <Target Name="Restore">
     <MSBuild Projects="@(TestProject)" Targets="Restore" Properties="$props" BuildInParallel="false" />
