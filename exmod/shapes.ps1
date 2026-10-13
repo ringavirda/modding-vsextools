@@ -295,7 +295,7 @@ published.
   --game PATH     a specific game install (default: this repository's own provisioned one)
 '@
 
-Add-ExmodCommand -Group source -Name item-views -Summary 'render an item-views/1 dump to its gui, ground and iso pictures' -Action {
+Add-ExmodCommand -Group source -Name item-views -Summary 'render an item-views/1 dump to its gui, tp, fp, ground and iso pictures and a contact sheet' -Action {
   param([string[]]$Argv) Invoke-ItemViews $Argv
 } -Detail @'
 exmod item-views PATH --out=DIR [--views gui,tp,fp,ground,iso] [--sheet] [--ppu N] [--roots PATH...] [--game PATH]

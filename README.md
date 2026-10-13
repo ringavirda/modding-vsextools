@@ -55,7 +55,7 @@ source
 | `scene` | render a setup-scene/1 dump to corner views and layer plans |
 | `block` | render one blocktype variant to the views a page shows |
 | `item` | render one itemtype variant to its own picture, or its gui, tp, fp and ground views |
-| `item-views` | render an item-views/1 dump to its gui, ground and iso pictures |
+| `item-views` | render an item-views/1 dump to its gui, tp, fp, ground and iso pictures and a contact sheet |
 | `shapes-build` | build the shapes tool when its output is stale |
 
 `render`, `schematic`, `scene`, `block`, `item` and `item-views` run the built shapes tool, and build it first only when its

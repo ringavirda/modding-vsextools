@@ -197,20 +197,21 @@ game's item default. `iso` is the isometric render above; `gui` puts the item in
 a 3 x 3 grid of grey 48 px slots, placed the way the inventory places it (25.6 px per block, the
 item 3 px left and 1 px above the slot centre, translation in pixels), at four picture pixels per
 slot pixel, so an item larger than its slot shows running into the next; `ground` lays the item on
-a stone-grey block with no yaw and no scale jitter, from the south-east at 8 pixels per voxel; `tp` seats the game's player shape
-(`game:entity/humanoid/seraph-faceless`, skinned with the player entity's texture) in the held clip's
-frame 0 (`heldRightTpIdleAnimation`, else `heldTpIdleAnimation`, else `heldRightReadyAnimation`, else `helditemready`) with the item on
-its right hand's anchor, drawn from the player's right side and from the front right side by side at
+a stone-grey block with no yaw and no scale jitter, from the south-east at 8 pixels per voxel; `tp`
+seats the game's player shape (`game:entity/humanoid/seraph-faceless`, skinned with the player
+entity's texture) in the held clip's frame 0 (`heldRightTpIdleAnimation`, else
+`heldTpIdleAnimation`, else `heldRightReadyAnimation`, else `helditemready`) with the item on its
+right hand's anchor, drawn from the player's right side and from the front right side by side at
 8 pixels per voxel, so every item is drawn to the same player; `fp` draws the player's arms (the
-meshes under `UpperArmR` and `UpperArmL`, which the game keeps for first person) posed at frame 0 of the held
-clip's `-fp` twin (the clip itself, with a warning, when the shape has no twin) with the item on the anchor
-through the same `tpHandTransform`, seen from the eye 1.7 blocks up at a level gaze by a pinhole camera of
-75 degrees vertical field of view in a 480 x 270 picture, the hands' height offset 0 (the `fpHandsFoV` and
-`fpHandsYOffset` of a stock settings file) and their pitch follow 0.75 (`heldItemPitchFollow`'s default); at
-a level gaze the pitch follow turns nothing, and under the spear's clip the arms lie outside the picture, so
-the item is what shows. `tp` and `fp` need the game assets and are a
-warning and no picture without them. A
-view on an item with no shape is a warning and no picture, and a flat icon is written only without
+meshes under `UpperArmR` and `UpperArmL`, which the game keeps for first person) posed at frame 0
+of the held clip's `-fp` twin (the clip itself, with a warning, when the shape has no twin) with
+the item on the anchor through the same `tpHandTransform`, seen from the eye 1.7 blocks up at a
+level gaze by a pinhole camera of 75 degrees vertical field of view in a 480 x 270 picture, the
+hands' height offset 0 (the game's defaults for `fpHandsFoV` and `fpHandsYOffset`) and their pitch
+follow 0.75 (standing in for the per-item `heldItemPitchFollow`); at a level gaze the pitch follow
+turns nothing, and under the spear's clip the arms lie outside the picture, so the item is what
+shows. `tp` and `fp` need the game assets and are a warning and no picture without them. A view on
+an item with no shape is a warning and no picture, and a flat icon is written only without
 `--views`.
 
 The `<stem>.json` manifest carries `files`, `variant`, `missingTextures`, `unpaintedFaces` and
@@ -226,14 +227,15 @@ Renders an `item-views/1` file, the dump the item-views guard writes for a group
 its shape and textures, and the `gui`, `tp` and `ground` transforms the game resolved for it, each
 with `translation`, `rotation`, `origin`, `scaleXyz` and `rotate` written out. The pictures are
 the `item` command's, drawn from the dump's transforms as they stand: `<stem>-gui.png`,
-`<stem>-tp.png` and `<stem>-fp.png` (the dump's `clips` pose the player), `<stem>-ground.png` and `<stem>-iso.png`, the stem being the file name less `.views.json`. A
-folder PATH renders every `*.views.json` directly in it, in ordinal name order; a file of another
-format is an error. The shape resolves through the roots as `item` resolves it. The `<stem>.json`
-manifest carries `files`, `view`, `kind`, `failing` (one `<gate> <name> <target>` line per gate
-that did not pass), `missingTextures` and `warnings`. `--sheet` also writes `sheet.png` to `--out`,
-the contact sheet: one row per dump with a column for each requested view in the order gui, tp, fp,
-ground, iso (all five when `--views` is not given), the dump's view and kind under it, every failing gate named in red and a red frame
-round a row with any failing gate.
+`<stem>-tp.png` and `<stem>-fp.png` (the dump's `clips` pose the player), `<stem>-ground.png` and
+`<stem>-iso.png`, the stem being the file name less `.views.json`. A folder PATH renders every
+`*.views.json` directly in it, in ordinal name order; a file of another format is an error. The
+shape resolves through the roots as `item` resolves it. The `<stem>.json` manifest carries `files`,
+`view`, `kind`, `failing` (one `<gate> <name> <target>` line per gate that did not pass),
+`missingTextures` and `warnings`. `--sheet` also writes `sheet.png` to `--out`, the contact sheet:
+one row per dump with a column for each requested view in the order gui, tp, fp, ground, iso (all
+five when `--views` is not given), the dump's view and kind under it, every failing gate named in
+red and a red frame round a row with any failing gate.
 
 ## tree / measure
 

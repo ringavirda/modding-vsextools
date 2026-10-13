@@ -18,14 +18,15 @@ public static partial class ItemViews {
   private const double EyeHeight = 1.7;
 
   /// <summary>The vertical field of view of the hands' projection, degrees: the game's
-  /// <c>fpHandsFoV</c> setting as a stock install holds it.</summary>
+  /// <c>fpHandsFoV</c> setting, whose game default it is.</summary>
   internal const double FpFov = 75;
 
-  /// <summary>The game's <c>fpHandsYOffset</c> setting, blocks, as a stock install holds it.</summary>
+  /// <summary>The game's <c>fpHandsYOffset</c> setting, blocks, whose game default it is.</summary>
   internal const double FpHandsYOffset = 0;
 
   /// <summary>The share of the gaze pitch the hands follow, the game's default
-  /// <c>heldItemPitchFollow</c>.</summary>
+  /// <c>heldItemPitchFollow</c>. The game reads it per item; it stands in for that value, and a level gaze
+  /// turns nothing with it.</summary>
   internal const double FpPitchFollow = 0.75;
 
   /// <summary>Size of the fp view in pixels.</summary>
