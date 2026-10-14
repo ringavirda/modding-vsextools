@@ -1132,7 +1132,7 @@ function Invoke-Scenario([string[]]$Argv) {
     }
     $countLine = Get-ScenarioCountLine $reports
     if ($countLine) { Write-Host $countLine }
-    Save-ScenarioLast @($shards | ForEach-Object { $_.Server.Data }) @($reports | ForEach-Object { $_.FailedNames }) (Join-Path $RepoRoot '.game/.scenario-last')
+    $null = Save-ScenarioLast @($shards | ForEach-Object { $_.Server.Data }) @($reports | ForEach-Object { $_.FailedNames }) (Join-Path $RepoRoot '.game/.scenario-last')
     $problems = Get-ScenarioExitProblems $reports
 
     if ($opts.Keep) {
