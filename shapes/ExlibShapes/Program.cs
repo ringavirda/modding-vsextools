@@ -208,6 +208,29 @@ internal static class Program {
       ? ((long)frame).ToString(CultureInfo.InvariantCulture)
       : frame.ToString("G6", CultureInfo.InvariantCulture);
 
+  // The renderer keeps an --only name as a path prefix and a --highlight name as an exact path.
+  private static void RequireElements(
+    string flag,
+    List<string> names,
+    LoadedShape shape,
+    string file,
+    bool prefix
+  ) {
+    List<string> paths = [.. shape.Walk().Select(el => el.Path)];
+    List<string> unknown =
+    [
+      .. names.Where(n =>
+        !paths.Any(p =>
+          prefix ? p.StartsWith(n, StringComparison.Ordinal) : p == n
+        )
+      ),
+    ];
+    if (unknown.Count > 0)
+      throw new UsageException(
+        $"{flag}: no element {string.Join(", ", unknown)} in {Path.GetFileName(file)}"
+      );
+  }
+
   internal static int RunRender(string[] args) {
     (string file, string[] flags) = FileAndFlags(
       args,
@@ -248,6 +271,8 @@ internal static class Program {
     string? repo = OptOf(flags, "--repo");
 
     LoadedShape shape = ShapeFile.Load(file, selective);
+    RequireElements("--only", only, shape, file, prefix: true);
+    RequireElements("--highlight", highlight, shape, file, prefix: false);
     TextureSet textures = TextureSet.ForShape(
       shape,
       TextureRoots.Build(game, repo, file)
