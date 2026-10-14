@@ -1,6 +1,6 @@
 """Tests for `exmod scenario` in exmod/run.ps1 and the scratch server it shares with `exmod smoke`: the
-option parse, the command line and names, the staging layout, the server config, the schematic copy, and the
-report over sample log text with the exit rules. Run through pwsh ($PWSH, PATH, or the nearest
+option parse, the command line and names, the staging layout, the server config, the schematic copy, the
+last-run folder, and the report over sample log text with the exit rules. Run through pwsh ($PWSH, PATH, or the nearest
 .dotnet/tools above the checkout) with exmod_harness's prelude, one pwsh per class; skipped when no pwsh is found."""
 
 import json
@@ -694,6 +694,71 @@ Try-Case 'relay' {
 }
 """)
         self.assertEqual({"Live": "/time set day\n/stop\n", "Dead": 0}, got["relay"])
+
+
+@unittest.skipUnless(PWSH, "pwsh not found")
+class LastRunTests(FixtureRepo):
+    """The last-run folder: each shard's recordings land in its recordings folder, a run with none makes no folder,
+    and the recordings survive the schematic step that empties the folder."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.results = None
+
+    def results_of(self):
+        if self.results is None:
+            type(self).results = run_cases(self.repo, r"""
+$a = Join-Path $RepoRoot 'data-a'
+$b = Join-Path $RepoRoot 'data-b'
+$c = Join-Path $RepoRoot 'data-c'
+New-Item -ItemType Directory -Force -Path (Join-Path $a 'Scenarios/recordings'), (Join-Path $b 'Scenarios/recordings'), (Join-Path $a 'WorldEdit'), $c | Out-Null
+Set-Content -Path (Join-Path $a 'Scenarios/recordings/exlib-sample.json') -Value '{}'
+Set-Content -Path (Join-Path $b 'Scenarios/recordings/exlib-sample-2.json') -Value '{}'
+Set-Content -Path (Join-Path $a 'WorldEdit/scenario-exlib-sample-fails.json') -Value '{}'
+$dest = Join-Path $RepoRoot 'last'
+function Names($root) { @(Get-ChildItem -Recurse -File $root | ForEach-Object { [IO.Path]::GetRelativePath($root, $_.FullName).Replace('\', '/') } | Sort-Object) }
+Try-Case 'both' {
+  $count = Save-ScenarioLast @($a, $b) @() $dest
+  [ordered]@{ Count = $count; Files = (Names $dest) }
+}
+Try-Case 'survive' {
+  $count = Save-ScenarioLast @($a, $b) @('exlib/sample-fails') $dest
+  [ordered]@{ Count = $count; Files = (Names $dest) }
+}
+Try-Case 'printed' {
+  $lines = @(Save-ScenarioLast @($a, $b) @() $dest 6>&1 | ForEach-Object { "$_" })
+  @($lines | Where-Object { $_ -like 'recordings:*' })
+}
+Try-Case 'none' {
+  $none = Join-Path $RepoRoot 'last-none'
+  $count = Save-ScenarioLast @($c) @() $none
+  [ordered]@{ Count = $count; Folder = (Test-Path (Join-Path $none 'recordings')) }
+}
+""")
+        return self.results
+
+    def test_the_recordings_of_every_shard_land_in_the_folder(self):
+        # Fails when only the first shard's data path is copied: exlib-sample-2.json is then missing.
+        got = self.results_of()["both"]
+        self.assertEqual(2, got["Count"])
+        self.assertEqual(["recordings/exlib-sample-2.json", "recordings/exlib-sample.json"], sorted(as_list(got["Files"])))
+
+    def test_the_recordings_survive_the_schematic_step(self):
+        # Fails when the recordings are copied before the folder is emptied: the schematic step then removes them.
+        got = self.results_of()["survive"]
+        self.assertEqual(2, got["Count"])
+        self.assertEqual(["recordings/exlib-sample-2.json", "recordings/exlib-sample.json",
+                          "scenario-exlib-sample-fails.json"], sorted(as_list(got["Files"])))
+
+    def test_the_run_prints_the_recording_count_and_folder(self):
+        # Fails when the Write-Host line is removed from Save-ScenarioLast.
+        self.assertEqual(["recordings: 2 in .game/.scenario-last/recordings"], as_list(self.results_of()["printed"]))
+
+    def test_no_recording_makes_no_folder(self):
+        # Fails when the recordings folder is made unconditionally.
+        got = self.results_of()["none"]
+        self.assertEqual(0, got["Count"])
+        self.assertFalse(got["Folder"])
 
 
 if __name__ == "__main__":

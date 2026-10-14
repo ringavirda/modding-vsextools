@@ -1024,6 +1024,20 @@ function Save-ScenarioSchematics([string[]]$DataDirs, [string[]]$Names, [string]
   }
 }
 
+# Empties $Dest, copies the failed cases' schematics into it, then copies every shard's
+# Scenarios/recordings/*.json into $Dest/recordings, which is made only when there is a recording. Returns
+# the number of recordings copied.
+function Save-ScenarioLast([string[]]$DataDirs, [string[]]$Names, [string]$Dest) {
+  Save-ScenarioSchematics $DataDirs $Names $Dest
+  $recordings = @($DataDirs | ForEach-Object { Get-ChildItem -Path (Join-Path $_ 'Scenarios/recordings') -Filter '*.json' -File -ErrorAction SilentlyContinue })
+  if ($recordings.Count -eq 0) { return 0 }
+  $folder = Join-Path $Dest 'recordings'
+  New-Item -ItemType Directory -Force -Path $folder | Out-Null
+  foreach ($file in $recordings) { Copy-Item -Path $file.FullName -Destination $folder }
+  Write-Host "recordings: $($recordings.Count) in .game/.scenario-last/recordings"
+  return $recordings.Count
+}
+
 # The count line over the shards that printed one: the sums of their run, passed and failed cases. $null
 # when no shard printed one.
 function Get-ScenarioCountLine($Reports) {
@@ -1118,7 +1132,7 @@ function Invoke-Scenario([string[]]$Argv) {
     }
     $countLine = Get-ScenarioCountLine $reports
     if ($countLine) { Write-Host $countLine }
-    Save-ScenarioSchematics @($shards | ForEach-Object { $_.Server.Data }) @($reports | ForEach-Object { $_.FailedNames }) (Join-Path $RepoRoot '.game/.scenario-last')
+    Save-ScenarioLast @($shards | ForEach-Object { $_.Server.Data }) @($reports | ForEach-Object { $_.FailedNames }) (Join-Path $RepoRoot '.game/.scenario-last')
     $problems = Get-ScenarioExitProblems $reports
 
     if ($opts.Keep) {
@@ -1175,7 +1189,7 @@ mod is built from the same checkout; each mod's tests/live is copied under its o
 
 Exits 1 when the count line is missing or reports no case run, a case fails or errors, or an [Error] or
 [Fatal] line falls outside a case, on any shard. The schematics of the failed cases are copied to
-.game/.scenario-last.
+.game/.scenario-last, and every recording to .game/.scenario-last/recordings.
 '@
 
 #endregion
