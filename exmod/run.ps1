@@ -1025,17 +1025,22 @@ function Save-ScenarioSchematics([string[]]$DataDirs, [string[]]$Names, [string]
 }
 
 # Empties $Dest, copies the failed cases' schematics into it, then copies every shard's
-# Scenarios/recordings/*.json into $Dest/recordings, which is made only when there is a recording. Returns
-# the number of recordings copied.
-function Save-ScenarioLast([string[]]$DataDirs, [string[]]$Names, [string]$Dest) {
-  Save-ScenarioSchematics $DataDirs $Names $Dest
+# Scenarios/recordings/*.json into $Dest/recordings, which is made only when there is a recording. A file name
+# two shards both write is warned and the later shard's copy kept. Returns the number of files in the folder.
+function Save-ScenarioLast([string[]]$DataDirs, [string[]]$FailedNames, [string]$Dest) {
+  Save-ScenarioSchematics $DataDirs $FailedNames $Dest
   $recordings = @($DataDirs | ForEach-Object { Get-ChildItem -Path (Join-Path $_ 'Scenarios/recordings') -Filter '*.json' -File -ErrorAction SilentlyContinue })
   if ($recordings.Count -eq 0) { return 0 }
   $folder = Join-Path $Dest 'recordings'
   New-Item -ItemType Directory -Force -Path $folder | Out-Null
-  foreach ($file in $recordings) { Copy-Item -Path $file.FullName -Destination $folder }
-  Write-Host "recordings: $($recordings.Count) in .game/.scenario-last/recordings"
-  return $recordings.Count
+  $landed = @{}
+  foreach ($file in $recordings) {
+    if ($landed.ContainsKey($file.Name)) { Write-Warning "recording $($file.Name) is written by two shards; the copy from $($file.DirectoryName) replaces the first" }
+    Copy-Item -Path $file.FullName -Destination $folder
+    $landed[$file.Name] = $true
+  }
+  Write-Host "recordings: $($landed.Count) in .game/.scenario-last/recordings"
+  return $landed.Count
 }
 
 # The count line over the shards that printed one: the sums of their run, passed and failed cases. $null

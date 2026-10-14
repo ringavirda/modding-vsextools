@@ -729,6 +729,15 @@ Try-Case 'printed' {
   $lines = @(Save-ScenarioLast @($a, $b) @() $dest 6>&1 | ForEach-Object { "$_" })
   @($lines | Where-Object { $_ -like 'recordings:*' })
 }
+Try-Case 'clash' {
+  $d = Join-Path $RepoRoot 'data-d'
+  $e = Join-Path $RepoRoot 'data-e'
+  New-Item -ItemType Directory -Force -Path (Join-Path $d 'Scenarios/recordings'), (Join-Path $e 'Scenarios/recordings') | Out-Null
+  Set-Content -Path (Join-Path $d 'Scenarios/recordings/exlib-same.json') -Value '{}'
+  Set-Content -Path (Join-Path $e 'Scenarios/recordings/exlib-same.json') -Value '{}'
+  $clash = Join-Path $RepoRoot 'last-clash'
+  @(Save-ScenarioLast @($d, $e) @() $clash 3>&1 6>&1 | ForEach-Object { "$_" })
+}
 Try-Case 'none' {
   $none = Join-Path $RepoRoot 'last-none'
   $count = Save-ScenarioLast @($c) @() $none
@@ -753,6 +762,12 @@ Try-Case 'none' {
     def test_the_run_prints_the_recording_count_and_folder(self):
         # Fails when the Write-Host line is removed from Save-ScenarioLast.
         self.assertEqual(["recordings: 2 in .game/.scenario-last/recordings"], as_list(self.results_of()["printed"]))
+
+    def test_a_name_two_shards_write_is_warned_and_counted_once(self):
+        # Fails when the duplicate check is removed: no warning, and the count line reads 2 over one file.
+        got = as_list(self.results_of()["clash"])
+        self.assertTrue(any(line.startswith("recording exlib-same.json is written by two shards") for line in got), got)
+        self.assertIn("recordings: 1 in .game/.scenario-last/recordings", got)
 
     def test_no_recording_makes_no_folder(self):
         # Fails when the recordings folder is made unconditionally.
