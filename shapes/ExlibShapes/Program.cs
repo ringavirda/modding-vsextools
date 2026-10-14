@@ -271,6 +271,10 @@ internal static class Program {
     string? repo = OptOf(flags, "--repo");
 
     LoadedShape shape = ShapeFile.Load(file, selective);
+    if (selective.Count > 0 && !shape.Walk().Any())
+      throw new UsageException(
+        $"--selective: no element kept by {string.Join(", ", selective)} in {Path.GetFileName(file)}"
+      );
     RequireElements("--only", only, shape, file, prefix: true);
     RequireElements("--highlight", highlight, shape, file, prefix: false);
     TextureSet textures = TextureSet.ForShape(

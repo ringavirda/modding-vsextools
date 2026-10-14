@@ -68,6 +68,21 @@ public class RenderElementNamesTests {
     Assert.Empty(written);
   }
 
+  // Fails if the --selective check is removed: patterns that keep nothing render a blank image.
+  [Fact]
+  public void SelectiveKeepingNothingIsRefusedAndWritesNothing() {
+    (int _, UsageException? refused, string[] written) = Run(
+      "--selective",
+      "Pig/*"
+    );
+    Assert.NotNull(refused);
+    Assert.Equal(
+      "--selective: no element kept by Pig/* in slide-clip.json",
+      refused.Message
+    );
+    Assert.Empty(written);
+  }
+
   // Fails if a known name is refused.
   [Fact]
   public void KnownNamesStillRender() {
