@@ -381,6 +381,24 @@ class StageAndBootTests(LockCase):
         got, out = self.stamps_of("try { Invoke-Scenario @() } catch { }; exit 0", 5)
         self.assertEqual(["exlibbuild held", "livebuild held", "stage held", "newserver held", "boot free"], got, out)
 
+    def ports_held(self, call):
+        stub = ("function Start-ScratchServer { Get-ChildItem $env:EXMOD_PORTS_DIR -Filter '*.lock' | ForEach-Object { "
+                "& flock -n $_.FullName true; Add-Content $env:TEST_STAMPS $(if ($LASTEXITCODE -eq 0) { 'ports-free' } else { 'ports-held' }) }; "
+                "throw 'stop here' }\n")
+        code, out = self.run_body(SMOKE_STAGE + stub + call, EXMOD_PORTS_DIR=os.path.join(self.tmp, "ports"))
+        self.assertEqual(0, code, out)
+        return [l for l in self.stamp_lines() if l.startswith("ports-")], out
+
+    def test_smoke_holds_its_port_reservation_through_the_boot(self):
+        # Fails if Invoke-Smoke calls Unlock-ServerPorts before Start-ScratchServer.
+        got, out = self.ports_held("try { Invoke-Smoke @() } catch { }; exit 0")
+        self.assertIn("ports-held", got, out)
+
+    def test_scenario_holds_its_port_reservation_through_the_boot(self):
+        # Fails if Invoke-Scenario calls Unlock-ServerPorts before Start-ScratchServer.
+        got, out = self.ports_held("try { Invoke-Scenario @() } catch { }; exit 0")
+        self.assertIn("ports-held", got, out)
+
 
 if __name__ == "__main__":
     unittest.main()

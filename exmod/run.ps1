@@ -1109,21 +1109,25 @@ function Save-ScenarioSchematics([string[]]$DataDirs, [string[]]$Names, [string]
 # half-filled folder. Returns the number of recordings.
 function Save-ScenarioLast([string[]]$DataDirs, [string[]]$FailedNames, [string]$Dest) {
   $staging = "$Dest.$([guid]::NewGuid().ToString('N').Substring(0, 8))"
-  Save-ScenarioSchematics $DataDirs $FailedNames $staging
-  $recordings = @($DataDirs | ForEach-Object { Get-ChildItem -Path (Join-Path $_ 'Scenarios/recordings') -Filter '*.json' -File -ErrorAction SilentlyContinue })
-  $landed = @{}
-  if ($recordings.Count -gt 0) {
-    $folder = Join-Path $staging 'recordings'
-    New-Item -ItemType Directory -Force -Path $folder | Out-Null
-    foreach ($file in $recordings) {
-      if ($landed.ContainsKey($file.Name)) { Write-Warning "recording $($file.Name) is written by two shards; the copy from $($file.DirectoryName) replaces the first" }
-      Copy-Item -Path $file.FullName -Destination $folder
-      $landed[$file.Name] = $true
+  try {
+    Save-ScenarioSchematics $DataDirs $FailedNames $staging
+    $recordings = @($DataDirs | ForEach-Object { Get-ChildItem -Path (Join-Path $_ 'Scenarios/recordings') -Filter '*.json' -File -ErrorAction SilentlyContinue })
+    $landed = @{}
+    if ($recordings.Count -gt 0) {
+      $folder = Join-Path $staging 'recordings'
+      New-Item -ItemType Directory -Force -Path $folder | Out-Null
+      foreach ($file in $recordings) {
+        if ($landed.ContainsKey($file.Name)) { Write-Warning "recording $($file.Name) is written by two shards; the copy from $($file.DirectoryName) replaces the first" }
+        Copy-Item -Path $file.FullName -Destination $folder
+        $landed[$file.Name] = $true
+      }
     }
-  }
-  Invoke-WithFlock (Join-Path (Split-Path $Dest -Parent) '.scenario-lock') 3000 -Label 'scenario-last lock' -Run {
-    if (Test-Path $Dest) { Remove-Item -Recurse -Force $Dest }
-    Move-Item -Path $staging -Destination $Dest
+    Invoke-WithLock (Join-Path (Split-Path $Dest -Parent) '.scenario-lock') {
+      if (Test-Path $Dest) { Remove-Item -Recurse -Force $Dest }
+      Move-Item -LiteralPath $staging -Destination $Dest
+    }
+  } finally {
+    if (Test-Path $staging) { Remove-Item -Recurse -Force $staging }
   }
   if ($landed.Count -gt 0) { Write-Host "recordings: $($landed.Count) in .game/.scenario-last/recordings" }
   return $landed.Count
