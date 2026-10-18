@@ -92,7 +92,7 @@ class LockCase(unittest.TestCase):
 @unittest.skipIf(sys.platform == "win32", "the lock is flock(2)")
 class BuildLockTests(LockCase):
     def test_a_held_lock_delays_the_body_until_it_is_released(self):
-        # Fails if the take is skipped: the body then starts at once, before the Python holder lets go.
+        # Fails if the take is skipped.
         released = self.hold_lock(2)
         code, out = self.run_body(f"Invoke-WithBuildLock {{ Add-Content $env:TEST_STAMPS ({NOW_MS}) }}")
         self.assertEqual(0, code, out)
@@ -100,7 +100,7 @@ class BuildLockTests(LockCase):
         self.assertGreaterEqual(entered, released[0] - 0.05, out)
 
     def test_the_lock_is_exclusive_while_the_body_runs(self):
-        # Fails if the helper takes a shared lock: a shared probe then succeeds beside the body.
+        # Fails if the helper takes a shared lock.
         code, out = self.run_body("Invoke-WithBuildLock { Add-Content $env:TEST_STAMPS (Get-LockState) }")
         self.assertEqual(0, code, out)
         self.assertEqual(["held"], self.stamp_lines(), out)
@@ -108,7 +108,7 @@ class BuildLockTests(LockCase):
         self.assertIn("build lock: released " + self.lock, out)
 
     def test_two_bodies_started_together_do_not_overlap(self):
-        # Fails if the helper takes a shared lock: both bodies then run their second together.
+        # Fails if the helper takes a shared lock.
         body = (f"Invoke-WithBuildLock {{ Add-Content $env:TEST_STAMPS \"s $({NOW_MS})\"; Start-Sleep 1; "
                 f"Add-Content $env:TEST_STAMPS \"e $({NOW_MS})\" }}")
         procs = [self.start(body), self.start(body)]
@@ -120,7 +120,7 @@ class BuildLockTests(LockCase):
         self.assertEqual(["s", "e", "s", "e"], [kind for _, kind in rows])
 
     def test_a_wait_that_runs_out_exits_non_zero_with_the_not_taken_message(self):
-        # Fails if EXMOD_BUILD_LOCK_WAIT is ignored: the take then waits the default 3000 s and the run times out.
+        # Fails if EXMOD_BUILD_LOCK_WAIT is ignored.
         self.hold_lock(30)
         started = time.time()
         code, out = self.run_body("Invoke-WithBuildLock { Add-Content $env:TEST_STAMPS ran }", wait=1, timeout=20)
@@ -130,7 +130,7 @@ class BuildLockTests(LockCase):
         self.assertFalse(os.path.exists(self.stamps), out)
 
     def test_a_child_exmod_command_passes_through_its_parents_hold(self):
-        # Fails if EXMOD_BUILD_LOCK_HELD is not set: the child waits on its parent's lock until the wait runs out.
+        # Fails if EXMOD_BUILD_LOCK_HELD is not set.
         script = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "exmod.ps1")
         body = (f"Invoke-WithBuildLock {{ & '{PWSH}' -NoProfile -File '{script}' -RepoRoot $env:TEST_REPO clean; "
                 "Add-Content $env:TEST_STAMPS \"child $LASTEXITCODE\" }")
@@ -162,7 +162,7 @@ Invoke-ExmodCommand (Resolve-ExmodCommand 'render') @()
         self.assertEqual(["probe", "held", "render", "free"], self.stamp_lines(), out)
 
     def test_waiters_taking_turns_do_not_starve_the_body(self):
-        # Fails if the take polls with a short non-blocking attempt: it never wins against two blocking waiters.
+        # Fails if the take polls with a short non-blocking attempt.
         loop = f"while true; do flock -w 30 -o '{self.lock}' sleep 1; done"
         loops = [subprocess.Popen(["bash", "-c", loop], start_new_session=True) for _ in range(2)]
         for p in loops:
@@ -182,7 +182,7 @@ Invoke-ExmodCommand (Resolve-ExmodCommand 'render') @()
             pass
 
     def test_a_killed_body_frees_the_lock(self):
-        # Fails if the helper outlives its stdin: the lock then stays held after the process is gone.
+        # Fails if the helper outlives its stdin.
         marker = os.path.join(self.tmp, "inside")
         proc = self.start(f"Invoke-WithBuildLock {{ Set-Content '{marker}' $PID; Start-Sleep 60 }}")
         self.addCleanup(self.kill_group, proc)
@@ -244,7 +244,7 @@ class StepHoldTests(LockCase):
         self.assertIn("test phase:", out)
 
     def test_two_test_phases_in_one_checkout_take_turns(self):
-        # Fails if the per-checkout test-phase lock is gone: the two runs' phases then interleave.
+        # Fails if the per-checkout test-phase lock is gone.
         slow = os.path.join(self.tmp, "slow")
         executable(slow, '#!/bin/sh\n[ "$1" = test ] || exit 0\necho "start" >> "$TEST_STAMPS"\nsleep 1\n'
                          'echo "end" >> "$TEST_STAMPS"\n'
@@ -306,12 +306,12 @@ class ProvisionHoldTests(LockCase):
         self.assertEqual(["install", "held"] * 2, lines)
 
     def test_resolving_with_nothing_to_install_does_not_take_the_hold(self):
-        # Fails if the hold wraps the whole of Resolve-DotnetHost: its first step then runs held.
+        # Fails if the hold wraps the whole of Resolve-DotnetHost.
         lines = self.provision(gap=False)
         self.assertEqual(["resolve", "free"], lines)
 
     def test_the_game_extract_leaves_the_old_install_until_the_rename(self):
-        # Fails if the archive is extracted over the old folder: Publicize-GameApi then sees it gone.
+        # Fails if the archive is extracted over the old folder.
         dest = os.path.join(self.tmp, "game")
         touch(os.path.join(dest, "old.txt"), "old")
         cache = os.path.join(self.ws, ".game", ".cache")
