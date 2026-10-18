@@ -971,20 +971,16 @@ function Register-ClientGpuPreference([string]$ExePath, [switch]$DryRun) {
 
 #endregion
 
-# Runs $Run with an exclusive flock(2) on $LockPath held. The lock is taken in the kernel by a `flock`
-# child that waits up to $LockWait seconds, prints `taken` and then blocks reading its stdin; closing
-# that pipe, or this process dying, releases it. A take that runs out throws "<Label> <LockPath> not
-# taken in <LockWait> s". -Report prints the take and release lines with their clock time and the
-# seconds waited and held. A FLOCK lock on $LockPath that /proc/locks shows held by this process or one
-# of its ancestors counts as held: $Run runs with no take and -Report prints `build lock: taken <path>
-# by parent <pid> at <time>`. Without /proc/locks the lock is always taken.
+# Returns the PID of the process, this one or an ancestor, that holds a FLOCK on $LockPath per /proc/locks;
+# $null when /proc/locks or the file is missing or no ancestor holds it.
 function Get-FlockAncestorHolder([string]$LockPath) {
   if (-not (Test-Path -LiteralPath '/proc/locks') -or -not (Test-Path -LiteralPath $LockPath)) { return $null }
-  $inode = (& stat -L -c '%i' $LockPath 2>$null)
-  if (-not $inode) { return $null }
+  $st = @((& stat -L -c '%Hd %Ld %i' $LockPath 2>$null) -split '\s+' | Where-Object { $_ })
+  if ($st.Count -ne 3) { return $null }
+  $key = '{0:x2}:{1:x2}:{2}' -f [int]$st[0], [int]$st[1], $st[2]
   $holders = @(Get-Content -LiteralPath '/proc/locks' | ForEach-Object {
       $f = $_ -split '\s+' | Where-Object { $_ }
-      if ($f.Count -ge 6 -and $f[1] -eq 'FLOCK' -and $f[5].Split(':')[-1] -eq "$inode") { [int]$f[4] }
+      if ($f.Count -ge 6 -and $f[1] -eq 'FLOCK' -and $f[5] -eq $key) { [int]$f[4] }
     })
   if (-not $holders) { return $null }
   $walk = $PID
@@ -997,6 +993,13 @@ function Get-FlockAncestorHolder([string]$LockPath) {
   return $null
 }
 
+# Runs $Run with an exclusive flock(2) on $LockPath held. The lock is taken in the kernel by a `flock`
+# child that waits up to $LockWait seconds, prints `taken` and then blocks reading its stdin; closing
+# that pipe, or this process dying, releases it. A take that runs out throws "<Label> <LockPath> not
+# taken in <LockWait> s". -Report prints the take and release lines with their clock time and the
+# seconds waited and held. A FLOCK lock on $LockPath that /proc/locks shows held by this process or one
+# of its ancestors counts as held: $Run runs with no take and -Report prints `build lock: taken <path>
+# by parent <pid> at <time>`. Without /proc/locks the lock is always taken.
 function Invoke-WithFlock([string]$LockPath, [int]$LockWait, [scriptblock]$Run, [string]$Label = 'lock', [switch]$Report) {
   $flockCmd = Get-Command flock -CommandType Application -TotalCount 1 -ErrorAction SilentlyContinue
   if (-not $flockCmd) { throw "flock was not found on PATH; $Label $LockPath cannot be taken." }
