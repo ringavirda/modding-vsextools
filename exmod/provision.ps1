@@ -58,20 +58,22 @@ function Invoke-ProvisionDotnet([string[]]$Argv) {
   }
 
   function Install-Dotnet([string[]]$InstallArgs) {
-    if ($OnWindows) {
-      & $installer @InstallArgs
-    } else {
-      # The shell installer takes POSIX-style kebab-case flags rather than PowerShell parameter
-      # names: -InstallDir becomes --install-dir, -Channel becomes --channel.
-      $sh = @()
-      for ($i = 0; $i -lt $InstallArgs.Count; $i += 2) {
-        $name = $InstallArgs[$i].TrimStart('-')
-        $sh += ('--' + [regex]::Replace($name, '(?<!^)([A-Z])', '-$1').ToLower())
-        $sh += $InstallArgs[$i + 1]
+    Invoke-WithBuildLock {
+      if ($OnWindows) {
+        & $installer @InstallArgs
+      } else {
+        # The shell installer takes POSIX-style kebab-case flags rather than PowerShell parameter
+        # names: -InstallDir becomes --install-dir, -Channel becomes --channel.
+        $sh = @()
+        for ($i = 0; $i -lt $InstallArgs.Count; $i += 2) {
+          $name = $InstallArgs[$i].TrimStart('-')
+          $sh += ('--' + [regex]::Replace($name, '(?<!^)([A-Z])', '-$1').ToLower())
+          $sh += $InstallArgs[$i + 1]
+        }
+        & bash $installer @sh --no-path
       }
-      & bash $installer @sh --no-path
+      if ($LASTEXITCODE -ne 0) { throw "dotnet-install failed ($LASTEXITCODE)." }
     }
-    if ($LASTEXITCODE -ne 0) { throw "dotnet-install failed ($LASTEXITCODE)." }
   }
 
   if ($force -or -not (Test-Sdk $sdkChannel.Split('.')[0])) {
@@ -284,95 +286,101 @@ function Invoke-ProvisionGame([string[]]$Argv) {
       }
     }
 
-    $cdn = 'https://cdn.vintagestory.at/gamefiles/stable'
+    $stage = "$destFull.part"
+    $stageApi = Join-Path $stage 'VintagestoryAPI.dll'
+    Invoke-WithBuildLock {
+      $cdn = 'https://cdn.vintagestory.at/gamefiles/stable'
 
-    if (-not $OnWindows) {
-      # Both kinds are plain tarballs off Windows.
-      $name = "vs_${kind}_linux-x64_$version.tar.gz"
-      $tarball = Join-Path $cacheDir $name
-      Get-Cached "$cdn/$name" $tarball $name
-      Write-Host "Extracting $name to $dest"
-      if (Test-Path $destFull) { Remove-Item -Recurse -Force $destFull }
-      New-Item -ItemType Directory -Force -Path $destFull | Out-Null
-      & tar -xzf $tarball -C $destFull | Out-Host
-      if ($LASTEXITCODE -ne 0) { throw "tar failed extracting $name." }
-    }
-    elseif ($kind -eq 'server') {
-      $name = "vs_server_win-x64_$version.zip"
-      $zip = Join-Path $cacheDir $name
-      Get-Cached "$cdn/$name" $zip $name
-      Write-Host "Extracting $name to $dest"
-      if (Test-Path $destFull) { Remove-Item -Recurse -Force $destFull }
-      New-Item -ItemType Directory -Force -Path $destFull | Out-Null
-      Expand-Archive -Path $zip -DestinationPath $destFull -Force
-    }
-    else {
-      $name = "vs_install_win-x64_$version.exe"
-      $exe = Join-Path $cacheDir $name
-      Get-Cached "$cdn/$name" $exe $name
-
-      # Every VS installer shares one Inno AppId, so installing into the slot rewrites the single shared
-      # uninstall entry. Snapshot it and restore it verbatim afterwards; the slot's client stays
-      # unregistered, which is fine because launching never needs an Add/Remove-Programs entry.
-      $appKey = '{70364653-036D-49B3-8B80-AF39665F29C1}_is1'
-      $regKey = $null
-      foreach ($r in @(
-          'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall',
-          'HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall',
-          'HKLM\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall')) {
-        $p = "$r\$appKey"
-        & reg query $p *> $null
-        if ($LASTEXITCODE -eq 0) { $regKey = $p; break }
+      if (-not $OnWindows) {
+        # Both kinds are plain tarballs off Windows.
+        $name = "vs_${kind}_linux-x64_$version.tar.gz"
+        $tarball = Join-Path $cacheDir $name
+        Get-Cached "$cdn/$name" $tarball $name
+        Write-Host "Extracting $name to $dest"
+        if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+        New-Item -ItemType Directory -Force -Path $stage | Out-Null
+        & tar -xzf $tarball -C $stage | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "tar failed extracting $name." }
       }
-      $backup = $null
-      if ($regKey) {
-        $b = Join-Path $cacheDir "vs-uninstall-backup-$PID.reg"
-        & reg export $regKey $b /y *> $null
-        if ($LASTEXITCODE -eq 0 -and (Test-Path $b)) { $backup = $b }
+      elseif ($kind -eq 'server') {
+        $name = "vs_server_win-x64_$version.zip"
+        $zip = Join-Path $cacheDir $name
+        Get-Cached "$cdn/$name" $zip $name
+        Write-Host "Extracting $name to $dest"
+        if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+        New-Item -ItemType Directory -Force -Path $stage | Out-Null
+        Expand-Archive -Path $zip -DestinationPath $stage -Force
       }
+      else {
+        $name = "vs_install_win-x64_$version.exe"
+        $exe = Join-Path $cacheDir $name
+        Get-Cached "$cdn/$name" $exe $name
 
-      Write-Host "Silent-installing the client to $dest"
-      if (Test-Path $destFull) { Remove-Item -Recurse -Force $destFull }
-      New-Item -ItemType Directory -Force -Path $destFull | Out-Null
-      # The installer writes to a local folder: a checkout on a network share (WSL seen from Windows)
-      # is not a path Inno Setup accepts, and a per-user install needs no elevation. The tree is
-      # copied into the slot afterwards.
-      $local = Join-Path ([System.IO.Path]::GetTempPath()) "vs-client-$version-$PID"
-      if (Test-Path $local) { Remove-Item -Recurse -Force $local }
-      try {
-        $innoArgs = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOICONS', '/CURRENTUSER', "/DIR=$local")
-        $proc = Start-Process -FilePath $exe -ArgumentList $innoArgs -Wait -PassThru
-        if ($proc.ExitCode -ne 0) {
-          throw "Client install exited with code $($proc.ExitCode). If a UAC prompt appeared, run from an elevated shell."
+        # Every VS installer shares one Inno AppId, so installing into the slot rewrites the single shared
+        # uninstall entry. Snapshot it and restore it verbatim afterwards; the slot's client stays
+        # unregistered, which is fine because launching never needs an Add/Remove-Programs entry.
+        $appKey = '{70364653-036D-49B3-8B80-AF39665F29C1}_is1'
+        $regKey = $null
+        foreach ($r in @(
+            'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+            'HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+            'HKLM\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall')) {
+          $p = "$r\$appKey"
+          & reg query $p *> $null
+          if ($LASTEXITCODE -eq 0) { $regKey = $p; break }
         }
-        Copy-Item -Path (Join-Path $local '*') -Destination $destFull -Recurse -Force
-      } finally {
-        if (Test-Path $local) { Remove-Item -Recurse -Force $local -ErrorAction SilentlyContinue }
-        if ($backup -and (Test-Path $backup)) {
-          & reg delete $regKey /f *> $null
-          & reg import $backup *> $null
-          Remove-Item -Force $backup -ErrorAction SilentlyContinue
-          Write-Host "Restored the existing Vintage Story uninstall registry entry."
+        $backup = $null
+        if ($regKey) {
+          $b = Join-Path $cacheDir "vs-uninstall-backup-$PID.reg"
+          & reg export $regKey $b /y *> $null
+          if ($LASTEXITCODE -eq 0 -and (Test-Path $b)) { $backup = $b }
+        }
+
+        Write-Host "Silent-installing the client to $dest"
+        if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+        New-Item -ItemType Directory -Force -Path $stage | Out-Null
+        # The installer writes to a local folder: a checkout on a network share (WSL seen from Windows)
+        # is not a path Inno Setup accepts, and a per-user install needs no elevation. The tree is
+        # copied into the slot afterwards.
+        $local = Join-Path ([System.IO.Path]::GetTempPath()) "vs-client-$version-$PID"
+        if (Test-Path $local) { Remove-Item -Recurse -Force $local }
+        try {
+          $innoArgs = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOICONS', '/CURRENTUSER', "/DIR=$local")
+          $proc = Start-Process -FilePath $exe -ArgumentList $innoArgs -Wait -PassThru
+          if ($proc.ExitCode -ne 0) {
+            throw "Client install exited with code $($proc.ExitCode). If a UAC prompt appeared, run from an elevated shell."
+          }
+          Copy-Item -Path (Join-Path $local '*') -Destination $stage -Recurse -Force
+        } finally {
+          if (Test-Path $local) { Remove-Item -Recurse -Force $local -ErrorAction SilentlyContinue }
+          if ($backup -and (Test-Path $backup)) {
+            & reg delete $regKey /f *> $null
+            & reg import $backup *> $null
+            Remove-Item -Force $backup -ErrorAction SilentlyContinue
+            Write-Host "Restored the existing Vintage Story uninstall registry entry."
+          }
         }
       }
-    }
 
-    # Some archives nest everything under one top-level directory; lift it to the root.
-    if (-not (Test-Path $apiMarker)) {
-      $inner = Get-ChildItem $destFull -Recurse -Depth 1 -Filter VintagestoryAPI.dll -ErrorAction SilentlyContinue |
-        Select-Object -First 1
-      if ($inner) { Get-ChildItem $inner.Directory.FullName -Force | Move-Item -Destination $destFull -Force }
-    }
+      # Some archives nest everything under one top-level directory; lift it to the root.
+      if (-not (Test-Path $stageApi)) {
+        $inner = Get-ChildItem $stage -Recurse -Depth 1 -Filter VintagestoryAPI.dll -ErrorAction SilentlyContinue |
+          Select-Object -First 1
+        if ($inner) { Get-ChildItem $inner.Directory.FullName -Force | Move-Item -Destination $stage -Force }
+      }
 
-    if (-not (Test-Path $apiMarker)) {
-      throw "Provisioning completed but VintagestoryAPI.dll is missing under $dest. The archive layout may have changed."
-    }
-    if ($kind -eq 'client' -and -not (Test-Path $clientMarker)) {
-      throw "Client install completed but Vintagestory.dll is missing under $dest."
-    }
+      if (-not (Test-Path $stageApi)) {
+        throw "Provisioning completed but VintagestoryAPI.dll is missing under $dest. The archive layout may have changed."
+      }
+      if ($kind -eq 'client' -and -not (Test-Path (Join-Path $stage 'Vintagestory.dll'))) {
+        throw "Client install completed but Vintagestory.dll is missing under $dest."
+      }
 
-    Publicize-GameApi $apiMarker
-    Set-Content -Path $stamp -Value $version -NoNewline
+      Publicize-GameApi $stageApi
+      Set-Content -Path (Join-Path $stage '.vsversion') -Value $version -NoNewline
+      if (Test-Path $destFull) { Remove-Item -Recurse -Force $destFull }
+      Move-Item -LiteralPath $stage -Destination $destFull
+    }
     Write-Host "Provisioned Vintage Story $version ($kind) at $dest"
     & $registerGpu
   } finally {

@@ -971,6 +971,61 @@ function Register-ClientGpuPreference([string]$ExePath, [switch]$DryRun) {
 
 #endregion
 
+# Runs $Run with an exclusive flock(2) on $LockPath held. The lock is taken in the kernel by a `flock`
+# child that waits up to $LockWait seconds, prints `taken` and then blocks reading its stdin; closing
+# that pipe, or this process dying, releases it. A take that runs out throws "<Label> <LockPath> not
+# taken in <LockWait> s". -Report prints the take and release lines with their clock time and the
+# seconds waited and held.
+function Invoke-WithFlock([string]$LockPath, [int]$LockWait, [scriptblock]$Run, [string]$Label = 'lock', [switch]$Report) {
+  $flockCmd = Get-Command flock -CommandType Application -TotalCount 1 -ErrorAction SilentlyContinue
+  if (-not $flockCmd) { throw "flock was not found on PATH; $Label $LockPath cannot be taken." }
+  New-Item -ItemType Directory -Force -Path (Split-Path ([System.IO.Path]::GetFullPath($LockPath)) -Parent) | Out-Null
+  $startInfo = [System.Diagnostics.ProcessStartInfo]::new($flockCmd.Source)
+  foreach ($a in @('-w', "$LockWait", '-o', $LockPath, '-c', 'echo taken; read -r _')) { $startInfo.ArgumentList.Add($a) }
+  $startInfo.RedirectStandardInput = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.UseShellExecute = $false
+  $lockAsked = Get-Date
+  $lockHelper = [System.Diagnostics.Process]::Start($startInfo)
+  if ($lockHelper.StandardOutput.ReadLine() -ne 'taken') {
+    $lockHelper.WaitForExit()
+    throw "$Label $LockPath not taken in $LockWait s"
+  }
+  $lockTaken = Get-Date
+  if ($Report) { Write-Host ("build lock: taken {0} at {1:HH:mm:ss} after {2:0} s" -f $LockPath, $lockTaken, ($lockTaken - $lockAsked).TotalSeconds) }
+  try { & $Run }
+  finally {
+    $lockHelper.StandardInput.Close()
+    $lockHelper.WaitForExit()
+    if ($Report) {
+      $lockReleased = Get-Date
+      Write-Host ("build lock: released {0} at {1:HH:mm:ss}, held {2:0} s" -f $LockPath, $lockReleased, ($lockReleased - $lockTaken).TotalSeconds)
+    }
+  }
+}
+
+# Runs $Body with the build lock named by $env:EXMOD_BUILD_LOCK held, waiting up to
+# $env:EXMOD_BUILD_LOCK_WAIT seconds (default 3000). With the variable unset, or while this process
+# or a parent exmod already holds the lock (EXMOD_BUILD_LOCK_HELD), $Body just runs. A caller must
+# not also wrap the command in `flock` on the same file.
+function Invoke-WithBuildLock([scriptblock]$Body) {
+  $path = $env:EXMOD_BUILD_LOCK
+  if (-not $path -or $env:EXMOD_BUILD_LOCK_HELD) { & $Body; return }
+  $wait = if ($env:EXMOD_BUILD_LOCK_WAIT) { [int]$env:EXMOD_BUILD_LOCK_WAIT } else { 3000 }
+  Invoke-WithFlock $path $wait -Label 'build lock' -Report -Run {
+    $env:EXMOD_BUILD_LOCK_HELD = '1'
+    try { & $Body } finally { $env:EXMOD_BUILD_LOCK_HELD = $null }
+  }
+}
+
+# Commands that take the build lock themselves around the parts that build, or never need it.
+$NoBuildLockCommands = @('check', 'test', 'render', 'server', 'client', 'debug-adapter')
+
+function Invoke-ExmodCommand($Resolved, [string[]]$Argv) {
+  if ($Resolved.Name -in $NoBuildLockCommands) { & $Resolved.Action $Argv; return }
+  Invoke-WithBuildLock { & $Resolved.Action $Argv }
+}
+
 # The commands themselves, one file per stage. Dot-sourced, so everything above is in scope for them
 # and their Add-ExmodCommand calls run before dispatch. A file that is not there is skipped rather
 # than fatal: another repo copies this dispatcher with only the stages it wants (see
@@ -997,4 +1052,4 @@ if ($wslShare -and -not (Test-ExmodWindowsSideCommand $resolved.Name $Arguments)
   Write-Host "Running '$Command' inside WSL ($($wslShare.Distro)): $($wslShare.LinuxPath)"
   exit (Invoke-ExmodInWsl $wslShare.Distro $wslShare.LinuxPath (@($Command) + $Arguments))
 }
-& $resolved.Action $Arguments
+Invoke-ExmodCommand $resolved $Arguments

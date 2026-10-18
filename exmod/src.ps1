@@ -264,6 +264,20 @@ function Get-ExmodTestWave([string]$Version) {
   if ($env:EXLIB_WRITE_GOLDENS -and $Version -ne $CurrentGameVersion) { 1 } else { 0 }
 }
 
+# Runs $Body, the parallel run of a test phase, between `test phase:` clock lines. With the build
+# lock in use ($env:EXMOD_BUILD_LOCK set) it holds this checkout's .exmod/test-phase.lock for the
+# run, so two test phases in one checkout take turns: they share .exmod/test-results, the test logs
+# and the census. Test phases of different checkouts overlap.
+function Invoke-WithTestPhase([scriptblock]$Body) {
+  $phase = {
+    Write-Host ("test phase: {0:HH:mm:ss} start" -f (Get-Date))
+    try { & $Body } finally { Write-Host ("test phase: {0:HH:mm:ss} end" -f (Get-Date)) }
+  }
+  if (-not $env:EXMOD_BUILD_LOCK) { & $phase; return }
+  $wait = if ($env:EXMOD_BUILD_LOCK_WAIT) { [int]$env:EXMOD_BUILD_LOCK_WAIT } else { 3000 }
+  Invoke-WithFlock (Join-Path $RepoRoot '.exmod/test-phase.lock') $wait -Label 'test phase lock' -Run $phase
+}
+
 function Invoke-Test([string[]]$Argv) {
   $positional = @(Get-Positional $Argv @('-Throttle', '-Filter') @('-Coverage', '-AcceptDrop', '-NoBuild'))
   $version = if ($positional.Count -gt 0) { $positional[0] } else { 'latest' }
@@ -289,63 +303,65 @@ function Invoke-Test([string[]]$Argv) {
   # coverage_gate.py. The gate floors track the current build, so this always uses the latest version.
   # -Filter does not apply here; the solution run is always whole.
   if ($coverage) {
-    $toolsDir = Join-Path (Get-ExmodDotnetDir) 'tools'
-    & $dotnet tool install dotnet-coverage --tool-path $toolsDir 2>$null | Out-Null
-    $dc = Join-Path $toolsDir "dotnet-coverage$ExeSuffix"
-    $cov = Join-Path $RepoRoot 'coverage.xml'
-    Write-Host "Collecting coverage over the latest suite..."
-    & $dc collect -f cobertura -o $cov "$dotnet test `"$(Get-ExmodSolution)`" -c Debug --nologo" 2>&1 |
-      Tee-Object -Variable collected | Out-Host
-    $collectOk = ($LASTEXITCODE -eq 0)
+    Invoke-WithBuildLock {
+      $toolsDir = Join-Path (Get-ExmodDotnetDir) 'tools'
+      & $dotnet tool install dotnet-coverage --tool-path $toolsDir 2>$null | Out-Null
+      $dc = Join-Path $toolsDir "dotnet-coverage$ExeSuffix"
+      $cov = Join-Path $RepoRoot 'coverage.xml'
+      Write-Host "Collecting coverage over the latest suite..."
+      & $dc collect -f cobertura -o $cov "$dotnet test `"$(Get-ExmodSolution)`" -c Debug --nologo" 2>&1 |
+        Tee-Object -Variable collected | Out-Host
+      $collectOk = ($LASTEXITCODE -eq 0)
 
-    # One VSTest summary per assembly: "Passed!  - Failed: 0, Passed: 12, Skipped: 0, Total: 12,
-    # Duration: 3 s - ExpandedLib.Tests.dll (net10.0)". A latest-series test project with no such
-    # line discovered no tests.
-    $series = $CurrentGameVersion
-    $counted = @{}
-    foreach ($line in $collected) {
-      if ("$line" -match '(Passed|Failed)!.*Total:\s*(\d+).*\s-\s+(\S+)\.dll\b') {
-        $counted["$series/$($Matches[3])"] = [pscustomobject]@{
-          Name = "$series/$($Matches[3])"; Ok = ($Matches[1] -eq 'Passed' -and [int]$Matches[2] -gt 0); Total = [int]$Matches[2]
+      # One VSTest summary per assembly: "Passed!  - Failed: 0, Passed: 12, Skipped: 0, Total: 12,
+      # Duration: 3 s - ExpandedLib.Tests.dll (net10.0)". A latest-series test project with no such
+      # line discovered no tests.
+      $series = $CurrentGameVersion
+      $counted = @{}
+      foreach ($line in $collected) {
+        if ("$line" -match '(Passed|Failed)!.*Total:\s*(\d+).*\s-\s+(\S+)\.dll\b') {
+          $counted["$series/$($Matches[3])"] = [pscustomobject]@{
+            Name = "$series/$($Matches[3])"; Ok = ($Matches[1] -eq 'Passed' -and [int]$Matches[2] -gt 0); Total = [int]$Matches[2]
+          }
         }
       }
-    }
-    foreach ($p in $projects.Values | Where-Object { $series -in $_.Series }) {
-      $name = "$series/$($p.Project)"
-      if (-not $counted.Contains($name)) { $counted[$name] = [pscustomobject]@{ Name = $name; Ok = $false; Total = $null } }
-    }
-    $results = @($counted.Values | Sort-Object Name)
-    Write-Host ""
-    foreach ($r in $results | Where-Object { $null -eq $_.Total }) {
-      Write-Host ("FAIL  {0,-40} NO TEST SUMMARY - the assembly discovered no tests" -f $r.Name)
-    }
-    foreach ($r in $results | Where-Object { $_.Total -eq 0 }) {
-      Write-Host ("FAIL  {0,-40} zero tests discovered" -f $r.Name)
-    }
-    $drops = Compare-ExmodCensus $results $census $acceptDrop
-    if (-not $collectOk) { throw "Coverage collection failed." }
-    Assert-ExmodTestRun $results $drops $census
-    Write-ExmodCensus $results $census
+      foreach ($p in $projects.Values | Where-Object { $series -in $_.Series }) {
+        $name = "$series/$($p.Project)"
+        if (-not $counted.Contains($name)) { $counted[$name] = [pscustomobject]@{ Name = $name; Ok = $false; Total = $null } }
+      }
+      $results = @($counted.Values | Sort-Object Name)
+      Write-Host ""
+      foreach ($r in $results | Where-Object { $null -eq $_.Total }) {
+        Write-Host ("FAIL  {0,-40} NO TEST SUMMARY - the assembly discovered no tests" -f $r.Name)
+      }
+      foreach ($r in $results | Where-Object { $_.Total -eq 0 }) {
+        Write-Host ("FAIL  {0,-40} zero tests discovered" -f $r.Name)
+      }
+      $drops = Compare-ExmodCensus $results $census $acceptDrop
+      if (-not $collectOk) { throw "Coverage collection failed." }
+      Assert-ExmodTestRun $results $drops $census
+      Write-ExmodCensus $results $census
 
-    $py = (Get-Command python -ErrorAction SilentlyContinue) ?? (Get-Command python3 -ErrorAction SilentlyContinue)
-    if (-not $py) { throw "Python is required for the coverage gate but was not found (coverage.xml was still written)." }
-    $floors = Get-ExmodCoverageFloors
-    if (-not $floors) {
-      Write-Host "No coverage floors file (manifest coverageFloors, tests/ or infra/test/) - coverage collected, no gate."
-      return
+      $py = (Get-Command python -ErrorAction SilentlyContinue) ?? (Get-Command python3 -ErrorAction SilentlyContinue)
+      if (-not $py) { throw "Python is required for the coverage gate but was not found (coverage.xml was still written)." }
+      $floors = Get-ExmodCoverageFloors
+      if (-not $floors) {
+        Write-Host "No coverage floors file (manifest coverageFloors, tests/ or infra/test/) - coverage collected, no gate."
+        return
+      }
+      & $py.Source (Join-Path $ToolsRoot 'tools/coverage_gate.py') $cov $floors
+      $floorsOk = ($LASTEXITCODE -eq 0)
+      # Every client-guarded block needs a covered line or an entry in the allowlist beside the floors.
+      Write-Host ""
+      Push-Location $RepoRoot
+      try {
+        & $py.Source (Join-Path $ToolsRoot 'tools/side_gate_coverage.py') $cov $floors (Join-Path (Split-Path $floors -Parent) 'side-gate-allowlist.json')
+        $sideOk = ($LASTEXITCODE -eq 0)
+      } finally { Pop-Location }
+      if (-not $floorsOk) { throw "Coverage gate failed." }
+      if (-not $sideOk) { throw "Side gate failed." }
+      Write-Host "Coverage gate passed."
     }
-    & $py.Source (Join-Path $ToolsRoot 'tools/coverage_gate.py') $cov $floors
-    $floorsOk = ($LASTEXITCODE -eq 0)
-    # Every client-guarded block needs a covered line or an entry in the allowlist beside the floors.
-    Write-Host ""
-    Push-Location $RepoRoot
-    try {
-      & $py.Source (Join-Path $ToolsRoot 'tools/side_gate_coverage.py') $cov $floors (Join-Path (Split-Path $floors -Parent) 'side-gate-allowlist.json')
-      $sideOk = ($LASTEXITCODE -eq 0)
-    } finally { Pop-Location }
-    if (-not $floorsOk) { throw "Coverage gate failed." }
-    if (-not $sideOk) { throw "Side gate failed." }
-    Write-Host "Coverage gate passed."
     return
   }
 
@@ -375,9 +391,11 @@ function Invoke-Test([string[]]$Argv) {
   else { Write-Host "Building $($work.Count) test target(s) across version(s): $($wanted -join ', ')" }
   $failedProj = @()
   if (-not $noBuild) {
-    foreach ($group in ($work | Group-Object Version)) {
-      $failedProj += @(Invoke-ExmodParallelBuild $dotnet @($group.Group) 'Debug' @('--nologo', '-v', 'q') $true)
-    }
+    $failedProj += @(Invoke-WithBuildLock {
+        foreach ($group in ($work | Group-Object Version)) {
+          Invoke-ExmodParallelBuild $dotnet @($group.Group) 'Debug' @('--nologo', '-v', 'q') $true
+        }
+      })
   }
   $built = foreach ($item in $work) {
     if ($noBuild) {
@@ -396,68 +414,71 @@ function Invoke-Test([string[]]$Argv) {
   if ($waves.Count -gt 1) {
     Write-Host "EXLIB_WRITE_GOLDENS is set: the $CurrentGameVersion lanes run first, the older series after them."
   }
-  foreach ($item in $built) {
-    if (Test-Path -LiteralPath $item.Blame) { Remove-Item -LiteralPath $item.Blame -Recurse -Force }
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $item.Log) | Out-Null
-  }
-  Write-Host "Running tests in parallel..."
-  # A -Parallel runspace sees none of this script's functions; the parser goes in as its text.
-  $failuresFn = ${function:Get-ExmodTestFailures}.ToString()
-  $results = foreach ($wave in $waves) {
-    $built | Where-Object { (Get-ExmodTestWave $_.Version) -eq $wave } | ForEach-Object -ThrottleLimit $throttle -Parallel {
-      $dotnet = $using:dotnet
-      $filter = $using:filter
-      ${function:Get-ExmodTestFailures} = $using:failuresFn
-      $item = $_
-      if (-not $item.BuildOk) {
-        return [pscustomobject]@{ Name = "$($item.Version)/$($item.Project)"; Ok = $false; Line = $item.BuildLine; Total = $null }
+  $results = @(Invoke-WithTestPhase {
+      foreach ($item in $built) {
+        if (Test-Path -LiteralPath $item.Blame) { Remove-Item -LiteralPath $item.Blame -Recurse -Force }
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $item.Log) | Out-Null
       }
-      $testArgs = @('test', $item.Proj, '-f', $item.Tfm, '--no-build', '--nologo', '--blame', '--results-directory', $item.Blame)
-      if ($filter) { $testArgs += @('--filter', $filter) }
-      if ($item.Legacy) { $testArgs += '-p:Legacy=true' }
-      $out = & $dotnet @testArgs 2>&1
-      $out | Set-Content -LiteralPath $item.Log
-      $ok = ($LASTEXITCODE -eq 0)
-      $line = ($out | Select-String -Pattern 'Passed!|Failed!|error' | Select-Object -Last 1)
+      Write-Host "Running tests in parallel..."
+      # A -Parallel runspace sees none of this script's functions; the parser goes in as its text.
+      $failuresFn = ${function:Get-ExmodTestFailures}.ToString()
+      foreach ($wave in $waves) {
+        $built | Where-Object { (Get-ExmodTestWave $_.Version) -eq $wave } | ForEach-Object -ThrottleLimit $throttle -Parallel {
+          $dotnet = $using:dotnet
+          $filter = $using:filter
+          ${function:Get-ExmodTestFailures} = $using:failuresFn
+          $item = $_
+          if (-not $item.BuildOk) {
+            return [pscustomobject]@{ Name = "$($item.Version)/$($item.Project)"; Ok = $false; Line = $item.BuildLine; Total = $null }
+          }
+          $testArgs = @('test', $item.Proj, '-f', $item.Tfm, '--no-build', '--nologo', '--blame', '--results-directory', $item.Blame)
+          if ($filter) { $testArgs += @('--filter', $filter) }
+          if ($item.Legacy) { $testArgs += '-p:Legacy=true' }
+          $out = & $dotnet @testArgs 2>&1
+          $out | Set-Content -LiteralPath $item.Log
+          $ok = ($LASTEXITCODE -eq 0)
+          $line = ($out | Select-String -Pattern 'Passed!|Failed!|error' | Select-Object -Last 1)
 
-      # The exit code is not enough. An assembly that fails to load during discovery exits 0 with no
-      # summary line, so the run would read as a blank PASS while every test in the suite had vanished.
-      # Xunit names the cause on a "Skipping:" line and dotnet adds "No test is available in ...".
-      $total = ($out | Select-String -Pattern 'Total:\s*(\d+)' -AllMatches |
-        ForEach-Object { $_.Matches } | Select-Object -Last 1)
-      if (-not $total) {
-        $skipped = ($out | Select-String -Pattern 'Skipping:' | Select-Object -Last 1)
-        $unavailable = ($out | Select-String -Pattern 'No test is available in' | Select-Object -Last 1)
-        $noMatch = ($out | Select-String -Pattern 'No test matches the given testcase filter' | Select-Object -Last 1)
-        # Under a filter, a suite holding nothing that matches is the ordinary case - the filter names a
-        # class that lives in one project of three - and reports zero. Only dotnet's no-match line shows it:
-        # a skipped or unavailable assembly fails with its reason.
-        if ($filter -and $ok -and $noMatch -and -not $skipped -and -not $unavailable) {
-          $line = 'no test matched the filter'
+          # The exit code is not enough. An assembly that fails to load during discovery exits 0 with no
+          # summary line, so the run would read as a blank PASS while every test in the suite had vanished.
+          # Xunit names the cause on a "Skipping:" line and dotnet adds "No test is available in ...".
+          $total = ($out | Select-String -Pattern 'Total:\s*(\d+)' -AllMatches |
+            ForEach-Object { $_.Matches } | Select-Object -Last 1)
+          if (-not $total) {
+            $skipped = ($out | Select-String -Pattern 'Skipping:' | Select-Object -Last 1)
+            $unavailable = ($out | Select-String -Pattern 'No test is available in' | Select-Object -Last 1)
+            $noMatch = ($out | Select-String -Pattern 'No test matches the given testcase filter' | Select-Object -Last 1)
+            # Under a filter, a suite holding nothing that matches is the ordinary case - the filter names a
+            # class that lives in one project of three - and reports zero. Only dotnet's no-match line shows it:
+            # a skipped or unavailable assembly fails with its reason.
+            if ($filter -and $ok -and $noMatch -and -not $skipped -and -not $unavailable) {
+              $line = 'no test matched the filter'
+            }
+            elseif ($skipped) {
+              $ok = $false
+              $line = 'DISCOVERY SKIPPED THE ASSEMBLY - ' + ($skipped.Line -replace '^.*?Skipping:\s*', '')
+            }
+            else {
+              $ok = $false
+              $line = 'NO TEST SUMMARY - the assembly discovered no tests (a type-load failure during ' +
+              'discovery does this and still exits 0).'
+            }
+          }
+          elseif (-not $filter -and [int]$total.Groups[1].Value -eq 0) {
+            $ok = $false
+            $line = 'zero tests discovered'
+          }
+
+          $failures = @(Get-ExmodTestFailures $out)
+
+          [pscustomobject]@{
+            Name = "$($item.Version)/$($item.Project)"; Ok = $ok; Line = $line; Failures = $failures
+            Total = if ($total) { [int]$total.Groups[1].Value } else { $null }; Log = $item.Log
+          }
         }
-        elseif ($skipped) {
-          $ok = $false
-          $line = 'DISCOVERY SKIPPED THE ASSEMBLY - ' + ($skipped.Line -replace '^.*?Skipping:\s*', '')
-        }
-        else {
-          $ok = $false
-          $line = 'NO TEST SUMMARY - the assembly discovered no tests (a type-load failure during ' +
-          'discovery does this and still exits 0).'
-        }
-      }
-      elseif (-not $filter -and [int]$total.Groups[1].Value -eq 0) {
-        $ok = $false
-        $line = 'zero tests discovered'
       }
 
-      $failures = @(Get-ExmodTestFailures $out)
-
-      [pscustomobject]@{
-        Name = "$($item.Version)/$($item.Project)"; Ok = $ok; Line = $line; Failures = $failures
-        Total = if ($total) { [int]$total.Groups[1].Value } else { $null }; Log = $item.Log
-      }
-    }
-  }
+  })
 
   Write-Host ""
   Write-Host "===== Results ====="
@@ -507,6 +528,11 @@ mod projects they share build once.
   -NoBuild    skip the build and run the lanes against what is already built; a lane whose
               Debug test assembly for its framework is missing fails with 'Not built'.
               Ignored by -Coverage
+
+With EXMOD_BUILD_LOCK set to a file, the build and provisioning part of the run holds that file's flock
+(waiting up to EXMOD_BUILD_LOCK_WAIT seconds, default 3000) and the lanes run with it free; -Coverage holds
+the whole step. The lanes run under this checkout's .exmod/test-phase.lock, so two runs here take turns,
+and print `test phase:` lines with their clock time. Do not also wrap the command in `flock` on that file.
 
 With EXLIB_WRITE_GOLDENS set, the current series' lanes run first and the older series' after them:
 an older series' golden write compares against the shared goldens the current series' write rewrites.
@@ -822,48 +848,50 @@ function Invoke-Check([string[]]$Argv) {
   $results = [ordered]@{
     format = 'PENDING'; build = 'PENDING'; verify = 'PENDING'; test = 'PENDING'; smoke = 'PENDING'
   }
-  $stop = $false
+  $state = @{ Stop = $false }
 
-  Write-Step 'format'
-  if ($noFormat) {
-    Write-Host "Skipped: -NoFormat was given."
-    $results.format = 'SKIPPED'
+  Invoke-WithBuildLock {
+    Write-Step 'format'
+    if ($noFormat) {
+      Write-Host "Skipped: -NoFormat was given."
+      $results.format = 'SKIPPED'
+    }
+    elseif (git -C $RepoRoot status --porcelain -- @(Get-ExmodSourceRoots) infra) {
+      Write-Host ("Skipped: the mod/sample directories or infra/ have uncommitted changes - the format " +
+        "gate compares against git, so on a dirty tree every finding would be one of this run's own edits.")
+      $results.format = 'SKIPPED'
+    }
+    else {
+      $pwshExe = Join-Path $PSHOME "pwsh$ExeSuffix"
+      & $pwshExe -NoProfile -File (Join-Path $ToolsRoot 'exmod.ps1') -RepoRoot $RepoRoot format -Check
+      if ($LASTEXITCODE -eq 0) { $results.format = 'PASS' } else { $results.format = 'FAIL'; $state.Stop = $true }
+    }
+
+    if (-not $state.Stop) {
+      Write-Step 'build'
+      try { Invoke-Build @($version); $results.build = 'PASS' }
+      catch { Write-Host $_.Exception.Message -ForegroundColor Red; $results.build = 'FAIL'; $state.Stop = $true }
+    } else { $results.build = 'SKIPPED' }
+
+    if (-not $state.Stop) {
+      Write-Step 'verify'
+      try { Invoke-Verify @(); $results.verify = 'PASS' }
+      catch { Write-Host $_.Exception.Message -ForegroundColor Red; $results.verify = 'FAIL'; $state.Stop = $true }
+    } else { $results.verify = 'SKIPPED' }
   }
-  elseif (git -C $RepoRoot status --porcelain -- @(Get-ExmodSourceRoots) infra) {
-    Write-Host ("Skipped: the mod/sample directories or infra/ have uncommitted changes - the format " +
-      "gate compares against git, so on a dirty tree every finding would be one of this run's own edits.")
-    $results.format = 'SKIPPED'
-  }
-  else {
-    $pwshExe = Join-Path $PSHOME "pwsh$ExeSuffix"
-    & $pwshExe -NoProfile -File (Join-Path $ToolsRoot 'exmod.ps1') -RepoRoot $RepoRoot format -Check
-    if ($LASTEXITCODE -eq 0) { $results.format = 'PASS' } else { $results.format = 'FAIL'; $stop = $true }
-  }
 
-  if (-not $stop) {
-    Write-Step 'build'
-    try { Invoke-Build @($version); $results.build = 'PASS' }
-    catch { Write-Host $_.Exception.Message -ForegroundColor Red; $results.build = 'FAIL'; $stop = $true }
-  } else { $results.build = 'SKIPPED' }
-
-  if (-not $stop) {
-    Write-Step 'verify'
-    try { Invoke-Verify @(); $results.verify = 'PASS' }
-    catch { Write-Host $_.Exception.Message -ForegroundColor Red; $results.verify = 'FAIL'; $stop = $true }
-  } else { $results.verify = 'SKIPPED' }
-
-  if (-not $stop) {
+  if (-not $state.Stop) {
     Write-Step 'test'
     $testArgv = @($version)
     if ($coverage) { $testArgv += '-Coverage' }
     if (Get-Flag $Argv '-AcceptDrop') { $testArgv += '-AcceptDrop' }
     try { Invoke-Test $testArgv; $results.test = 'PASS' }
-    catch { Write-Host $_.Exception.Message -ForegroundColor Red; $results.test = 'FAIL'; $stop = $true }
+    catch { Write-Host $_.Exception.Message -ForegroundColor Red; $results.test = 'FAIL'; $state.Stop = $true }
   } else { $results.test = 'SKIPPED' }
 
   # Smoke loads the current series' build output (Get-BuiltModDirs), so it runs on that series
   # alone, and only when this check built it.
-  if (-not $stop) {
+  if (-not $state.Stop) {
     Write-Step 'smoke'
     if ((Resolve-GameVersions $version) -notcontains $CurrentGameVersion) {
       Write-Host "Skipped: smoke runs on $CurrentGameVersion only, which this check did not build."
@@ -871,8 +899,8 @@ function Invoke-Check([string[]]$Argv) {
     }
     else {
       if ($version -eq 'all') { Write-Host "Smoke runs once, on ${CurrentGameVersion}: the only series it loads a build of." }
-      try { Invoke-Smoke @('-Version', $CurrentGameVersion); $results.smoke = 'PASS' }
-      catch { Write-Host $_.Exception.Message -ForegroundColor Red; $results.smoke = 'FAIL'; $stop = $true }
+      try { Invoke-WithBuildLock { Invoke-Smoke @('-Version', $CurrentGameVersion) }; $results.smoke = 'PASS' }
+      catch { Write-Host $_.Exception.Message -ForegroundColor Red; $results.smoke = 'FAIL'; $state.Stop = $true }
     }
   } else { $results.smoke = 'SKIPPED' }
 
@@ -894,6 +922,11 @@ One command that answers "is this tree good". Runs format -Check, build, verify,
 (a dedicated server boots the built mods and runs /exmod verify, the loaded checks among them), in
 that order, stopping at the first failing step. Ends with a PASS/FAIL/SKIPPED summary of every
 step and exits nonzero if any of them did.
+
+With EXMOD_BUILD_LOCK set to a file, format, build and verify hold that file's flock as one hold, the
+test build holds it again, the test lanes run with it free, and the smoke step holds it whole
+(waiting up to EXMOD_BUILD_LOCK_WAIT seconds, default 3000, for each take). Do not also wrap the
+command in `flock` on that file.
 
   latest      1.22 only (the default), for the build, test and smoke steps
   all         every supported series, for the build and test steps; smoke runs once, on 1.22, the
