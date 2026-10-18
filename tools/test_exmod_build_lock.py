@@ -11,7 +11,6 @@ import stat
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import unittest
 
@@ -71,21 +70,13 @@ class LockCase(unittest.TestCase):
             return f.read().split()
 
     def hold_lock(self, seconds):
-        """Holds an exclusive flock on the lock file for `seconds`; returns the time it let go."""
-        fd = os.open(self.lock, os.O_CREAT | os.O_RDWR)
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        released = []
-
-        def release():
-            time.sleep(seconds)
-            released.append(time.time())
-            fcntl.flock(fd, fcntl.LOCK_UN)
-            os.close(fd)
-
-        t = threading.Thread(target=release)
-        t.start()
-        self.addCleanup(t.join)
-        return released
+        """Holds an exclusive flock on the lock file for `seconds` from a process outside the body's
+        ancestry; returns the time it lets go."""
+        holder = subprocess.Popen(["flock", "-w", "10", "-o", self.lock, "-c", f"echo held; sleep {seconds}"],
+                                  stdout=subprocess.PIPE, text=True)
+        self.addCleanup(holder.wait)
+        holder.stdout.readline()
+        return [time.time() + seconds]
 
 
 @unittest.skipUnless(PWSH, "pwsh not found")
@@ -212,6 +203,25 @@ foreach ($name in 'smoke', 'scenario') {
             free = subprocess.run(["flock", "-n", self.lock, "true"]).returncode == 0
             time.sleep(0.05)
         self.assertTrue(free)
+
+    def test_n_a_lock_an_ancestor_holds_counts_as_held(self):
+        # Fails if the ancestor check is skipped.
+        proc = subprocess.run(
+            ["flock", "-o", self.lock, PWSH, "-NoProfile", "-NonInteractive", "-Command",
+             exmod_script(PROBE + "Invoke-WithBuildLock { Add-Content $env:TEST_STAMPS ran }")],
+            env=self.env(wait=2), capture_output=True, text=True, timeout=60)
+        out = proc.stdout + proc.stderr
+        self.assertEqual(0, proc.returncode, out)
+        self.assertIn("build lock: taken " + self.lock + " by parent", out)
+        self.assertEqual(["ran"], self.stamp_lines(), out)
+
+    def test_o_a_lock_a_stranger_holds_still_delays_the_body(self):
+        # Fails if any holder counts as a parent.
+        released = self.hold_lock(2)
+        code, out = self.run_body(f"Invoke-WithBuildLock {{ Add-Content $env:TEST_STAMPS ({NOW_MS}) }}", wait=30)
+        self.assertEqual(0, code, out)
+        self.assertGreaterEqual(int(self.stamp_lines()[0]) / 1000, released[0] - 0.05, out)
+        self.assertNotIn("by parent", out)
 
 
 CHECK = r"""

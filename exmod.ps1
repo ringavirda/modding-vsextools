@@ -975,11 +975,38 @@ function Register-ClientGpuPreference([string]$ExePath, [switch]$DryRun) {
 # child that waits up to $LockWait seconds, prints `taken` and then blocks reading its stdin; closing
 # that pipe, or this process dying, releases it. A take that runs out throws "<Label> <LockPath> not
 # taken in <LockWait> s". -Report prints the take and release lines with their clock time and the
-# seconds waited and held.
+# seconds waited and held. A FLOCK lock on $LockPath that /proc/locks shows held by this process or one
+# of its ancestors counts as held: $Run runs with no take and -Report prints `build lock: taken <path>
+# by parent <pid> at <time>`. Without /proc/locks the lock is always taken.
+function Get-FlockAncestorHolder([string]$LockPath) {
+  if (-not (Test-Path -LiteralPath '/proc/locks') -or -not (Test-Path -LiteralPath $LockPath)) { return $null }
+  $inode = (& stat -L -c '%i' $LockPath 2>$null)
+  if (-not $inode) { return $null }
+  $holders = @(Get-Content -LiteralPath '/proc/locks' | ForEach-Object {
+      $f = $_ -split '\s+' | Where-Object { $_ }
+      if ($f.Count -ge 6 -and $f[1] -eq 'FLOCK' -and $f[5].Split(':')[-1] -eq "$inode") { [int]$f[4] }
+    })
+  if (-not $holders) { return $null }
+  $walk = $PID
+  while ($walk -gt 1) {
+    if ($walk -in $holders) { return $walk }
+    $stat = Get-Content -LiteralPath "/proc/$walk/stat" -ErrorAction SilentlyContinue
+    if (-not $stat) { return $null }
+    $walk = [int]($stat.Substring($stat.LastIndexOf(')') + 2).Split(' ')[1])
+  }
+  return $null
+}
+
 function Invoke-WithFlock([string]$LockPath, [int]$LockWait, [scriptblock]$Run, [string]$Label = 'lock', [switch]$Report) {
   $flockCmd = Get-Command flock -CommandType Application -TotalCount 1 -ErrorAction SilentlyContinue
   if (-not $flockCmd) { throw "flock was not found on PATH; $Label $LockPath cannot be taken." }
   New-Item -ItemType Directory -Force -Path (Split-Path ([System.IO.Path]::GetFullPath($LockPath)) -Parent) | Out-Null
+  $parentHolder = Get-FlockAncestorHolder $LockPath
+  if ($parentHolder) {
+    if ($Report) { Write-Host ("build lock: taken {0} by parent {1} at {2:HH:mm:ss}" -f $LockPath, $parentHolder, (Get-Date)) }
+    & $Run
+    return
+  }
   $startInfo = [System.Diagnostics.ProcessStartInfo]::new($flockCmd.Source)
   foreach ($a in @('-w', "$LockWait", '-o', $LockPath, '-c', 'echo taken; read -r _')) { $startInfo.ArgumentList.Add($a) }
   $startInfo.RedirectStandardInput = $true
@@ -1006,8 +1033,8 @@ function Invoke-WithFlock([string]$LockPath, [int]$LockWait, [scriptblock]$Run, 
 
 # Runs $Body with the build lock named by $env:EXMOD_BUILD_LOCK held, waiting up to
 # $env:EXMOD_BUILD_LOCK_WAIT seconds (default 3000). With the variable unset, or while this process
-# or a parent exmod already holds the lock (EXMOD_BUILD_LOCK_HELD), $Body just runs. A caller must
-# not also wrap the command in `flock` on the same file.
+# or a parent exmod already holds the lock (EXMOD_BUILD_LOCK_HELD), $Body just runs; so does a lock
+# held by an ancestor process, such as a `flock` wrapped round the command.
 function Invoke-WithBuildLock([scriptblock]$Body) {
   $path = $env:EXMOD_BUILD_LOCK
   if (-not $path -or $env:EXMOD_BUILD_LOCK_HELD) { & $Body; return }
