@@ -428,10 +428,74 @@ its own, built or fetched first if needed.
 #endregion
 #region smoke
 
-# An unusual, fixed port for every smoke boot: a game the owner is actually playing on this machine
-# binds the default 42420 (or whatever their own serverconfig.json says), and this must never collide
-# with it.
+# The first port a smoke boot tries: an unusual one, since a game the owner is actually playing on this
+# machine binds the default 42420 (or whatever their own serverconfig.json says), and this must never
+# collide with it. A run takes the first free port from here upward (Lock-ServerPorts).
 $SmokePort = 42499
+
+# How many ports a run considers, from its first candidate upward.
+$ServerPortCandidates = 64
+
+# The folder of the port reservation files, <port>.lock: $env:EXMOD_PORTS_DIR, else ~/.cache/exmod/ports.
+function Get-ServerPortsDir {
+  if ($env:EXMOD_PORTS_DIR) { return $env:EXMOD_PORTS_DIR }
+  return Join-Path ([Environment]::GetFolderPath('UserProfile')) '.cache/exmod/ports'
+}
+
+# Whether TCP and UDP on 0.0.0.0:$Port can both be bound right now; each socket is closed at once.
+function Test-ServerPortFree([int]$Port) {
+  $tcp = $null
+  $udp = $null
+  try {
+    $tcp = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, $Port)
+    $tcp.Start()
+    $udp = [System.Net.Sockets.UdpClient]::new([System.Net.IPEndPoint]::new([System.Net.IPAddress]::Any, $Port))
+    return $true
+  }
+  catch { return $false }
+  finally {
+    if ($tcp) { $tcp.Stop() }
+    if ($udp) { $udp.Close() }
+  }
+}
+
+# Reserves $Count ports from $Candidates, in order: a candidate is taken when its reservation file takes an
+# exclusive lock without waiting and Test-ServerPortFree holds. Returns the reservation, whose Ports are the
+# ports taken and which Unlock-ServerPorts releases; the OS releases it when the process dies. Throws "no
+# free port among the <n> from <first>" when the candidates run out first.
+function Lock-ServerPorts([int[]]$Candidates, [int]$Count) {
+  $dir = Get-ServerPortsDir
+  New-Item -ItemType Directory -Force -Path $dir | Out-Null
+  $reservation = [pscustomobject]@{ Ports = [System.Collections.Generic.List[int]]::new(); Streams = [System.Collections.Generic.List[object]]::new() }
+  foreach ($port in $Candidates) {
+    if ($reservation.Ports.Count -ge $Count) { break }
+    $stream = $null
+    try {
+      $stream = [System.IO.File]::Open((Join-Path $dir "$port.lock"), [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+    }
+    catch [System.IO.IOException] { continue }
+    if (Test-ServerPortFree $port) {
+      $reservation.Ports.Add($port)
+      $reservation.Streams.Add($stream)
+    }
+    else { $stream.Dispose() }
+  }
+  if ($reservation.Ports.Count -lt $Count) {
+    Unlock-ServerPorts $reservation
+    throw "no free port among the $($Candidates.Count) from $($Candidates[0])"
+  }
+  return $reservation
+}
+
+# Releases the ports Lock-ServerPorts reserved; $null is accepted.
+function Unlock-ServerPorts($Reservation) {
+  if (-not $Reservation) { return }
+  foreach ($stream in $Reservation.Streams) { $stream.Dispose() }
+  $Reservation.Streams.Clear()
+}
+
+# The ports a smoke boot considers.
+function Get-SmokePorts { return @($SmokePort..($SmokePort + $ServerPortCandidates - 1)) }
 
 # Finds a working dedicated-server install for $version's slug: the series' override variable
 # (Get-GameInstallOverride) when it names a folder holding VintagestoryServer.dll, else the nearest
@@ -479,6 +543,7 @@ function New-ScratchServer([string]$Tag, [string[]]$ModDirs, [System.Collections
     Mods = Join-Path $root 'mods'
     Log  = Join-Path $root 'data/Logs/server-main.log'
     Proc = $null
+    Port = $null
   }
   New-Item -ItemType Directory -Force -Path $server.Data, $server.Mods | Out-Null
 
@@ -519,6 +584,7 @@ function Start-ScratchServer($Server, [string]$ServerDir, [int]$Port, [bool]$Qui
       (Join-Path $ServerDir 'VintagestoryServer.dll'), '--dataPath', $Server.Data,
       '--addModPath', $Server.Mods, '--port', $Port
     )) { $psi.ArgumentList.Add($a) }
+  $Server.Port = $Port
   $psi.RedirectStandardInput = $true
   $psi.RedirectStandardOutput = $Quiet
   $psi.UseShellExecute = $false
@@ -529,7 +595,7 @@ function Start-ScratchServer($Server, [string]$ServerDir, [int]$Port, [bool]$Qui
 }
 
 # Waits up to $Timeout seconds for the started server to log that it is running; throws with the log's
-# tail when it does not.
+# tail when it does not, adding "port <P> is in use now" when the server has exited and its port no longer binds.
 function Wait-ScratchServer($Server, [int]$Timeout) {
   Write-Host "Waiting up to ${Timeout}s for the server to come up..."
   $deadline = [DateTime]::UtcNow.AddSeconds($Timeout)
@@ -544,7 +610,8 @@ function Wait-ScratchServer($Server, [int]$Timeout) {
   }
   if (-not $ready) {
     $tail = if (Test-Path $Server.Log) { Get-Content $Server.Log -Tail 60 } else { '(no log written)' }
-    throw "Server did not report ready within ${Timeout}s (exited: $($Server.Proc.HasExited)).`n$($tail -join "`n")"
+    $busy = if ($Server.Proc.HasExited -and $Server.Port -and -not (Test-ServerPortFree $Server.Port)) { " port $($Server.Port) is in use now." } else { '' }
+    throw "Server did not report ready within ${Timeout}s (exited: $($Server.Proc.HasExited)).$busy`n$($tail -join "`n")"
   }
 }
 
@@ -575,6 +642,8 @@ function Remove-ScratchServer($Server, [bool]$KeepData) {
 
 # Boots the real dedicated server with the given mods, waits for it to come up, runs /exmod verify and
 # stops it - the zero-effort rung: no test code, just "does the server load this without erroring".
+# The install lookup, the mod resolution and the scratch copy run under the build lock; the boot runs
+# with it free, on the first free port from 42499 upward.
 #
 #   -Version <x.y>     game series to smoke against (default 1.22).
 #   -Mods <dir>[,...]  mod folder(s) or folder(s)-of-mod-folders to load instead of every built mod.
@@ -586,18 +655,23 @@ function Invoke-Smoke([string[]]$Argv) {
   $timeout = [int](Get-Opt $Argv '-Timeout' 180)
   $keepData = Get-Flag $Argv '-KeepData'
 
-  $serverDir = Resolve-SmokeServer $version
-
-  $modDirs = if ($modsOpt) { Resolve-ModDirs @($modsOpt -split ',') } else { Get-ScratchDefaultModDirs }
-  if (-not $modDirs) { throw "No mods found to smoke-test (nothing under mods/*/src/bin/Debug/Mods/mod, and -Mods was not given)." }
-  Write-Host "Smoke-testing $($modDirs.Count) mod(s) against Vintage Story $version at $serverDir"
-
-  $server = $null
+  $stage = @{}
+  $reservation = $null
   try {
-    $server = New-ScratchServer 'smoke' $modDirs
-    Start-ScratchServer $server $serverDir $SmokePort
+    Invoke-WithBuildLock {
+      $stage.ServerDir = Resolve-SmokeServer $version
+      $modDirs = if ($modsOpt) { Resolve-ModDirs @($modsOpt -split ',') } else { Get-ScratchDefaultModDirs }
+      if (-not $modDirs) { throw "No mods found to smoke-test (nothing under mods/*/src/bin/Debug/Mods/mod, and -Mods was not given)." }
+      Write-Host "Smoke-testing $($modDirs.Count) mod(s) against Vintage Story $version at $($stage.ServerDir)"
+      $stage.Server = New-ScratchServer 'smoke' $modDirs
+    }
+    $server = $stage.Server
+    $reservation = Lock-ServerPorts (Get-SmokePorts) 1
+    $port = $reservation.Ports[0]
+    Write-Host ("smoke server on port {0} at {1:HH:mm:ss}" -f $port, (Get-Date))
+    Start-ScratchServer $server $stage.ServerDir $port
     Wait-ScratchServer $server $timeout
-    Write-Host "Server is up; running /exmod verify..."
+    Write-Host ("Server is up at {0:HH:mm:ss}; running /exmod verify..." -f (Get-Date))
 
     $server.Proc.StandardInput.WriteLine('/exmod verify')
     $verifyDeadline = [DateTime]::UtcNow.AddSeconds(10)
@@ -624,10 +698,11 @@ function Invoke-Smoke([string[]]$Argv) {
     if (-not $verifyMatch.Success) { throw "Smoke failed: /exmod verify printed no summary, so no loaded check ran." }
     $verifyErrors = [int]$verifyMatch.Groups[2].Value
     if ($verifyErrors -gt 0) { throw "Smoke failed: /exmod verify reported $verifyErrors error(s)." }
-    Write-Host "Smoke passed: server booted, verified clean and stopped."
+    Write-Host ("Smoke passed at {0:HH:mm:ss}: server booted, verified clean and stopped." -f (Get-Date))
   }
   finally {
-    if ($server) { Remove-ScratchServer $server $keepData }
+    if ($stage.Server) { Remove-ScratchServer $stage.Server $keepData }
+    Unlock-ServerPorts $reservation
   }
 }
 
@@ -639,8 +714,11 @@ exmod smoke [-Version <x.y>] [-Mods <dir>[,<dir>...]] [-Timeout <seconds>] [-Kee
 
 Boots a real dedicated server with the mods loaded, waits for it to come up, runs /exmod verify and
 stops it. No test code is involved: the question is only whether a server loads this without
-erroring, which is the one check that covers assets, patches and registration at once. It binds an
-unusual port so it can never collide with a game you are actually playing on this machine.
+erroring, which is the one check that covers assets, patches and registration at once. It takes the
+first free port from 42499 upward, an unusual one, so it can never collide with a game you are actually
+playing on this machine, and two runs at once take different ports. With EXMOD_BUILD_LOCK set it holds
+the build lock only while it finds the install, resolves the mods and copies them in; the boot runs
+without it.
 
   -Mods      mod folders, or folders of mod folders, instead of every built mod in the checkout and
              its resolved dependencies
@@ -654,8 +732,8 @@ its own built mods, resolved or fetched first if needed.
 #endregion
 #region scenario
 
-# The port `exmod scenario` binds unless -Port says otherwise, and the seconds it waits for the server
-# to come up. Two runs on one machine pass different -Port values.
+# The port `exmod scenario` starts its search for a free port at unless -Port says otherwise, and the
+# seconds it waits for the server to come up.
 $ScenarioPort = 42498
 $ScenarioBootSeconds = 180
 
@@ -663,7 +741,7 @@ $ScenarioBootSeconds = 180
 $ScenarioMod = 'exlib'
 
 # The options `exmod scenario` takes: Names (as given, possibly none), Version (the current series only,
-# the live mod being built for it), Port (the first port; the shards bind the ports from it upward, skipping
+# the live mod being built for it), Port (the first port tried; the shards take the free ports from it upward, skipping
 # smoke's), Timeout (seconds to wait for the count line, or $null for the run's budget plus 60), Shards
 # (servers to boot, 1 or more), ShardsAsked (whether -Shards was given), Mods (extra mod folders, as given),
 # Verbose (print every step line of passing cases too), Keep (leave the server up and relay the terminal to
@@ -1024,22 +1102,30 @@ function Save-ScenarioSchematics([string[]]$DataDirs, [string[]]$Names, [string]
   }
 }
 
-# Empties $Dest, copies the failed cases' schematics into it, then copies every shard's
-# Scenarios/recordings/*.json into $Dest/recordings, which is made only when there is a recording. A file name
-# two shards both write is warned and the later shard's copy kept. Returns the number of files in the folder.
+# Builds the last-run folder beside $Dest (<Dest>.<8 hex>): the failed cases' schematics, then every shard's
+# Scenarios/recordings/*.json in its recordings folder, which is made only when there is a recording. A file
+# name two shards both write is warned and the later shard's copy kept. Then replaces $Dest with it whole,
+# under a lock on .scenario-lock beside $Dest, so a run finishing at the same time never sees or leaves a
+# half-filled folder. Returns the number of recordings.
 function Save-ScenarioLast([string[]]$DataDirs, [string[]]$FailedNames, [string]$Dest) {
-  Save-ScenarioSchematics $DataDirs $FailedNames $Dest
+  $staging = "$Dest.$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+  Save-ScenarioSchematics $DataDirs $FailedNames $staging
   $recordings = @($DataDirs | ForEach-Object { Get-ChildItem -Path (Join-Path $_ 'Scenarios/recordings') -Filter '*.json' -File -ErrorAction SilentlyContinue })
-  if ($recordings.Count -eq 0) { return 0 }
-  $folder = Join-Path $Dest 'recordings'
-  New-Item -ItemType Directory -Force -Path $folder | Out-Null
   $landed = @{}
-  foreach ($file in $recordings) {
-    if ($landed.ContainsKey($file.Name)) { Write-Warning "recording $($file.Name) is written by two shards; the copy from $($file.DirectoryName) replaces the first" }
-    Copy-Item -Path $file.FullName -Destination $folder
-    $landed[$file.Name] = $true
+  if ($recordings.Count -gt 0) {
+    $folder = Join-Path $staging 'recordings'
+    New-Item -ItemType Directory -Force -Path $folder | Out-Null
+    foreach ($file in $recordings) {
+      if ($landed.ContainsKey($file.Name)) { Write-Warning "recording $($file.Name) is written by two shards; the copy from $($file.DirectoryName) replaces the first" }
+      Copy-Item -Path $file.FullName -Destination $folder
+      $landed[$file.Name] = $true
+    }
   }
-  Write-Host "recordings: $($landed.Count) in .game/.scenario-last/recordings"
+  Invoke-WithFlock (Join-Path (Split-Path $Dest -Parent) '.scenario-lock') 3000 -Label 'scenario-last lock' -Run {
+    if (Test-Path $Dest) { Remove-Item -Recurse -Force $Dest }
+    Move-Item -Path $staging -Destination $Dest
+  }
+  if ($landed.Count -gt 0) { Write-Host "recordings: $($landed.Count) in .game/.scenario-last/recordings" }
   return $landed.Count
 }
 
@@ -1080,21 +1166,26 @@ function Invoke-Scenario([string[]]$Argv) {
   $copies = @{}
   foreach ($source in $present) { $copies[$source.Dir] = "Scenarios/$($source.ModId)" }
   $groups = Split-ScenarioShards $names $opts.Shards
-  $ports = @(Get-ScenarioPorts $opts.Port $groups.Count)
 
-  $exlibDir = Build-ScenarioExlibMod
-  $liveDir = Build-ScenarioLiveMod
-  $serverDir = Resolve-SmokeServer $opts.Version
-  $modDirs = Get-ScenarioModDirs (Get-ScenarioDefaultModDirs $exlibDir) $liveDir $opts.Mods
-  Write-Host "Running $($names.Count) scenario name(s) against Vintage Story $($opts.Version) at $serverDir on $($groups.Count) shard(s)"
-
+  $stage = @{ Servers = [System.Collections.Generic.List[object]]::new() }
   $shards = [System.Collections.Generic.List[object]]::new()
+  $reservation = $null
   try {
+    Invoke-WithBuildLock {
+      $exlibDir = Build-ScenarioExlibMod
+      $liveDir = Build-ScenarioLiveMod
+      $stage.ServerDir = Resolve-SmokeServer $opts.Version
+        $modDirs = Get-ScenarioModDirs (Get-ScenarioDefaultModDirs $exlibDir) $liveDir $opts.Mods
+      Write-Host "Running $($names.Count) scenario name(s) against Vintage Story $($opts.Version) at $($stage.ServerDir) on $($groups.Count) shard(s)"
+      for ($i = 0; $i -lt $groups.Count; $i++) {
+        $stage.Servers.Add((New-ScratchServer 'scenario' $modDirs -DataCopies $copies -ServerConfig (Get-ScenarioServerConfig $opts.Keep)))
+      }
+    }
+    $reservation = Lock-ServerPorts (Get-ScenarioPorts $opts.Port $ServerPortCandidates) $groups.Count
     for ($i = 0; $i -lt $groups.Count; $i++) {
-      $port = $ports[$i]
-      $server = New-ScratchServer 'scenario' $modDirs -DataCopies $copies -ServerConfig (Get-ScenarioServerConfig $opts.Keep)
+      $port = $reservation.Ports[$i]
       $shards.Add([pscustomobject]@{
-          Server   = $server
+          Server   = $stage.Servers[$i]
           Port     = $port
           Command  = (Get-ScenarioCommand $groups[$i] $opts.Keep)
           Printed  = 0
@@ -1103,10 +1194,13 @@ function Invoke-Scenario([string[]]$Argv) {
           Finished = $false
           Report   = $null
         })
-      Write-Host "shard $($i + 1) on port ${port}: $($groups[$i] -join ' ')"
+      Write-Host ("shard {0} on port {1} at {2:HH:mm:ss}: {3}" -f ($i + 1), $port, (Get-Date), ($groups[$i] -join ' '))
     }
-    foreach ($s in $shards) { Start-ScratchServer $s.Server $serverDir $s.Port $true }
-    foreach ($s in $shards) { Wait-ScratchServer $s.Server $ScenarioBootSeconds }
+    foreach ($s in $shards) { Start-ScratchServer $s.Server $stage.ServerDir $s.Port $true }
+    for ($i = 0; $i -lt $shards.Count; $i++) {
+      Wait-ScratchServer $shards[$i].Server $ScenarioBootSeconds
+      Write-Host ("shard {0} up at {1:HH:mm:ss}" -f ($i + 1), (Get-Date))
+    }
     foreach ($s in $shards) {
       $s.Server.Proc.StandardInput.WriteLine($s.Command)
       $s.Sent = [DateTime]::UtcNow
@@ -1139,6 +1233,7 @@ function Invoke-Scenario([string[]]$Argv) {
     if ($countLine) { Write-Host $countLine }
     $null = Save-ScenarioLast @($shards | ForEach-Object { $_.Server.Data }) @($reports | ForEach-Object { $_.FailedNames }) (Join-Path $RepoRoot '.game/.scenario-last')
     $problems = Get-ScenarioExitProblems $reports
+    Write-Host ("scenario done at {0:HH:mm:ss}" -f (Get-Date))
 
     if ($opts.Keep) {
       foreach ($s in $shards) {
@@ -1161,7 +1256,8 @@ function Invoke-Scenario([string[]]$Argv) {
     if ($problems) { throw "Scenario run failed: $($problems -join '; ')" }
   }
   finally {
-    foreach ($s in $shards) { Remove-ScratchServer $s.Server $opts.KeepData }
+    foreach ($server in $stage.Servers) { Remove-ScratchServer $server $opts.KeepData }
+    Unlock-ServerPorts $reservation
   }
 }
 
@@ -1181,9 +1277,10 @@ exlib's source, found through the ExlibRoot environment variable, else the works
 mod is built from the same checkout; each mod's tests/live is copied under its own modid.
 
   -Version   the game series; only the current one, which the live mod is built for (default 1.22)
-  -Port      the port the server binds (default 42498), so two runs can share the machine
+  -Port      the port the search for a free one starts at (default 42498); each server takes the first
+             free port from there upward, so two runs share the machine without choosing ports
   -Timeout   seconds to wait for the count line, in place of the run's budget plus 60
-  -Shards    servers to boot, each on the next port up from -Port (smoke's 42499 is skipped); the names are dealt out over them in
+  -Shards    servers to boot, each on the next free port up from -Port (smoke's 42499 is skipped); the names are dealt out over them in
              turn, each server runs its own, and one count line covers all (default 1)
   -Mods      extra mod folder(s), or folder(s) of mod folders, staged beside the live mod
   -Keep      leave the plots standing and the server up: prints the port, the data path and how to join,
@@ -1191,6 +1288,9 @@ mod is built from the same checkout; each mod's tests/live is copied under its o
              it; the exit code is the one a run without -Keep gives
   -KeepData  keep each scratch data path and print it, instead of deleting it
   -Verbose   print every step line, passing cases too
+
+With EXMOD_BUILD_LOCK set it holds the build lock while it builds the mods and copies them into the scratch
+servers, and boots them with it free.
 
 Exits 1 when the count line is missing or reports no case run, a case fails or errors, or an [Error] or
 [Fatal] line falls outside a case, on any shard. The schematics of the failed cases are copied to

@@ -161,6 +161,17 @@ Invoke-ExmodCommand (Resolve-ExmodCommand 'render') @()
         self.assertEqual(0, code, out)
         self.assertEqual(["probe", "held", "render", "free"], self.stamp_lines(), out)
 
+    def test_smoke_and_scenario_are_not_held_whole_by_the_dispatcher(self):
+        # Fails if smoke or scenario is left off $NoBuildLockCommands (held).
+        body = r"""
+foreach ($name in 'smoke', 'scenario') {
+  Invoke-ExmodCommand ([pscustomobject]@{ Name = $name; Action = { Add-Content $env:TEST_STAMPS ('cmd ' + (Get-LockState)) } }) @()
+}
+"""
+        code, out = self.run_body(body)
+        self.assertEqual(0, code, out)
+        self.assertEqual(["cmd", "free", "cmd", "free"], self.stamp_lines(), out)
+
     def test_waiters_taking_turns_do_not_starve_the_body(self):
         # Fails if the take polls with a short non-blocking attempt.
         loop = f"while true; do flock -w 30 -o '{self.lock}' sleep 1; done"
@@ -209,7 +220,7 @@ $CurrentGameVersion = '1.22'
 function Rec([string]$Name) { Add-Content $env:TEST_STAMPS "$Name $(Get-LockState)" }
 function Invoke-Build { Rec build }
 function Invoke-Verify { Rec verify }
-function Invoke-Smoke { Rec smoke }
+function Invoke-Smoke { Invoke-WithBuildLock { Rec smokestage }; Rec smokeboot }
 function Invoke-ExmodParallelBuild { Rec testbuild; return @() }
 function Resolve-DotnetHost { $env:TEST_STUB }
 function Get-ExmodTestProjects {
@@ -235,11 +246,13 @@ class StepHoldTests(LockCase):
         self.proj = os.path.join(self.repo, "tests", "A.Tests", "A.Tests.csproj")
 
     def test_check_holds_build_verify_test_build_and_smoke_and_runs_the_tests_free(self):
-        # Fails if the test run sits inside the hold (testrun held), or a step is run without one.
+        # Fails if the test run sits inside the hold (testrun held), a step is run without one, or Invoke-Smoke
+        # is called inside a hold of check's own (smokeboot held).
         code, out = self.run_body(CHECK, TEST_STUB=self.stub, TEST_PROJ=self.proj)
         self.assertEqual(0, code, out)
-        self.assertEqual(["build held", "verify held", "testbuild held", "testrun free", "smoke held"],
-                         [" ".join(self.stamp_lines()[i:i + 2]) for i in range(0, 10, 2)], out)
+        self.assertEqual(["build held", "verify held", "testbuild held", "testrun free", "smokestage held",
+                          "smokeboot free"],
+                         [" ".join(self.stamp_lines()[i:i + 2]) for i in range(0, 12, 2)], out)
         self.assertEqual(3, out.count("build lock: taken"), out)
         self.assertIn("test phase:", out)
 
@@ -331,6 +344,42 @@ class ProvisionHoldTests(LockCase):
         with open(os.path.join(dest, ".vsversion")) as f:
             self.assertEqual("1.22.6", f.read())
         self.assertFalse(os.path.exists(dest + ".part"))
+
+
+SMOKE_STAGE = r"""
+function Rec([string]$Name) { Add-Content $env:TEST_STAMPS "$Name $(Get-LockState)" }
+function Resolve-SmokeServer { Rec stage; return $env:TEST_REPO }
+function Get-ScratchDefaultModDirs { return @($env:TEST_REPO) }
+function Get-ScenarioSources { return @([pscustomobject]@{ Dir = $env:TEST_REPO; ModId = 'exlib' }) }
+function Get-ScenarioNames { return @('exlib/sample') }
+function Build-ScenarioExlibMod { Rec exlibbuild; return 'exlib-dir' }
+function Build-ScenarioLiveMod { Rec livebuild; return 'live-dir' }
+function Get-ScenarioDefaultModDirs { return @() }
+function Get-ScenarioModDirs { return @() }
+function New-ScratchServer { Rec newserver; return [pscustomobject]@{ Root = $env:TEST_REPO; Proc = $null; Port = $null } }
+function Start-ScratchServer { Rec boot; throw 'stop here' }
+function Remove-ScratchServer { }
+"""
+
+
+@unittest.skipUnless(PWSH, "pwsh not found")
+@unittest.skipIf(sys.platform == "win32", "the lock is flock(2)")
+class StageAndBootTests(LockCase):
+    def stamps_of(self, call, count):
+        code, out = self.run_body(SMOKE_STAGE + call, EXMOD_PORTS_DIR=os.path.join(self.tmp, "ports"))
+        self.assertEqual(0, code, out)
+        lines = self.stamp_lines()
+        return [" ".join(lines[i:i + 2]) for i in range(0, 2 * count, 2)], out
+
+    def test_smoke_stages_under_the_lock_and_boots_without_it(self):
+        # Fails if Start-ScratchServer runs inside the hold (boot held).
+        got, out = self.stamps_of("try { Invoke-Smoke @() } catch { }; exit 0", 3)
+        self.assertEqual(["stage held", "newserver held", "boot free"], got, out)
+
+    def test_scenario_builds_and_stages_under_the_lock_and_boots_without_it(self):
+        # Fails if Start-ScratchServer runs inside the hold (boot held).
+        got, out = self.stamps_of("try { Invoke-Scenario @() } catch { }; exit 0", 5)
+        self.assertEqual(["exlibbuild held", "livebuild held", "stage held", "newserver held", "boot free"], got, out)
 
 
 if __name__ == "__main__":

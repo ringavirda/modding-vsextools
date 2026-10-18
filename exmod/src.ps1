@@ -899,7 +899,7 @@ function Invoke-Check([string[]]$Argv) {
     }
     else {
       if ($version -eq 'all') { Write-Host "Smoke runs once, on ${CurrentGameVersion}: the only series it loads a build of." }
-      try { Invoke-WithBuildLock { Invoke-Smoke @('-Version', $CurrentGameVersion) }; $results.smoke = 'PASS' }
+      try { Invoke-Smoke @('-Version', $CurrentGameVersion); $results.smoke = 'PASS' }
       catch { Write-Host $_.Exception.Message -ForegroundColor Red; $results.smoke = 'FAIL'; $state.Stop = $true }
     }
   } else { $results.smoke = 'SKIPPED' }
@@ -924,8 +924,8 @@ that order, stopping at the first failing step. Ends with a PASS/FAIL/SKIPPED su
 step and exits nonzero if any of them did.
 
 With EXMOD_BUILD_LOCK set to a file, format, build and verify hold that file's flock as one hold, the
-test build holds it again, the test lanes run with it free, and the smoke step holds it whole
-(waiting up to EXMOD_BUILD_LOCK_WAIT seconds, default 3000, for each take). Do not also wrap the
+test build holds it again, the test lanes run with it free, and the smoke step holds it while it stages
+its server and boots with it free (waiting up to EXMOD_BUILD_LOCK_WAIT seconds, default 3000, for each take). Do not also wrap the
 command in `flock` on that file.
 
   latest      1.22 only (the default), for the build, test and smoke steps

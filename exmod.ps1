@@ -1019,7 +1019,7 @@ function Invoke-WithBuildLock([scriptblock]$Body) {
 }
 
 # Commands that take the build lock themselves around the parts that build, or never need it.
-$NoBuildLockCommands = @('check', 'test', 'render', 'server', 'client', 'debug-adapter')
+$NoBuildLockCommands = @('check', 'test', 'smoke', 'scenario', 'render', 'server', 'client', 'debug-adapter')
 
 function Invoke-ExmodCommand($Resolved, [string[]]$Argv) {
   if ($Resolved.Name -in $NoBuildLockCommands) { & $Resolved.Action $Argv; return }
