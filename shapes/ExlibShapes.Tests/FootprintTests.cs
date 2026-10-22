@@ -22,11 +22,6 @@ public class FootprintTests {
     string,
     (double Overhang, int FrameOffset, string Why)
   > FootprintDefects = new() {
-    ["iiex:crafting-workbench"] = (
-      0.4,
-      0,
-      "a vice standing off the bench's far end"
-    ),
     ["iiex:furnace-puddlingchimneycap"] = (
       2.1,
       0,
@@ -228,21 +223,21 @@ public class FootprintTests {
     return Mod360(
       (string?)variant.Raw["class"] switch {
         // The body extends away from the player, so the footprint takes the same half turn:
-        // BlockBoiler, BlockEngine, BlockMpFluidPump, BlockSandCastingBed,
-        // BlockSandCastingFloorFlask, BlockSandCastingLongFlask and BlockWorkbench.
+        // BlockBoiler, BlockEngine, BlockEngineHorizontal, BlockMpFluidPump, BlockSandCastingBed,
+        // BlockSandCastingFloorFlask and BlockSandCastingLongFlask. The
+        // iiex Cornish boiler and BlockWorkbench add no turn: they are drawn facing the placer.
         "ppex.BlockBoilerCornish"
         or "ppex.BlockBoilerLancashire"
         or "ppex.BlockEngineCornish"
         or "ppex.BlockEngineWatt"
         or "ppex.BlockMpFluidPump"
-        or "iiex.BlockBoilerCornish"
         or "iiex.BlockEngineWatt"
+        or "iiex.BlockEngineHorizontal"
         or "siex.BlockBoilerLancashire"
         or "siex.BlockEngineCornish"
         or "iiex.BlockSandCastingBed"
         or "iiex.BlockSandCastingFloorFlask"
-        or "iiex.BlockSandCastingLongFlask"
-        or "iiex.BlockWorkbench" => AngleFromSide(side) + 180,
+        or "iiex.BlockSandCastingLongFlask" => AngleFromSide(side) + 180,
         // An axis, not a facing: the footprint is authored along one of them and turned a quarter
         // onto the other. BlockFlywheel, BlockShear and BlockFastenerBench author `ns`;
         // BlockRollingMill authors `we`.
@@ -250,14 +245,6 @@ public class FootprintTests {
         or "iiex.BlockShear"
         or "iiex.BlockFastenerBench" => side == "we" ? 90 : 0,
         "iiex.BlockRollingMill" => side == "ns" ? 90 : 0,
-        // BlockTwinTubMPBlower reads the pipe fittings' own orientation axis, which numbers its
-        // letters the other way round from a side variant.
-        "iiex.BlockTwinTubMPBlower" => side switch {
-          "e" => 90,
-          "s" => 180,
-          "w" => 270,
-          _ => 0,
-        },
         _ => AngleFromSide(side),
       }
     );
