@@ -228,8 +228,8 @@ public class FootprintTests {
     return Mod360(
       (string?)variant.Raw["class"] switch {
         // The body extends away from the player, so the footprint takes the same half turn:
-        // BlockBoiler, BlockEngine, BlockMpFluidPump, BlockSandCastingBed, BlockSandCastingLongCell
-        // and BlockWorkbench.
+        // BlockBoiler, BlockEngine, BlockMpFluidPump, BlockSandCastingBed,
+        // BlockSandCastingFloorFlask, BlockSandCastingLongFlask and BlockWorkbench.
         "ppex.BlockBoilerCornish"
         or "ppex.BlockBoilerLancashire"
         or "ppex.BlockEngineCornish"
@@ -240,7 +240,8 @@ public class FootprintTests {
         or "siex.BlockBoilerLancashire"
         or "siex.BlockEngineCornish"
         or "iiex.BlockSandCastingBed"
-        or "iiex.BlockSandCastingLongCell"
+        or "iiex.BlockSandCastingFloorFlask"
+        or "iiex.BlockSandCastingLongFlask"
         or "iiex.BlockWorkbench" => AngleFromSide(side) + 180,
         // An axis, not a facing: the footprint is authored along one of them and turned a quarter
         // onto the other. BlockFlywheel, BlockShear and BlockFastenerBench author `ns`;
