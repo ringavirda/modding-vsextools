@@ -571,6 +571,37 @@ public class SceneTests : IDisposable {
     Assert.Equal(10, lines.Length - 3);
   }
 
+  // Fails when Compose draws the block's own shape for a cell that names one.
+  [Fact]
+  public void A_cell_that_names_a_shape_draws_it_in_place_of_its_blocks() {
+    SceneCell Cell(string? shape) =>
+      new(
+        new Offset(0, 0, 0),
+        "demo:rusty",
+        "r",
+        "block",
+        null,
+        null,
+        null,
+        null,
+        [],
+        shape
+      );
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+    string Drawn(string? shape) =>
+      SceneRender
+        .Compose(
+          new SceneFile("rusty", null, null, [Cell(shape)], [], []),
+          index
+        )
+        .Raw.ToString();
+
+    Assert.Contains("\"rust\"", Drawn(null));
+    Assert.DoesNotContain("\"vice\"", Drawn(null));
+    Assert.Contains("\"vice\"", Drawn("demo:block/tooled"));
+    Assert.DoesNotContain("\"rust\"", Drawn("demo:block/tooled"));
+  }
+
   [Fact]
   public void The_manifest_lists_a_block_whose_texture_has_no_file() {
     var rusty = new SceneCell(

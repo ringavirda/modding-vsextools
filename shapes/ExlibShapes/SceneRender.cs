@@ -88,6 +88,8 @@ public static class SceneRender {
         elements.Add(UnresolvedCube(c.At, $"{UnresolvedPrefix}{i}"));
         continue;
       }
+      if (c.Shape != null)
+        block = block with { ShapePath = index.ShapePath(c.Shape) };
       (JObject group, Dictionary<string, TextureRef> values) =
         Schematic.WrappedCell(block, c.At, $"c{i}");
       elements.Add(group);

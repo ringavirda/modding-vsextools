@@ -23,6 +23,8 @@ public sealed record ScenePort(string? Face, string Type, string? Joins);
 /// <param name="Line">The mechanical line key the cell is on; null when on none.</param>
 /// <param name="Port">The port this cell is; null unless <paramref name="Role"/> is port.</param>
 /// <param name="Open">The faces the cell's connector answers on that no neighbour joins.</param>
+/// <param name="Shape">The shape the cell's block entity draws in place of its block's, as a blocktype's
+/// <c>shape.base</c> names it; null when the block's own is drawn.</param>
 public sealed record SceneCell(
   Offset At,
   string Code,
@@ -32,7 +34,8 @@ public sealed record SceneCell(
   string? Network,
   string? Line,
   ScenePort? Port,
-  IReadOnlyList<string> Open
+  IReadOnlyList<string> Open,
+  string? Shape = null
 );
 
 /// <summary>A pipe or gas network of a scene.</summary>
@@ -152,7 +155,8 @@ public sealed record SceneFile(
           (string?)p["joins"]
         )
         : null,
-      Strings(c["open"])
+      Strings(c["open"]),
+      (string?)c["shape"]
     );
 
   private static IEnumerable<JObject> Items(JObject root, string key) =>
