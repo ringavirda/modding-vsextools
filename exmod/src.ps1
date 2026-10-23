@@ -278,6 +278,81 @@ function Invoke-WithTestPhase([scriptblock]$Body) {
   Invoke-WithFlock (Join-Path $RepoRoot '.exmod/test-phase.lock') $wait -Label 'test phase lock' -Run $phase
 }
 
+# The partitions the manifest declares for the test assembly $Project, or $null. The manifest's
+# `partitions` is keyed by assembly name; an entry is { memoryGb, parts: [{ name, filter }, ..., { name }] }.
+# Every part but the last carries a `dotnet test` filter made only of `|`-joined terms such as
+# `FullyQualifiedName~.Walk.`; the last carries none and runs the complement of the others, so a class
+# added later always lands in a partition. Returns { MemoryGb; Parts = @({ Name; Filter }) } with the
+# last part's Filter built by Get-ExmodComplementFilter; throws on a malformed entry.
+function Get-ExmodPartitions([string]$Project) {
+  $m = Get-ExmodManifest
+  if (-not $m.PSObject.Properties['partitions'] -or -not $m.partitions.PSObject.Properties[$Project]) { return $null }
+  $entry = $m.partitions.$Project
+  $parts = @($entry.parts)
+  if ($parts.Count -lt 2) { throw "exmod.json: partitions.$Project needs at least two parts." }
+  $declared = @()
+  for ($i = 0; $i -lt $parts.Count; $i++) {
+    $p = $parts[$i]
+    if (-not $p.name) { throw "exmod.json: partitions.$Project.parts[$i] has no name." }
+    $last = ($i -eq $parts.Count - 1)
+    $hasFilter = [bool]($p.PSObject.Properties['filter'] -and $p.filter)
+    if ($last -and $hasFilter) { throw "exmod.json: the last part of partitions.$Project is the complement and takes no filter." }
+    if (-not $last -and -not $hasFilter) { throw "exmod.json: partitions.$Project.parts[$i] ($($p.name)) has no filter." }
+    if (-not $last) { $declared += $p.filter }
+  }
+  $out = @()
+  for ($i = 0; $i -lt $parts.Count - 1; $i++) { $out += [pscustomobject]@{ Name = $parts[$i].name; Filter = $parts[$i].filter } }
+  $out += [pscustomobject]@{ Name = $parts[-1].name; Filter = Get-ExmodComplementFilter $declared }
+  $memory = if ($entry.PSObject.Properties['memoryGb'] -and $entry.memoryGb) { [double]$entry.memoryGb } else { 0 }
+  return [pscustomobject]@{ MemoryGb = $memory; Parts = $out }
+}
+
+# The `dotnet test` filter that selects what none of $Filters selects. Each filter is `|`-joined terms
+# of the form <Property>~<value> or <Property>=<value>; the complement joins the negated terms
+# (!~, !=) with `&`. Throws on a filter with parentheses, `&` or an already negated term.
+function Get-ExmodComplementFilter([string[]]$Filters) {
+  $terms = foreach ($f in $Filters) {
+    foreach ($t in ($f -split '\|')) {
+      if ($t -notmatch '^\s*(\w+)\s*([~=])\s*([^()&|!]+?)\s*$') {
+        throw "Partition filter term '$t' is not <Property>~<value> or <Property>=<value>; a complement cannot be built from it."
+      }
+      "$($Matches[1])!$($Matches[2])$($Matches[3])"
+    }
+  }
+  return ($terms -join '&')
+}
+
+# How many test hosts of $MemoryGb each fit in the memory the machine has available, at least 1;
+# $null when the amount is unknown (no /proc/meminfo) or $MemoryGb is 0, meaning no limit.
+function Get-ExmodPartitionSlots([double]$MemoryGb) {
+  if ($MemoryGb -le 0 -or -not (Test-Path /proc/meminfo)) { return $null }
+  $line = Get-Content /proc/meminfo | Where-Object { $_ -match '^MemAvailable:\s+(\d+) kB' } | Select-Object -First 1
+  if (-not $line -or $line -notmatch '(\d+) kB') { return $null }
+  $availableGb = [double]$Matches[1] / 1MB
+  return [Math]::Max(1, [int][Math]::Floor($availableGb / $MemoryGb))
+}
+
+# One result per assembly from the results of its partition runs (those carrying a Part): Ok when
+# every part is, Total the sum (null when a part has none), Failures and Log gathered, Parts kept.
+# Results without a Part pass through. Order follows each name's first result.
+function Merge-ExmodPartitionResults($Results) {
+  $out = @()
+  foreach ($group in ($Results | Group-Object Name)) {
+    $parts = @($group.Group | Where-Object { $_.Part })
+    if (-not $parts) { $out += $group.Group; continue }
+    $out += [pscustomobject]@{
+      Name = $group.Name
+      Ok = -not @($parts | Where-Object { -not $_.Ok })
+      Line = "$($parts.Count) partitions"
+      Failures = @($parts | ForEach-Object { $_.Failures })
+      Total = if (@($parts | Where-Object { $null -eq $_.Total })) { $null } else { [int](($parts | Measure-Object Total -Sum).Sum) }
+      Log = (($parts | ForEach-Object { $_.Log }) -join ', ')
+      Parts = $parts
+    }
+  }
+  return $out
+}
+
 function Invoke-Test([string[]]$Argv) {
   $positional = @(Get-Positional $Argv @('-Throttle', '-Filter') @('-Coverage', '-AcceptDrop', '-NoBuild'))
   $version = if ($positional.Count -gt 0) { $positional[0] } else { 'latest' }
@@ -382,7 +457,6 @@ function Invoke-Test([string[]]$Argv) {
       }
     }
   }
-  if ($throttle -le 0) { $throttle = $work.Count }
 
   # One parallel MSBuild call per series builds the shared mod projects once. This also auto-provisions each version's game binaries once, up
   # front, letting the test phase run in parallel with --no-build. With -NoBuild nothing is built:
@@ -410,12 +484,36 @@ function Invoke-Test([string[]]$Argv) {
       Add-Member -NotePropertyName BuildLine -NotePropertyValue 'build failed' -PassThru
   }
 
-  $waves = @($built | ForEach-Object { Get-ExmodTestWave $_.Version } | Sort-Object -Unique)
+  # Without -Filter an assembly with manifest partitions runs as one process per partition; with it, whole.
+  $slots = $null
+  $units = foreach ($item in $built) {
+    $partitions = if ($filter) { $null } else { Get-ExmodPartitions $item.Project }
+    if (-not $partitions) { $item; continue }
+    $fit = Get-ExmodPartitionSlots $partitions.MemoryGb
+    if ($null -ne $fit -and ($null -eq $slots -or $fit -lt $slots)) { $slots = $fit }
+    foreach ($part in $partitions.Parts) {
+      $item | Select-Object * |
+        Add-Member -NotePropertyName Part -NotePropertyValue $part.Name -PassThru -Force |
+        Add-Member -NotePropertyName PartFilter -NotePropertyValue $part.Filter -PassThru -Force |
+        Add-Member -NotePropertyName Log -NotePropertyValue ($item.Log -replace '\.log$', "-$($part.Name).log") -PassThru -Force |
+        Add-Member -NotePropertyName Blame -NotePropertyValue "$($item.Blame)-$($part.Name)" -PassThru -Force
+    }
+  }
+  $units = @($units)
+  if ($throttle -le 0) {
+    $throttle = $units.Count
+    if ($null -ne $slots -and $slots -lt $throttle -and @($units | Where-Object { $_.Part }).Count -gt 0) {
+      $throttle = $slots
+      Write-Host "Partitions: $($units.Count) test process(es), $throttle at a time to fit the available memory."
+    }
+  }
+
+  $waves = @($units | ForEach-Object { Get-ExmodTestWave $_.Version } | Sort-Object -Unique)
   if ($waves.Count -gt 1) {
     Write-Host "EXLIB_WRITE_GOLDENS is set: the $CurrentGameVersion lanes run first, the older series after them."
   }
   $results = @(Invoke-WithTestPhase {
-      foreach ($item in $built) {
+      foreach ($item in $units) {
         if (Test-Path -LiteralPath $item.Blame) { Remove-Item -LiteralPath $item.Blame -Recurse -Force }
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $item.Log) | Out-Null
       }
@@ -423,16 +521,17 @@ function Invoke-Test([string[]]$Argv) {
       # A -Parallel runspace sees none of this script's functions; the parser goes in as its text.
       $failuresFn = ${function:Get-ExmodTestFailures}.ToString()
       foreach ($wave in $waves) {
-        $built | Where-Object { (Get-ExmodTestWave $_.Version) -eq $wave } | ForEach-Object -ThrottleLimit $throttle -Parallel {
+        $units | Where-Object { (Get-ExmodTestWave $_.Version) -eq $wave } | ForEach-Object -ThrottleLimit $throttle -Parallel {
           $dotnet = $using:dotnet
           $filter = $using:filter
           ${function:Get-ExmodTestFailures} = $using:failuresFn
           $item = $_
           if (-not $item.BuildOk) {
-            return [pscustomobject]@{ Name = "$($item.Version)/$($item.Project)"; Ok = $false; Line = $item.BuildLine; Total = $null }
+            return [pscustomobject]@{ Name = "$($item.Version)/$($item.Project)"; Ok = $false; Line = $item.BuildLine; Total = $null; Part = $item.Part; Log = $item.Log }
           }
           $testArgs = @('test', $item.Proj, '-f', $item.Tfm, '--no-build', '--nologo', '--blame', '--results-directory', $item.Blame)
-          if ($filter) { $testArgs += @('--filter', $filter) }
+          $runFilter = if ($item.PartFilter) { $item.PartFilter } else { $filter }
+          if ($runFilter) { $testArgs += @('--filter', $runFilter) }
           if ($item.Legacy) { $testArgs += '-p:Legacy=true' }
           $out = & $dotnet @testArgs 2>&1
           $out | Set-Content -LiteralPath $item.Log
@@ -473,19 +572,24 @@ function Invoke-Test([string[]]$Argv) {
 
           [pscustomobject]@{
             Name = "$($item.Version)/$($item.Project)"; Ok = $ok; Line = $line; Failures = $failures
-            Total = if ($total) { [int]$total.Groups[1].Value } else { $null }; Log = $item.Log
+            Total = if ($total) { [int]$total.Groups[1].Value } else { $null }; Log = $item.Log; Part = $item.Part
           }
         }
       }
 
   })
+  $results = @(Merge-ExmodPartitionResults $results)
 
   Write-Host ""
   Write-Host "===== Results ====="
   foreach ($r in $results | Sort-Object Name) {
     $tag = if ($r.Ok) { 'PASS' } else { 'FAIL' }
     $where = if (-not $r.Ok -and $r.Log) { " (log: $($r.Log))" } else { '' }
-    Write-Host ("{0}  {1,-40} {2}{3}" -f $tag, $r.Name, ($r.Line -replace '\s+', ' ').Trim(), $where)
+    $line = if ($r.Parts) { "$($r.Total) tests in $($r.Line)" } else { ($r.Line -replace '\s+', ' ').Trim() }
+    Write-Host ("{0}  {1,-40} {2}{3}" -f $tag, $r.Name, $line, $where)
+    foreach ($p in $r.Parts) {
+      Write-Host ("      {0,-10} {1}" -f $p.Part, ($p.Line -replace '\s+', ' ').Trim())
+    }
     foreach ($f in $r.Failures) {
       Write-Host ("         {0}: {1}" -f $f.Name, $f.Message)
     }
@@ -537,7 +641,14 @@ and print `test phase:` lines with their clock time. Do not also wrap the comman
 With EXLIB_WRITE_GOLDENS set, the current series' lanes run first and the older series' after them:
 an older series' golden write compares against the shared goldens the current series' write rewrites.
 
-Each run's full output is kept in .exmod/test-logs/<series>-<assembly>.log, overwritten by the next run,
+A test assembly the manifest lists under `partitions` runs, without -Filter, as one process per partition
+(see Get-ExmodPartitions): each partition but the last is a `|`-joined filter, the last runs everything
+they leave out. At most as many processes run at once as `memoryGb` each fits in the memory available
+(unless -Throttle is given); the counts, failures and logs are summed, so the census and the zero
+and drop rules see one assembly. A -Filter run is not partitioned.
+
+Each run's full output is kept in .exmod/test-logs/<series>-<assembly>.log (<series>-<assembly>-<partition>.log
+for a partition), overwritten by the next run,
 and a failed run or one below the census prints that log's path. dotnet test runs with --blame, its
 results in .exmod/test-results/<series>-<assembly>/, so an aborted test host names the tests it was
 running.
