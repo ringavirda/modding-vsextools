@@ -22,6 +22,8 @@ public static partial class ItemViews {
   /// <param name="outDir">Created when absent.</param>
   /// <param name="ppu">Pixels per shape unit for the isometric render.</param>
   /// <param name="views">The views to draw, from <see cref="Views"/>.</param>
+  /// <param name="seraphFile">A player shape file posed in place of the game's, or null.</param>
+  /// <param name="frame">The frame of the held clip the player is posed at.</param>
   /// <exception cref="InvalidDataException"><paramref name="dumpPath"/> is not an
   /// <c>item-views/1</c> file.</exception>
   /// <exception cref="ArgumentException">A name in <paramref name="views"/> is not a view.</exception>
@@ -30,7 +32,9 @@ public static partial class ItemViews {
     BlockIndex index,
     string outDir,
     int ppu,
-    IReadOnlyList<string> views
+    IReadOnlyList<string> views,
+    string? seraphFile = null,
+    int frame = 0
   ) {
     foreach (string view in views)
       if (!Views.Contains(view))
@@ -57,7 +61,7 @@ public static partial class ItemViews {
         IReadOnlyDictionary<string, TextureRef> values
       ) = Compose(item, index);
       Seraph? seraph = views.Any(v => v is "tp" or "fp")
-        ? LoadSeraph(index)
+        ? LoadSeraph(index, seraphFile, frame)
         : null;
       foreach (string view in views) {
         if (view is "tp" or "fp" && seraph == null) {

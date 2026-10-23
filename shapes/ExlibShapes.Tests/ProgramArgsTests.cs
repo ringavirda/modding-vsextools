@@ -195,7 +195,9 @@ public class ProgramArgsTests {
     "--sheet",
     "--ppu=24",
     "--roots=/a",
-    "--game=/g"
+    "--game=/g",
+    "--seraph=/s.json",
+    "--frame=3"
   )]
   [InlineData(
     "item-views",
@@ -209,7 +211,11 @@ public class ProgramArgsTests {
     "a",
     "b",
     "--game",
-    "x"
+    "x",
+    "--seraph",
+    "s.json",
+    "--frame",
+    "3"
   )]
   [InlineData(
     "scene",

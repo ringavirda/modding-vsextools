@@ -237,6 +237,122 @@ public class ItemViewsDumpTests {
     }
   }
 
+  private static string PlayerFile(string name) {
+    string dir = Scratch(name);
+    Directory.CreateDirectory(dir);
+    string path = Path.Combine(dir, "player.json");
+    File.WriteAllText(
+      path,
+      """
+      {
+        "textureWidth": 16, "textureHeight": 16,
+        "textures": { "seraph": "game:entity/humanoid/seraph-naked-hairless" },
+        "elements": [
+          { "name": "Body", "from": [0, 0, 0], "to": [2, 2, 2],
+            "faces": { "north": { "texture": "#seraph", "uv": [0, 0, 1, 1] } } },
+          { "name": "ItemAnchor", "from": [0, 0, 0], "to": [1, 1, 1],
+            "faces": { "north": { "texture": "#seraph", "uv": [0, 0, 1, 1] } } }
+        ],
+        "animations": [
+          { "name": "helditemready", "code": "helditemready", "quantityFrames": 21,
+            "keyframes": [
+              { "frame": 0, "elements": { "ItemAnchor": { "offsetX": 0 } } },
+              { "frame": 10, "elements": { "ItemAnchor": { "offsetX": 8 } } },
+              { "frame": 20, "elements": { "ItemAnchor": { "offsetX": 24 } } }
+            ] }
+        ]
+      }
+      """
+    );
+    return path;
+  }
+
+  private static double HeldX(string file, int frame) {
+    ViewsFile dump = ViewsFile.Load(Dump);
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+    (LoadedShape shape, TextureSet textures, _) = ItemViews.Compose(
+      ItemViews.ItemOf(dump, index),
+      index
+    );
+    ItemViews.Seraph seraph = ItemViews.LoadSeraph(index, file, frame)!;
+    return ItemViews
+      .TpParts(shape, textures, dump.Tp, seraph, "helditemready")[1]
+      .Model.Mul(0, 0, 0)
+      .X;
+  }
+
+  [Fact]
+  public void A_seraph_file_poses_the_player_at_the_frame_asked() {
+    string file = PlayerFile("seraph-frame");
+    double at0 = HeldX(file, 0);
+    Assert.Equal(8, Math.Abs(HeldX(file, 10) - at0), 6);
+    Assert.Equal(24, Math.Abs(HeldX(file, 20) - at0), 6);
+  }
+
+  [Fact]
+  public void A_seraph_file_stands_in_for_the_games_player_shape() {
+    string file = PlayerFile("seraph-write");
+    string empty = Scratch("seraph-no-game");
+    Directory.CreateDirectory(empty);
+    BlockIndex index = BlockIndex.Build([DemoRoot], empty);
+    string outDir = Scratch("seraph-write-out");
+    JObject manifest = ItemViews.WriteDump(
+      Dump,
+      index,
+      outDir,
+      24,
+      ["tp"],
+      file,
+      10
+    );
+    Assert.Equal(
+      ["demo-gearpinion-tp.png"],
+      manifest["files"]!.Select(f => Path.GetFileName((string)f!))
+    );
+    Assert.DoesNotContain(
+      manifest["warnings"]!.Select(w => (string)w!),
+      w => w.Contains("player shape is not found", StringComparison.Ordinal)
+    );
+  }
+
+  [Fact]
+  public void A_seraph_file_that_is_not_there_is_refused() {
+    BlockIndex index = BlockIndex.Build([DemoRoot]);
+    Assert.Throws<FileNotFoundException>(() =>
+      ItemViews.LoadSeraph(index, Path.Combine(Scratch("seraph-gone"), "x.json"))
+    );
+  }
+
+  [Fact]
+  public void Command_takes_the_seraph_file_and_frame() {
+    string file = PlayerFile("seraph-command");
+    byte[] Picture(string frame) {
+      string outDir = Scratch($"seraph-command-{frame}");
+      var stdout = new StringWriter();
+      int code = Program.RunItemViews(
+        [
+          Dump,
+          "--out",
+          outDir,
+          "--views",
+          "tp",
+          "--roots",
+          DemoRoot,
+          "--game",
+          Scratch("seraph-command-nogame"),
+          "--seraph",
+          file,
+          "--frame",
+          frame,
+        ],
+        stdout
+      );
+      Assert.Equal(0, code);
+      return File.ReadAllBytes(Path.Combine(outDir, "demo-gearpinion-tp.png"));
+    }
+    Assert.NotEqual(Picture("0"), Picture("20"));
+  }
+
   [Fact]
   public void The_tp_view_of_a_dump_without_the_player_shape_is_a_warning() {
     string empty = Scratch("no-game-install");

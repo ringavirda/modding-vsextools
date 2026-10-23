@@ -35,18 +35,31 @@ public static partial class ItemViews {
   private const int TpGap = 8;
 
   /// <summary>The player shape, its skin and the width and height its face UVs are written in.
-  /// The skin is twice the UV size on each axis.</summary>
+  /// The skin is twice the UV size on each axis. <c>Frame</c> is the frame of the held clip the
+  /// player is posed at.</summary>
   internal sealed record Seraph(
     LoadedShape Shape,
     TextureSet Textures,
-    (double Width, double Height) UvSize
+    (double Width, double Height) UvSize,
+    int Frame = 0
   );
 
   /// <summary>The player shape and skin as <paramref name="index"/> resolves them, or null when
   /// the index carries no game assets that hold the shape.</summary>
-  internal static Seraph? LoadSeraph(BlockIndex index) {
-    if (index.ShapePath(SeraphShape) is not { } path)
+  /// <param name="file">A player shape file posed in place of the game's, or null for the game's.</param>
+  /// <param name="frame">The frame of the held clip the player is posed at.</param>
+  /// <exception cref="FileNotFoundException"><paramref name="file"/> does not exist.</exception>
+  internal static Seraph? LoadSeraph(
+    BlockIndex index,
+    string? file = null,
+    int frame = 0
+  ) {
+    if (
+      (file ?? index.ShapePath(SeraphShape)) is not { } path
+    )
       return null;
+    if (!File.Exists(path))
+      throw new FileNotFoundException($"{path}: no such player shape", path);
     JObject raw = JObject.Parse(File.ReadAllText(path));
     (double, double) uv = raw["textureSizes"]?[SeraphKey]
       is JArray { Count: 2 } sizes
@@ -60,7 +73,8 @@ public static partial class ItemViews {
         },
         index.ResolveTexture
       ),
-      uv
+      uv,
+      frame
     );
   }
 
@@ -120,7 +134,7 @@ public static partial class ItemViews {
     * Renderer.Mat4d.Translate(-t.Origin.X, -t.Origin.Y, -t.Origin.Z)
     * Renderer.Mat4d.Scale(1.0 / 16, 1.0 / 16, 1.0 / 16);
 
-  /// <summary>The player posed at frame 0 of <paramref name="clip"/> (the rest pose when null)
+  /// <summary>The player posed at the seraph's frame of <paramref name="clip"/> (the rest pose when null)
   /// and the item held in its right hand: the player is the first part, the item the second.
   /// </summary>
   internal static Renderer.RenderPart[] TpParts(
@@ -131,7 +145,7 @@ public static partial class ItemViews {
     string? clip
   ) {
     IReadOnlyDictionary<string, Pose>? poses =
-      clip == null ? null : Poses.PoseAt(seraph.Shape, clip, 0);
+      clip == null ? null : Poses.PoseAt(seraph.Shape, clip, seraph.Frame);
     Node anchor =
       seraph.Shape.Find(AnchorElement)
       ?? throw new InvalidDataException(

@@ -220,7 +220,7 @@ The `<stem>.json` manifest carries `files`, `variant`, `missingTextures`, `unpai
 ## item-views
 
 ```
-exlib-shapes item-views PATH --out DIR [--views gui,tp,fp,ground,iso] [--sheet] [--ppu N] [--roots PATH...] [--game PATH]
+exlib-shapes item-views PATH --out DIR [--views gui,tp,fp,ground,iso] [--sheet] [--ppu N] [--roots PATH...] [--game PATH] [--seraph FILE] [--frame N]
 ```
 
 Renders an `item-views/1` file, the dump the item-views guard writes for a group of collectibles:
@@ -235,7 +235,9 @@ shape resolves through the roots as `item` resolves it. The `<stem>.json` manife
 `missingTextures` and `warnings`. `--sheet` also writes `sheet.png` to `--out`, the contact sheet:
 one row per dump with a column for each requested view in the order gui, tp, fp, ground, iso (all
 five when `--views` is not given), the dump's view and kind under it, every failing gate named in
-red and a red frame round a row with any failing gate.
+red and a red frame round a row with any failing gate. `--seraph FILE` poses a player shape file in
+place of the game's (its skin is the game's), so a clip a patch adds can be rendered; `--frame N`
+is the frame of the held clip the tp and fp views pose the player at (default 0).
 
 ## tree / measure
 

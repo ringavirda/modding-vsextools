@@ -299,6 +299,7 @@ Add-ExmodCommand -Group source -Name item-views -Summary 'render an item-views/1
   param([string[]]$Argv) Invoke-ItemViews $Argv
 } -Detail @'
 exmod item-views PATH --out=DIR [--views gui,tp,fp,ground,iso] [--sheet] [--ppu N] [--roots PATH...] [--game PATH]
+  [--seraph FILE] [--frame N]
 
 Renders an item's `<domain>-<code>.views.json` dump, the transforms the game resolved for a group of
 collectibles, to a `<stem>-<view>.png` per view and a `<stem>.json` manifest of the files, the
@@ -321,6 +322,8 @@ published.
   --ppu N         pixels per shape unit for the isometric render (default: 24)
   --roots PATH    extra mod repository roots to resolve the shape and textures against (repeatable)
   --game PATH     a specific game install (default: this repository's own provisioned one)
+  --seraph FILE   a player shape file posed in place of the game's, so a clip a patch adds can be rendered
+  --frame N       the frame of the held clip the player is posed at (default: 0)
 '@
 
 Add-ExmodCommand -Group source -Name shapes-build -Summary 'build the shapes tool when it is stale and publish it' -Action {

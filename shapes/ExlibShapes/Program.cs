@@ -854,12 +854,12 @@ internal static class Program {
   internal static int RunItemViews(string[] args, TextWriter stdout) {
     (string path, string[] flags) = FileAndFlags(
       args,
-      "usage: exlib-shapes item-views PATH --out DIR [--views gui,tp,fp,ground,iso] [--sheet] [--ppu N] [--roots PATH...] [--game PATH]"
+      "usage: exlib-shapes item-views PATH --out DIR [--views gui,tp,fp,ground,iso] [--sheet] [--ppu N] [--roots PATH...] [--game PATH] [--seraph FILE] [--frame N]"
     );
     RejectUnknownFlags(
       "item-views",
       flags,
-      ["--out", "--views", "--ppu"],
+      ["--out", "--views", "--ppu", "--seraph", "--frame"],
       ["--roots"],
       ["--sheet"]
     );
@@ -877,6 +877,11 @@ internal static class Program {
     );
     List<string> extraRoots = OptAllOf(flags, "--roots");
     string? game = OptOf(flags, "--game");
+    string? seraphFile = OptOf(flags, "--seraph");
+    int frame = int.Parse(
+      OptOf(flags, "--frame") ?? "0",
+      CultureInfo.InvariantCulture
+    );
 
     List<string> dumps = Directory.Exists(path)
       ?
@@ -896,7 +901,15 @@ internal static class Program {
     BlockIndex index = BlockIndex.Build(roots, game);
     var manifests = new List<JObject>();
     foreach (string dump in dumps) {
-      JObject manifest = ItemViews.WriteDump(dump, index, outDir, ppu, views);
+      JObject manifest = ItemViews.WriteDump(
+        dump,
+        index,
+        outDir,
+        ppu,
+        views,
+        seraphFile,
+        frame
+      );
       manifests.Add(manifest);
       foreach (JToken written in (JArray)manifest["files"]!)
         stdout.WriteLine((string)written!);
