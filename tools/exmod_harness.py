@@ -59,8 +59,14 @@ def touch(path, text=""):
 def exmod_env(local, **env):
     """The environment for a pwsh that runs exmod_script: this process's, with EXTOOLS_ROOT set to
     ROOT and LOCALAPPDATA to `local`, then `env` over both. `local` is a folder under the test's
-    temporary directory, so on Windows the store (%LOCALAPPDATA%\\exmod) is never the user's."""
-    return {**os.environ, "EXTOOLS_ROOT": ROOT, "LOCALAPPDATA": local, **env}
+    temporary directory, so on Windows the store (%LOCALAPPDATA%\\exmod) is never the user's. Unless
+    the caller passes them, EXMOD_MEMORY_DIR is `local`/memory and EXMOD_MEMINFO a meminfo file in `local`
+    holding 64 GiB available, so no test touches the machine's memory budget or its MemAvailable."""
+    meminfo = os.path.join(local, "meminfo")
+    if "EXMOD_MEMINFO" not in env:
+        touch(meminfo, "MemTotal:       67108864 kB\nMemAvailable:   67108864 kB\n")
+    return {**os.environ, "EXTOOLS_ROOT": ROOT, "LOCALAPPDATA": local,
+            "EXMOD_MEMORY_DIR": os.path.join(local, "memory"), "EXMOD_MEMINFO": meminfo, **env}
 
 
 def exmod_script(body, stub_gpu=True):

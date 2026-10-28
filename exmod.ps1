@@ -1048,6 +1048,153 @@ function Invoke-WithBuildLock([scriptblock]$Body) {
   }
 }
 
+# The machine's memory budget in whole GiB (at least 1): $env:EXMOD_MEMORY_GB when set, else MemTotal from
+# /proc/meminfo ($env:EXMOD_MEMINFO names another file, for tests) rounded down to whole GiB, less 10. Read at every
+# call. $null where the meminfo file is missing (Windows) or has no MemTotal line: no budget applies there.
+function Get-ExmodMemoryBudget {
+  $meminfo = if ($env:EXMOD_MEMINFO) { $env:EXMOD_MEMINFO } else { '/proc/meminfo' }
+  if (-not (Test-Path -LiteralPath $meminfo -PathType Leaf)) { return $null }
+  if ($env:EXMOD_MEMORY_GB) { return [Math]::Max(1, [int]$env:EXMOD_MEMORY_GB) }
+  $m = [regex]::Match([System.IO.File]::ReadAllText($meminfo), '(?m)^MemTotal:\s+(\d+) kB')
+  if (-not $m.Success) { return $null }
+  return [Math]::Max(1, [int][Math]::Floor([double]$m.Groups[1].Value / 1048576) - 10)
+}
+
+# Takes a share of $Gb GiB of the machine's memory budget, waiting until it is free. The budget is Get-ExmodMemoryBudget
+# files <i>.lock in $env:EXMOD_MEMORY_DIR (default ~/.cache/exmod/memory), one per GiB; a share is that many of them held
+# open with FileShare.None (flock(2) on Linux), so two shares in one process exclude each other as two processes do.
+# A waiter takes turn.lock, keeps the first $Gb free files it finds and re-probes each second until it holds $Gb; it is
+# granted when MemAvailable (meminfo) is at least $Gb GiB or when every file was free. A share above the budget is cut to
+# the budget with a line saying so. With $env:EXMOD_MEMORY_PRIORITY=1 the waiter holds one of priority-0.lock ..
+# priority-15.lock while it waits (retrying each second when all 16 are held), and a waiter without priority that holds
+# the turn gives it up while one is held.
+# Prints `memory: <Label> took <k> GiB of <B> at HH:mm:ss after <w> s`, once `memory: <Label> waits for <k> GiB at
+# HH:mm:ss: <f> of <B> GiB free, MemAvailable <a> GiB` when the first probe does not grant, and appends one tab-separated
+# row to waits.tsv in the memory dir: grant epoch s, wait s, GiB taken, budget GiB, free GiB at the first probe,
+# MemAvailable GiB at the grant, priority 0 or 1, label, working directory. A row that cannot be written is ignored.
+# No other script function is called, so a -Parallel runspace takes this function as text.
+# $Gb: GiB to take, at least 1. $Label: names the holder in the lines and the log row.
+# Returns {Gb; Budget; Label; Streams; Taken; Waited} (Waited in s), or $null where there is no meminfo file. Throws
+# when $env:EXMOD_BUILD_LOCK_HELD is set (a holder of the build lock must never wait for memory) and when a slot file
+# cannot be opened; every stream held is disposed first. The OS drops the share when the process dies.
+function Lock-ExmodMemory([int]$Gb, [string]$Label) {
+  if ($env:EXMOD_BUILD_LOCK_HELD) { throw "memory share asked for by $Label while the build lock is held" }
+  $meminfo = if ($env:EXMOD_MEMINFO) { $env:EXMOD_MEMINFO } else { '/proc/meminfo' }
+  if (-not (Test-Path -LiteralPath $meminfo -PathType Leaf)) { return $null }
+  $budget = $null
+  if ($env:EXMOD_MEMORY_GB) { $budget = [Math]::Max(1, [int]$env:EXMOD_MEMORY_GB) }
+  else {
+    $m = [regex]::Match([System.IO.File]::ReadAllText($meminfo), '(?m)^MemTotal:\s+(\d+) kB')
+    if (-not $m.Success) { return $null }
+    $budget = [Math]::Max(1, [int][Math]::Floor([double]$m.Groups[1].Value / 1048576) - 10)
+  }
+  $take = [Math]::Max(1, $Gb)
+  if ($take -gt $budget) {
+    Write-Host "memory: $Label asks $take GiB, over the $budget GiB budget; taking $budget"
+    $take = $budget
+  }
+  $dir = if ($env:EXMOD_MEMORY_DIR) { $env:EXMOD_MEMORY_DIR } else { Join-Path ([Environment]::GetFolderPath('UserProfile')) '.cache/exmod/memory' }
+  New-Item -ItemType Directory -Force -Path $dir | Out-Null
+  $priority = $env:EXMOD_MEMORY_PRIORITY -eq '1'
+  $open = {
+    param($path)
+    try { [System.IO.File]::Open($path, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None) }
+    catch [System.IO.IOException] { $null }
+  }
+  $available = {
+    $a = [regex]::Match([System.IO.File]::ReadAllText($meminfo), '(?m)^MemAvailable:\s+(\d+) kB')
+    if ($a.Success) { [double]$a.Groups[1].Value / 1048576 } else { [double]::MaxValue }
+  }
+  $asked = Get-Date
+  $held = [System.Collections.Generic.List[object]]::new()
+  $heldIndex = [System.Collections.Generic.HashSet[int]]::new()
+  $turn = $null
+  $priorityFile = $null
+  $granted = $false
+  $probed = $false
+  $announced = $false
+  $freeFirst = 0
+  $free = 0
+  $avail = 0.0
+  try {
+    while ($true) {
+      if ($priority -and -not $priorityFile) {
+        for ($i = 0; $i -lt 16 -and -not $priorityFile; $i++) { $priorityFile = & $open (Join-Path $dir "priority-$i.lock") }
+        if (-not $priorityFile) { Start-Sleep -Seconds 1; continue }
+      }
+      if (-not $turn) {
+        $turn = & $open (Join-Path $dir 'turn.lock')
+        if (-not $turn) { Start-Sleep -Seconds 1; continue }
+      }
+      if (-not $priority) {
+        $yield = $false
+        for ($i = 0; $i -lt 16 -and -not $yield; $i++) {
+          $p = & $open (Join-Path $dir "priority-$i.lock")
+          if ($p) { $p.Dispose() } else { $yield = $true }
+        }
+        if ($yield) {
+          foreach ($s in $held) { $s.Dispose() }
+          $held.Clear()
+          $heldIndex.Clear()
+          $turn.Dispose()
+          $turn = $null
+          Start-Sleep -Seconds 1
+          continue
+        }
+      }
+      $free = $held.Count
+      for ($i = 0; $i -lt $budget; $i++) {
+        if ($heldIndex.Contains($i)) { continue }
+        $s = & $open (Join-Path $dir "$i.lock")
+        if (-not $s) { continue }
+        $free++
+        if ($held.Count -lt $take) { $held.Add($s); [void]$heldIndex.Add($i) } else { $s.Dispose() }
+      }
+      $avail = & $available
+      if (-not $probed) { $probed = $true; $freeFirst = $free }
+      if ($held.Count -ge $take -and ($avail -ge $take -or $free -eq $budget)) { $granted = $true; break }
+      if (-not $announced) {
+        $announced = $true
+        Write-Host ("memory: {0} waits for {1} GiB at {2:HH:mm:ss}: {3} of {4} GiB free, MemAvailable {5:0.0} GiB" -f $Label, $take, (Get-Date), $free, $budget, $avail)
+      }
+      Start-Sleep -Seconds 1
+    }
+  }
+  finally {
+    if (-not $granted) { foreach ($s in $held) { $s.Dispose() } }
+    if ($turn) { $turn.Dispose() }
+    if ($priorityFile) { $priorityFile.Dispose() }
+  }
+  $taken = Get-Date
+  $waited = ($taken - $asked).TotalSeconds
+  Write-Host ("memory: {0} took {1} GiB of {2} at {3:HH:mm:ss} after {4:0} s" -f $Label, $take, $budget, $taken, $waited)
+  $inv = [System.Globalization.CultureInfo]::InvariantCulture
+  $row = @(
+    ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0).ToString('0.000', $inv), $waited.ToString('0.000', $inv),
+    $take, $budget, $freeFirst, ([Math]::Min($avail, 1e9)).ToString('0.0', $inv), $(if ($priority) { 1 } else { 0 }), $Label, (Get-Location).Path
+  ) -join "`t"
+  try {
+    $log = [System.IO.File]::Open((Join-Path $dir 'waits.tsv'), [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
+    try {
+      $bytes = [System.Text.Encoding]::UTF8.GetBytes("$row`n")
+      $log.Write($bytes, 0, $bytes.Length)
+    }
+    finally { $log.Dispose() }
+  }
+  catch { }
+  return [pscustomobject]@{ Gb = $take; Budget = $budget; Label = $Label; Streams = $held; Taken = $taken; Waited = $waited }
+}
+
+# Releases the share Lock-ExmodMemory took and prints `memory: <Label> released <k> GiB at HH:mm:ss, held <h> s`.
+# $null, and a share already released, are accepted and print nothing. Call it in the unit's `finally`.
+function Unlock-ExmodMemory($Reservation) {
+  if (-not $Reservation -or $Reservation.Streams.Count -eq 0) { return }
+  foreach ($stream in $Reservation.Streams) { $stream.Dispose() }
+  $Reservation.Streams.Clear()
+  $now = Get-Date
+  Write-Host ("memory: {0} released {1} GiB at {2:HH:mm:ss}, held {3:0} s" -f $Reservation.Label, $Reservation.Gb, $now, ($now - $Reservation.Taken).TotalSeconds)
+}
+
 # Commands that take the build lock themselves around the parts that build, or never need it.
 $NoBuildLockCommands = @('check', 'test', 'smoke', 'scenario', 'render', 'server', 'client', 'debug-adapter')
 
