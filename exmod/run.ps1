@@ -1205,7 +1205,7 @@ function Invoke-Scenario([string[]]$Argv) {
   $shards = [System.Collections.Generic.List[object]]::new()
   $reservation = $null
   $memory = $null
-  $serverGb = Get-ExmodServerMemoryGb
+  $serverGb = if ($opts.Keep) { 0 } else { Get-ExmodServerMemoryGb }
   try {
     Invoke-WithBuildLock {
       $exlibDir = Build-ScenarioExlibMod

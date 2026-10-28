@@ -445,6 +445,11 @@ class StageAndBootTests(LockCase):
         held, out = self.memory_held("try { Invoke-Scenario @('-Keep') } catch { }; exit 0", {"serverMemoryGb": 3})
         self.assertEqual(0, held, out)
 
+    def test_scenario_keep_ignores_a_bad_server_memory_figure(self):
+        # Fails if Invoke-Scenario reads serverMemoryGb under -Keep (mutant: `if ($opts.Keep) { 0 } else { ... }` back to the plain read).
+        held, out = self.memory_held("try { Invoke-Scenario @('-Keep') } catch { }; exit 0", {"serverMemoryGb": 0.5})
+        self.assertEqual(0, held, out)
+
     def test_smoke_releases_its_share_when_it_ends(self):
         # Fails if Invoke-Smoke has no Unlock-ExmodMemory in its finally (the Lock of the whole budget never returns).
         body = ("try { Invoke-Smoke @() } catch { }; $r = Lock-ExmodMemory -Gb (Get-ExmodMemoryBudget) -Label all; "
@@ -465,6 +470,42 @@ class StageAndBootTests(LockCase):
         code, out = self.run_body(body, lock=False)
         self.assertEqual(0, code, out)
         self.assertRegex(out, r"server peak RSS \d+ MB \(estimate 7 GiB\)")
+
+
+OUTER = r"""
+function Resolve-DotnetHost { Add-Content $env:TEST_STAMPS resolved; 'stub-dotnet' }
+function Get-ExmodTestProjects { Add-Content $env:TEST_STAMPS projects; [ordered]@{} }
+try { Invoke-Test @('all') } catch { Write-Host "threw: $_" }
+"""
+
+
+@unittest.skipUnless(PWSH, "pwsh not found")
+@unittest.skipIf(sys.platform == "win32", "the lock is flock(2)")
+class OuterFlockTests(LockCase):
+    def run_under(self, outer, **kw):
+        assert PWSH
+        cmd = [PWSH, "-NoProfile", "-NonInteractive", "-Command", exmod_script(PROBE + OUTER)]
+        if outer:
+            cmd = ["flock", "-o", self.lock] + cmd
+        proc = subprocess.run(cmd, env=self.env(**kw), capture_output=True, text=True, timeout=60)
+        return proc.stdout + proc.stderr
+
+    def test_a_test_run_under_a_parent_that_holds_the_build_lock_is_refused(self):
+        # Fails if Invoke-Test does not look for a parent holder (mutant: the Get-FlockAncestorHolder check removed).
+        out = self.run_under(True)
+        self.assertIn("threw: exmod test takes the build lock itself", out)
+        self.assertFalse(os.path.exists(self.stamps), out)
+
+    def test_a_test_run_with_no_outer_flock_is_not_refused(self):
+        # Fails if the refusal fires on a lock nobody holds (mutant: the check made unconditional).
+        out = self.run_under(False)
+        self.assertNotIn("takes the build lock itself", out)
+        self.assertIn("resolved", self.stamp_lines(), out)
+
+    def test_a_test_run_with_no_build_lock_set_is_not_refused(self):
+        # Fails if an unset EXMOD_BUILD_LOCK is refused (mutant: the `if ($env:EXMOD_BUILD_LOCK)` guard removed).
+        out = self.run_under(False, lock=False)
+        self.assertNotIn("takes the build lock itself", out)
 
 
 if __name__ == "__main__":

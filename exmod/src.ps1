@@ -412,6 +412,13 @@ function Invoke-Test([string[]]$Argv) {
   $filter = Get-Opt $Argv '-Filter' ''
   $census = Get-ExmodCensusPath
 
+  # The units wait for memory shares while the caller's flock holds the build lock, and a -Coverage run that holds
+  # the whole budget waits for that lock; exmod takes it itself.
+  if ($env:EXMOD_BUILD_LOCK) {
+    $outer = Get-FlockAncestorHolder $env:EXMOD_BUILD_LOCK
+    if ($outer) { throw "exmod test takes the build lock itself: $env:EXMOD_BUILD_LOCK is held by parent process $outer; run it without the outer flock on that lock." }
+  }
+
   # Dependency order and project paths come from Get-ExmodTestProjects, shared with
   # `build -Tests` so the two commands can't drift on what "every test project" means.
   $projects = Get-ExmodTestProjects
@@ -598,7 +605,7 @@ function Invoke-Test([string[]]$Argv) {
           $gateKey = { param($seq) "$wave/$seq" }
           if (-not $item.BuildOk) {
             $started[(& $gateKey $item.Seq)] = $true
-            return [pscustomobject]@{ Name = "$($item.Version)/$($item.Project)"; Ok = $false; Line = $item.BuildLine; Total = $null; Part = $item.Part; Log = $item.Log }
+            return [pscustomobject]@{ Name = "$($item.Version)/$($item.Project)"; Ok = $false; Line = $item.BuildLine; Total = $null; Part = $item.Part }
           }
           $testArgs = @('test', $item.Proj, '-f', $item.Tfm, '--no-build', '--nologo', '--blame', '--results-directory', $item.Blame)
           $runFilter = if ($item.PartFilter) { $item.PartFilter } else { $filter }
