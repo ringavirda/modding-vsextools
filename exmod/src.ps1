@@ -279,11 +279,12 @@ function Invoke-WithTestPhase([scriptblock]$Body) {
 }
 
 # The partitions the manifest declares for the test assembly $Project, or $null. The manifest's
-# `partitions` is keyed by assembly name; an entry is { memoryGb, parts: [{ name, filter }, ..., { name }] }.
+# `partitions` is keyed by assembly name; an entry is { parts: [{ name, filter, heapGb? }, ..., { name }] }.
 # Every part but the last carries a `dotnet test` filter made only of `|`-joined terms such as
 # `FullyQualifiedName~.Walk.`; the last carries none and runs the complement of the others, so a class
-# added later always lands in a partition. Returns { MemoryGb; Parts = @({ Name; Filter }) } with the
-# last part's Filter built by Get-ExmodComplementFilter; throws on a malformed entry.
+# added later always lands in a partition. Returns { Parts = @({ Name; Filter; HeapGb }) } with the last
+# part's Filter built by Get-ExmodComplementFilter and HeapGb the part's own `heapGb` in GiB or $null; throws on a
+# malformed entry, a `heapGb` that is not a whole number above 0 included.
 function Get-ExmodPartitions([string]$Project) {
   $m = Get-ExmodManifest
   if (-not $m.PSObject.Properties['partitions'] -or -not $m.partitions.PSObject.Properties[$Project]) { return $null }
@@ -300,11 +301,66 @@ function Get-ExmodPartitions([string]$Project) {
     if (-not $last -and -not $hasFilter) { throw "exmod.json: partitions.$Project.parts[$i] ($($p.name)) has no filter." }
     if (-not $last) { $declared += $p.filter }
   }
+  $heap = for ($i = 0; $i -lt $parts.Count; $i++) {
+    $p = $parts[$i]
+    if ($p.PSObject.Properties['heapGb']) {
+      if (-not (Test-ExmodWholeGb $p.heapGb)) { throw "exmod.json: partitions.$Project.parts[$i].heapGb must be a whole number of GiB above 0" }
+      [int]$p.heapGb
+    }
+    else { $null }
+  }
+  $heap = @($heap)
   $out = @()
-  for ($i = 0; $i -lt $parts.Count - 1; $i++) { $out += [pscustomobject]@{ Name = $parts[$i].name; Filter = $parts[$i].filter } }
-  $out += [pscustomobject]@{ Name = $parts[-1].name; Filter = Get-ExmodComplementFilter $declared }
-  $memory = if ($entry.PSObject.Properties['memoryGb'] -and $entry.memoryGb) { [double]$entry.memoryGb } else { 0 }
-  return [pscustomobject]@{ MemoryGb = $memory; Parts = $out }
+  for ($i = 0; $i -lt $parts.Count - 1; $i++) { $out += [pscustomobject]@{ Name = $parts[$i].name; Filter = $parts[$i].filter; HeapGb = $heap[$i] } }
+  $out += [pscustomobject]@{ Name = $parts[-1].name; Filter = Get-ExmodComplementFilter $declared; HeapGb = $heap[-1] }
+  return [pscustomobject]@{ Parts = $out }
+}
+
+# True when $Value is a JSON integer of at least 1.
+function Test-ExmodWholeGb($Value) {
+  return ($Value -is [int] -or $Value -is [long]) -and $Value -ge 1
+}
+
+# The manifest's `testMemory` entry for the test assembly $Project: { HeapGb; FilterHeapGb } in GiB, FilterHeapGb $null
+# when the entry has none, or $null when the manifest has no entry for the assembly. `heapGb` is the GC heap limit the
+# assembly's test host runs under unfiltered; `filterHeapGb` the lower one it runs under with -Filter. Throws
+# `exmod.json: testMemory.<assembly>.heapGb must be a whole number of GiB above 0` (the same for filterHeapGb) when a value is
+# missing, fractional, below 1 or not a number.
+function Get-ExmodTestMemory([string]$Project) {
+  $m = Get-ExmodManifest
+  if (-not $m.PSObject.Properties['testMemory'] -or -not $m.testMemory.PSObject.Properties[$Project]) { return $null }
+  $entry = $m.testMemory.$Project
+  $heap = if ($entry.PSObject.Properties['heapGb']) { $entry.heapGb } else { $null }
+  if (-not (Test-ExmodWholeGb $heap)) { throw "exmod.json: testMemory.$Project.heapGb must be a whole number of GiB above 0" }
+  $filterHeap = $null
+  if ($entry.PSObject.Properties['filterHeapGb']) {
+    if (-not (Test-ExmodWholeGb $entry.filterHeapGb)) { throw "exmod.json: testMemory.$Project.filterHeapGb must be a whole number of GiB above 0" }
+    $filterHeap = [int]$entry.filterHeapGb
+  }
+  return [pscustomobject]@{ HeapGb = [int]$heap; FilterHeapGb = $filterHeap }
+}
+
+# GiB added to a test host's GC heap limit to make its share of the memory budget: the host's memory outside the
+# heap and its `dotnet test`, vstest.console and blame collector processes.
+$ExmodHostOverheadGb = 1
+
+# GiB a test unit with no `testMemory` figure takes, run under no limit.
+$ExmodUnlimitedTestShareGb = 4
+
+# The memory a test unit takes: { ShareGb; LimitGb; FilterLimitGb; HeavyGb }. ShareGb is the whole GiB taken from the
+# budget; LimitGb the GC heap limit the host runs under, or $null for none; FilterLimitGb and HeavyGb are set only when
+# the run is under the filter limit, as that limit and as the limit EXMOD_HEAVY=1 would run it under.
+# $Project: the test assembly. $PartHeapGb: the partition's own `heapGb`, or $null. $Filtered: the run has -Filter.
+function Get-ExmodTestShare([string]$Project, $PartHeapGb, [bool]$Filtered) {
+  $mem = Get-ExmodTestMemory $Project
+  $heap = if ($null -ne $PartHeapGb) { [int]$PartHeapGb } elseif ($mem) { $mem.HeapGb } else { $null }
+  if ($Filtered -and $mem -and $null -ne $mem.FilterHeapGb -and $env:EXMOD_HEAVY -ne '1') {
+    return [pscustomobject]@{ ShareGb = $mem.FilterHeapGb + $ExmodHostOverheadGb; LimitGb = $mem.FilterHeapGb; FilterLimitGb = $mem.FilterHeapGb; HeavyGb = $heap }
+  }
+  if ($null -eq $heap) {
+    return [pscustomobject]@{ ShareGb = $ExmodUnlimitedTestShareGb; LimitGb = $null; FilterLimitGb = $null; HeavyGb = $null }
+  }
+  return [pscustomobject]@{ ShareGb = $heap + $ExmodHostOverheadGb; LimitGb = $heap; FilterLimitGb = $null; HeavyGb = $null }
 }
 
 # The `dotnet test` filter that selects what none of $Filters selects. Each filter is `|`-joined terms
@@ -320,16 +376,6 @@ function Get-ExmodComplementFilter([string[]]$Filters) {
     }
   }
   return ($terms -join '&')
-}
-
-# How many test hosts of $MemoryGb each fit in the memory the machine has available, at least 1;
-# $null when the amount is unknown (no /proc/meminfo) or $MemoryGb is 0, meaning no limit.
-function Get-ExmodPartitionSlots([double]$MemoryGb) {
-  if ($MemoryGb -le 0 -or -not (Test-Path /proc/meminfo)) { return $null }
-  $line = Get-Content /proc/meminfo | Where-Object { $_ -match '^MemAvailable:\s+(\d+) kB' } | Select-Object -First 1
-  if (-not $line -or $line -notmatch '(\d+) kB') { return $null }
-  $availableGb = [double]$Matches[1] / 1MB
-  return [Math]::Max(1, [int][Math]::Floor($availableGb / $MemoryGb))
 }
 
 # One result per assembly from the results of its partition runs (those carrying a Part): Ok when
@@ -378,65 +424,69 @@ function Invoke-Test([string[]]$Argv) {
   # coverage_gate.py. The gate floors track the current build, so this always uses the latest version.
   # -Filter does not apply here; the solution run is always whole.
   if ($coverage) {
-    Invoke-WithBuildLock {
-      $toolsDir = Join-Path (Get-ExmodDotnetDir) 'tools'
-      & $dotnet tool install dotnet-coverage --tool-path $toolsDir 2>$null | Out-Null
-      $dc = Join-Path $toolsDir "dotnet-coverage$ExeSuffix"
-      $cov = Join-Path $RepoRoot 'coverage.xml'
-      Write-Host "Collecting coverage over the latest suite..."
-      & $dc collect -f cobertura -o $cov "$dotnet test `"$(Get-ExmodSolution)`" -c Debug --nologo" 2>&1 |
-        Tee-Object -Variable collected | Out-Host
-      $collectOk = ($LASTEXITCODE -eq 0)
+    $reservation = Lock-ExmodMemory -Gb (Get-ExmodMemoryBudget) -Label 'coverage'
+    try {
+      Invoke-WithBuildLock {
+        $toolsDir = Join-Path (Get-ExmodDotnetDir) 'tools'
+        & $dotnet tool install dotnet-coverage --tool-path $toolsDir 2>$null | Out-Null
+        $dc = Join-Path $toolsDir "dotnet-coverage$ExeSuffix"
+        $cov = Join-Path $RepoRoot 'coverage.xml'
+        Write-Host "Collecting coverage over the latest suite..."
+        & $dc collect -f cobertura -o $cov "$dotnet test `"$(Get-ExmodSolution)`" -c Debug --nologo" 2>&1 |
+          Tee-Object -Variable collected | Out-Host
+        $collectOk = ($LASTEXITCODE -eq 0)
 
-      # One VSTest summary per assembly: "Passed!  - Failed: 0, Passed: 12, Skipped: 0, Total: 12,
-      # Duration: 3 s - ExpandedLib.Tests.dll (net10.0)". A latest-series test project with no such
-      # line discovered no tests.
-      $series = $CurrentGameVersion
-      $counted = @{}
-      foreach ($line in $collected) {
-        if ("$line" -match '(Passed|Failed)!.*Total:\s*(\d+).*\s-\s+(\S+)\.dll\b') {
-          $counted["$series/$($Matches[3])"] = [pscustomobject]@{
-            Name = "$series/$($Matches[3])"; Ok = ($Matches[1] -eq 'Passed' -and [int]$Matches[2] -gt 0); Total = [int]$Matches[2]
+        # One VSTest summary per assembly: "Passed!  - Failed: 0, Passed: 12, Skipped: 0, Total: 12,
+        # Duration: 3 s - ExpandedLib.Tests.dll (net10.0)". A latest-series test project with no such
+        # line discovered no tests.
+        $series = $CurrentGameVersion
+        $counted = @{}
+        foreach ($line in $collected) {
+          if ("$line" -match '(Passed|Failed)!.*Total:\s*(\d+).*\s-\s+(\S+)\.dll\b') {
+            $counted["$series/$($Matches[3])"] = [pscustomobject]@{
+              Name = "$series/$($Matches[3])"; Ok = ($Matches[1] -eq 'Passed' -and [int]$Matches[2] -gt 0); Total = [int]$Matches[2]
+            }
           }
         }
-      }
-      foreach ($p in $projects.Values | Where-Object { $series -in $_.Series }) {
-        $name = "$series/$($p.Project)"
-        if (-not $counted.Contains($name)) { $counted[$name] = [pscustomobject]@{ Name = $name; Ok = $false; Total = $null } }
-      }
-      $results = @($counted.Values | Sort-Object Name)
-      Write-Host ""
-      foreach ($r in $results | Where-Object { $null -eq $_.Total }) {
-        Write-Host ("FAIL  {0,-40} NO TEST SUMMARY - the assembly discovered no tests" -f $r.Name)
-      }
-      foreach ($r in $results | Where-Object { $_.Total -eq 0 }) {
-        Write-Host ("FAIL  {0,-40} zero tests discovered" -f $r.Name)
-      }
-      $drops = Compare-ExmodCensus $results $census $acceptDrop
-      if (-not $collectOk) { throw "Coverage collection failed." }
-      Assert-ExmodTestRun $results $drops $census
-      Write-ExmodCensus $results $census
+        foreach ($p in $projects.Values | Where-Object { $series -in $_.Series }) {
+          $name = "$series/$($p.Project)"
+          if (-not $counted.Contains($name)) { $counted[$name] = [pscustomobject]@{ Name = $name; Ok = $false; Total = $null } }
+        }
+        $results = @($counted.Values | Sort-Object Name)
+        Write-Host ""
+        foreach ($r in $results | Where-Object { $null -eq $_.Total }) {
+          Write-Host ("FAIL  {0,-40} NO TEST SUMMARY - the assembly discovered no tests" -f $r.Name)
+        }
+        foreach ($r in $results | Where-Object { $_.Total -eq 0 }) {
+          Write-Host ("FAIL  {0,-40} zero tests discovered" -f $r.Name)
+        }
+        $drops = Compare-ExmodCensus $results $census $acceptDrop
+        if (-not $collectOk) { throw "Coverage collection failed." }
+        Assert-ExmodTestRun $results $drops $census
+        Write-ExmodCensus $results $census
 
-      $py = (Get-Command python -ErrorAction SilentlyContinue) ?? (Get-Command python3 -ErrorAction SilentlyContinue)
-      if (-not $py) { throw "Python is required for the coverage gate but was not found (coverage.xml was still written)." }
-      $floors = Get-ExmodCoverageFloors
-      if (-not $floors) {
-        Write-Host "No coverage floors file (manifest coverageFloors, tests/ or infra/test/) - coverage collected, no gate."
-        return
+        $py = (Get-Command python -ErrorAction SilentlyContinue) ?? (Get-Command python3 -ErrorAction SilentlyContinue)
+        if (-not $py) { throw "Python is required for the coverage gate but was not found (coverage.xml was still written)." }
+        $floors = Get-ExmodCoverageFloors
+        if (-not $floors) {
+          Write-Host "No coverage floors file (manifest coverageFloors, tests/ or infra/test/) - coverage collected, no gate."
+          return
+        }
+        & $py.Source (Join-Path $ToolsRoot 'tools/coverage_gate.py') $cov $floors
+        $floorsOk = ($LASTEXITCODE -eq 0)
+        # Every client-guarded block needs a covered line or an entry in the allowlist beside the floors.
+        Write-Host ""
+        Push-Location $RepoRoot
+        try {
+          & $py.Source (Join-Path $ToolsRoot 'tools/side_gate_coverage.py') $cov $floors (Join-Path (Split-Path $floors -Parent) 'side-gate-allowlist.json')
+          $sideOk = ($LASTEXITCODE -eq 0)
+        } finally { Pop-Location }
+        if (-not $floorsOk) { throw "Coverage gate failed." }
+        if (-not $sideOk) { throw "Side gate failed." }
+        Write-Host "Coverage gate passed."
       }
-      & $py.Source (Join-Path $ToolsRoot 'tools/coverage_gate.py') $cov $floors
-      $floorsOk = ($LASTEXITCODE -eq 0)
-      # Every client-guarded block needs a covered line or an entry in the allowlist beside the floors.
-      Write-Host ""
-      Push-Location $RepoRoot
-      try {
-        & $py.Source (Join-Path $ToolsRoot 'tools/side_gate_coverage.py') $cov $floors (Join-Path (Split-Path $floors -Parent) 'side-gate-allowlist.json')
-        $sideOk = ($LASTEXITCODE -eq 0)
-      } finally { Pop-Location }
-      if (-not $floorsOk) { throw "Coverage gate failed." }
-      if (-not $sideOk) { throw "Side gate failed." }
-      Write-Host "Coverage gate passed."
     }
+    finally { Unlock-ExmodMemory $reservation }
     return
   }
 
@@ -485,16 +535,20 @@ function Invoke-Test([string[]]$Argv) {
   }
 
   # Without -Filter an assembly with manifest partitions runs as one process per partition; with it, whole.
-  $slots = $null
   $units = foreach ($item in $built) {
     $partitions = if ($filter) { $null } else { Get-ExmodPartitions $item.Project }
-    if (-not $partitions) { $item; continue }
-    $fit = Get-ExmodPartitionSlots $partitions.MemoryGb
-    if ($null -ne $fit -and ($null -eq $slots -or $fit -lt $slots)) { $slots = $fit }
+    if (-not $partitions) {
+      $share = Get-ExmodTestShare $item.Project $null ([bool]$filter)
+      $item | Select-Object * |
+        Add-Member -NotePropertyName Share -NotePropertyValue $share -PassThru -Force
+      continue
+    }
     foreach ($part in $partitions.Parts) {
+      $share = Get-ExmodTestShare $item.Project $part.HeapGb $false
       $item | Select-Object * |
         Add-Member -NotePropertyName Part -NotePropertyValue $part.Name -PassThru -Force |
         Add-Member -NotePropertyName PartFilter -NotePropertyValue $part.Filter -PassThru -Force |
+        Add-Member -NotePropertyName Share -NotePropertyValue $share -PassThru -Force |
         Add-Member -NotePropertyName Log -NotePropertyValue ($item.Log -replace '\.log$', "-$($part.Name).log") -PassThru -Force |
         Add-Member -NotePropertyName Blame -NotePropertyValue "$($item.Blame)-$($part.Name)" -PassThru -Force
     }
@@ -502,13 +556,21 @@ function Invoke-Test([string[]]$Argv) {
   $units = @($units)
   if ($throttle -le 0) {
     $throttle = $units.Count
-    if ($null -ne $slots -and $slots -lt $throttle -and @($units | Where-Object { $_.Part }).Count -gt 0) {
-      $throttle = $slots
-      Write-Host "Partitions: $($units.Count) test process(es), $throttle at a time to fit the available memory."
+    $budget = Get-ExmodMemoryBudget
+    $partUnits = @($units | Where-Object { $_.Part })
+    if ($null -ne $budget -and $partUnits.Count -gt 0) {
+      $shares = ($partUnits | ForEach-Object { "$($_.Part) $($_.Share.ShareGb)" }) -join ', '
+      Write-Host "Partitions: $($units.Count) test process(es), each started when the $budget GiB memory budget holds its share ($shares)."
     }
   }
 
   $waves = @($units | ForEach-Object { Get-ExmodTestWave $_.Version } | Sort-Object -Unique)
+  foreach ($wave in $waves) {
+    $seq = 0
+    foreach ($u in @($units | Where-Object { (Get-ExmodTestWave $_.Version) -eq $wave })) {
+      $u | Add-Member -NotePropertyName Seq -NotePropertyValue ($seq++) -Force
+    }
+  }
   if ($waves.Count -gt 1) {
     Write-Host "EXLIB_WRITE_GOLDENS is set: the $CurrentGameVersion lanes run first, the older series after them."
   }
@@ -520,20 +582,48 @@ function Invoke-Test([string[]]$Argv) {
       Write-Host "Running tests in parallel..."
       # A -Parallel runspace sees none of this script's functions; the parser goes in as its text.
       $failuresFn = ${function:Get-ExmodTestFailures}.ToString()
+      $lockFn = ${function:Lock-ExmodMemory}.ToString()
+      $unlockFn = ${function:Unlock-ExmodMemory}.ToString()
+      $started = [System.Collections.Concurrent.ConcurrentDictionary[string, bool]]::new()
       foreach ($wave in $waves) {
         $units | Where-Object { (Get-ExmodTestWave $_.Version) -eq $wave } | ForEach-Object -ThrottleLimit $throttle -Parallel {
           $dotnet = $using:dotnet
           $filter = $using:filter
           ${function:Get-ExmodTestFailures} = $using:failuresFn
+          ${function:Lock-ExmodMemory} = $using:lockFn
+          ${function:Unlock-ExmodMemory} = $using:unlockFn
+          $started = $using:started
           $item = $_
+          $wave = $using:wave
+          $gateKey = { param($seq) "$wave/$seq" }
           if (-not $item.BuildOk) {
+            $started[(& $gateKey $item.Seq)] = $true
             return [pscustomobject]@{ Name = "$($item.Version)/$($item.Project)"; Ok = $false; Line = $item.BuildLine; Total = $null; Part = $item.Part; Log = $item.Log }
           }
           $testArgs = @('test', $item.Proj, '-f', $item.Tfm, '--no-build', '--nologo', '--blame', '--results-directory', $item.Blame)
           $runFilter = if ($item.PartFilter) { $item.PartFilter } else { $filter }
           if ($runFilter) { $testArgs += @('--filter', $runFilter) }
           if ($item.Legacy) { $testArgs += '-p:Legacy=true' }
-          $out = & $dotnet @testArgs 2>&1
+          if ($null -ne $item.Share.LimitGb) { $testArgs += @('-e', ('DOTNET_GCHeapHardLimit=0x{0:X}' -f ([int64]$item.Share.LimitGb * 1GB))) }
+          # Units ask for their share in manifest order: this one waits until the unit before it has taken its
+          # share or is waiting for it.
+          if ($item.Seq -gt 0) {
+            $before = & $gateKey ($item.Seq - 1)
+            while (-not $started.ContainsKey($before)) { Start-Sleep -Milliseconds 50 }
+          }
+          $mine = & $gateKey $item.Seq
+          $reservation = $null
+          try {
+            $reservation = Lock-ExmodMemory -Gb $item.Share.ShareGb -Label "$($item.Version)/$($item.Project)$(if ($item.Part) { "/$($item.Part)" })" -OnWait { $started[$mine] = $true }
+            $started[$mine] = $true
+            $out = & $dotnet @testArgs 2>&1
+            $ranExit = $LASTEXITCODE
+          }
+          finally {
+            $started[$mine] = $true
+            Unlock-ExmodMemory $reservation
+          }
+          $LASTEXITCODE = $ranExit
           $out | Set-Content -LiteralPath $item.Log
           $ok = ($LASTEXITCODE -eq 0)
           $line = ($out | Select-String -Pattern 'Passed!|Failed!|error' | Select-Object -Last 1)
@@ -566,6 +656,10 @@ function Invoke-Test([string[]]$Argv) {
           elseif (-not $filter -and [int]$total.Groups[1].Value -eq 0) {
             $ok = $false
             $line = 'zero tests discovered'
+          }
+
+          if (-not $ok -and $null -ne $item.Share.FilterLimitGb -and ($out | Select-String -Pattern 'OutOfMemoryException' -Quiet)) {
+            $line = "$(($line | Out-String).Trim()) (ran under the $($item.Share.FilterLimitGb) GiB filter limit; EXMOD_HEAVY=1 runs it under $($item.Share.HeavyGb) GiB)"
           }
 
           $failures = @(Get-ExmodTestFailures $out)
@@ -643,9 +737,17 @@ an older series' golden write compares against the shared goldens the current se
 
 A test assembly the manifest lists under `partitions` runs, without -Filter, as one process per partition
 (see Get-ExmodPartitions): each partition but the last is a `|`-joined filter, the last runs everything
-they leave out. At most as many processes run at once as `memoryGb` each fits in the memory available
-(unless -Throttle is given); the counts, failures and logs are summed, so the census and the zero
-and drop rules see one assembly. A -Filter run is not partitioned.
+they leave out. The counts, failures and logs are summed, so the census, zero and drop rules see one
+assembly. A -Filter run is not partitioned.
+
+Every test host takes a share of the machine's memory budget (MemTotal less 10 GiB, $EXMOD_MEMORY_GB sets it) before it
+starts, waiting when the budget is held, and gives it back when it ends; the units ask in manifest order.
+The manifest's `testMemory` is { "<assembly>": { "heapGb": n, "filterHeapGb": m } } (whole GiB, at least 1; filterHeapGb
+optional): the host runs under a GC heap limit of heapGb (DOTNET_GCHeapHardLimit, passed as `dotnet test -e`) and its
+share is heapGb + 1 GiB. A partition may carry its own `heapGb`. A -Filter run of an assembly with filterHeapGb runs under
+that limit, and under heapGb with EXMOD_HEAVY=1; when it fails with an OutOfMemoryException its result line says so.
+An assembly with no entry takes 4 GiB and runs under no limit. -Coverage takes the whole budget and runs alone. The
+share lines are `memory: <label> took <k> GiB of <B> ...` and `... released ...`.
 
 Each run's full output is kept in .exmod/test-logs/<series>-<assembly>.log (<series>-<assembly>-<partition>.log
 for a partition), overwritten by the next run,

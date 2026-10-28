@@ -96,6 +96,51 @@ class CoverageRunTests(unittest.TestCase):
                          args, out)
 
 
+# Invoke-Test -Coverage with a dotnet-coverage that succeeds and prints nothing, so the run reaches the floors:
+# with none declared it returns early, with one it throws (no coverage.xml exists to ratchet).
+COVERAGE_FLOORS = r"""
+function Get-ExmodDotnetDir { $env:TEST_DOTNET }
+function Resolve-DotnetHost { 'stub-dotnet' }
+function stub-dotnet { }
+function Get-ExmodTestProjects { [ordered]@{} }
+function Get-ExmodSolution { 'demo.sln' }
+function Get-ExmodCoverageFloors { %s }
+try { Invoke-Test @('-Coverage', '-AcceptDrop') } catch { Write-Host "threw: $_" }
+"""
+
+
+@unittest.skipUnless(PWSH, "pwsh not found")
+@unittest.skipIf(sys.platform == "win32", "the dotnet-coverage stub is a shell script")
+class CoverageMemoryTests(unittest.TestCase):
+    def run_coverage(self, floors):
+        assert PWSH
+        with tempfile.TemporaryDirectory() as d:
+            repo = os.path.join(d, "repo")
+            touch(os.path.join(repo, "exmod.json"), "{}")
+            stub = os.path.join(d, "dotnet", "tools", "dotnet-coverage")
+            touch(stub, "#!/bin/sh\nexit 0\n")
+            os.chmod(stub, os.stat(stub).st_mode | stat.S_IEXEC)
+            return subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command",
+                                   exmod_script(COVERAGE_FLOORS % floors)],
+                                  env=exmod_env(os.path.join(d, "local"), TEST_REPO=repo,
+                                                TEST_DOTNET=os.path.join(d, "dotnet"), EXMOD_MEMORY_GB="7"),
+                                  capture_output=True, text=True).stdout
+
+    def test_the_coverage_run_takes_the_whole_budget_and_releases_it_on_the_early_return(self):
+        # Fails when the share asked for is less than the budget (Lock-ExmodMemory -Gb 1) or never released.
+        out = self.run_coverage("$null")
+        self.assertIn("No coverage floors file", out)
+        self.assertRegex(out, r"memory: coverage took 7 GiB of 7 at")
+        self.assertRegex(out, r"memory: coverage released 7 GiB at")
+
+    def test_the_coverage_run_releases_the_budget_when_the_run_throws(self):
+        # Fails when the release is not in a finally (placed after the Invoke-WithBuildLock call): the throw skips it.
+        out = self.run_coverage("'floors.json'")
+        self.assertIn("threw:", out)
+        self.assertRegex(out, r"memory: coverage took 7 GiB of 7 at")
+        self.assertRegex(out, r"memory: coverage released 7 GiB at")
+
+
 # Invoke-Test all -Filter x over one test project on every series, with a dotnet stub whose test run
 # appends "start <tfm>" and "end <tfm>" to $env:TEST_ORDER, the current series' run holding for 2 s
 # in between.
