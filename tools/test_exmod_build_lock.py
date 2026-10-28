@@ -507,6 +507,16 @@ class OuterFlockTests(LockCase):
         out = self.run_under(False, lock=False)
         self.assertNotIn("takes the build lock itself", out)
 
+    def test_a_memory_share_under_a_parent_that_holds_the_build_lock_is_refused(self):
+        # Fails if Lock-ExmodMemory does not look for a parent holder (mutant: the new check removed from Lock-ExmodMemory, Invoke-Test's refusal kept).
+        assert PWSH
+        body = "try { Lock-ExmodMemory 1 unit | Out-Null; Write-Host 'took' } catch { Write-Host \"threw: $_\" }"
+        cmd = ["flock", "-o", self.lock, PWSH, "-NoProfile", "-NonInteractive", "-Command", exmod_script(PROBE + body)]
+        proc = subprocess.run(cmd, env=self.env(), capture_output=True, text=True, timeout=60)
+        out = proc.stdout + proc.stderr
+        self.assertIn("threw: exmod takes the build lock itself", out)
+        self.assertNotIn("took", out)
+
 
 if __name__ == "__main__":
     unittest.main()

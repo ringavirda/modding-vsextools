@@ -589,6 +589,7 @@ function Invoke-Test([string[]]$Argv) {
       Write-Host "Running tests in parallel..."
       # A -Parallel runspace sees none of this script's functions; the parser goes in as its text.
       $failuresFn = ${function:Get-ExmodTestFailures}.ToString()
+      $holderFn = ${function:Get-FlockAncestorHolder}.ToString()
       $lockFn = ${function:Lock-ExmodMemory}.ToString()
       $unlockFn = ${function:Unlock-ExmodMemory}.ToString()
       $started = [System.Collections.Concurrent.ConcurrentDictionary[string, bool]]::new()
@@ -597,6 +598,7 @@ function Invoke-Test([string[]]$Argv) {
           $dotnet = $using:dotnet
           $filter = $using:filter
           ${function:Get-ExmodTestFailures} = $using:failuresFn
+          ${function:Get-FlockAncestorHolder} = $using:holderFn
           ${function:Lock-ExmodMemory} = $using:lockFn
           ${function:Unlock-ExmodMemory} = $using:unlockFn
           $started = $using:started

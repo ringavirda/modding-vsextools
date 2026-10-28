@@ -1074,14 +1074,18 @@ function Get-ExmodMemoryBudget {
 # HH:mm:ss: <f> of <B> GiB free, MemAvailable <a> GiB` when the first probe does not grant, and appends one tab-separated
 # row to waits.tsv in the memory dir: grant epoch s, wait s, GiB taken, budget GiB, free GiB at the first probe,
 # MemAvailable GiB at the grant, priority 0 or 1, label, working directory. A row that cannot be written is ignored.
-# No other script function is called, so a -Parallel runspace takes this function as text.
+# Only Get-FlockAncestorHolder is called, so a -Parallel runspace takes both functions as text.
 # $Gb: GiB to take, at least 1. $Label: names the holder in the lines and the log row. $OnWait: invoked once, with no
 # arguments, when the first waits line is printed.
 # Returns {Gb; Budget; Label; Streams; Taken; Waited} (Waited in s), or $null where there is no meminfo file. Throws
-# when $env:EXMOD_BUILD_LOCK_HELD is set (a holder of the build lock must never wait for memory) and when a slot file
-# cannot be opened; every stream held is disposed first. The OS drops the share when the process dies.
+# when $env:EXMOD_BUILD_LOCK_HELD is set or a parent process holds $env:EXMOD_BUILD_LOCK (a holder of the build lock
+# must never wait for memory) and when a slot file cannot be opened; every stream held is disposed first. The OS drops the share when the process dies.
 function Lock-ExmodMemory([int]$Gb, [string]$Label, [scriptblock]$OnWait) {
   if ($env:EXMOD_BUILD_LOCK_HELD) { throw "memory share asked for by $Label while the build lock is held" }
+  if ($env:EXMOD_BUILD_LOCK) {
+    $outer = Get-FlockAncestorHolder $env:EXMOD_BUILD_LOCK
+    if ($outer) { throw "exmod takes the build lock itself: $env:EXMOD_BUILD_LOCK is held by parent process $outer; run it without the outer flock on that lock." }
+  }
   $meminfo = if ($env:EXMOD_MEMINFO) { $env:EXMOD_MEMINFO } else { '/proc/meminfo' }
   if (-not (Test-Path -LiteralPath $meminfo -PathType Leaf)) { return $null }
   $budget = $null
