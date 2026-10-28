@@ -265,12 +265,61 @@ class MemoryTests(unittest.TestCase):
         self.assertIn("memory: b took 3 GiB of 3", out)
         self.assertEqual("granted", out.splitlines()[-1])
 
+    def test_a_waiter_behind_the_turn_says_so_once_and_calls_the_callback(self):
+        # Fails if the turn wait prints no waits line or skips the callback (mutant: the `& $stall 'the turn'` call removed).
+        fd = self.hold("turn.lock")
+        w = self.start("$r = Lock-ExmodMemory 1 'w' -OnWait { Write-Host 'on-wait' }; Unlock-ExmodMemory $r")
+        w.wait_for("memory: w waits for the turn at")
+        time.sleep(3)
+        self.release(fd)
+        out = w.finish()
+        self.assertEqual(1, out.count("waits for the turn"), out)
+        self.assertEqual(1, out.count("on-wait"), out)
+
+    def test_a_waiter_without_a_priority_file_says_so(self):
+        # Fails if the priority-file wait prints no waits line (mutant: the `& $stall 'a priority file'` call removed).
+        fds = [self.hold(f"priority-{i}.lock") for i in range(16)]
+        w = self.ask(1, "w", EXMOD_MEMORY_PRIORITY="1")
+        w.wait_for("memory: w waits for a priority file at")
+        self.release(fds[0])
+        w.finish()
+
+    def test_a_slot_file_that_cannot_be_created_throws_instead_of_waiting(self):
+        # Fails if a missing directory counts as a held file (mutant: the FileNotFoundException, DirectoryNotFoundException catch removed).
+        os.makedirs(self.mem)
+        os.symlink(os.path.join(self.tmp, "none", "0.lock"), os.path.join(self.mem, "0.lock"))
+        out = self.start("try { Lock-ExmodMemory 1 'w' | Out-Null; 'no throw' } catch { 'threw' }").finish(15)
+        self.assertEqual("threw", out.splitlines()[-1], out)
+
+    def test_a_throw_inside_the_call_frees_the_priority_file(self):
+        # Fails if the priority file is not disposed on a throw (mutant: `$priorityFile.Dispose()` removed from the finally).
+        os.makedirs(os.path.join(self.mem, "1.lock"))
+        body = ("[void][GC]::TryStartNoGCRegion(100MB); try { Lock-ExmodMemory 3 'a' | Out-Null } catch { }; "
+                f"try {{ [IO.File]::Open('{self.mem}/priority-0.lock', 'OpenOrCreate', 'ReadWrite', 'None').Dispose(); 'free' }} "
+                "catch { 'held' }")
+        out = self.start(body, budget=3, EXMOD_MEMORY_PRIORITY="1").finish(30)
+        self.assertEqual("free", out.splitlines()[-1], out)
+
     def test_a_released_share_can_be_taken_again(self):
         # Fails if Unlock does not close the streams (the second call waits on the first's files).
         out = self.start("[void][GC]::TryStartNoGCRegion(100MB); $r = Lock-ExmodMemory 2 'a'; Unlock-ExmodMemory $r; Unlock-ExmodMemory $r; Unlock-ExmodMemory $null; "
                          "$r = Lock-ExmodMemory 2 'b'; 'again'", budget=2).finish(30)
         self.assertEqual(1, out.count("memory: a released 2 GiB"), out)
         self.assertEqual("again", out.splitlines()[-1])
+
+
+@unittest.skipUnless(PWSH, "pwsh not found")
+class HarnessEnvTests(unittest.TestCase):
+    def test_the_callers_memory_settings_are_not_passed_on(self):
+        # Fails if exmod_env passes this process's budget, heavy or priority setting (mutant: os.environ used whole).
+        saved = {k: os.environ.get(k) for k in ("EXMOD_MEMORY_GB", "EXMOD_HEAVY", "EXMOD_MEMORY_PRIORITY")}
+        self.addCleanup(lambda: [os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+                                 for k, v in saved.items()])
+        os.environ.update(EXMOD_MEMORY_GB="20", EXMOD_HEAVY="1", EXMOD_MEMORY_PRIORITY="1")
+        with tempfile.TemporaryDirectory() as d:
+            env = exmod_env(d)
+            self.assertFalse({"EXMOD_MEMORY_GB", "EXMOD_HEAVY", "EXMOD_MEMORY_PRIORITY"} & set(env))
+            self.assertEqual("7", exmod_env(d, EXMOD_MEMORY_GB="7")["EXMOD_MEMORY_GB"])
 
 
 if __name__ == "__main__":

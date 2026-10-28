@@ -1068,13 +1068,15 @@ function Get-ExmodMemoryBudget {
 # the budget with a line saying so. With $env:EXMOD_MEMORY_PRIORITY=1 the waiter holds one of priority-0.lock ..
 # priority-15.lock while it waits (retrying each second when all 16 are held), and a waiter without priority that holds
 # the turn gives it up while one is held.
+# A waiter that cannot get the turn or a priority file prints `memory: <Label> waits for the turn at HH:mm:ss` (or `waits
+# for a priority file`) and invokes $OnWait, once.
 # Prints `memory: <Label> took <k> GiB of <B> at HH:mm:ss after <w> s`, once `memory: <Label> waits for <k> GiB at
 # HH:mm:ss: <f> of <B> GiB free, MemAvailable <a> GiB` when the first probe does not grant, and appends one tab-separated
 # row to waits.tsv in the memory dir: grant epoch s, wait s, GiB taken, budget GiB, free GiB at the first probe,
 # MemAvailable GiB at the grant, priority 0 or 1, label, working directory. A row that cannot be written is ignored.
 # No other script function is called, so a -Parallel runspace takes this function as text.
 # $Gb: GiB to take, at least 1. $Label: names the holder in the lines and the log row. $OnWait: invoked once, with no
-# arguments, when the first probe does not grant and the waits line is printed.
+# arguments, when the first waits line is printed.
 # Returns {Gb; Budget; Label; Streams; Taken; Waited} (Waited in s), or $null where there is no meminfo file. Throws
 # when $env:EXMOD_BUILD_LOCK_HELD is set (a holder of the build lock must never wait for memory) and when a slot file
 # cannot be opened; every stream held is disposed first. The OS drops the share when the process dies.
@@ -1100,6 +1102,7 @@ function Lock-ExmodMemory([int]$Gb, [string]$Label, [scriptblock]$OnWait) {
   $open = {
     param($path)
     try { [System.IO.File]::Open($path, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None) }
+    catch [System.IO.FileNotFoundException], [System.IO.DirectoryNotFoundException] { throw }
     catch [System.IO.IOException] { $null }
   }
   $available = {
@@ -1114,6 +1117,14 @@ function Lock-ExmodMemory([int]$Gb, [string]$Label, [scriptblock]$OnWait) {
   $granted = $false
   $probed = $false
   $announced = $false
+  $stalled = @{ Done = $false }
+  $stall = {
+    param($what)
+    if ($stalled.Done) { return }
+    $stalled.Done = $true
+    Write-Host ("memory: {0} waits for {1} at {2:HH:mm:ss}" -f $Label, $what, (Get-Date))
+    if ($OnWait) { & $OnWait }
+  }
   $freeFirst = 0
   $free = 0
   $avail = 0.0
@@ -1121,11 +1132,11 @@ function Lock-ExmodMemory([int]$Gb, [string]$Label, [scriptblock]$OnWait) {
     while ($true) {
       if ($priority -and -not $priorityFile) {
         for ($i = 0; $i -lt 16 -and -not $priorityFile; $i++) { $priorityFile = & $open (Join-Path $dir "priority-$i.lock") }
-        if (-not $priorityFile) { Start-Sleep -Seconds 1; continue }
+        if (-not $priorityFile) { & $stall 'a priority file'; Start-Sleep -Seconds 1; continue }
       }
       if (-not $turn) {
         $turn = & $open (Join-Path $dir 'turn.lock')
-        if (-not $turn) { Start-Sleep -Seconds 1; continue }
+        if (-not $turn) { & $stall 'the turn'; Start-Sleep -Seconds 1; continue }
       }
       if (-not $priority) {
         $yield = $false
@@ -1157,7 +1168,7 @@ function Lock-ExmodMemory([int]$Gb, [string]$Label, [scriptblock]$OnWait) {
       if (-not $announced) {
         $announced = $true
         Write-Host ("memory: {0} waits for {1} GiB at {2:HH:mm:ss}: {3} of {4} GiB free, MemAvailable {5:0.0} GiB" -f $Label, $take, (Get-Date), $free, $budget, $avail)
-        if ($OnWait) { & $OnWait }
+        if ($OnWait -and -not $stalled.Done) { & $OnWait }
       }
       Start-Sleep -Seconds 1
     }
