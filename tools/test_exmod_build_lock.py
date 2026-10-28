@@ -409,6 +409,63 @@ class StageAndBootTests(LockCase):
         got, out = self.ports_held("try { Invoke-Scenario @() } catch { }; exit 0")
         self.assertIn("ports-held", got, out)
 
+    def memory_held(self, call, manifest=None, **env):
+        """Runs `call` with a Start-ScratchServer that stamps how many of the budget's slot files are locked; returns
+        (that count or None, output)."""
+        if manifest is not None:
+            touch(os.path.join(self.repo, "exmod.json"), json.dumps(manifest))
+        stub = ("function Start-ScratchServer { $n = 0; Get-ChildItem $env:EXMOD_MEMORY_DIR -Filter '*.lock' -ErrorAction SilentlyContinue | "
+                "Where-Object { $_.Name -match '^\\d+\\.lock$' } | ForEach-Object { & flock -n $_.FullName true; "
+                "if ($LASTEXITCODE -ne 0) { $n++ } }; Add-Content $env:TEST_STAMPS \"memory-held $n\"; throw 'stop here' }\n")
+        code, out = self.run_body(SMOKE_STAGE + stub + call, EXMOD_PORTS_DIR=os.path.join(self.tmp, "ports"), **env)
+        self.assertEqual(0, code, out)
+        with open(self.stamps) as f:
+            held = [l.split()[1] for l in f.read().splitlines() if l.startswith("memory-held")]
+        return (int(held[0]) if held else None), out
+
+    def test_smoke_holds_its_memory_share_through_the_boot(self):
+        # Fails if Invoke-Smoke takes the share after Start-ScratchServer (0 files locked at the boot).
+        held, out = self.memory_held("try { Invoke-Smoke @() } catch { }; exit 0", {"serverMemoryGb": 3})
+        self.assertEqual(3, held, out)
+
+    def test_smoke_share_defaults_to_four(self):
+        # Fails if the default is anything but 4 (Get-ExmodServerMemoryGb).
+        held, out = self.memory_held("try { Invoke-Smoke @() } catch { }; exit 0", {})
+        self.assertEqual(4, held, out)
+
+    def test_scenario_with_two_shards_takes_one_share_of_two_servers(self):
+        # Fails if Invoke-Scenario takes a share per shard (3 files locked, not 6).
+        two = "function Get-ScenarioNames { return @('exlib/a', 'exlib/b') }\n"
+        held, out = self.memory_held(two + "try { Invoke-Scenario @('-Shards', '2') } catch { }; exit 0",
+                                     {"serverMemoryGb": 3})
+        self.assertEqual(6, held, out)
+
+    def test_scenario_keep_takes_no_share(self):
+        # Fails if Invoke-Scenario takes a share under -Keep (the stub sees locked files).
+        held, out = self.memory_held("try { Invoke-Scenario @('-Keep') } catch { }; exit 0", {"serverMemoryGb": 3})
+        self.assertEqual(0, held, out)
+
+    def test_smoke_releases_its_share_when_it_ends(self):
+        # Fails if Invoke-Smoke has no Unlock-ExmodMemory in its finally (the Lock of the whole budget never returns).
+        body = ("try { Invoke-Smoke @() } catch { }; $r = Lock-ExmodMemory -Gb (Get-ExmodMemoryBudget) -Label all; "
+                "Add-Content $env:TEST_STAMPS \"granted $($r.Gb)\"; exit 0")
+        manifest = json.dumps({"serverMemoryGb": 3})
+        touch(os.path.join(self.repo, "exmod.json"), manifest)
+        code, out = self.run_body(SMOKE_STAGE + body, timeout=20, EXMOD_MEMORY_GB="4",
+                                  EXMOD_PORTS_DIR=os.path.join(self.tmp, "ports"))
+        self.assertEqual(0, code, out)
+        self.assertIn("granted 4", " ".join(self.stamp_lines()), out)
+
+    def test_stop_prints_the_peak_with_the_estimate_passed(self):
+        # Fails if Stop-ScratchServer ignores -EstimateGb (the line lacks the estimate).
+        body = ("$p = [System.Diagnostics.Process]::Start([System.Diagnostics.ProcessStartInfo]@{ FileName = 'bash'; "
+                "Arguments = '-c \"read l\"'; RedirectStandardInput = $true; UseShellExecute = $false }); "
+                "$p.StandardInput.AutoFlush = $true; "
+                "Stop-ScratchServer ([pscustomobject]@{ Proc = $p }) 7; exit 0")
+        code, out = self.run_body(body, lock=False)
+        self.assertEqual(0, code, out)
+        self.assertRegex(out, r"server peak RSS \d+ MB \(estimate 7 GiB\)")
+
 
 if __name__ == "__main__":
     unittest.main()

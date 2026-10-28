@@ -2,5 +2,9 @@
   "tools": "0.3.5",
   "series": ["1.22"],
   "tests": ["verify/ExlibVerify.Tests", "shapes/ExlibShapes.Tests"],
+  "testMemory": {
+    "ExlibVerify.Tests": { "heapGb": 11 },
+    "ExlibShapes.Tests": { "heapGb": 2 }
+  },
   "packages": ["verify/ExlibVerify/ExlibVerify.csproj", "shapes/ExlibShapes/ExlibShapes.csproj"]
 }

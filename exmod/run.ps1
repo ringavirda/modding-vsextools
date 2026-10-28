@@ -615,8 +615,30 @@ function Wait-ScratchServer($Server, [int]$Timeout) {
   }
 }
 
-# Sends /stop and waits for the server to exit, killing it after 30 s.
-function Stop-ScratchServer($Server) {
+# GiB a server's share of the memory budget is when exmod.json has no `serverMemoryGb`.
+$ExmodDefaultServerMemoryGb = 4
+
+# The GiB one booted server takes from the memory budget: exmod.json's `serverMemoryGb`, else 4. Throws
+# `exmod.json: serverMemoryGb must be a whole number of GiB above 0` when the value is fractional, below 1 or not a number.
+function Get-ExmodServerMemoryGb {
+  $m = Get-ExmodManifest
+  if (-not $m.PSObject.Properties['serverMemoryGb']) { return $ExmodDefaultServerMemoryGb }
+  if (-not (Test-ExmodWholeGb $m.serverMemoryGb)) { throw "exmod.json: serverMemoryGb must be a whole number of GiB above 0" }
+  return [int]$m.serverMemoryGb
+}
+
+# Prints the server's peak resident memory (VmHWM in /proc/<pid>/status, MB) beside $EstimateGb, the GiB its run took
+# from the memory budget, then sends /stop and waits for the server to exit, killing it after 30 s. The peak line is
+# left out where /proc has no status for the process.
+function Stop-ScratchServer($Server, [int]$EstimateGb = 0) {
+  $status = "/proc/$($Server.Proc.Id)/status"
+  if (Test-Path -LiteralPath $status) {
+    $m = [regex]::Match([System.IO.File]::ReadAllText($status), '(?m)^VmHWM:\s+(\d+) kB')
+    if ($m.Success) {
+      $estimate = if ($EstimateGb -gt 0) { " (estimate $EstimateGb GiB)" } else { '' }
+      Write-Host ("server peak RSS {0:0} MB{1}" -f ([double]$m.Groups[1].Value / 1024), $estimate)
+    }
+  }
   $Server.Proc.StandardInput.WriteLine('/stop')
   if (-not $Server.Proc.WaitForExit(30000)) {
     Write-Host "Server did not exit after /stop within 30s - killing it."
@@ -657,6 +679,7 @@ function Invoke-Smoke([string[]]$Argv) {
 
   $stage = @{}
   $reservation = $null
+  $memory = $null
   try {
     Invoke-WithBuildLock {
       $stage.ServerDir = Resolve-SmokeServer $version
@@ -666,6 +689,8 @@ function Invoke-Smoke([string[]]$Argv) {
       $stage.Server = New-ScratchServer 'smoke' $modDirs
     }
     $server = $stage.Server
+    $serverGb = Get-ExmodServerMemoryGb
+    $memory = Lock-ExmodMemory -Gb $serverGb -Label 'smoke'
     $reservation = Lock-ServerPorts (Get-SmokePorts) 1
     $port = $reservation.Ports[0]
     Write-Host ("smoke server on port {0} at {1:HH:mm:ss}" -f $port, (Get-Date))
@@ -680,7 +705,7 @@ function Invoke-Smoke([string[]]$Argv) {
       Start-Sleep -Milliseconds 500
     }
 
-    Stop-ScratchServer $server
+    Stop-ScratchServer $server $serverGb
 
     $log = Get-Content $server.Log -Raw
     Write-Host ""
@@ -703,6 +728,7 @@ function Invoke-Smoke([string[]]$Argv) {
   finally {
     if ($stage.Server) { Remove-ScratchServer $stage.Server $keepData }
     Unlock-ServerPorts $reservation
+    Unlock-ExmodMemory $memory
   }
 }
 
@@ -727,6 +753,10 @@ without it.
 
 Without -Mods, this repo's runtime dependency mods (see `exmod provision mods`) are copied in after
 its own built mods, resolved or fetched first if needed.
+
+The server takes a share of the machine's memory budget (exmod.json's `serverMemoryGb`, default 4) before
+it boots, waiting until the budget holds it, and releases it when the run ends. Before it stops the server
+it prints the server's peak resident memory beside that figure.
 '@
 
 #endregion
@@ -1174,6 +1204,8 @@ function Invoke-Scenario([string[]]$Argv) {
   $stage = @{ Servers = [System.Collections.Generic.List[object]]::new() }
   $shards = [System.Collections.Generic.List[object]]::new()
   $reservation = $null
+  $memory = $null
+  $serverGb = Get-ExmodServerMemoryGb
   try {
     Invoke-WithBuildLock {
       $exlibDir = Build-ScenarioExlibMod
@@ -1185,6 +1217,7 @@ function Invoke-Scenario([string[]]$Argv) {
         $stage.Servers.Add((New-ScratchServer 'scenario' $modDirs -DataCopies $copies -ServerConfig (Get-ScenarioServerConfig $opts.Keep)))
       }
     }
+    if (-not $opts.Keep) { $memory = Lock-ExmodMemory -Gb ($groups.Count * $serverGb) -Label "scenario x$($groups.Count)" }
     $reservation = Lock-ServerPorts (Get-ScenarioPorts $opts.Port $ServerPortCandidates) $groups.Count
     for ($i = 0; $i -lt $groups.Count; $i++) {
       $port = $reservation.Ports[$i]
@@ -1226,7 +1259,7 @@ function Invoke-Scenario([string[]]$Argv) {
       Start-Sleep -Milliseconds 500
     }
 
-    if (-not $opts.Keep) { foreach ($s in $shards) { if (-not $s.Server.Proc.HasExited) { Stop-ScratchServer $s.Server } } }
+    if (-not $opts.Keep) { foreach ($s in $shards) { if (-not $s.Server.Proc.HasExited) { Stop-ScratchServer $s.Server $serverGb } } }
     $reports = @()
     foreach ($s in $shards) {
       $progress = Write-ScenarioProgress $s.Server $s.Printed $opts.Verbose
@@ -1250,7 +1283,7 @@ function Invoke-Scenario([string[]]$Argv) {
         $relayEnded = $true
       }
       finally {
-        foreach ($s in $shards) { if (-not $s.Server.Proc.HasExited) { Stop-ScratchServer $s.Server } }
+        foreach ($s in $shards) { if (-not $s.Server.Proc.HasExited) { Stop-ScratchServer $s.Server $serverGb } }
         if (-not $relayEnded) {
           foreach ($s in $shards) { Remove-ScratchServer $s.Server $opts.KeepData }
           [Environment]::Exit($(if ($problems) { 1 } else { 0 }))
@@ -1262,6 +1295,7 @@ function Invoke-Scenario([string[]]$Argv) {
   finally {
     foreach ($server in $stage.Servers) { Remove-ScratchServer $server $opts.KeepData }
     Unlock-ServerPorts $reservation
+    Unlock-ExmodMemory $memory
   }
 }
 
@@ -1294,7 +1328,9 @@ mod is built from the same checkout; each mod's tests/live is copied under its o
   -Verbose   print every step line, passing cases too
 
 With EXMOD_BUILD_LOCK set it holds the build lock while it builds the mods and copies them into the scratch
-servers, and boots them with it free.
+servers, and boots them with it free. The servers take one share of the machine's memory budget together,
+the shard count times exmod.json's `serverMemoryGb` (default 4), before they boot, and release it when the run
+ends; -Keep takes none. Each server's peak resident memory is printed beside its estimate before it stops.
 
 Exits 1 when the count line is missing or reports no case run, a case fails or errors, or an [Error] or
 [Fatal] line falls outside a case, on any shard. The schematics of the failed cases are copied to
