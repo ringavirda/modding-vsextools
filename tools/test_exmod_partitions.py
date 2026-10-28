@@ -195,6 +195,14 @@ class PartitionTests(unittest.TestCase):
         self.assertIn("!~", filters[2], out)
         self.assertIn("each started when the 12 GiB memory budget holds its share (walks 6, worlds 6, rest 6)", out)
 
+    def test_the_unit_with_the_largest_share_starts_first_though_it_is_last_in_the_manifest(self):
+        # Fails when the units keep manifest order: the walks part then starts first and the complement last.
+        out, _, _, _ = run_pwsh("", {"EXMOD_MEMORY_GB": "12"}, manifest=manifest(heap=2, part_heaps=(2, 2, 9)))
+        filters = [a[a.index("--filter") + 1] for a in RUNS]
+        self.assertIn("!~", filters[0], out)
+        self.assertNotIn("!~", filters[1] + filters[2], out)
+        self.assertIn("(rest 10, walks 3, worlds 3)", out)
+
     def test_a_filtered_run_takes_the_filter_limit_and_the_heavy_flag_the_heap_limit(self):
         # Fails when EXMOD_HEAVY is ignored: the heavy run then still takes filterHeapGb + 1.
         m = manifest(heap=8, filter_heap=3)

@@ -560,7 +560,9 @@ function Invoke-Test([string[]]$Argv) {
         Add-Member -NotePropertyName Blame -NotePropertyValue "$($item.Blame)-$($part.Name)" -PassThru -Force
     }
   }
-  $units = @($units)
+  $manifestIndex = 0
+  $units = @($units | ForEach-Object { $_ | Add-Member -NotePropertyName ManifestIndex -NotePropertyValue ($manifestIndex++) -PassThru -Force } |
+      Sort-Object @{ Expression = { $_.Share.ShareGb }; Descending = $true }, ManifestIndex)
   if ($throttle -le 0) {
     $throttle = $units.Count
     $budget = Get-ExmodMemoryBudget
@@ -614,8 +616,8 @@ function Invoke-Test([string[]]$Argv) {
           if ($runFilter) { $testArgs += @('--filter', $runFilter) }
           if ($item.Legacy) { $testArgs += '-p:Legacy=true' }
           if ($null -ne $item.Share.LimitGb) { $testArgs += @('-e', ('DOTNET_GCHeapHardLimit=0x{0:X}' -f ([int64]$item.Share.LimitGb * 1GB))) }
-          # Units ask for their share in manifest order: this one waits until the unit before it has taken its
-          # share or is waiting for it.
+          # Units ask for their share largest first, manifest order breaking ties: this one waits until the unit
+          # before it has taken its share or is waiting for it.
           if ($item.Seq -gt 0) {
             $before = & $gateKey ($item.Seq - 1)
             while (-not $started.ContainsKey($before)) { Start-Sleep -Milliseconds 50 }
@@ -750,7 +752,7 @@ they leave out. The counts, failures and logs are summed, so the census, zero an
 assembly. A -Filter run is not partitioned.
 
 Every test host takes a share of the machine's memory budget (MemTotal less 10 GiB, $EXMOD_MEMORY_GB sets it) before it
-starts, waiting when the budget is held, and gives it back when it ends; the units ask in manifest order.
+starts, waiting when the budget is held, and gives it back when it ends; the units ask largest share first, manifest order breaking ties.
 The manifest's `testMemory` is { "<assembly>": { "heapGb": n, "filterHeapGb": m } } (whole GiB, at least 1; filterHeapGb
 optional): the host runs under a GC heap limit of heapGb (DOTNET_GCHeapHardLimit, passed as `dotnet test -e`) and its
 share is heapGb + 1 GiB. A partition may carry its own `heapGb`. A -Filter run of an assembly with filterHeapGb runs under
