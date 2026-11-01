@@ -42,7 +42,10 @@ public sealed class Provenance {
     foreach (string line in File.ReadAllLines(FilePath)) {
       if (line.Trim().Length == 0)
         continue;
-      JObject o = JObject.Parse(line);
+      using var reader = new JsonTextReader(new StringReader(line)) {
+        DateParseHandling = DateParseHandling.None,
+      };
+      JObject o = JObject.Load(reader);
       rows.Add(
         new ProvenanceRow(
           Field(o, "path"),

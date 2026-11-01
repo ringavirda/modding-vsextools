@@ -20,13 +20,23 @@ internal sealed class JsonLayout {
     UnsignedZero = true,
   };
 
+  /// <summary>The canonical layout with numbers as held, for a part record.</summary>
+  public static readonly JsonLayout Record = new() {
+    Indent = "  ",
+    Newline = "\n",
+    Inline = true,
+    Round = false,
+    WholeFloats = false,
+    UnsignedZero = true,
+  };
+
   /// <summary>One-space indent, LF, every array expanded: Python's <c>json.dump(indent=1)</c>; numbers
-  /// rounded to 1e-4, a whole float written with <c>.0</c>.</summary>
+  /// as held, a whole float written with <c>.0</c>.</summary>
   public static readonly JsonLayout Python = new() {
     Indent = " ",
     Newline = "\n",
     Inline = false,
-    Round = true,
+    Round = false,
     WholeFloats = true,
     LowerExponent = true,
   };
@@ -179,9 +189,11 @@ internal sealed class JsonLayout {
       case JTokenType.Boolean:
         sb.Append((bool)v ? "true" : "false");
         break;
-      default:
+      case JTokenType.Null:
         sb.Append("null");
         break;
+      default:
+        throw new JsonException($"cannot write a {v.Type} value");
     }
   }
 

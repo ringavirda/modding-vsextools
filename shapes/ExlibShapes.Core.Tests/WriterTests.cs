@@ -257,7 +257,39 @@ public partial class WriterTests(ITestOutputHelper output) {
     Shape back = Reader.Read(runtime);
     Assert.Equal(runtime, RuntimeWriter.Write(back, registry, "iiex"));
     Assert.DoesNotContain("\"Items\"", runtime);
+    foreach (PathedElement pe in Engine.Walk(shape)) {
+      string at = pe.Path;
+      if (at == "Items" || at.StartsWith("Items/"))
+        continue;
+      if (at == "Root" && pe.Element.Children.Count > 0)
+        continue;
+      string lifted =
+        shape.Elements.Any(e => e.Name == "Root" && e.Children.Count > 0)
+        && at.StartsWith("Root/")
+          ? at["Root/".Length..]
+          : at;
+      Box was = WorldBox.Of(shape, at);
+      Box now = WorldBox.Of(back, lifted);
+      Assert.True(
+        Near(was.Lo, now.Lo) && Near(was.Hi, now.Hi),
+        $"{at}: {was} vs {now}"
+      );
+    }
     output.WriteLine($"{rel}: {runtime.Length} bytes");
+  }
+
+  private static bool Near(Vec3 a, Vec3 b) =>
+    Math.Abs(a.X - b.X) < 1e-4
+    && Math.Abs(a.Y - b.Y) < 1e-4
+    && Math.Abs(a.Z - b.Z) < 1e-4;
+
+  [Fact]
+  public void Runtime_writer_keeps_every_decimal() {
+    Shape s = Reader.Read(
+      """{ "textures": {}, "elements": [ { "name": "A", "from": [0,0,0], "to": [46.666666666666664, 1, 1] } ] }"""
+    );
+    string runtime = RuntimeWriter.Write(s, Registry(), "iiex");
+    Assert.Contains("46.666666666666664", runtime);
   }
 
   [SkippableFact]
@@ -308,56 +340,26 @@ public partial class WriterTests(ITestOutputHelper output) {
       p.WaitForExit();
       Assert.True(p.ExitCode == 0, err);
     }
-    var expected = JObject.Parse(File.ReadAllText(expectedPath));
+    string expectedText = File.ReadAllText(expectedPath);
+    var expected = JObject.Parse(expectedText);
     var ends = ((JArray)expected["animations"]!).ToDictionary(
       c => (string?)c["code"] ?? (string)c["name"]!,
       c => (string)c["onAnimationEnd"]!
     );
     Assert.Contains("Repeat", ends.Values);
 
-    var actual = JObject.Parse(
-      RuntimeWriter.Write(shape, RegistryFor(shape), "iiex", ends)
+    string actual = RuntimeWriter.Write(
+      shape,
+      RegistryFor(shape),
+      "iiex",
+      ends
     );
-    string? diff = Differs(expected, actual, "$");
     Directory.Delete(dir, true);
-    Assert.Null(diff);
+    Assert.Equal(expectedText, actual);
   }
 
   /// <summary>Model Creator writes a <c>textureSizes</c> map that was emptied as an expanded empty
   /// object; the writer writes <c>{}</c>.</summary>
   [GeneratedRegex(@"""textureSizes"": \{\r\n\t\}")]
   private static partial Regex EmptiedSizes();
-
-  private static string? Differs(JToken a, JToken b, string at) {
-    if (a is JValue x && b is JValue y) {
-      bool numbers =
-        x.Type is JTokenType.Integer or JTokenType.Float
-        && y.Type is JTokenType.Integer or JTokenType.Float;
-      return (
-        numbers
-          ? Math.Abs((double)x - (double)y) < 1e-4
-          : JToken.DeepEquals(x, y)
-      )
-        ? null
-        : $"{at}: {x} vs {y}";
-    }
-    if (a is JObject o && b is JObject p) {
-      if (
-        !o.Properties()
-          .Select(q => q.Name)
-          .SequenceEqual(p.Properties().Select(q => q.Name))
-      )
-        return $"{at}: keys differ";
-      return o.Properties()
-        .Select(q => Differs(q.Value, p[q.Name]!, at + "." + q.Name))
-        .FirstOrDefault(d => d != null);
-    }
-    if (a is JArray m && b is JArray n) {
-      if (m.Count != n.Count)
-        return $"{at}: {m.Count} vs {n.Count} items";
-      return m.Select((v, i) => Differs(v, n[i], $"{at}[{i}]"))
-        .FirstOrDefault(d => d != null);
-    }
-    return $"{at}: kinds differ";
-  }
 }

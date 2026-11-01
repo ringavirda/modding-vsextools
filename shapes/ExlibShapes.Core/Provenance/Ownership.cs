@@ -9,6 +9,7 @@ public static class Ownership {
   /// <summary>Whether writing <paramref name="path"/> is allowed: the file does not exist yet, or its
   /// current sha256 equals its provenance row's.</summary>
   public static bool CanWrite(Provenance provenance, string path) {
+    path = Path.GetFullPath(path, provenance.BaseDir);
     if (!File.Exists(path))
       return true;
     ProvenanceRow? row = provenance.Find(path);

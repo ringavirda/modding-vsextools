@@ -92,6 +92,17 @@ public class ProvenanceTests {
   }
 
   [Fact]
+  public void A_relative_path_is_judged_against_the_store_directory() {
+    InDir(
+      (dir, store, shape) => {
+        string path = Path.Combine(dir, "owned.json");
+        File.WriteAllText(path, "hand drawn");
+        Assert.False(Ownership.CanWrite(store, "owned.json"));
+      }
+    );
+  }
+
+  [Fact]
   public void Input_hash_depends_on_each_input() {
     string h = Provenance.InputHash("spec", "shape", "rec", "set");
     Assert.Equal(h, Provenance.InputHash("spec", "shape", "rec", "set"));

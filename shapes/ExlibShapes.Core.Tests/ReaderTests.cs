@@ -37,6 +37,14 @@ public class ReaderTests(ITestOutputHelper output) {
   }
 
   [Fact]
+  public void A_timestamp_string_stays_a_string() {
+    Shape s = Reader.Read(
+      """{ "textures": {}, "elements": [], "stamp": "2026-11-01T10:00:00Z" }"""
+    );
+    Assert.Contains("2026-11-01T10:00:00Z", CanonicalWriter.Write(s));
+  }
+
+  [Fact]
   public void Reads_unquoted_keys_and_single_quoted_strings() {
     Shape s = Reader.Read("{ textures: { a: 'game:block/x' } }");
     Assert.Equal("game:block/x", s.Textures.Single().Value);

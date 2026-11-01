@@ -37,6 +37,30 @@ public class RecordTests {
   private static PartRecord Record() => PartRecord.Read(RecordText);
 
   [Fact]
+  public void Timestamp_strings_are_carried_and_answered_unchanged() {
+    string text = RecordText
+      .Replace(
+        "\"futureSlot\"",
+        "\"stamp\": \"2026-11-01T10:00:00Z\", \"futureSlot\""
+      )
+      .Replace("\"date\": \"2026-11-01\"", "\"date\": \"2026-11-01T10:00:00\"")
+      .Replace("{ \"count\": 12 }", "{ \"count\": 12, \"area\": 0.00002 }");
+    JObject back = JsonConvert.DeserializeObject<JObject>(
+      PartRecord.Read(PartRecord.Read(text).Write()).Write(),
+      new JsonSerializerSettings { DateParseHandling = DateParseHandling.None }
+    )!;
+    Assert.Equal("2026-11-01T10:00:00Z", back["stamp"]!.Value<string>());
+    Assert.Equal(
+      "2026-11-01T10:00:00",
+      back["answers"]![0]!["date"]!.Value<string>()
+    );
+    Assert.Equal(
+      0.00002,
+      back["baselines"]!["facecheck"]!["area"]!.Value<double>()
+    );
+  }
+
+  [Fact]
   public void Unknown_field_survives_round_trip() {
     JObject back = JObject.Parse(PartRecord.Read(Record().Write()).Write());
     Assert.Equal(1, back["futureSlot"]!["k"]!.Value<int>());

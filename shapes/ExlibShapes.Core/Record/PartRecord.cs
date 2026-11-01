@@ -87,7 +87,10 @@ public sealed class PartRecord {
   /// <summary>Reads a record from its JSON text.</summary>
   /// <exception cref="JsonException">The text is not a schema 1 record or a slot has the wrong type.</exception>
   public static PartRecord Read(string text) {
-    JToken root = JToken.Parse(text);
+    using var reader = new JsonTextReader(new StringReader(text)) {
+      DateParseHandling = DateParseHandling.None,
+    };
+    JToken root = JToken.ReadFrom(reader);
     if (root is not JObject o)
       throw new JsonException(
         "not a part record (the document is not an object)"
@@ -157,7 +160,7 @@ public sealed class PartRecord {
     o["answers"] = new JArray(Answers.Select(a => a.Write()));
     foreach (JProperty p in Carried.Properties())
       o[p.Name] = p.Value.DeepClone();
-    return JsonLayout.Canonical.Print(o) + "\n";
+    return JsonLayout.Record.Print(o) + "\n";
   }
 
   /// <summary>Writes the record to <paramref name="path"/> through <see cref="AtomicFile"/>. A record is

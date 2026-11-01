@@ -27,7 +27,9 @@ public static class Reader {
   /// <summary>Reads a shape from its JSON text.</summary>
   /// <exception cref="JsonException">The text is not a JSON object or a value has the wrong type.</exception>
   public static Shape Read(string text) {
-    using var reader = new JsonTextReader(new StringReader(text));
+    using var reader = new JsonTextReader(new StringReader(text)) {
+      DateParseHandling = DateParseHandling.None,
+    };
     JToken root = JToken.ReadFrom(reader, LoadSettings);
     if (root is not JObject obj)
       throw new JsonException("not a shape (the document is not an object)");
