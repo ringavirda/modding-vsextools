@@ -102,29 +102,8 @@ public static class Geometry {
   /// <summary><c>Mat4f.RotateByXYZ</c> as a matrix acting on column vectors: <c>Rx . Ry . Rz</c>,
   /// returned transposed for <see cref="System.Numerics.Matrix4x4"/>'s row-vector convention (see
   /// the class remarks).</summary>
-  public static Matrix4x4 RotateByXyz(float rx, float ry, float rz) {
-    (float sx, float cx) = MathF.SinCos(rx * MathF.PI / 180f);
-    (float sy, float cy) = MathF.SinCos(ry * MathF.PI / 180f);
-    (float sz, float cz) = MathF.SinCos(rz * MathF.PI / 180f);
-    return new Matrix4x4(
-      cy * cz,
-      sx * sy * cz + cx * sz,
-      -cx * sy * cz + sx * sz,
-      0f,
-      -cy * sz,
-      cx * cz - sx * sy * sz,
-      sx * cz + cx * sy * sz,
-      0f,
-      sy,
-      -sx * cy,
-      cx * cy,
-      0f,
-      0f,
-      0f,
-      0f,
-      1f
-    );
-  }
+  public static Matrix4x4 RotateByXyz(float rx, float ry, float rz) =>
+    CoreBridge.RowFloat(Core.Mat4d.RotateByXyz(rx, ry, rz));
 
   /// <summary>A translation matrix (already in row-vector form: <see cref="Matrix4x4.CreateTranslation(Vector3)"/>
   /// is exactly the transpose of the column-vector translation the game builds).</summary>
@@ -139,18 +118,8 @@ public static class Geometry {
   /// <c>stretch</c> multiplies in place of the identity scale, exactly as animation version 0
   /// applies a keyframe.
   /// </summary>
-  public static Matrix4x4 LocalMatrix(Node el, Pose? pose = null) {
-    Vector3 elRotation = (Vector3)el.Rotation;
-    Vector3 elFrom = (Vector3)el.From;
-    Vector3 elOrigin = (Vector3)el.Origin;
-    Vector3 rot = pose == null ? elRotation : elRotation + pose.Rotation;
-    Vector3 offset = pose?.Offset ?? Vector3.Zero;
-    Vector3 stretch = pose?.Stretch ?? Vector3.One;
-    return Translate(elFrom + offset - elOrigin)
-      * Scale(stretch)
-      * RotateByXyz(rot.X, rot.Y, rot.Z)
-      * Translate(elOrigin);
-  }
+  public static Matrix4x4 LocalMatrix(Node el, Pose? pose = null) =>
+    CoreBridge.RowFloat(CoreBridge.Local(el, pose));
 
   /// <summary>
   /// World matrix per element path, composing each element's <see cref="LocalMatrix"/> onto its
@@ -160,20 +129,10 @@ public static class Geometry {
   public static Dictionary<string, Matrix4x4> WorldMatrices(
     LoadedShape shape,
     IReadOnlyDictionary<string, Pose>? poses = null
-  ) {
-    var outp = new Dictionary<string, Matrix4x4>();
-    void Rec(Node el, Matrix4x4 parentM) {
-      Pose? pose = null;
-      poses?.TryGetValue(el.Name, out pose);
-      Matrix4x4 m = LocalMatrix(el, pose) * parentM;
-      outp[el.Path] = m;
-      foreach (Node c in el.Children)
-        Rec(c, m);
-    }
-    foreach (Node el in shape.Elements)
-      Rec(el, Matrix4x4.Identity);
-    return outp;
-  }
+  ) =>
+    CoreBridge
+      .WorldMatrices(shape, poses, null)
+      .ToDictionary(kv => kv.Key, kv => CoreBridge.RowFloat(kv.Value));
 
   /// <summary>The 8 world corners of an element, index bits <c>x*4 + y*2 + z</c>.</summary>
   public static Vector3[] Corners(Matrix4x4 m, Vector3 size) {
