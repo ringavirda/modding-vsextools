@@ -18,7 +18,7 @@ public sealed class Pose {
   /// <summary>Degrees added to the element's own rotation.</summary>
   public Vector3 Rotation { get; init; } = Vector3.Zero;
 
-  /// <summary>Per-axis scale applied in place of the identity scale.</summary>
+  /// <summary>Per-axis factor multiplied into the element's scale.</summary>
   public Vector3 Stretch { get; init; } = Vector3.One;
 }
 
@@ -27,7 +27,7 @@ public sealed class Pose {
 /// transform exactly.
 /// <para>
 /// Local matrix (animation version 0): <c>T(origin) . RotateByXYZ(rot + pose.rot) .
-/// Scale(pose.stretch) . T(from + pose.offset - origin)</c>, applied to local vertices in
+/// Scale(scale * pose.stretch) . T(from + pose.offset - origin)</c>, applied to local vertices in
 /// <c>[0, size]</c>; a child's matrix is composed onto its parent's. All lengths in shape units,
 /// angles in degrees.
 /// </para>
@@ -115,7 +115,7 @@ public static class Geometry {
 
   /// <summary>
   /// An element's local matrix, optionally posed: <c>rot</c> and <c>offset</c> add the pose's, and
-  /// <c>stretch</c> multiplies in place of the identity scale, exactly as animation version 0
+  /// <c>stretch</c> multiplies the element's own scale, exactly as animation version 0
   /// applies a keyframe.
   /// </summary>
   public static Matrix4x4 LocalMatrix(Node el, Pose? pose = null) =>

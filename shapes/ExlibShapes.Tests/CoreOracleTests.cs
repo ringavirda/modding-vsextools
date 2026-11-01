@@ -44,12 +44,14 @@ public class CoreOracleTests(ITestOutputHelper output) {
     string? exmods = FixturePath.Workspace("exmods");
     Skip.If(exmods is null, "the sibling exmods checkout is absent");
     int compared = 0;
+    int skipped = 0;
     var mismatches = new List<string>();
     foreach (string file in ShapeFiles(exmods!)) {
       Shape? game;
       try {
         game = JsonConvert.DeserializeObject<Shape>(File.ReadAllText(file));
       } catch (JsonException) {
+        skipped++;
         continue;
       }
       if (game?.Elements == null)
@@ -69,7 +71,7 @@ public class CoreOracleTests(ITestOutputHelper output) {
         mismatches.Add($"{file}: {found[0]} (+{found.Count - 1} more)");
     }
     output.WriteLine(
-      $"shapes compared {compared}, mismatches {mismatches.Count}"
+      $"shapes compared {compared}, skipped {skipped}, mismatches {mismatches.Count}"
     );
     foreach (string m in mismatches.Take(20))
       output.WriteLine(m);

@@ -6,9 +6,9 @@ using System.Runtime.CompilerServices;
 using SkiaSharp;
 using Mat4d = ExpandedLib.Shapes.Core.Mat4d;
 
-// Lets GeometryTests cross-check Geometry's public float32 chain against the double-precision
-// chain below, which the pixel comparison in RendererTests already validates end to end - closing
-// the coverage gap a float32-only unit test on Geometry alone would leave.
+// Lets GeometryTests cross-check Geometry's public float32 chain against Core's double-precision
+// engine (ExlibShapes.Core/Engine), which the pixel comparison in RendererTests already validates end to
+// end - closing the coverage gap a float32-only unit test on Geometry alone would leave.
 [assembly: InternalsVisibleTo("ExlibShapes.Tests")]
 
 namespace ExpandedLib.Shapes;
