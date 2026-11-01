@@ -33,6 +33,14 @@ internal sealed record RoundRun(
 /// as one unbroken surface.
 /// </summary>
 internal static class RoundRuns {
+  internal static readonly HashSet<string> LegacyWood =
+  [
+    "oak",
+    "generic",
+    "wood",
+    "charred",
+  ];
+
   private const double SizeTol = 0.05;
   private const int MinRun = 6;
   private const double CircleTol = 0.15;

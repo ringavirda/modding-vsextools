@@ -62,15 +62,8 @@ public class OctcheckTests {
     CheckResult chamfered = Check.Run(
       new CheckInput(Fixtures.Shape("octagon-small.json"), Regular: ["*"])
     );
-    Assert.Equal(1, chamfered.ExitCode);
-    Assert.Contains(
-      "  FAULT Bar: arms 2.0000 wide on 4.0000 across, not 1.6568 (regular)",
-      chamfered.Lines
-    );
-    Assert.Contains(
-      "  FAULT Bar: 4.2426 across the diagonals against 4.0000 on the axes",
-      chamfered.Lines
-    );
+    Assert.Equal(0, chamfered.ExitCode);
+    Assert.DoesNotContain(chamfered.Lines, l => l.Contains("arms"));
   }
 
   [Fact]
@@ -91,7 +84,7 @@ public class OctcheckTests {
   }
 
   [Fact]
-  public void Octcheck_regular_globs_match_the_whole_path() {
+  public void Regular_globs_match_the_whole_path_and_octcheck_leaves_them_to_octregular() {
     CheckResult other = Check.Run(
       new CheckInput(Fixtures.Shape("octagon-small.json"), Regular: ["Bolt*"])
     );
@@ -99,7 +92,16 @@ public class OctcheckTests {
     CheckResult named = Check.Run(
       new CheckInput(Fixtures.Shape("octagon-small.json"), Regular: ["B?r"])
     );
-    Assert.Equal(1, named.ExitCode);
+    Assert.Equal(0, named.ExitCode);
+    Assert.DoesNotContain(named.Lines, l => l.Contains("arms"));
+    Assert.Equal(
+      1,
+      new OctRegular()
+        .Run(
+          new CheckInput(Fixtures.Shape("octagon-small.json"), Regular: ["B?r"])
+        )
+        .ExitCode
+    );
   }
 
   [Fact]

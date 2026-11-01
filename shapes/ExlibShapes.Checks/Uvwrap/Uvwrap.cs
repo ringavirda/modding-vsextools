@@ -15,7 +15,7 @@ public sealed class Uvwrap : ICheck {
   public string Id => "uvwrap";
 
   /// <inheritdoc />
-  public Profile Profile => Profile.Structural;
+  public Profile Profile => Profile.ExpandedPeriod;
 
   /// <inheritdoc />
   public CheckResult Run(CheckInput input) {
@@ -24,7 +24,7 @@ public sealed class Uvwrap : ICheck {
     var tree = new Tree(input.Shape);
     var rest = new Frames(input.Shape);
     Func<string, bool> isWood = k =>
-      (input.WoodKeys ?? Facecheck.LegacyWood).Contains(k);
+      (input.WoodKeys ?? RoundRuns.LegacyWood).Contains(k);
     var lines = new List<string>();
     int total = 0,
       failed = 0;

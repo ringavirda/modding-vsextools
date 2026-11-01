@@ -13,33 +13,25 @@ public class FlushcheckTests {
   public static TheoryData<string> Names =>
     [.. Fixtures.Parity("flushcheck").Keys];
 
-  private static string[] PairNames(CheckResult r) =>
-    [
-      .. r
-        .Lines.Where(l => l.StartsWith("flush  "))
-        .Select(l =>
-          l[7..l.IndexOf("  area ", System.StringComparison.Ordinal)]
-        )
-        .Order(System.StringComparer.Ordinal),
-    ];
-
   [Theory]
   [MemberData(nameof(Names))]
   public void Flushcheck_parity(string name) {
     Recorded want = Fixtures.Parity("flushcheck")[name];
     bool noHide = name.EndsWith("(no hide)");
     string file = noHide ? name[..name.IndexOf(' ')] : name;
-    CheckResult got = Check.Run(
-      new CheckInput(Fixtures.Shape(file), Hide: noHide ? [] : null)
-    );
-    Assert.Equal(want.Exit, got.ExitCode);
-    Assert.Equal(want.Enumerated, got.Enumerated);
-    Assert.Equal(want.Faulted, PairNames(got));
     Shape shape = Fixtures.Shape(file);
-    var (_, found) = Flushcheck.Pairs(
+    var (faces, found) = Flushcheck.Pairs(
       shape,
       null,
       noHide ? [] : Flushcheck.FillingHides(shape)
+    );
+    Assert.Equal(want.Exit, faces == 0 || found.Count > 0 ? 1 : 0);
+    Assert.Equal(want.Enumerated, faces);
+    Assert.Equal(
+      want.Faulted,
+      found
+        .Select(p => $"{p.Path1} {p.Face1} | {p.Path2} {p.Face2}")
+        .Order(StringComparer.Ordinal)
     );
     double[] areas =
     [
@@ -79,13 +71,26 @@ public class FlushcheckTests {
     Assert.Contains("Nope", e.Message);
   }
 
-  private static CheckResult Moved(double dy, double dz) {
+  private static CheckResult Moved(double dy, double dz, bool turned = false) {
     Shape s = Fixtures.Edited(
       "flush.json",
       r => {
         JObject b = Fixtures.Element(r, "B");
         b["from"] = new JArray(2, dy, dz);
         b["to"] = new JArray(6, 4 + dy, 4 + dz);
+        if (turned) {
+          var elements = (JArray)r["elements"]!;
+          var group = new JObject {
+            ["name"] = "G",
+            ["from"] = new JArray(0, 0, 0),
+            ["to"] = new JArray(0, 0, 0),
+            ["rotationY"] = 30,
+            ["rotationOrigin"] = new JArray(0, 0, 0),
+            ["children"] = new JArray(elements.ToArray()),
+          };
+          elements.Clear();
+          elements.Add(group);
+        }
       }
     );
     return Check.Run(new CheckInput(s));
@@ -99,6 +104,45 @@ public class FlushcheckTests {
     CheckResult within = Moved(0.0005, 0.0005);
     Assert.Equal(1, within.ExitCode);
     Assert.Contains("flush  A north | B north  area 8.00", within.Lines);
+  }
+
+  [Fact]
+  public void Flushcheck_near_planes_of_a_turned_pair_are_judged_by_distance() {
+    CheckResult near = Moved(0.01, 0.01, turned: true);
+    Assert.Equal(0, near.ExitCode);
+    Assert.Contains("12 faces; 0 flush pairs", near.Lines);
+    CheckResult within = Moved(0.0005, 0.0005, turned: true);
+    Assert.Equal(1, within.ExitCode);
+    Assert.Contains("flush  G/A north | G/B north  area 8.00", within.Lines);
+  }
+
+  [Fact]
+  public void Flushcheck_finds_a_pair_that_flushes_only_in_a_clip_frame() {
+    Shape s = Fixtures.Edited(
+      "flush.json",
+      r => {
+        JObject b = Fixtures.Element(r, "B");
+        b["from"] = new JArray(2, 10, 0);
+        b["to"] = new JArray(6, 14, 4);
+        r["animations"] = JArray.Parse(
+          """
+          [{"name": "slide", "code": "slide", "quantityframes": 2, "onAnimationEnd": "Repeat",
+            "keyframes": [
+              {"frame": 0, "elements": {"B": {"offsetY": 0}}},
+              {"frame": 1, "elements": {"B": {"offsetY": -10}}}]}]
+          """
+        );
+      }
+    );
+    CheckResult r = Check.Run(new CheckInput(s));
+    Assert.Equal(1, r.ExitCode);
+    Assert.Contains("flush  A north | B north  area 8.00  (slide f1)", r.Lines);
+    Assert.DoesNotContain(r.Lines, l => l.EndsWith("(slide f0)"));
+    Assert.DoesNotContain(
+      r.Lines,
+      l => l.StartsWith("flush  ") && !l.EndsWith(")")
+    );
+    Assert.Contains("36 faces; 4 flush pairs", r.Lines);
   }
 
   private static CheckResult Tilted(

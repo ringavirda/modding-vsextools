@@ -16,10 +16,11 @@ namespace ExpandedLib.Shapes.Checks;
 /// the normal (sampled on a 0.05 grid). The separation is taken at each sample, so faces a hair off parallel are
 /// measured where they overlap. A face of no area, and a leaf a pose stretches to nothing, draws nothing and is
 /// left out.</para>
-/// <para>The check runs the shape at rest. The subtrees left out, faces and cover alike, are
+/// <para>The check runs the shape at rest and at every integer frame of every clip (<see cref="PoseRuns"/>). The subtrees left out, faces and cover alike, are
 /// <see cref="CheckInput.Hide"/>; without it, every <c>Level</c> element of a <c>Piece&lt;k&gt;</c> group: a
 /// filling's sand level, which is not drawn with its parting. Lines: <c>flush  PATH FACE | PATH FACE  area A</c>
-/// per pair, then <c>N faces; M flush pairs</c>.</para>
+/// per pair, a pair found in a clip frame closed by <c>  (CLIP fN)</c>, then <c>N faces; M flush pairs</c> over all
+/// the poses.</para>
 /// </remarks>
 public sealed partial class Flushcheck : ICheck {
   private static readonly double Tilt = Math.Sqrt(2 * (1 - Overlap.Parallel));
@@ -72,17 +73,25 @@ public sealed partial class Flushcheck : ICheck {
     ];
     if (missing.Length > 0)
       throw new CheckUsageException($"no element {string.Join(", ", missing)}");
-    (int faces, List<Pair> found) = Pairs(input.Shape, null, hide);
-    List<string> lines =
-    [
-      .. found.Select(p =>
-        FormattableString.Invariant(
-          $"flush  {p.Path1} {p.Face1} | {p.Path2} {p.Face2}  area {p.Area:F2}"
-        )
-      ),
-      $"{faces} faces; {found.Count} flush pairs",
-    ];
-    return CheckResult.Of(Id, faces, found.Count > 0, lines);
+    int faces = 0,
+      pairs = 0;
+    List<string> lines = [];
+    List<string> runs = ["rest", .. PoseRuns.AllClips(input.Shape)];
+    foreach (string run in runs)
+      foreach ((string label, var pose) in PoseRuns.Run(input.Shape, run)) {
+        (int n, List<Pair> found) = Pairs(input.Shape, pose, hide);
+        faces += n;
+        pairs += found.Count;
+        lines.AddRange(
+          found.Select(p =>
+            FormattableString.Invariant(
+              $"flush  {p.Path1} {p.Face1} | {p.Path2} {p.Face2}  area {p.Area:F2}"
+            ) + (pose == null ? "" : $"  ({label})")
+          )
+        );
+      }
+    lines.Add($"{faces} faces; {pairs} flush pairs");
+    return CheckResult.Of(Id, faces, pairs > 0, lines);
   }
 
   private sealed record FaceInfo(

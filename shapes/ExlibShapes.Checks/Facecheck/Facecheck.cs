@@ -29,14 +29,6 @@ public sealed class Facecheck : ICheck {
   private const double Grid = 0.25;
   private const double Out = 0.02;
 
-  internal static readonly HashSet<string> LegacyWood =
-  [
-    "oak",
-    "generic",
-    "wood",
-    "charred",
-  ];
-
   /// <inheritdoc />
   public string Id => "facecheck";
 
@@ -112,7 +104,7 @@ public sealed class Facecheck : ICheck {
     if (input.Shipped != null && table != null) {
       var shipped = new Tree(input.Shipped);
       Func<string, bool> isWood = k =>
-        (input.WoodKeys ?? LegacyWood).Contains(k);
+        (input.WoodKeys ?? RoundRuns.LegacyWood).Contains(k);
       var (faults, counts, allowed) = UvFaults(tree, shipped, table, isWood);
       wrong = faults.Count > 0;
       foreach (Fault f in faults)

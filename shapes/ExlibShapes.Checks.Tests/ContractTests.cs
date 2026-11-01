@@ -49,11 +49,20 @@ public class ContractTests {
   }
 
   [Fact]
-  public void Every_check_is_structural() {
-    Assert.All(Selection.All, c => Assert.Equal(Profile.Structural, c.Profile));
+  public void Round_uv_and_regular_octagon_rulings_are_period_checks() {
     Assert.Equal(
-      ["facecheck", "flushcheck", "footsweep", "octcheck", "sizes", "uvwrap"],
-      Selection.All.Select(c => c.Id).Order(StringComparer.Ordinal)
+      ["octregular", "uvwrap"],
+      Selection
+        .All.Where(c => c.Profile == Profile.ExpandedPeriod)
+        .Select(c => c.Id)
+        .Order(StringComparer.Ordinal)
+    );
+    Assert.Equal(
+      ["facecheck", "flushcheck", "footsweep", "octcheck", "sizes"],
+      Selection
+        .All.Where(c => c.Profile == Profile.Structural)
+        .Select(c => c.Id)
+        .Order(StringComparer.Ordinal)
     );
   }
 
@@ -87,6 +96,7 @@ public class ContractTests {
       "footprint",
       "footsweep",
       "octcheck",
+      "octregular",
       "uvwrap",
     ];
     string[] versions = [.. ids.Select(CheckVersions.Of)];

@@ -14,6 +14,7 @@ public static class Selection {
     new Flushcheck(),
     new Footsweep(),
     new Octcheck(),
+    new OctRegular(),
     new Uvwrap(),
   ];
 
