@@ -1,0 +1,26 @@
+{
+ "head-small.json": {
+  "exit": 0,
+  "enumerated": 9,
+  "faulted": []
+ },
+ "head-small-lint.json": {
+  "exit": 1,
+  "enumerated": 10,
+  "faulted": [
+   "missing_texture Slab",
+   "oversize Slab",
+   "uv Slab"
+  ]
+ },
+ "mppump-sketch-defective.json": {
+  "exit": 0,
+  "enumerated": 244,
+  "faulted": []
+ },
+ "flush.json": {
+  "exit": 0,
+  "enumerated": 2,
+  "faulted": []
+ }
+}

@@ -1,0 +1,84 @@
+<Project>
+  <!-- Embeds each check's version in ExlibShapes.Checks as AssemblyMetadata "CheckVersion.<Id>": the sha256 of
+       the check's folder, Checks/Common, the project's root files, Checks/Run and Core's sources, so a result
+       cached against a version is stale once any of them changes. -->
+  <UsingTask
+    TaskName="CheckSourceHashes"
+    TaskFactory="RoslynCodeTaskFactory"
+    AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll"
+  >
+    <ParameterGroup>
+      <ProjectDir ParameterType="System.String" Required="true" />
+      <CoreDir ParameterType="System.String" Required="true" />
+      <Versions
+        ParameterType="Microsoft.Build.Framework.ITaskItem[]"
+        Output="true"
+      />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Linq" />
+      <Using Namespace="System.Security.Cryptography" />
+      <Using Namespace="System.Text" />
+      <Code Type="Fragment" Language="cs">
+        <![CDATA[
+        string Sep = Path.DirectorySeparatorChar.ToString();
+        System.Func<string, bool> built = f =>
+          f.Contains(Sep + "obj" + Sep) || f.Contains(Sep + "bin" + Sep);
+        System.Func<string, string[]> tree = d =>
+          Directory.Exists(d)
+            ? Directory.EnumerateFiles(d, "*", SearchOption.AllDirectories).Where(f => !built(f)).ToArray()
+            : new string[0];
+        string[] shared = tree(Path.Combine(ProjectDir, "Common"))
+          .Concat(tree(Path.Combine(ProjectDir, "Run")))
+          .Concat(Directory.EnumerateFiles(ProjectDir, "*.cs", SearchOption.TopDirectoryOnly))
+          .Concat(tree(CoreDir).Where(f => f.EndsWith(".cs")))
+          .ToArray();
+        string[] ids = Directory.GetDirectories(ProjectDir)
+          .Select(Path.GetFileName)
+          .Where(n => n != "Common" && n != "Run" && n != "obj" && n != "bin")
+          .OrderBy(n => n, System.StringComparer.Ordinal)
+          .ToArray();
+        var items = new System.Collections.Generic.List<Microsoft.Build.Framework.ITaskItem>();
+        foreach (string id in ids) {
+          string[] files = tree(Path.Combine(ProjectDir, id)).Concat(shared)
+            .OrderBy(f => f, System.StringComparer.Ordinal).ToArray();
+          using (var sha = SHA256.Create()) {
+            foreach (string f in files) {
+              string rel = f.StartsWith(ProjectDir) ? f.Substring(ProjectDir.Length) : "core" + f.Substring(CoreDir.Length);
+              byte[] name = Encoding.UTF8.GetBytes(rel.Replace('\\', '/') + "\n");
+              sha.TransformBlock(name, 0, name.Length, null, 0);
+              byte[] body = File.ReadAllBytes(f);
+              sha.TransformBlock(body, 0, body.Length, null, 0);
+            }
+            sha.TransformFinalBlock(new byte[0], 0, 0);
+            var item = new Microsoft.Build.Utilities.TaskItem(id);
+            item.SetMetadata("Hash", string.Concat(sha.Hash.Select(b => b.ToString("x2"))));
+            items.Add(item);
+          }
+        }
+        Versions = items.ToArray();
+      ]]>
+      </Code>
+    </Task>
+  </UsingTask>
+
+  <Target
+    Name="EmbedCheckVersions"
+    BeforeTargets="GetAssemblyAttributes"
+    Condition="'$(MSBuildProjectName)' == 'ExlibShapes.Checks'"
+  >
+    <CheckSourceHashes
+      ProjectDir="$(MSBuildProjectDirectory)"
+      CoreDir="$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../ExlibShapes.Core'))"
+    >
+      <Output TaskParameter="Versions" ItemName="_CheckVersion" />
+    </CheckSourceHashes>
+    <ItemGroup>
+      <AssemblyMetadata
+        Include="CheckVersion.%(_CheckVersion.Identity)"
+        Value="%(_CheckVersion.Hash)"
+      />
+    </ItemGroup>
+  </Target>
+</Project>
