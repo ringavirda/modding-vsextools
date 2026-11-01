@@ -46,6 +46,11 @@ public sealed class Element {
   /// <summary>The child elements, in file order.</summary>
   public List<Element> Children { get; } = [];
 
+  /// <summary>Which numbers the file wrote without a fraction, by lowercase key; bit i of an array
+  /// key's mask (bit 0 of a scalar's) is set when value i was an integer literal. A writer that
+  /// reproduces the file's number forms reads it.</summary>
+  public Dictionary<string, uint> IntegerForms { get; } = [];
+
   /// <summary>Keys the reader does not model, in file order.</summary>
   public JObject Unknown { get; } = [];
 
@@ -66,6 +71,11 @@ public sealed class Face {
 
   /// <summary>The <c>enabled</c> flag, null when absent (the game reads absent as enabled).</summary>
   public bool? Enabled { get; set; }
+
+  /// <summary>Which numbers the file wrote without a fraction, by lowercase key; bit i of an array
+  /// key's mask (bit 0 of a scalar's) is set when value i was an integer literal. A writer that
+  /// reproduces the file's number forms reads it.</summary>
+  public Dictionary<string, uint> IntegerForms { get; } = [];
 
   /// <summary>Keys the reader does not model, in file order.</summary>
   public JObject Unknown { get; } = [];

@@ -1,0 +1,24 @@
+{
+ "flush.json": {
+  "exit": 0,
+  "enumerated": 2,
+  "faulted": []
+ },
+ "mppump-sketch-defective.json": {
+  "exit": 0,
+  "enumerated": 244,
+  "faulted": []
+ },
+ "head-small.json": {
+  "exit": 0,
+  "enumerated": 9,
+  "faulted": []
+ },
+ "head-small-origin.json": {
+  "exit": 1,
+  "enumerated": 10,
+  "faulted": [
+   "Lug up"
+  ]
+ }
+}

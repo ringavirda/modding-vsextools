@@ -111,26 +111,19 @@ public static partial class ItemViews {
   /// the anchor's world matrix, then the hand's chain in blocks - origin, scale, translation, the
   /// attachment point's rotation added to the item's, origin back.
   /// </summary>
-  internal static Renderer.Mat4d HandModel(
-    Renderer.Mat4d anchor,
-    ItemTransform t
-  ) =>
+  internal static Core.Mat4d HandModel(Core.Mat4d anchor, ItemTransform t) =>
     anchor
-    * Renderer.Mat4d.Scale(16, 16, 16)
-    * Renderer.Mat4d.Translate(t.Origin.X, t.Origin.Y, t.Origin.Z)
-    * Renderer.Mat4d.Scale(t.ScaleXyz.X, t.ScaleXyz.Y, t.ScaleXyz.Z)
-    * Renderer.Mat4d.Translate(
-      t.Translation.X,
-      t.Translation.Y,
-      t.Translation.Z
-    )
-    * Renderer.Mat4d.RotateByXyz(
+    * Core.Mat4d.Scale(16, 16, 16)
+    * Core.Mat4d.Translate(t.Origin.X, t.Origin.Y, t.Origin.Z)
+    * Core.Mat4d.Scale(t.ScaleXyz.X, t.ScaleXyz.Y, t.ScaleXyz.Z)
+    * Core.Mat4d.Translate(t.Translation.X, t.Translation.Y, t.Translation.Z)
+    * Core.Mat4d.RotateByXyz(
       t.Rotation.X,
       t.Rotation.Y + HandRotationY,
       t.Rotation.Z
     )
-    * Renderer.Mat4d.Translate(-t.Origin.X, -t.Origin.Y, -t.Origin.Z)
-    * Renderer.Mat4d.Scale(1.0 / 16, 1.0 / 16, 1.0 / 16);
+    * Core.Mat4d.Translate(-t.Origin.X, -t.Origin.Y, -t.Origin.Z)
+    * Core.Mat4d.Scale(1.0 / 16, 1.0 / 16, 1.0 / 16);
 
   /// <summary>The player posed at the seraph's frame of <paramref name="clip"/> (the rest pose when null)
   /// and the item held in its right hand: the player is the first part, the item the second.
@@ -149,7 +142,7 @@ public static partial class ItemViews {
       ?? throw new InvalidDataException(
         $"the player shape has no {AnchorElement} element"
       );
-    Renderer.Mat4d anchorMatrix = Renderer.WorldMatricesD(seraph.Shape, poses)[
+    Core.Mat4d anchorMatrix = Renderer.WorldMatricesD(seraph.Shape, poses)[
       anchor.Path
     ];
     return
@@ -158,7 +151,7 @@ public static partial class ItemViews {
         seraph.Shape,
         seraph.Textures,
         poses,
-        Renderer.Mat4d.Identity,
+        Core.Mat4d.Identity,
         seraph.UvSize
       ),
       new Renderer.RenderPart(

@@ -1,0 +1,35 @@
+{
+	"textureWidth": 16,
+	"textureHeight": 16,
+	"textures": { "iron5": "//wsl.localhost/archlinux/home/fallen/src/modding-vsex/exmods/workbench/textures/block/metal/sheet-plain/iron5" },
+	"elements": [
+		{
+			"name": "Wheel",
+			"from": [ 0, 0, 0 ],
+			"to": [ 2, 2, 2 ],
+			"faces": { "up": { "texture": "#iron5", "uv": [ 0, 0, 2, 2 ] } },
+			"children": [
+				{
+					"name": "Items",
+					"from": [ 0, 0, 0 ],
+					"to": [ 0, 0, 0 ],
+					"children": [
+						{ "name": "Workpiece", "from": [ 4, 4, 4 ], "to": [ 6, 6, 6 ], "faces": { "up": { "texture": "#iron5", "uv": [ 0, 0, 2, 2 ] } } }
+					]
+				}
+			]
+		}
+	],
+	"animations": [
+		{
+			"name": "work",
+			"code": "work",
+			"quantityframes": 20,
+			"onAnimationEnd": "EaseOut",
+			"keyframes": [
+				{ "frame": 0, "elements": { "Wheel": { "rotationX": 0 }, "Workpiece": { "offsetX": 0 } } },
+				{ "frame": 10, "elements": { "Wheel": { "rotationX": 90 }, "Items": { "offsetX": 1 }, "Workpiece": { "offsetX": 2 } } }
+			]
+		}
+	]
+}

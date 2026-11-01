@@ -181,7 +181,7 @@ public class GeometryTests {
       FixturePath.Of("items/machined/item-shaped-gearpinion.json")
     );
     Dictionary<string, Matrix4x4> floatMats = Geometry.WorldMatrices(shape);
-    Dictionary<string, Renderer.Mat4d> doubleMats = Renderer.WorldMatricesD(
+    Dictionary<string, Core.Mat4d> doubleMats = Renderer.WorldMatricesD(
       shape,
       null
     );

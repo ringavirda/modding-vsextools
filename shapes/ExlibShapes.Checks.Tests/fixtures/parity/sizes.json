@@ -1,0 +1,10 @@
+{
+ "head-small.json": {
+  "exit": 1,
+  "enumerated": 4,
+  "faulted": [
+   "Head",
+   "Nope"
+  ]
+ }
+}
