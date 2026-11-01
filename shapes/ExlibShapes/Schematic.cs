@@ -642,7 +642,8 @@ public static class Schematic {
   /// <paramref name="spin"/> is the turn <see cref="Presentation.Stage"/> made of the layout, in
   /// degrees: the machine is built that way round, so every drawn mesh turns with it about its own
   /// cell. A cell whose selector carries facing data has already turned, its code naming the
-  /// rotated variant, and keeps its own rotation.
+  /// rotated variant, and keeps its own rotation; so does a cell carrying an as-built code
+  /// (<see cref="Cell.Finished"/>), which is drawn in place of its selector's pick.
   /// </para>
   /// </summary>
   public static (
@@ -655,19 +656,27 @@ public static class Schematic {
       Cell c = layout.Cells[i];
       if (cutAt != null && c.Y > cutAt)
         continue;
-      if (
-        !layout.Numbers.TryGetValue(c.Number, out string? selector)
-        || index.Optional(selector)
-      )
-        continue;
-      ResolvedBlock? block = index.Resolve(selector);
+      ResolvedBlock? block;
+      int cellSpin;
+      if (c.Finished != null) {
+        block = index.Resolve(c.Finished);
+        cellSpin = 0;
+      } else {
+        if (
+          !layout.Numbers.TryGetValue(c.Number, out string? selector)
+          || index.Optional(selector)
+        )
+          continue;
+        block = index.Resolve(selector);
+        cellSpin = layout.Facings.ContainsKey(selector) ? 0 : spin;
+      }
       if (block == null)
         continue;
       (JObject group, Dictionary<string, TextureRef> values) = WrappedCell(
         block,
         new Offset(c.X, c.Y, c.Z),
         $"c{i}",
-        layout.Facings.ContainsKey(selector) ? 0 : spin
+        cellSpin
       );
       elements.Add(group);
       foreach ((string key, TextureRef value) in values)

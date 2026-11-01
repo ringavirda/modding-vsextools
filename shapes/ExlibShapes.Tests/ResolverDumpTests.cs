@@ -34,6 +34,8 @@ public class ResolverDumpTests {
     "mods/siex/tests/goldens/siex/blocktypes/cowperstove/intake.json",
   ];
 
+  // The blastcore rows draw each selector's first alternative, not the brick the finished furnace
+  // carries; the as-built map (AsBuiltTests) is what draws the latter.
   [SkippableFact]
   public void Resolve_matches_the_reference_representative_for_every_selector_of_every_family_golden() {
     string? exmods = FixturePath.Workspace("exmods");

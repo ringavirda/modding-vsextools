@@ -542,6 +542,8 @@ public class SchematicTests {
     );
   }
 
+  // The blastcore references draw each selector's first alternative, not the brick the finished
+  // furnace carries; the as-built map (AsBuiltTests) is what draws the latter.
   [Fact]
   public void Blastcore_golden_manifest_matches_the_reference_json_field_for_field() {
     if (BlastcoreGolden is not { } golden)

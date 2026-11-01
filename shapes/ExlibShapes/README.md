@@ -48,7 +48,7 @@ placeholder).
 
 ```
 exlib-shapes schematic FILE --out DIR [--views plan,iso] [--angle N] [--layer N|all] [--ppu N]
-  [--shape COPY] [--roots PATH...] [--game PATH]
+  [--shape COPY] [--as-built FILE] [--roots PATH...] [--game PATH]
 ```
 
 Reads `FILE`'s `attributes.multiblockStructure` (the structure table, its oriented selectors,
@@ -65,6 +65,11 @@ plus one `<stem>-iso-y<N>.png` per `--layer` (a single Y, or `all` for one per l
 height. `--ppu` is pixels per shape unit for the iso render (default 8). `--roots` names extra mod
 repository roots a selector resolves against, repeatable, in addition to the golden's own
 repository and its sibling `exlib` checkout when present.
+
+`--as-built FILE` lays a structure's as-built map (`{"cells": [{x, y, z, code}]}`, the offsets frame,
+written by the mod that owns the structure) over the layout: each listed cell draws its code, facing
+as built, in place of its selector's first alternative. An entry on no cell, a code its cell's
+selector does not admit, or a code no block resolves refuses the run. Without it nothing changes.
 
 The declared offsets are authored in the block's own frame and the game turns them by its
 `StructureAngle`, a number that lives in C# and in no blocktype file; the drawing therefore takes

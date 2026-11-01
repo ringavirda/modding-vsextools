@@ -351,12 +351,20 @@ internal static class Program {
     (string file, string[] flags) = FileAndFlags(
       args,
       "usage: exlib-shapes schematic FILE --out DIR [--views plan,iso] [--angle N] [--layer N|all] "
-        + "[--ppu N] [--shape COPY] [--roots PATH...] [--game PATH]"
+        + "[--ppu N] [--shape COPY] [--as-built FILE] [--roots PATH...] [--game PATH]"
     );
     RejectUnknownFlags(
       "schematic",
       flags,
-      ["--out", "--views", "--angle", "--layer", "--ppu", "--shape"],
+      [
+        "--out",
+        "--views",
+        "--angle",
+        "--layer",
+        "--ppu",
+        "--shape",
+        "--as-built",
+      ],
       ["--roots"],
       []
     );
@@ -398,8 +406,11 @@ internal static class Program {
         "--shape applies to a planned layout (layout-recap/1), not a blocktype file"
       );
     Variant? drawn = DrawnVariant(index, file, null);
+    Layout loaded = Layout.Load(file, drawn?.Path);
+    if (OptOf(flags, "--as-built") is { } asBuilt)
+      loaded = AsBuilt.Attach(loaded, index, AsBuilt.Read(asBuilt));
     Presentation.Staged staged = Presentation.Stage(
-      Footprint.Placed(Layout.Load(file, drawn?.Path), index),
+      Footprint.Placed(loaded, index),
       drawn
     );
     Layout layout = staged.Layout;

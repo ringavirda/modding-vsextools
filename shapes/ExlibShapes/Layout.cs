@@ -17,8 +17,18 @@ public sealed class LayoutError : Exception {
 }
 
 /// <summary>One structure cell: a grid offset and the number its selector resolves through
-/// <see cref="Layout.Numbers"/>.</summary>
-public sealed record Cell(int X, int Y, int Z, int Number);
+/// <see cref="Layout.Numbers"/>. <paramref name="Finished"/> is the full code the finished
+/// structure carries there when an as-built map was attached (see <see cref="AsBuilt"/>), null
+/// otherwise; <paramref name="SideSegment"/> is the dash-segment of that code holding its
+/// horizontal side, -1 when the code has none.</summary>
+public sealed record Cell(
+  int X,
+  int Y,
+  int Z,
+  int Number,
+  string? Finished = null,
+  int SideSegment = -1
+);
 
 /// <summary>An (x, y, z) grid offset, used for filler cells, connector faces and role cells - every
 /// place the JSON carries a bare offset with no number attached.</summary>
@@ -244,7 +254,8 @@ public sealed class Layout {
 
   /// <summary>
   /// This layout turned by <paramref name="angle"/> (0, 90, 180 or 270): every cell, filler,
-  /// connector and role offset rotated by <see cref="RotateOffset"/>, a connector's own side key
+  /// connector and role offset rotated by <see cref="RotateOffset"/>, an as-built cell's code
+  /// turned through its side segment, a connector's own side key
   /// rotated by <see cref="RotateSideWord"/>, and each numbered selector that
   /// <see cref="Facings"/> marks as oriented rewritten through its facing segments
   /// (<c>MultiblockFacings.RotateSegments</c>) - re-keyed into the returned layout's own
@@ -260,7 +271,14 @@ public sealed class Layout {
       .. Cells.Select(c =>
       {
         Offset o = RotateOffset(new Offset(c.X, c.Y, c.Z), angle);
-        return new Cell(o.X, o.Y, o.Z, c.Number);
+        string? finished = c.Finished;
+        if (
+          finished != null
+          && c.SideSegment >= 0
+          && RotateSegments(finished, [c.SideSegment], angle) is { } turned
+        )
+          finished = turned;
+        return c with { X = o.X, Y = o.Y, Z = o.Z, Finished = finished };
       }),
     ];
     List<Offset> fillers = [.. Fillers.Select(o => RotateOffset(o, angle))];
