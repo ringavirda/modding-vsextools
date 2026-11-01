@@ -1,0 +1,87 @@
+{
+ "textureWidth": 16,
+ "textureHeight": 16,
+ "textures": {
+  "iron5": "game:block/metal/sheet-plain/iron5"
+ },
+ "elements": [
+  {
+   "name": "Cube1",
+   "from": [
+    17,
+    2,
+    19.5
+   ],
+   "to": [
+    20,
+    5,
+    22.5
+   ],
+   "rotationOrigin": [
+    18,
+    3,
+    20.5
+   ],
+   "rotationX": 22.5,
+   "faces": {
+    "down": {
+     "texture": "#iron5",
+     "uv": [
+      0,
+      0,
+      3,
+      3
+     ]
+    }
+   }
+  },
+  {
+   "name": "Cube2",
+   "from": [
+    16.5,
+    0,
+    16.5
+   ],
+   "to": [
+    20,
+    1,
+    17.5
+   ],
+   "faces": {
+    "down": {
+     "texture": "#iron5",
+     "uv": [
+      0,
+      0,
+      3,
+      1
+     ]
+    }
+   }
+  },
+  {
+   "name": "Free",
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    1,
+    1,
+    1
+   ],
+   "faces": {
+    "up": {
+     "texture": "#iron5",
+     "uv": [
+      0,
+      0,
+      1,
+      1
+     ]
+    }
+   }
+  }
+ ]
+}

@@ -255,7 +255,7 @@ public class RendererTests {
             shape,
             TextureSet.ForShape(shape, TextureRoots.Build(null, null, null)),
             null,
-            Renderer.Mat4d.Translate(-8, -8, -depth - 16)
+            Core.Mat4d.Translate(-8, -8, -depth - 16)
           ),
         ],
         new View(0, 0),
@@ -285,7 +285,7 @@ public class RendererTests {
           shape,
           TextureSet.ForShape(shape, TextureRoots.Build(null, null, null)),
           null,
-          Renderer.Mat4d.Translate(-8, 0.4, -8)
+          Core.Mat4d.Translate(-8, 0.4, -8)
         ),
       ],
       new View(0, 0),
@@ -428,13 +428,13 @@ public class RendererTests {
       block,
       Solid(255, 0, 0),
       null,
-      Renderer.Mat4d.Translate(eye.X * 20, eye.Y * 20, eye.Z * 20)
+      Core.Mat4d.Translate(eye.X * 20, eye.Y * 20, eye.Z * 20)
     );
     Renderer.RenderPart far = new(
       block,
       Solid(0, 255, 0),
       null,
-      Renderer.Mat4d.Identity
+      Core.Mat4d.Identity
     );
     Renderer.RenderPart[] parts = [near, far];
     using SKBitmap bmp = Renderer.Render(
@@ -457,8 +457,8 @@ public class RendererTests {
     LoadedShape block = Block(4);
     Renderer.RenderPart[] parts =
     [
-      new(block, Solid(255, 0, 0), null, Renderer.Mat4d.Identity),
-      new(block, Solid(0, 0, 255), null, Renderer.Mat4d.Translate(16, 0, 0)),
+      new(block, Solid(255, 0, 0), null, Core.Mat4d.Identity),
+      new(block, Solid(0, 0, 255), null, Core.Mat4d.Translate(16, 0, 0)),
     ];
     const int ppu = 8;
     using SKBitmap bmp = Renderer.Render(
@@ -485,8 +485,8 @@ public class RendererTests {
     LoadedShape block = Block(4);
     Renderer.RenderPart[] parts =
     [
-      new(block, Solid(255, 0, 0), null, Renderer.Mat4d.Identity),
-      new(block, Solid(0, 0, 255), null, Renderer.Mat4d.Translate(8, 0, 0)),
+      new(block, Solid(255, 0, 0), null, Core.Mat4d.Identity),
+      new(block, Solid(0, 0, 255), null, Core.Mat4d.Translate(8, 0, 0)),
     ];
     using SKBitmap bmp = Renderer.Render(
       parts,

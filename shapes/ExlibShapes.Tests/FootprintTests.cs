@@ -27,11 +27,6 @@ public class FootprintTests {
       0,
       "the cap drawn with the stack below it"
     ),
-    ["iiex:mpenergy-flywheel-large"] = (
-      1.0,
-      180,
-      "the slab drawn one cell off the pair it reserves"
-    ),
   };
 
   // The families the mirrored layout was first found in. A gate that stops reaching them says
@@ -242,6 +237,7 @@ public class FootprintTests {
         // onto the other. BlockFlywheel, BlockShear and BlockFastenerBench author `ns`;
         // BlockRollingMill authors `we`.
         "iiex.BlockFlywheel"
+        or "iiex.BlockFlywheelLarge"
         or "iiex.BlockShear"
         or "iiex.BlockFastenerBench" => side == "we" ? 90 : 0,
         "iiex.BlockRollingMill" => side == "ns" ? 90 : 0,

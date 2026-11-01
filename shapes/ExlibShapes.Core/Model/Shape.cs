@@ -29,6 +29,9 @@ public sealed class Shape {
   /// <summary>The <c>animations</c>, in file order.</summary>
   public List<Clip> Animations { get; } = [];
 
+  /// <summary>Whether the file text ended with a line feed; true for a shape not read from text.</summary>
+  public bool FinalNewline { get; set; } = true;
+
   /// <summary>Top-level keys the reader does not model, in file order.</summary>
   public JObject Unknown { get; } = [];
 

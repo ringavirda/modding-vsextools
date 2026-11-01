@@ -9,7 +9,7 @@
     {
       "number": 1,
       "display": 1,
-      "selector": "game:refractorybricks-good-tier*",
+      "selector": "*:@(refractorybricks-good-tier.*|bandedbrick-(face|corner|cornerleft|cornerright|end)-tier[123]-(n|e|s|w)|bandedbrick-plain-tier[123]|hoopedbrick-(face|corner|plain)-tier[123]-(n|e|s|w))",
       "representative": "game:refractorybricks-good-tier1",
       "color": "#4C72B0",
       "optional": false
@@ -17,73 +17,105 @@
     {
       "number": 2,
       "display": 2,
-      "selector": "iiex:furnace-blastcore-*-n",
-      "representative": "iiex:furnace-blastcore-tier1-n",
+      "selector": "*:@(claybricks-(good-fire|clinkerrough)|refractorybricks-good-.*|brickcourse-.*|bandedbrick-(face|corner|cornerleft|cornerright|end)-[a-z0-9]+-(n|e|s|w)|bandedbrick-plain-[a-z0-9]+|hoopedbrick-(face|corner|plain)-tier[123]-(n|e|s|w))",
+      "representative": "game:claybricks-clinkerrough",
       "color": "#DD8452",
       "optional": false
     },
     {
       "number": 3,
       "display": 3,
-      "selector": "iiex:furnace-irontap-w",
-      "representative": "iiex:furnace-irontap-w",
+      "selector": "*:@(claybricks-(good-fire|clinkerrough)|refractorybricks-good-.*|brickcourse-.*|bandedbrick-(face|corner|cornerleft|cornerright|end|workarch)-[a-z0-9]+-(n|e|s|w)|bandedbrick-plain-[a-z0-9]+)",
+      "representative": "game:claybricks-clinkerrough",
       "color": "#55A868",
       "optional": false
     },
     {
       "number": 4,
       "display": 4,
-      "selector": "iiex:furnace-slagtap-e",
-      "representative": "iiex:furnace-slagtap-e",
+      "selector": "iiex:furnace-blastcore-*-n",
+      "representative": "iiex:furnace-blastcore-tier1-n",
       "color": "#C44E52",
       "optional": false
     },
     {
       "number": 5,
       "display": 5,
-      "selector": "iiex:furnace-tuyere-*",
-      "representative": "iiex:furnace-tuyere-s",
+      "selector": "iiex:furnace-irontap-w",
+      "representative": "iiex:furnace-irontap-w",
       "color": "#8172B2",
       "optional": false
     },
     {
       "number": 6,
       "display": 6,
-      "selector": "iiex:hopper-tall-e",
-      "representative": "iiex:hopper-tall-e",
+      "selector": "iiex:furnace-slagtap-e",
+      "representative": "iiex:furnace-slagtap-e",
       "color": "#937860",
       "optional": false
     },
     {
       "number": 7,
       "display": 7,
-      "selector": "exlib:structurefiller",
-      "representative": "exlib:structurefiller",
+      "selector": "iiex:furnace-tuyere-*",
+      "representative": "iiex:furnace-tuyere-s",
       "color": "#DA8BC3",
       "optional": false
     },
     {
       "number": 8,
       "display": 8,
-      "selector": "*:@(air|coalpile|furnace-chargepile)",
-      "representative": null,
+      "selector": "iiex:furnace-tunneldoor-e",
+      "representative": "iiex:furnace-tunneldoor-e",
       "color": "#8C8C8C",
-      "optional": true
+      "optional": false
     },
     {
       "number": 9,
       "display": 9,
-      "selector": "*:@(air|coalpile|furnace-chargepile|hearthmetal-.*)",
-      "representative": null,
+      "selector": "*:@(refractorybricks-good-tier.*|hoopedbrick-(face|corner|plain)-tier[123]-(n|e|s|w))",
+      "representative": "game:refractorybricks-good-tier1",
       "color": "#CCB974",
-      "optional": true
+      "optional": false
     },
     {
       "number": 10,
       "display": 10,
+      "selector": "*:@(refractorybricks-good-tier.*|bandedbrick-(cornerleft|cornerright)-tier[123]-(n|e|s|w))",
+      "representative": "game:refractorybricks-good-tier1",
+      "color": "#64B5CD",
+      "optional": false
+    },
+    {
+      "number": 11,
+      "display": 11,
+      "selector": "exlib:structurefiller",
+      "representative": "exlib:structurefiller",
+      "color": "#D96262",
+      "optional": false
+    },
+    {
+      "number": 12,
+      "display": 12,
+      "selector": "*:@(air|coalpile|furnace-chargepile)",
+      "representative": null,
+      "color": "#6284D9",
+      "optional": true
+    },
+    {
+      "number": 13,
+      "display": 13,
+      "selector": "*:@(air|coalpile|furnace-chargepile|hearthmetal-.*)",
+      "representative": null,
+      "color": "#A7D962",
+      "optional": true
+    },
+    {
+      "number": 14,
+      "display": 14,
       "selector": "game:air",
       "representative": null,
-      "color": "#64B5CD",
+      "color": "#D962CA",
       "optional": true
     }
   ],

@@ -655,8 +655,6 @@ public sealed class BlockIndex {
       ? (double)value
       : 0.0;
 
-  private static readonly Regex AltRe = new(@"@\(([^)]*)\)");
-
   // A selector as (domain, path, is_regex) candidates, tried in order until one resolves: a plain
   // code or a `*` wildcard is one candidate (glob semantics); a `domain:@(a|b|c)` selector is one
   // candidate per alternative (regex semantics, since an alternative may itself carry a raw
@@ -668,14 +666,37 @@ public sealed class BlockIndex {
     int colon = selector.IndexOf(':');
     string domain = colon >= 0 ? selector[..colon] : "*";
     string path = colon >= 0 ? selector[(colon + 1)..] : selector;
-    Match m = AltRe.Match(path);
-    if (!m.Success)
+    int open = path.IndexOf("@(", StringComparison.Ordinal);
+    if (open < 0)
       return [(domain, path, false)];
 
-    string prefix = path[..m.Index];
-    string suffix = path[(m.Index + m.Length)..];
+    var bodies = new List<string>();
+    int depth = 0,
+      close = -1,
+      start = open + 2;
+    for (int i = start; i < path.Length && close < 0; i++) {
+      switch (path[i]) {
+        case '(':
+          depth++;
+          break;
+        case ')':
+          if (depth-- == 0)
+            close = i;
+          break;
+        case '|' when depth == 0:
+          bodies.Add(path[start..i]);
+          start = i + 1;
+          break;
+      }
+    }
+    if (close < 0)
+      return [(domain, path, false)];
+    bodies.Add(path[start..close]);
+
+    string prefix = path[..open];
+    string suffix = path[(close + 1)..];
     var outp = new List<(string, string, bool)>();
-    foreach (string alt in m.Groups[1].Value.Split('|')) {
+    foreach (string alt in bodies) {
       int altColon = alt.IndexOf(':');
       outp.Add(
         altColon >= 0

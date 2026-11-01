@@ -30,9 +30,12 @@ public sealed class Node {
   /// <summary>The element's far corner, in its parent's local space.</summary>
   public Vec3d To { get; }
 
-  /// <summary>The pivot faces rotate about; defaults to <see cref="From"/> when the JSON omits
-  /// <c>rotationOrigin</c>.</summary>
+  /// <summary>The pivot faces rotate about, in the parent's frame; 0,0,0 when the JSON omits
+  /// <c>rotationOrigin</c>, as the game reads it.</summary>
   public Vec3d Origin { get; }
+
+  /// <summary>The element's <c>scaleX</c>/<c>scaleY</c>/<c>scaleZ</c>, 1 when absent.</summary>
+  public Vec3d Scale { get; }
 
   /// <summary>Degrees about x, y, z - <c>rotationX</c>/<c>rotationY</c>/<c>rotationZ</c>.</summary>
   public Vec3d Rotation { get; }
@@ -54,6 +57,7 @@ public sealed class Node {
     Vec3d to,
     Vec3d origin,
     Vec3d rotation,
+    Vec3d scale,
     IReadOnlyDictionary<string, ShapeElementFace> faces,
     string path,
     Node? parent
@@ -63,6 +67,7 @@ public sealed class Node {
     To = to;
     Origin = origin;
     Rotation = rotation;
+    Scale = scale;
     Faces = faces;
     Path = path;
     Parent = parent;
@@ -262,9 +267,9 @@ public static class ShapeFile {
       + (occurrence > 1 ? "#" + occurrence : "");
     Vec3d from = ToVec3d(raw.From, Vec3d.Zero);
     Vec3d to = ToVec3d(raw.To, Vec3d.Zero);
-    Vec3d origin =
-      raw.RotationOrigin != null ? ToVec3d(raw.RotationOrigin, from) : from;
+    Vec3d origin = ToVec3d(raw.RotationOrigin, Vec3d.Zero);
     Vec3d rotation = new(raw.RotationX, raw.RotationY, raw.RotationZ);
+    Vec3d scale = new(raw.ScaleX, raw.ScaleY, raw.ScaleZ);
     // ShapeElement.Faces (a face-name-keyed dictionary) is obsolete and left null once the
     // deserialiser's own [OnDeserialized] hook runs: FacesResolved is a fixed 6-slot array in
     // Geometry.Faces order (north, east, south, west, up, down), a disabled or absent face left
@@ -279,7 +284,17 @@ public static class ShapeFile {
         if (raw.FacesResolved[i] is { } face)
           faces[Geometry.Faces[i]] = face;
 
-    var node = new Node(name, from, to, origin, rotation, faces, path, parent);
+    var node = new Node(
+      name,
+      from,
+      to,
+      origin,
+      rotation,
+      scale,
+      faces,
+      path,
+      parent
+    );
     if (raw.Children != null) {
       var childNames = new Dictionary<string, int>(StringComparer.Ordinal);
       foreach (ShapeElement child in raw.Children)
