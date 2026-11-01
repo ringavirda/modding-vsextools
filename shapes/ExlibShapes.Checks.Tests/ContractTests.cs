@@ -58,7 +58,18 @@ public class ContractTests {
         .Order(StringComparer.Ordinal)
     );
     Assert.Equal(
-      ["facecheck", "flushcheck", "footsweep", "octcheck", "sizes"],
+      [
+        "allowance",
+        "castonly",
+        "draw",
+        "facecheck",
+        "flushcheck",
+        "footsweep",
+        "octcheck",
+        "role",
+        "sizes",
+        "split",
+      ],
       Selection
         .All.Where(c => c.Profile == Profile.Structural)
         .Select(c => c.Id)
@@ -98,6 +109,12 @@ public class ContractTests {
       "octcheck",
       "octregular",
       "uvwrap",
+      "castonly",
+      "allowance",
+      "split",
+      "role",
+      "draw",
+      "lints",
     ];
     string[] versions = [.. ids.Select(CheckVersions.Of)];
     Assert.All(versions, v => Assert.Matches("^[0-9a-f]{64}$", v));

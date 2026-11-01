@@ -97,6 +97,12 @@ public sealed record FootprintSpec(
 /// <param name="Directed">Whether uvwrap judges the texels faces meet in world terms and a wood grain along the axis.</param>
 /// <param name="Tex">The texture width in texels uvwrap judges run-ons against.</param>
 /// <param name="WoodKeys">The texture keys whose grain runs along a part; the legacy set when null.</param>
+/// <param name="Record">The part record of <paramref name="Shape"/>.</param>
+/// <param name="Settings">The settings roles and texture keys are read from.</param>
+/// <param name="Source">The drawing a cast item was made from.</param>
+/// <param name="SourceRecord">The part record of <paramref name="Source"/>, whose steps name the faces cut.</param>
+/// <param name="Allowance">How far the cast stands out of a face a step cuts, in voxels.</param>
+/// <param name="Parting">The height of the flask's parting on y, in voxels.</param>
 public sealed record CheckInput(
   Shape? Shape,
   Shape? Shipped = null,
@@ -107,7 +113,13 @@ public sealed record CheckInput(
   FootprintSpec? Footprint = null,
   IReadOnlyList<string>? Regular = null,
   bool Directed = false,
-  double Tex = 16
+  double Tex = 16,
+  PartRecord? Record = null,
+  Settings? Settings = null,
+  Shape? Source = null,
+  PartRecord? SourceRecord = null,
+  double Allowance = 0.125,
+  double? Parting = null
 );
 
 /// <summary>A check: a pure function of its input to a pass, a fail or a question.</summary>

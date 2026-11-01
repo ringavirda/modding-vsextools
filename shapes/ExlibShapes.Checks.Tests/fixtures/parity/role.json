@@ -1,0 +1,14 @@
+{
+ "cast-ok.json": {
+  "exit": 0,
+  "enumerated": 18,
+  "faulted": []
+ },
+ "cast-iron-face.json": {
+  "exit": 1,
+  "enumerated": 18,
+  "faulted": [
+   "Lug"
+  ]
+ }
+}

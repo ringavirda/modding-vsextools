@@ -16,6 +16,11 @@ public static class Selection {
     new Octcheck(),
     new OctRegular(),
     new Uvwrap(),
+    new Castonly(),
+    new Allowance(),
+    new Split(),
+    new Role(),
+    new Draw(),
   ];
 
   /// <summary>Whether <paramref name="check"/> runs under <paramref name="profile"/>: structural checks always,

@@ -67,4 +67,58 @@ public class ParityLiveTests {
       Directory.Delete(live, true);
     }
   }
+
+  [SkippableFact]
+  public void Recorded_floorflask_parity_matches_a_live_lathecheck_run() {
+    string? ff = Environment.GetEnvironmentVariable("FLOORFLASK");
+    Skip.If(
+      string.IsNullOrEmpty(ff),
+      "FLOORFLASK does not name the floor flask lane"
+    );
+    string python =
+      Environment.GetEnvironmentVariable("FLOORFLASK_PYTHON") ?? "python3";
+    string live = Path.Combine(
+      Path.GetTempPath(),
+      "parity-" + Guid.NewGuid().ToString("N")
+    );
+    Directory.CreateDirectory(live);
+    try {
+      var start = new ProcessStartInfo(python) {
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+      };
+      start.ArgumentList.Add("-I");
+      start.ArgumentList.Add(
+        Path.Combine(AppContext.BaseDirectory, "recorders", "record_st10a.py")
+      );
+      start.Environment["FLOORFLASK"] = ff;
+      start.Environment["PARITY_OUT"] = live;
+      using Process p = Process.Start(start)!;
+      string err = p.StandardError.ReadToEnd();
+      p.StandardOutput.ReadToEnd();
+      p.WaitForExit();
+      Assert.True(p.ExitCode == 0, err);
+      foreach (string name in new[] { "allowance", "castonly", "role", "draw" }) {
+        JToken want = JToken.Parse(
+          File.ReadAllText(
+            Path.Combine(
+              AppContext.BaseDirectory,
+              "fixtures",
+              "parity",
+              name + ".json"
+            )
+          )
+        );
+        JToken got = JToken.Parse(
+          File.ReadAllText(Path.Combine(live, "parity", name + ".json"))
+        );
+        Assert.True(
+          JToken.DeepEquals(want, got),
+          $"{name}.json drifted from the floor flask lane:\nrecorded {want}\nlive {got}"
+        );
+      }
+    } finally {
+      Directory.Delete(live, true);
+    }
+  }
 }
