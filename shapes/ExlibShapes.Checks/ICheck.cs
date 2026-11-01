@@ -103,6 +103,8 @@ public sealed record FootprintSpec(
 /// <param name="SourceRecord">The part record of <paramref name="Source"/>, whose steps name the faces cut.</param>
 /// <param name="Allowance">How far the cast stands out of a face a step cuts, in voxels.</param>
 /// <param name="Parting">The height of the flask's parting on y, in voxels.</param>
+/// <param name="CutFaces">The feature names of the blank's record whose faces a user may cut; the faces the blank
+/// record's steps cut when null.</param>
 public sealed record CheckInput(
   Shape? Shape,
   Shape? Shipped = null,
@@ -119,7 +121,8 @@ public sealed record CheckInput(
   Shape? Source = null,
   PartRecord? SourceRecord = null,
   double Allowance = 0.125,
-  double? Parting = null
+  double? Parting = null,
+  IReadOnlyList<string>? CutFaces = null
 );
 
 /// <summary>A check: a pure function of its input to a pass, a fail or a question.</summary>

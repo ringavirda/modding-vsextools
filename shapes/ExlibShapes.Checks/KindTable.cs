@@ -4,13 +4,15 @@ using System.Linq;
 
 namespace ExpandedLib.Shapes.Checks;
 
-/// <summary>The kinds a part declares and the gates each kind gets.</summary>
+/// <summary>The kinds a part declares and the gates each kind gets. A row lists the gates the kind can have;
+/// <see cref="Selection.Applies"/> drops the ones the part gives them nothing to read.</summary>
 public static class KindTable {
   /// <summary>Every kind a part may declare.</summary>
   public static readonly IReadOnlyList<string> Kinds =
   [
     "casting",
     "pattern",
+    "worked",
     "filling",
     "core",
     "corebox",
@@ -20,8 +22,17 @@ public static class KindTable {
   ];
 
   private static readonly Dictionary<string, string[]> Rows = new() {
-    ["casting"] = [],
-    ["pattern"] = [],
+    ["casting"] =
+    [
+      "castonly",
+      "allowance",
+      "split",
+      "role",
+      "uvwrap",
+      "octregular",
+    ],
+    ["pattern"] = ["role", "draw"],
+    ["worked"] = ["role", "blankmatch"],
     ["filling"] = [],
     ["core"] = [],
     ["corebox"] = [],

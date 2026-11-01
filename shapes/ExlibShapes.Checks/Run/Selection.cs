@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ExpandedLib.Shapes.Core;
+using Newtonsoft.Json.Linq;
 
 namespace ExpandedLib.Shapes.Checks;
 
@@ -21,12 +23,35 @@ public static class Selection {
     new Split(),
     new Role(),
     new Draw(),
+    new Blankmatch(),
   ];
 
   /// <summary>Whether <paramref name="check"/> runs under <paramref name="profile"/>: structural checks always,
   /// period checks only under <see cref="Profile.ExpandedPeriod"/>.</summary>
   public static bool Runs(ICheck check, Profile profile) =>
     check.Profile == Profile.Structural || profile == Profile.ExpandedPeriod;
+
+  /// <summary>The globs of the octagons a record holds regular, from its <c>regular</c> slot; empty when it has
+  /// none.</summary>
+  public static IReadOnlyList<string> RegularGlobs(PartRecord record) =>
+    record.Carried["regular"] is JArray a
+      ? [.. a.Select(t => (string?)t ?? "").Where(g => g != "")]
+      : [];
+
+  /// <summary>Whether <paramref name="check"/> has anything to read in <paramref name="input"/>. octregular needs
+  /// the record to name regular globs (<see cref="RegularGlobs"/>), uvwrap a round run in the shape, blankmatch a
+  /// <c>blank</c> slot in the record; every other check always applies. Without these a check enumerates nothing
+  /// and fails.</summary>
+  public static bool Applies(ICheck check, CheckInput input) =>
+    check.Id switch {
+      "octregular" => input.Record != null
+        && RegularGlobs(input.Record).Count > 0,
+      "uvwrap" => input.Shape != null
+        && RoundRuns.Find(new Tree(input.Shape), new Frames(input.Shape)).Count
+          > 0,
+      "blankmatch" => input.Record?.Carried.ContainsKey("blank") == true,
+      _ => true,
+    };
 
   /// <summary>Parses a settings lint profile name.</summary>
   /// <exception cref="ArgumentException">The name is neither <c>structural</c> nor <c>expanded-period</c>.</exception>

@@ -15,11 +15,9 @@ public class ContractTests {
   }
 
   [Fact]
-  public void Casting_kinds_have_empty_rows_and_every_kind_has_one() {
+  public void Filling_kinds_have_empty_rows_and_every_kind_has_one() {
     foreach (string kind in KindTable.Kinds)
       Assert.NotNull(KindTable.Gates(kind));
-    Assert.Empty(KindTable.Gates("casting"));
-    Assert.Empty(KindTable.Gates("pattern"));
     Assert.Empty(KindTable.Gates("filling"));
   }
 
@@ -60,6 +58,7 @@ public class ContractTests {
     Assert.Equal(
       [
         "allowance",
+        "blankmatch",
         "castonly",
         "draw",
         "facecheck",
@@ -79,7 +78,7 @@ public class ContractTests {
 
   [Fact]
   public void Selection_follows_the_table_rows() {
-    Assert.Empty(Selection.For(["casting", "item"], Profile.ExpandedPeriod));
+    Assert.Empty(Selection.For(["filling", "item"], Profile.ExpandedPeriod));
     Assert.Throws<ArgumentException>(() =>
       Selection.For(["sculpture"], Profile.Structural)
     );
@@ -114,6 +113,7 @@ public class ContractTests {
       "split",
       "role",
       "draw",
+      "blankmatch",
       "lints",
     ];
     string[] versions = [.. ids.Select(CheckVersions.Of)];
