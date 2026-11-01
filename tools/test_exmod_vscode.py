@@ -237,5 +237,25 @@ class WrapperTests(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.ws, ".dotnet")))
 
 
+class StarterLauncherTests(unittest.TestCase):
+    STARTER = os.path.join(os.path.dirname(ROOT), "exmods-starter", "scripts")
+
+    def test_generator_copies_the_wrappers_verbatim(self):
+        """Fails when Invoke-Starter stops copying wrappers/exmod.sh or exmod.ps1 as they are."""
+        with open(os.path.join(ROOT, "exmod", "new.ps1")) as f:
+            text = f.read()
+        for name in ("exmod.sh", "exmod.ps1"):
+            self.assertIn(f"Copy-Item (Join-Path $ToolsRoot 'wrappers/{name}') (Join-Path $scriptsDir '{name}')", text)
+
+    def test_checked_in_starter_launchers_match_the_wrappers(self):
+        """Fails when exmods-starter/scripts/exmod.sh or exmod.ps1 differs from wrappers/. Skipped
+        without a sibling exmods-starter checkout."""
+        if not os.path.isdir(self.STARTER):
+            self.skipTest("no sibling exmods-starter checkout")
+        for name in ("exmod.sh", "exmod.ps1"):
+            with open(os.path.join(ROOT, "wrappers", name), "rb") as a, open(os.path.join(self.STARTER, name), "rb") as b:
+                self.assertEqual(a.read(), b.read(), name)
+
+
 if __name__ == "__main__":
     unittest.main()
