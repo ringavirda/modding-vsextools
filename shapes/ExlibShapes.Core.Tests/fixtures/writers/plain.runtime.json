@@ -1,0 +1,76 @@
+{
+ "textureWidth": 16,
+ "textureHeight": 16,
+ "textures": {
+  "cast-iron1": "iiex:block/metal/castiron",
+  "iron5": "game:block/metal/sheet-plain/iron5"
+ },
+ "elements": [
+  {
+   "name": "Base",
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    2.5,
+    16
+   ],
+   "faces": {
+    "north": {
+     "texture": "#cast-iron1",
+     "uv": [
+      0,
+      0,
+      16,
+      2.5
+     ]
+    },
+    "up": {
+     "texture": "#cast-iron1",
+     "uv": [
+      0.5,
+      0.5,
+      15.5,
+      15.5
+     ],
+     "rotation": 90
+    }
+   },
+   "children": [
+    {
+     "name": "Bolt",
+     "from": [
+      1,
+      2.5,
+      1
+     ],
+     "to": [
+      3,
+      4,
+      3
+     ],
+     "rotationOrigin": [
+      2,
+      2.5,
+      2
+     ],
+     "rotationY": 45,
+     "faces": {
+      "up": {
+       "texture": "#iron5",
+       "uv": [
+        0,
+        0,
+        2,
+        2
+       ]
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

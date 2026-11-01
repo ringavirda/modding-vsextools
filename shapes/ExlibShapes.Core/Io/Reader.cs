@@ -31,7 +31,9 @@ public static class Reader {
     JToken root = JToken.ReadFrom(reader, LoadSettings);
     if (root is not JObject obj)
       throw new JsonException("not a shape (the document is not an object)");
-    return ReadShape(obj);
+    Shape shape = ReadShape(obj);
+    shape.FinalNewline = text.EndsWith('\n');
+    return shape;
   }
 
   private static readonly JsonLoadSettings LoadSettings = new() {
@@ -89,31 +91,44 @@ public static class Reader {
           el.Name = Str(p.Value, p.Name);
           break;
         case "from":
-          el.From = Nums(p.Value, p.Name);
+          el.From = Nums(p.Value, p.Name, out uint fromWhole);
+          Form(el.IntegerForms, "from", fromWhole);
           break;
         case "to":
-          el.To = Nums(p.Value, p.Name);
+          el.To = Nums(p.Value, p.Name, out uint toWhole);
+          Form(el.IntegerForms, "to", toWhole);
           break;
         case "rotationorigin":
-          el.RotationOrigin = Nums(p.Value, p.Name);
+          el.RotationOrigin = Nums(
+            p.Value,
+            p.Name,
+            out uint rotationoriginWhole
+          );
+          Form(el.IntegerForms, "rotationorigin", rotationoriginWhole);
           break;
         case "rotationx":
           el.RotationX = Num(p.Value, p.Name);
+          Form(el.IntegerForms, "rotationx", Whole(p.Value));
           break;
         case "rotationy":
           el.RotationY = Num(p.Value, p.Name);
+          Form(el.IntegerForms, "rotationy", Whole(p.Value));
           break;
         case "rotationz":
           el.RotationZ = Num(p.Value, p.Name);
+          Form(el.IntegerForms, "rotationz", Whole(p.Value));
           break;
         case "scalex":
           el.ScaleX = Num(p.Value, p.Name);
+          Form(el.IntegerForms, "scalex", Whole(p.Value));
           break;
         case "scaley":
           el.ScaleY = Num(p.Value, p.Name);
+          Form(el.IntegerForms, "scaley", Whole(p.Value));
           break;
         case "scalez":
           el.ScaleZ = Num(p.Value, p.Name);
+          Form(el.IntegerForms, "scalez", Whole(p.Value));
           break;
         case "faces":
           foreach (JProperty f in Obj(p)?.Properties() ?? [])
@@ -142,10 +157,12 @@ public static class Reader {
           face.Texture = Str(p.Value, p.Name);
           break;
         case "uv":
-          face.Uv = Nums(p.Value, p.Name);
+          face.Uv = Nums(p.Value, p.Name, out uint uvWhole);
+          Form(face.IntegerForms, "uv", uvWhole);
           break;
         case "rotation":
           face.Rotation = Num(p.Value, p.Name);
+          Form(face.IntegerForms, "rotation", Whole(p.Value));
           break;
         case "enabled":
           face.Enabled = p.Value.Type switch {
@@ -252,9 +269,23 @@ public static class Reader {
       _ => throw new JsonException($"\"{key}\" is not a number"),
     };
 
+  private static void Form(
+    Dictionary<string, uint> forms,
+    string key,
+    uint integers
+  ) {
+    if (integers != 0)
+      forms[key] = integers;
+  }
+
+  private static uint Whole(JToken t) => t.Type == JTokenType.Integer ? 1u : 0u;
+
   private static int? Int(JToken t, string key) => (int?)Num(t, key);
 
-  private static double[]? Nums(JToken t, string key) {
+  private static double[]? Nums(JToken t, string key) => Nums(t, key, out _);
+
+  private static double[]? Nums(JToken t, string key, out uint integers) {
+    integers = 0;
     if (t.Type == JTokenType.Null)
       return null;
     if (t is not JArray arr)
@@ -263,6 +294,8 @@ public static class Reader {
     foreach (JToken v in arr) {
       if (v.Type == JTokenType.Undefined)
         continue;
+      if (v.Type == JTokenType.Integer && list.Count < 32)
+        integers |= 1u << list.Count;
       list.Add(
         Num(v, key)
           ?? throw new JsonException($"\"{key}\" is not an array of numbers")

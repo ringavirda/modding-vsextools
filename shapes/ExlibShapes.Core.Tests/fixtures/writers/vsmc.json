@@ -1,0 +1,65 @@
+{
+	"editor": {
+		"collapsedPaths": "",
+		"allAngles": false,
+		"entityTextureMode": false
+	},
+	"textureWidth": 16,
+	"textureHeight": 16,
+	"textureSizes": {},
+	"textures": {
+		"iron5": "game:block/metal/sheet-plain/iron5",
+		"cast-iron1": "iiex:block/metal/castiron"
+	},
+	"elements": [
+		{
+			"name": "Base",
+			"from": [ -4.0, 0, 9.0 ],
+			"to": [ 11.0, 1.123456, 10.0 ],
+			"rotationOrigin": [ 0, 0.5, 9.0 ],
+			"rotationZ": 45,
+			"rotationX": 22.5,
+			"faces": {
+				"north": { "texture": "#iron5", "uv": [ 1.0, 5.0, 16, 6.0 ] },
+				"up": { "texture": "#iron5", "uv": [ 0, 0, 1, 1 ], "rotation": 90 },
+				"down": { "texture": "#cast-iron1", "uv": [ 0.0, 0.0, 1.0, 1.0 ], "enabled": false }
+			},
+			"children": [
+				{
+					"name": "Bolt",
+					"from": [ 0.0, 1.0, 0.0 ],
+					"to": [ 1.0, 2.0, 1.0 ],
+					"scaleX": 1.5,
+					"tags": [ "a", "b" ],
+					"faces": {}
+				}
+			]
+		}
+	],
+	"animations": [
+		{
+			"name": "spin",
+			"code": "spin",
+			"quantityframes": 30,
+			"onActivityStopped": "EaseOut",
+			"onAnimationEnd": "EaseOut",
+			"keyframes": [
+				{
+					"frame": 0,
+					"elements": {
+						"Base": { "offsetX": 0.0, "rotationY": 0, "rotationZ": 12.5 }
+					}
+				}
+			]
+		},
+
+		{
+			"name": "open",
+			"code": "open",
+			"quantityframes": 10,
+			"onActivityStopped": "EaseOut",
+			"onAnimationEnd": "Hold",
+			"keyframes": []
+		}
+	]
+}
