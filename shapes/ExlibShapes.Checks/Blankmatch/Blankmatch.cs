@@ -13,8 +13,9 @@ namespace ExpandedLib.Shapes.Checks;
 /// <c>form</c>) count as many of each form as the blank's; every face its steps cut is one of the blank's cut faces
 /// (the faces of the blank record's steps, or of the features <see cref="CheckInput.CutFaces"/> names); every
 /// feature it works lies inside the blank's box. An axis out of the band is a question unless the user's record
-/// holds an answer for feature <c>blankmatch/x</c>, <c>blankmatch/y</c> or <c>blankmatch/z</c>; any other fault is
-/// a failure and wins over a question. One line per fault or question: <c>x: spans 7 of 10 (0.7), the band is 0.75
+/// holds an answer for feature <c>blankmatch/x</c>, <c>blankmatch/y</c> or <c>blankmatch/z</c> whose
+/// <c>featureSha</c> is the lower-case hex sha256 of that axis's question line (UTF-8, no newline), so a changed
+/// drawing or blank asks again; any other fault is a failure and wins over a question. One line per fault or question: <c>x: spans 7 of 10 (0.7), the band is 0.75
 /// to 1</c>, <c>form 'boss': 2, the blank has 1</c>, <c>Way/up: not a cut face of the blank</c> or
 /// <c>NAME: lies outside the blank [..] against [..]</c>.
 /// </summary>
@@ -80,7 +81,12 @@ public sealed class Blankmatch : ICheck {
         continue;
       string line =
         $"{axis}: spans {Fmt.G(span)} of {Fmt.G(of)} ({Fmt.G(Math.Round(ratio, 4))}), the band is {Fmt.G(Lower)} to {Fmt.G(Upper)}";
-      if (user.Answers.Any(x => x.Feature == "blankmatch/" + axis))
+      string sha = Provenance.Sha256Of(line);
+      if (
+        user.Answers.Any(x =>
+          x.Feature == "blankmatch/" + axis && x.FeatureSha == sha
+        )
+      )
         ok.Add(line + ", answered");
       else
         asks.Add(line);

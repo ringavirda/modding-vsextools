@@ -24,10 +24,19 @@ public class BlankmatchTests {
     "slot": { "elements": ["Slot"], "origin": "drilled", "faces": [], "step": "drill" }
     """;
 
-  private const string Answer = """
-    "answers": [ { "feature": "blankmatch/x", "question": "q", "answer": "ruled",
-                   "by": "fallen", "date": "2026-11-02", "featureSha": "" } ]
-    """;
+  private const string LineX07 =
+    "x: spans 7 of 10 (0.7), the band is 0.75 to 1";
+
+  private static string Answer(
+    string feature = "blankmatch/x",
+    string line = LineX07
+  ) =>
+    $$"""
+      "answers": [ { "feature": "{{feature}}", "question": "q", "answer": "ruled",
+                     "by": "fallen", "date": "2026-11-02", "featureSha": "{{Provenance.Sha256Of(
+        line
+      )}}" } ]
+      """;
 
   private static string UserBody(
     string features = UserFeatures,
@@ -132,7 +141,7 @@ public class BlankmatchTests {
 
   [Fact]
   public void Blankmatch_an_answer_passes_the_axis_it_names() {
-    CheckResult r = Run(Narrow(), UserBody(extra: Answer));
+    CheckResult r = Run(Narrow(), UserBody(extra: Answer()));
     Assert.Equal(0, r.ExitCode);
     Assert.Contains(
       "x: spans 7 of 10 (0.7), the band is 0.75 to 1, answered",
@@ -140,11 +149,15 @@ public class BlankmatchTests {
     );
     Assert.Equal(
       3,
-      Run(
-        Narrow(),
-        UserBody(extra: Answer.Replace("blankmatch/x", "blankmatch/y"))
-      ).ExitCode
+      Run(Narrow(), UserBody(extra: Answer("blankmatch/y"))).ExitCode
     );
+  }
+
+  [Fact]
+  public void Blankmatch_stale_answer_asks() {
+    CheckResult r = Run(Narrow(11.2), UserBody(extra: Answer()));
+    Assert.Equal(3, r.ExitCode);
+    Assert.Equal(["x: spans 7.2 of 10 (0.72), the band is 0.75 to 1"], r.Lines);
   }
 
   [Fact]
