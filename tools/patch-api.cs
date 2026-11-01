@@ -21,7 +21,7 @@
 // Idempotent, and a no-op once upstream makes the member public, so it can stay in place across
 // updates and disappear on its own.
 //
-//   dotnet run infra/tools/patch-api.cs -- <path to VintagestoryAPI.dll>
+//   dotnet run tools/patch-api.cs -- <path to VintagestoryAPI.dll>
 
 using System.Reflection;
 using System.Reflection.Metadata;

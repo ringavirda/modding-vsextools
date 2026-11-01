@@ -4,6 +4,7 @@
 
 ### Added
 
+- `exmod test -Coverage` writes the cobertura report to `.exmod/out/coverage.xml` under the repo root instead of `coverage.xml` at its root.
 - `exmod item-views --seraph FILE --frame N`: `--seraph` poses a player shape file in place of the game's, so a clip a patch adds can be rendered, and `--frame` is the frame of the held clip the tp and fp views pose the player at (default 0).
 - A test assembly may declare `partitions` in the repo's `exmod.json` (`{ "<assembly>": { "parts": [{ "name", "filter", "heapGb" }, ..., { "name" }] } }`): the test command without `-Filter` runs it as one `dotnet test` process per part, the last part being the complement of the others' filters (terms `Property~value` or `Property=value`, `|`-joined), and sums their counts, failures and logs so the census, zero and drop rules see one assembly. Each part's log is `<series>-<assembly>-<part>.log`. With `-Filter`, or no declaration, the assembly runs whole. `memoryGb` is no longer read.
 - Every test host takes a share of the machine's memory budget (MemTotal less 10 GiB, or `EXMOD_MEMORY_GB`) before it starts, as the budget's `<i>.lock` files in `EXMOD_MEMORY_DIR`, and releases it when the host ends; units ask largest share first, manifest order breaking ties, and the `memory:` lines say what was taken, waited for and released. The manifest's `testMemory` (`{ "<assembly>": { "heapGb": n, "filterHeapGb": m } }`, whole GiB) sets the host's `DOTNET_GCHeapHardLimit` and its share (that plus 1 GiB); a part's own `heapGb` overrides the assembly's; a `-Filter` run of an assembly with `filterHeapGb` runs under that limit and under `heapGb` with `EXMOD_HEAVY=1`, and says so on its result line when it fails with `OutOfMemoryException`; an assembly with no entry takes 4 GiB under no limit. `-Coverage` takes the whole budget. A waiter with `EXMOD_MEMORY_PRIORITY=1` is granted before the others, and one that cannot get the turn or a priority file prints `memory: <label> waits for the turn` (or `a priority file`).
@@ -73,7 +74,7 @@
 - `exmod test -Coverage` runs a side gate after the coverage floors: every block guarded by a
   client-side test (`Side == EnumAppSide.Client`, `Side != EnumAppSide.Server`, `IsClient`,
   `is ICoreClientAPI`, `is not ICoreServerAPI`, the code after a server-side early return, and the
-  else of a server-side test) in the gated assemblies needs a covered line in `coverage.xml` or an
+  else of a server-side test) in the gated assemblies needs a covered line in `.exmod/out/coverage.xml` or an
   entry in `side-gate-allowlist.json` beside the floors file, naming its file, member and reason. A
   client body that is only `return;`, `break;` or `continue;` is skipped; one returning a value
   counts. It prints `side gates: N client blocks, C covered, A allowed` and fails naming each

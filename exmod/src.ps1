@@ -437,7 +437,8 @@ function Invoke-Test([string[]]$Argv) {
         $toolsDir = Join-Path (Get-ExmodDotnetDir) 'tools'
         & $dotnet tool install dotnet-coverage --tool-path $toolsDir 2>$null | Out-Null
         $dc = Join-Path $toolsDir "dotnet-coverage$ExeSuffix"
-        $cov = Join-Path $RepoRoot 'coverage.xml'
+        $cov = Join-Path $RepoRoot '.exmod/out/coverage.xml'
+        New-Item -ItemType Directory -Force -Path (Split-Path $cov) | Out-Null
         Write-Host "Collecting coverage over the latest suite..."
         & $dc collect -f cobertura -o $cov "$dotnet test `"$(Get-ExmodSolution)`" -c Debug --nologo" 2>&1 |
           Tee-Object -Variable collected | Out-Host
@@ -499,7 +500,7 @@ function Invoke-Test([string[]]$Argv) {
 
   $work = foreach ($v in $wanted) {
     foreach ($mod in $projects.Keys) {
-      # A sample or an extra project (samples/HelloExpanded.csproj, infra/tools/ExlibVerify.Tests.csproj)
+      # A sample or an extra project (samples/HelloExpanded.csproj, verify/ExlibVerify.Tests/ExlibVerify.Tests.csproj)
       # only targets $(CurrentGameTfm) - a legacy matrix buys it nothing, so it is skipped rather
       # than failed on '-f net8.0'/'net7.0'.
       if ($v -notin $projects[$mod].Series) { continue }
@@ -892,7 +893,7 @@ function Invoke-WithLock([string]$LockPath, [scriptblock]$Body) {
   try { & $Body } finally { $stream.Close() }
 }
 
-# Runs infra/tools/ExlibVerify - the headless check of shipped assets (patch application, recipe
+# Runs verify/ExlibVerify - the headless check of shipped assets (patch application, recipe
 # codes, handbook lang coverage) - over one or more built mods, with no game running. Each named
 # mod is checked in its own run, with every OTHER named mod's built folder passed as --mods, so a
 # cross-mod patch (e.g. iiex patching into exlib's or the game's own assets) still resolves
@@ -977,7 +978,7 @@ Add-ExmodCommand -Group source -Name verify -Summary 'headless-check shipped ass
 } -Detail @'
 exmod verify [-Mod <name>[,<name>...]] [-Version <x.y>] [-Configuration Debug] [-Strict] [-Json]
 
-Runs infra/tools/ExlibVerify over the built mods: does every patch apply against its real target,
+Runs verify/ExlibVerify over the built mods: does every patch apply against its real target,
 does every recipe/handbook code resolve, all without the game running. Builds anything not yet
 built first. Each mod is checked in its own run, against a --game install, with every other named
 mod's built folder passed as --mods so a cross-mod patch still resolves the way it would with both

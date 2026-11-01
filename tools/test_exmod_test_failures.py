@@ -91,7 +91,7 @@ class CoverageRunTests(unittest.TestCase):
                                                TEST_DOTNET=os.path.join(d, "dotnet")),
                                  capture_output=True, text=True).stdout
         args = [l[len("coverage-arg: "):] for l in out.splitlines() if l.startswith("coverage-arg: ")]
-        self.assertEqual(["collect", "-f", "cobertura", "-o", os.path.join(repo, "coverage.xml"),
+        self.assertEqual(["collect", "-f", "cobertura", "-o", os.path.join(repo, ".exmod", "out", "coverage.xml"),
                           'stub-dotnet test "demo.sln" -c Debug --nologo'],
                          args, out)
 

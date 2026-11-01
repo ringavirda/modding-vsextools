@@ -14,8 +14,8 @@ namespace ExpandedLib.Verify;
 /// <c>verticals</c> shorthands included (see <c>ExpandedLib.Shapes.Schematic.Shorthands</c>, whose
 /// same table fixed the slab-lined furnace cores rendering magenta). A code neither covers logs
 /// "Missing mapping for texture code #code during shape tesselation of block ..." and draws the
-/// face untextured; a block finding is an error and an item finding is informational - the owner's
-/// ruling, not a difference in the client's own logging (it logs for an item exactly as for a
+/// face untextured; a block finding is an error and an item finding is informational, not
+/// because the client's own logging differs (it logs for an item exactly as for a
 /// block): vanilla itself ships this defect, its own metalbit mapping only <c>#ore</c> against
 /// <c>game:item/nugget</c>'s <c>#granite</c>, so an item finding stays a note rather than failing a
 /// mod's run for a defect the mod inherited from the game.

@@ -143,7 +143,7 @@ function ConvertTo-StarterModCsproj([string]$Text, [string]$Label) {
 '@ @'
     <!-- Single-target, the current game version only: a starter mod carries no legacy game series
          to build for, unlike the family repo this was generated from. -->
-'@ "$Label legacy-lane comment"
+'@ "$Label single-target comment"
 
   $Text = Set-CsprojSpan $Text @'
   <!--

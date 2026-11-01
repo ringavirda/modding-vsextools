@@ -5,7 +5,7 @@ Parses a cobertura report (produced by `dotnet-coverage collect -f cobertura`) a
 line coverage of any mod assembly - or the combined total - drops below a floor. The game DLLs are
 instrumented too but irrelevant, so only the mod assemblies listed in the floors file are considered.
 
-Usage: python infra/tools/coverage_gate.py <coverage.xml> [floors.json]
+Usage: python tools/coverage_gate.py <coverage.xml> [floors.json]
 
 floors.json defaults to infra/test/coverage-floors.json, keyed by ASSEMBLY name - what cobertura
 writes as the package name - NOT the project folder. The two matched while the mods left
