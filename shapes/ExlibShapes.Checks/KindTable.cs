@@ -33,7 +33,7 @@ public static class KindTable {
     ],
     ["pattern"] = ["role", "draw"],
     ["worked"] = ["role", "blankmatch"],
-    ["filling"] = [],
+    ["filling"] = ["impression", "flood", "capacity", "fit", "runner"],
     ["core"] = [],
     ["corebox"] = [],
     ["machine"] = [],

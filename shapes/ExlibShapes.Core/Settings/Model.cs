@@ -58,6 +58,33 @@ public sealed class StepRow {
   public string? Hand { get; init; }
 }
 
+/// <summary>A named box of a station: a runner box element.</summary>
+public sealed class StationBox {
+  /// <summary>The element name.</summary>
+  public required string Name { get; init; }
+
+  /// <summary>Corner with the smallest x, y, z.</summary>
+  public required double[] From { get; init; }
+
+  /// <summary>Corner with the largest x, y, z.</summary>
+  public required double[] To { get; init; }
+}
+
+/// <summary>A cut every filling of a station carries from where the metal arrives to the drop.</summary>
+public sealed class InletCut {
+  /// <summary>The cut's name.</summary>
+  public required string Name { get; init; }
+
+  /// <summary>The feed kind, <c>inlet</c> or <c>runner</c>.</summary>
+  public required string Kind { get; init; }
+
+  /// <summary>Corner with the smallest x, y, z.</summary>
+  public required double[] From { get; init; }
+
+  /// <summary>Corner with the largest x, y, z.</summary>
+  public required double[] To { get; init; }
+}
+
 /// <summary>A flask station's sand, margins, runner, gates, risers and capacity. Lengths are
 /// voxels (16 to the block).</summary>
 public sealed class Station {
@@ -93,6 +120,19 @@ public sealed class Station {
 
   /// <summary>The feeding head's height, null where the station has none.</summary>
   public double? HeadHeight { get; init; }
+
+  /// <summary>The box x0, y0, z0, x1, y1, z1 where the metal leaves the runner box and the gates start, null
+  /// where the station has none.</summary>
+  public double[]? Drop { get; init; }
+
+  /// <summary>The runner box's elements; empty where the station has none.</summary>
+  public IReadOnlyList<StationBox> RunnerBox { get; init; } = [];
+
+  /// <summary>The cuts every filling of the station carries from where the metal arrives to the drop.</summary>
+  public IReadOnlyList<InletCut> Inlet { get; init; } = [];
+
+  /// <summary>The sprue column's plan x0, z0, x1, z1 of a closed pour, null where the station has none.</summary>
+  public double[]? Sprue { get; init; }
 
   /// <summary>Ladle units per cubic voxel of cast plus feeds.</summary>
   public required double LadleUnits { get; init; }

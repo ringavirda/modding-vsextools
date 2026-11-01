@@ -103,6 +103,12 @@ public sealed record FootprintSpec(
 /// <param name="SourceRecord">The part record of <paramref name="Source"/>, whose steps name the faces cut.</param>
 /// <param name="Allowance">How far the cast stands out of a face a step cuts, in voxels.</param>
 /// <param name="Parting">The height of the flask's parting on y, in voxels.</param>
+/// <param name="Station">The station row the pour is made at; the one the record's <c>pour.station</c> names in
+/// <paramref name="Settings"/> when null.</param>
+/// <param name="Cast">The cast item a filling's pieces are placed from.</param>
+/// <param name="Pattern">The pattern whose elements a head or riser feed names.</param>
+/// <param name="Pair">The cope of a closed pour, read beside its drag.</param>
+/// <param name="Cores">The core items of <c>pour.cores</c>, in that order.</param>
 /// <param name="CutFaces">The feature names of the blank's record whose faces a user may cut; the faces the blank
 /// record's steps cut when null.</param>
 public sealed record CheckInput(
@@ -122,7 +128,12 @@ public sealed record CheckInput(
   PartRecord? SourceRecord = null,
   double Allowance = 0.125,
   double? Parting = null,
-  IReadOnlyList<string>? CutFaces = null
+  IReadOnlyList<string>? CutFaces = null,
+  Station? Station = null,
+  Shape? Cast = null,
+  Shape? Pattern = null,
+  Shape? Pair = null,
+  IReadOnlyList<Shape>? Cores = null
 );
 
 /// <summary>A check: a pure function of its input to a pass, a fail or a question.</summary>

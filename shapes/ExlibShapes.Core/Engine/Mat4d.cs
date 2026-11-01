@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace ExpandedLib.Shapes.Core;
 
@@ -55,6 +57,15 @@ public readonly struct Mat4d {
   /// <summary>The identity.</summary>
   public static Mat4d Identity =>
     new([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+
+  /// <summary>A transform from its 16 entries, row-major.</summary>
+  /// <exception cref="ArgumentException"><paramref name="rows"/> does not hold 16 numbers.</exception>
+  public static Mat4d FromRows(IReadOnlyList<double> rows) =>
+    rows.Count == 16
+      ? new([.. rows])
+      : throw new ArgumentException(
+        $"a transform has 16 entries, got {rows.Count}"
+      );
 
   /// <summary>The entry at row <paramref name="r"/>, column <paramref name="c"/> (0-3).</summary>
   public double this[int r, int c] => _m[r * 4 + c];

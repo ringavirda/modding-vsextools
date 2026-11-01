@@ -231,6 +231,10 @@ public sealed partial class Settings {
       "gateAcross",
       "risers",
       "headHeight",
+      "drop",
+      "runnerBox",
+      "inlet",
+      "sprue",
       "ladleUnits"
     );
     return new Station {
@@ -247,6 +251,31 @@ public sealed partial class Settings {
         s.Optional("risers")?.Map((_, v) => v.Numbers(2))
         ?? new Dictionary<string, double[]>(),
       HeadHeight = s.Optional("headHeight")?.Number(),
+      Drop = s.Optional("drop")?.Numbers(6),
+      RunnerBox =
+        s.Optional("runnerBox")
+          ?.List(b => {
+            b.Allow("name", "from", "to");
+            return new StationBox {
+              Name = b.Required("name").Text(),
+              From = b.Required("from").Numbers(3),
+              To = b.Required("to").Numbers(3),
+            };
+          })
+        ?? [],
+      Inlet =
+        s.Optional("inlet")
+          ?.List(b => {
+            b.Allow("name", "kind", "from", "to");
+            return new InletCut {
+              Name = b.Required("name").Text(),
+              Kind = b.Required("kind").Text(),
+              From = b.Required("from").Numbers(3),
+              To = b.Required("to").Numbers(3),
+            };
+          })
+        ?? [],
+      Sprue = s.Optional("sprue")?.Numbers(4),
       LadleUnits = s.Required("ladleUnits").Number(),
     };
   }

@@ -18,7 +18,27 @@ public class ContractTests {
   public void Filling_kinds_have_empty_rows_and_every_kind_has_one() {
     foreach (string kind in KindTable.Kinds)
       Assert.NotNull(KindTable.Gates(kind));
-    Assert.Empty(KindTable.Gates("filling"));
+    Assert.Equal(
+      ["impression", "flood", "capacity", "fit", "runner"],
+      KindTable.Gates("filling")
+    );
+  }
+
+  [Fact]
+  public void A_cope_record_skips_the_gates_that_read_the_sand_and_the_cast() {
+    var input = new CheckInput(
+      null,
+      Record: CastFixtures.Record(
+        "\"kinds\": [\"filling\"], \"pour\": { \"half\": \"cope\", \"pair\": \"drag\" }"
+      )
+    );
+    Assert.Equal(
+      ["runner"],
+      Selection
+        .For(["filling"], Profile.Structural)
+        .Where(c => Selection.Applies(c, input))
+        .Select(c => c.Id)
+    );
   }
 
   [Fact]
@@ -59,13 +79,18 @@ public class ContractTests {
       [
         "allowance",
         "blankmatch",
+        "capacity",
         "castonly",
         "draw",
         "facecheck",
+        "fit",
+        "flood",
         "flushcheck",
         "footsweep",
+        "impression",
         "octcheck",
         "role",
+        "runner",
         "sizes",
         "split",
       ],
@@ -78,7 +103,12 @@ public class ContractTests {
 
   [Fact]
   public void Selection_follows_the_table_rows() {
-    Assert.Empty(Selection.For(["filling", "item"], Profile.ExpandedPeriod));
+    Assert.Equal(
+      ["impression", "flood", "capacity", "fit", "runner"],
+      Selection
+        .For(["filling", "item"], Profile.ExpandedPeriod)
+        .Select(c => c.Id)
+    );
     Assert.Throws<ArgumentException>(() =>
       Selection.For(["sculpture"], Profile.Structural)
     );
@@ -115,6 +145,11 @@ public class ContractTests {
       "draw",
       "blankmatch",
       "lints",
+      "impression",
+      "flood",
+      "capacity",
+      "fit",
+      "runner",
     ];
     string[] versions = [.. ids.Select(CheckVersions.Of)];
     Assert.All(versions, v => Assert.Matches("^[0-9a-f]{64}$", v));

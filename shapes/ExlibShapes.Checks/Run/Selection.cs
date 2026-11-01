@@ -24,6 +24,11 @@ public static class Selection {
     new Role(),
     new Draw(),
     new Blankmatch(),
+    new Impression(),
+    new Flood(),
+    new Capacity(),
+    new Fit(),
+    new Runner(),
   ];
 
   /// <summary>Whether <paramref name="check"/> runs under <paramref name="profile"/>: structural checks always,
@@ -40,7 +45,8 @@ public static class Selection {
 
   /// <summary>Whether <paramref name="check"/> has anything to read in <paramref name="input"/>. octregular needs
   /// the record to name regular globs (<see cref="RegularGlobs"/>), uvwrap a round run in the shape, blankmatch a
-  /// <c>blank</c> slot in the record; every other check always applies. Without these a check enumerates nothing
+  /// <c>blank</c> slot in the record; impression, flood, capacity and fit not a closed pour's cope, whose record
+  /// holds only its pair; every other check always applies. Without these a check enumerates nothing
   /// and fails.</summary>
   public static bool Applies(ICheck check, CheckInput input) =>
     check.Id switch {
@@ -50,6 +56,9 @@ public static class Selection {
         && RoundRuns.Find(new Tree(input.Shape), new Frames(input.Shape)).Count
           > 0,
       "blankmatch" => input.Record?.Carried.ContainsKey("blank") == true,
+      "impression" or "flood" or "capacity" or "fit" => !Pour.IsCope(
+        input.Record
+      ),
       _ => true,
     };
 
