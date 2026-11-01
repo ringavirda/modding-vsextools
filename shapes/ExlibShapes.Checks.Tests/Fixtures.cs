@@ -7,7 +7,12 @@ using Newtonsoft.Json.Linq;
 
 namespace ExpandedLib.Shapes.Checks.Tests;
 
-internal sealed record Recorded(int Exit, int Enumerated, string[] Faulted);
+internal sealed record Recorded(
+  int Exit,
+  int Enumerated,
+  string[] Faulted,
+  double[] Areas
+);
 
 internal static class Fixtures {
   public static string Path(string name) =>
@@ -26,6 +31,8 @@ internal static class Fixtures {
       .OfType<JObject>()
       .First();
 
+  public static string Text(string name) => File.ReadAllText(Path(name));
+
   public static UvTable Table() =>
     UvTables.Parse(File.ReadAllText(Path("table.json")));
 
@@ -38,7 +45,8 @@ internal static class Fixtures {
         p => new Recorded(
           (int)p.Value["exit"]!,
           (int)p.Value["enumerated"]!,
-          [.. p.Value["faulted"]!.Select(t => (string)t!)]
+          [.. p.Value["faulted"]!.Select(t => (string)t!)],
+          [.. (p.Value["areas"] ?? new JArray()).Select(t => (double)t!)]
         )
       );
 

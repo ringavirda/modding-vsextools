@@ -44,18 +44,64 @@ public sealed record UvTable(
   IReadOnlyList<FaceChange> Changes
 );
 
+/// <summary>A declared footprint cell: a 16-unit cube, or a box of it.</summary>
+/// <param name="X">The cell's x.</param>
+/// <param name="Y">The cell's y.</param>
+/// <param name="Z">The cell's z.</param>
+/// <param name="Box">The box in cell fractions, x1 y1 z1 x2 y2 z2; the whole cell when null.</param>
+public sealed record FootCell(
+  int X,
+  int Y,
+  int Z,
+  IReadOnlyList<double>? Box = null
+);
+
+/// <summary>A reach past the footprint limit accepted for an element in a cell.</summary>
+/// <param name="Element">The element path; the reach of every element under it passes too.</param>
+/// <param name="Cell">The cell, x y z.</param>
+/// <param name="Max">The farthest reach it passes, in voxels.</param>
+/// <param name="Reason">Why, printed with the reach.</param>
+public sealed record ReachAllow(
+  string Element,
+  IReadOnlyList<int> Cell,
+  double Max,
+  string Reason
+);
+
+/// <summary>The volume footsweep holds a shape to: the principal cell and <paramref name="Cells"/>, less
+/// <paramref name="Drop"/>, plus <paramref name="Extra"/>.</summary>
+/// <param name="Cells">The declared cells besides the principal; an entry at 0,0,0 replaces the principal's whole
+/// cell. Entries of one cell add their boxes.</param>
+/// <param name="Extra">Cells declared besides, added whatever <paramref name="Drop"/> says.</param>
+/// <param name="Drop">Cells left out, by x y z.</param>
+/// <param name="Reach">The reaches accepted past <paramref name="Limit"/>.</param>
+/// <param name="Limit">The farthest reach allowed, in voxels.</param>
+/// <param name="Depth">The path segments that name a part group in the report.</param>
+public sealed record FootprintSpec(
+  IReadOnlyList<FootCell>? Cells = null,
+  IReadOnlyList<FootCell>? Extra = null,
+  IReadOnlyList<FootCell>? Drop = null,
+  IReadOnlyList<ReachAllow>? Reach = null,
+  double Limit = 4,
+  int Depth = 2
+);
+
 /// <summary>What a check reads. Each check takes the parts it needs.</summary>
 /// <param name="Shape">The shape under check; null is an empty input.</param>
 /// <param name="Shipped">The shape the copy was made from, for the uv comparison.</param>
 /// <param name="Table">The uv table, required with <paramref name="Shipped"/>.</param>
 /// <param name="Sizes">The sizes spec rows.</param>
+/// <param name="Hide">The subtree references flushcheck leaves out; a filling's structure when null.</param>
+/// <param name="Footprint">The declared footprint footsweep holds the shape to; the principal cell when null.</param>
 /// <param name="WoodKeys">The texture keys whose grain runs along a part; the legacy set when null.</param>
 public sealed record CheckInput(
   Shape? Shape,
   Shape? Shipped = null,
   UvTable? Table = null,
   IReadOnlyList<SizeRow>? Sizes = null,
-  IReadOnlySet<string>? WoodKeys = null
+  IReadOnlySet<string>? WoodKeys = null,
+  IReadOnlyList<string>? Hide = null,
+  FootprintSpec? Footprint = null
 );
 
 /// <summary>A check: a pure function of its input to a pass, a fail or a question.</summary>

@@ -1,0 +1,112 @@
+{
+ "flush.json": {
+  "exit": 1,
+  "enumerated": 12,
+  "faulted": [
+   "A | B"
+  ],
+  "areas": [
+   8.0
+  ]
+ },
+ "mppump-sketch-defective.json": {
+  "exit": 1,
+  "enumerated": 1072,
+  "faulted": [
+   "Delivery/Riser1N | Delivery/TopElbow",
+   "Gearing/BigGearHub1 | Gearing/BigGearHub2",
+   "Gearing/BigGearRim0 | Gearing/BigGearRim1",
+   "Gearing/BigGearRim0 | Gearing/BigGearRim7",
+   "Gearing/BigGearRim1 | Gearing/BigGearRim2",
+   "Gearing/BigGearRim2 | Gearing/BigGearRim3",
+   "Gearing/BigGearRim3 | Gearing/BigGearRim4",
+   "Gearing/BigGearRim4 | Gearing/BigGearRim5",
+   "Gearing/BigGearRim5 | Gearing/BigGearRim6",
+   "Gearing/BigGearRim6 | Gearing/BigGearRim7",
+   "Gearing/PinionHub1 | Gearing/PinionHub2",
+   "Gearing/PinionHub1 | Gearing/PinionRim1",
+   "Gearing/PinionHub1 | Gearing/PinionRim2",
+   "Gearing/PinionHub1 | Gearing/PinionRim3",
+   "Gearing/PinionHub1 | Gearing/PinionRim5",
+   "Gearing/PinionHub1 | Gearing/PinionRim6",
+   "Gearing/PinionHub1 | Gearing/PinionRim7",
+   "Gearing/PinionHub2 | Gearing/PinionRim0",
+   "Gearing/PinionHub2 | Gearing/PinionRim1",
+   "Gearing/PinionHub2 | Gearing/PinionRim3",
+   "Gearing/PinionHub2 | Gearing/PinionRim4",
+   "Gearing/PinionHub2 | Gearing/PinionRim5",
+   "Gearing/PinionHub2 | Gearing/PinionRim7",
+   "Gearing/PinionRim0 | Gearing/PinionRim1",
+   "Gearing/PinionRim0 | Gearing/PinionRim7",
+   "Gearing/PinionRim1 | Gearing/PinionRim2",
+   "Gearing/PinionRim2 | Gearing/PinionRim3",
+   "Gearing/PinionRim3 | Gearing/PinionRim4",
+   "Gearing/PinionRim4 | Gearing/PinionRim5",
+   "Gearing/PinionRim5 | Gearing/PinionRim6",
+   "Gearing/PinionRim6 | Gearing/PinionRim7",
+   "Gearing/Shaft | Gearing/Shaft/ShaftCh1",
+   "Gearing/Shaft | Gearing/Shaft/ShaftCh2",
+   "Gearing/Shaft | Gearing/Shaft/ShaftCh3",
+   "Gearing/Shaft | Gearing/Shaft/ShaftCh4"
+  ],
+  "areas": [
+   1.32,
+   16.12,
+   0.3525,
+   0.3525,
+   0.3525,
+   0.3525,
+   0.3525,
+   0.3525,
+   0.3525,
+   0.3525,
+   10.535,
+   0.525,
+   0.44,
+   0.58,
+   0.525,
+   0.44,
+   0.465,
+   0.26,
+   0.525,
+   0.54,
+   0.44,
+   0.525,
+   0.5225,
+   0.2475,
+   0.26,
+   0.2475,
+   0.2475,
+   0.2475,
+   0.2475,
+   0.2475,
+   0.2475,
+   0.49,
+   0.49,
+   0.49,
+   0.49
+  ]
+ },
+ "watt-condensate-elbow.json": {
+  "exit": 0,
+  "enumerated": 200,
+  "faulted": [],
+  "areas": []
+ },
+ "enginehorizontal-exhaust.json": {
+  "exit": 0,
+  "enumerated": 466,
+  "faulted": [],
+  "areas": []
+ },
+ "filling-small.json": {
+  "exit": 1,
+  "enumerated": 18,
+  "faulted": [
+   "Flask | Piece1/Level"
+  ],
+  "areas": [
+   16.0
+  ]
+ }
+}

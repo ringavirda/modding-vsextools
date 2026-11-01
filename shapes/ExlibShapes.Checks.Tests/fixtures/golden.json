@@ -1,0 +1,20 @@
+{
+ "code": "demo",
+ "attributes": {
+  "fillerOffsets": [
+   {
+    "x": 0,
+    "y": 0,
+    "z": 1,
+    "collisionBox": {
+     "x1": 0,
+     "y1": 0,
+     "z1": 0,
+     "x2": 1,
+     "y2": 1,
+     "z2": 0.25
+    }
+   }
+  ]
+ }
+}

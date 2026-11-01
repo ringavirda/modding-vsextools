@@ -1,0 +1,26 @@
+{
+ "foot.json": {
+  "exit": 1,
+  "enumerated": 1,
+  "faulted": [
+   "Body"
+  ]
+ },
+ "foot.json+golden": {
+  "exit": 0,
+  "enumerated": 1,
+  "faulted": []
+ },
+ "foot.json+extra": {
+  "exit": 0,
+  "enumerated": 1,
+  "faulted": []
+ },
+ "foot-clip.json": {
+  "exit": 1,
+  "enumerated": 5,
+  "faulted": [
+   "Body"
+  ]
+ }
+}

@@ -49,10 +49,10 @@ public class ContractTests {
   }
 
   [Fact]
-  public void Both_checks_are_structural() {
+  public void Every_check_is_structural() {
     Assert.All(Selection.All, c => Assert.Equal(Profile.Structural, c.Profile));
     Assert.Equal(
-      ["facecheck", "sizes"],
+      ["facecheck", "flushcheck", "footsweep", "sizes"],
       Selection.All.Select(c => c.Id).Order(StringComparer.Ordinal)
     );
   }
@@ -78,11 +78,18 @@ public class ContractTests {
 
   [Fact]
   public void Each_check_embeds_its_own_version() {
-    string a = CheckVersions.Of("facecheck");
-    string b = CheckVersions.Of("sizes");
-    Assert.Matches("^[0-9a-f]{64}$", a);
-    Assert.Matches("^[0-9a-f]{64}$", b);
-    Assert.NotEqual(a, b);
+    string[] ids =
+    [
+      "facecheck",
+      "sizes",
+      "flushcheck",
+      "zfight",
+      "footprint",
+      "footsweep",
+    ];
+    string[] versions = [.. ids.Select(CheckVersions.Of)];
+    Assert.All(versions, v => Assert.Matches("^[0-9a-f]{64}$", v));
+    Assert.Equal(ids.Length, versions.Distinct().Count());
     Assert.Throws<ArgumentException>(() => CheckVersions.Of("nope"));
   }
 }
