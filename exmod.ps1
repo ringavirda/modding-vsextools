@@ -1202,14 +1202,16 @@ function Lock-ExmodMemory([int]$Gb, [string]$Label, [scriptblock]$OnWait) {
   return [pscustomobject]@{ Gb = $take; Budget = $budget; Label = $Label; Streams = $held; Taken = $taken; Waited = $waited }
 }
 
-# Releases the share Lock-ExmodMemory took and prints `memory: <Label> released <k> GiB at HH:mm:ss, held <h> s`.
+# Releases the share Lock-ExmodMemory took and prints `memory: <Label> released <k> GiB at HH:mm:ss, held <h> s`, with
+# `, peak <p> GiB` after it when $PeakGb (the host's largest resident size in GiB) is given.
 # $null, and a share already released, are accepted and print nothing. Call it in the unit's `finally`.
-function Unlock-ExmodMemory($Reservation) {
+function Unlock-ExmodMemory($Reservation, $PeakGb = $null) {
   if (-not $Reservation -or $Reservation.Streams.Count -eq 0) { return }
   foreach ($stream in $Reservation.Streams) { $stream.Dispose() }
   $Reservation.Streams.Clear()
   $now = Get-Date
-  Write-Host ("memory: {0} released {1} GiB at {2:HH:mm:ss}, held {3:0} s" -f $Reservation.Label, $Reservation.Gb, $now, ($now - $Reservation.Taken).TotalSeconds)
+  $peak = if ($null -ne $PeakGb) { ', peak ' + ([double]$PeakGb).ToString('0.0', [System.Globalization.CultureInfo]::InvariantCulture) + ' GiB' } else { '' }
+  Write-Host ("memory: {0} released {1} GiB at {2:HH:mm:ss}, held {3:0} s{4}" -f $Reservation.Label, $Reservation.Gb, $now, ($now - $Reservation.Taken).TotalSeconds, $peak)
 }
 
 # Commands that take the build lock themselves around the parts that build, or never need it.

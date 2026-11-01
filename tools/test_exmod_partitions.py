@@ -20,8 +20,9 @@ TESTS = ["Mod.Tests.WalkA.One", "Mod.Tests.WalkA.Two", "Mod.Tests.WalkB.One",
 
 # A dotnet that knows TESTS: `test --list-tests` lists them all, `test --filter F` evaluates F (terms
 # of one kind, `|` or `&` joined, FullyQualifiedName~ ~ != !=) and prints the VSTest summary of the
-# matches, failing when TEST_FAIL names a test among them (or, with TEST_OOM, the first match, printing an
-# OutOfMemoryException). A test run appends start/end to TEST_ORDER and its argv as JSON to TEST_ARGV.
+# matches, failing when TEST_FAIL names a test among them (or, with TEST_OOM, or TEST_OOM_AT=<GiB> when the run's heap
+# limit is that many GiB, the first match, printing an OutOfMemoryException). TEST_HOLD_MB holds that many MiB resident
+# for TEST_HOLD_S seconds. A test run appends start/end to TEST_ORDER and its argv as JSON to TEST_ARGV.
 STUB = """#!/usr/bin/env python3
 import json, os, re, sys, time
 tests = %r
@@ -45,16 +46,21 @@ def match(n):
         return all(term(t)(n) for t in f.split("&"))
     return any(term(t)(n) for t in f.split("|"))
 hit = [n for n in tests if match(n)]
+limit = [x for x in a if x.startswith("DOTNET_GCHeapHardLimit=")]
+oom = os.environ.get("TEST_OOM") or (os.environ.get("TEST_OOM_AT") and limit == ["DOTNET_GCHeapHardLimit=0x%%X" %% (int(os.environ["TEST_OOM_AT"]) << 30)])
+held = b"x" * (int(os.environ.get("TEST_HOLD_MB", "0")) << 20)
+time.sleep(float(os.environ.get("TEST_HOLD_S", "0")))
 argv = os.environ.get("TEST_ARGV")
 if argv:
     open(argv, "a").write(json.dumps(a) + "\\n")
+    oom = oom and len(open(argv).read().splitlines()) < 4
 order = os.environ.get("TEST_ORDER")
 if order:
     open(order, "a").write("start\\n")
     time.sleep(1)
     open(order, "a").write("end\\n")
 bad = [n for n in hit if n == os.environ.get("TEST_FAIL")]
-if os.environ.get("TEST_OOM") and hit:
+if oom and hit:
     bad = hit[:1]
     print("System.OutOfMemoryException: Exception of type was thrown.")
 if bad:
@@ -71,7 +77,7 @@ MANIFEST = {"partitions": {"A.Tests": {"parts": [
     {"name": "rest"}]}}}
 
 
-def manifest(heap=None, filter_heap=None, part_heaps=(None, None, None), **extra):
+def manifest(heap=None, filter_heap=None, part_heaps=(None, None, None), filter_start=None, **extra):
     """MANIFEST with testMemory for A.Tests (when heap is given) and heapGb on the parts that have one."""
     m = json.loads(json.dumps(MANIFEST))
     for part, h in zip(m["partitions"]["A.Tests"]["parts"], part_heaps):
@@ -81,6 +87,8 @@ def manifest(heap=None, filter_heap=None, part_heaps=(None, None, None), **extra
         m["testMemory"] = {"A.Tests": {"heapGb": heap}}
         if filter_heap is not None:
             m["testMemory"]["A.Tests"]["filterHeapGb"] = filter_heap
+        if filter_start is not None:
+            m["testMemory"]["A.Tests"]["filterStartGb"] = filter_start
     m.update(extra)
     return m
 
@@ -222,6 +230,64 @@ class PartitionTests(unittest.TestCase):
                                 manifest=manifest(heap=8, filter_heap=3))
         self.assertIn("FAIL  1.22/A.Tests", out)
         self.assertNotIn("filter limit", out)
+
+    def test_a_filtered_run_starts_under_filter_start_and_reruns_once_under_the_filter_limit_after_an_oom(self):
+        # Fails when filterStartGb is ignored (the run goes straight to 8 GiB), when no retry follows the OutOfMemoryException,
+        # or when a second retry is made (the stub runs out of memory under 3 and under 8 GiB alike).
+        args = "'-Filter', 'FullyQualifiedName~.Other.'"
+        limit = lambda g: "DOTNET_GCHeapHardLimit=0x%X" % (g << 30)
+        m = manifest(heap=12, filter_heap=8, filter_start=3)
+        out, _, _, _ = run_pwsh("", args=args, manifest=m)
+        self.assertEqual([limit(3)], [a[a.index("-e") + 1] for a in RUNS], out)
+        self.assertRegex(out, r"memory: 1\.22/A\.Tests took 4 GiB of 54")
+        self.assertNotIn("retrying", out)
+        out, _, _, _ = run_pwsh("", {"TEST_OOM_AT": "3"}, args=args, manifest=m)
+        self.assertEqual([limit(3), limit(8)], [a[a.index("-e") + 1] for a in RUNS], out)
+        self.assertIn("memory: 1.22/A.Tests ran out of memory under 3 GiB, retrying once under 8 GiB", out)
+        self.assertRegex(out, r"memory: 1\.22/A\.Tests took 9 GiB of 54")
+        self.assertIn("PASS  1.22/A.Tests", out)
+        out, _, _, _ = run_pwsh("", {"TEST_OOM": "1"}, args=args, manifest=m)
+        self.assertEqual([limit(3), limit(8)], [a[a.index("-e") + 1] for a in RUNS], out)
+        self.assertEqual(1, out.count("retrying once"), out)
+        self.assertIn("(ran under the 8 GiB filter limit; EXMOD_HEAVY=1 runs it under 12 GiB)", out)
+
+    def test_a_filter_start_run_that_fails_for_another_reason_is_not_retried_and_heavy_skips_it(self):
+        # Fails when the retry fires on any failure (the plain failure is run twice) or EXMOD_HEAVY=1 still starts under filterStartGb.
+        args = "'-Filter', 'FullyQualifiedName~.Other.'"
+        m = manifest(heap=12, filter_heap=8, filter_start=3)
+        out, _, _, _ = run_pwsh("", {"TEST_FAIL": "Mod.Tests.Other.One"}, args=args, manifest=m)
+        self.assertEqual(1, len(RUNS), out)
+        out, _, _, _ = run_pwsh("", {"EXMOD_HEAVY": "1"}, args=args, manifest=m)
+        self.assertEqual(["DOTNET_GCHeapHardLimit=0x%X" % (12 << 30)], [a[a.index("-e") + 1] for a in RUNS], out)
+
+    def test_a_filter_start_gb_that_is_not_a_whole_number_above_zero_is_refused(self):
+        # Fails when Get-ExmodTestMemory does not validate filterStartGb.
+        for bad in (0, 2.5, "x"):
+            out, _, _, _ = run_pwsh("", manifest=manifest(heap=8, filter_heap=3, filter_start=bad))
+            self.assertIn("exmod.json: testMemory.A.Tests.filterStartGb must be a whole number of GiB above 0", out)
+
+    def test_the_release_line_carries_the_peak_and_one_json_line_is_appended_per_run(self):
+        # Fails when the peak is left off the release line, or when no JSON line is written to EXMOD_MEMORY_LOG.
+        if not os.path.exists("/proc/self/stat"):
+            self.skipTest("no /proc")
+        with tempfile.TemporaryDirectory() as d:
+            log = os.path.join(d, "peaks.jsonl")
+            env = {"EXMOD_MEMORY_LOG": log, "EXMOD_MEMORY_SAMPLE_MS": "200", "TEST_HOLD_MB": "300", "TEST_HOLD_S": "2"}
+            out, _, _, _ = run_pwsh("", env, args="'-Filter', 'FullyQualifiedName~.Other.'",
+                                    manifest=manifest(heap=8, filter_heap=3))
+            m = re.search(r"memory: 1\.22/A\.Tests released 4 GiB at \d\d:\d\d:\d\d, held \d+ s, peak (\d+\.\d) GiB", out)
+            self.assertTrue(m, out)
+            self.assertGreaterEqual(float(m.group(1)), 0.3, out)
+            with open(log) as f:
+                rows = [json.loads(l) for l in f]
+            self.assertEqual(1, len(rows), rows)
+            row = rows[0]
+            self.assertEqual(["label", "filtered", "filter", "shareGb", "limitGb", "peakGb", "seconds", "exit", "time"], list(row))
+            self.assertEqual(("1.22/A.Tests", True, "FullyQualifiedName~.Other.", 4, 3, 0),
+                             (row["label"], row["filtered"], row["filter"], row["shareGb"], row["limitGb"], row["exit"]))
+            self.assertGreaterEqual(row["peakGb"], 0.29)
+            self.assertGreaterEqual(row["seconds"], 1)
+            self.assertRegex(row["time"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
 
     def test_an_assembly_without_an_entry_takes_four_and_passes_no_limit(self):
         # Fails when the default share is 0 or a limit is passed for an assembly with no figure.

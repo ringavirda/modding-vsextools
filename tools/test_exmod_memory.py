@@ -308,6 +308,14 @@ class MemoryTests(unittest.TestCase):
         self.assertEqual("again", out.splitlines()[-1])
 
 
+    def test_the_release_line_ends_with_the_peak_only_when_one_is_given(self):
+        # Fails if Unlock-ExmodMemory leaves PeakGb off the line (the first line has no peak) or prints one when none is given.
+        out = self.start("$r = Lock-ExmodMemory 2 'a'; Unlock-ExmodMemory $r -PeakGb 10.44; "
+                         "$r = Lock-ExmodMemory 2 'b'; Unlock-ExmodMemory $r").finish(30)
+        self.assertRegex(out, r"memory: a released 2 GiB at \d\d:\d\d:\d\d, held \d+ s, peak 10\.4 GiB\n")
+        self.assertRegex(out, r"memory: b released 2 GiB at \d\d:\d\d:\d\d, held \d+ s$")
+
+
 @unittest.skipUnless(PWSH, "pwsh not found")
 class HarnessEnvTests(unittest.TestCase):
     def test_the_callers_memory_settings_are_not_passed_on(self):

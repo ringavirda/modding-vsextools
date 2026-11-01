@@ -321,11 +321,12 @@ function Test-ExmodWholeGb($Value) {
   return ($Value -is [int] -or $Value -is [long]) -and $Value -ge 1
 }
 
-# The manifest's `testMemory` entry for the test assembly $Project: { HeapGb; FilterHeapGb } in GiB, FilterHeapGb $null
-# when the entry has none, or $null when the manifest has no entry for the assembly. `heapGb` is the GC heap limit the
-# assembly's test host runs under unfiltered; `filterHeapGb` the lower one it runs under with -Filter. Throws
-# `exmod.json: testMemory.<assembly>.heapGb must be a whole number of GiB above 0` (the same for filterHeapGb) when a value is
-# missing, fractional, below 1 or not a number.
+# The manifest's `testMemory` entry for the test assembly $Project: { HeapGb; FilterHeapGb; FilterStartGb } in GiB,
+# FilterHeapGb and FilterStartGb $null when the entry has none, or $null when the manifest has no entry for the assembly.
+# `heapGb` is the GC heap limit the assembly's test host runs under unfiltered; `filterHeapGb` the lower one it runs under
+# with -Filter; `filterStartGb` the still lower one a -Filter run tries first, rerun under filterHeapGb on an
+# OutOfMemoryException. Throws `exmod.json: testMemory.<assembly>.heapGb must be a whole number of GiB above 0` (the same
+# for filterHeapGb and filterStartGb) when a value is missing, fractional, below 1 or not a number.
 function Get-ExmodTestMemory([string]$Project) {
   $m = Get-ExmodManifest
   if (-not $m.PSObject.Properties['testMemory'] -or -not $m.testMemory.PSObject.Properties[$Project]) { return $null }
@@ -337,7 +338,12 @@ function Get-ExmodTestMemory([string]$Project) {
     if (-not (Test-ExmodWholeGb $entry.filterHeapGb)) { throw "exmod.json: testMemory.$Project.filterHeapGb must be a whole number of GiB above 0" }
     $filterHeap = [int]$entry.filterHeapGb
   }
-  return [pscustomobject]@{ HeapGb = [int]$heap; FilterHeapGb = $filterHeap }
+  $filterStart = $null
+  if ($entry.PSObject.Properties['filterStartGb']) {
+    if (-not (Test-ExmodWholeGb $entry.filterStartGb)) { throw "exmod.json: testMemory.$Project.filterStartGb must be a whole number of GiB above 0" }
+    $filterStart = [int]$entry.filterStartGb
+  }
+  return [pscustomobject]@{ HeapGb = [int]$heap; FilterHeapGb = $filterHeap; FilterStartGb = $filterStart }
 }
 
 # GiB added to a test host's GC heap limit to make its share of the memory budget: the host's memory outside the
@@ -347,20 +353,97 @@ $ExmodHostOverheadGb = 1
 # GiB a test unit with no `testMemory` figure takes, run under no limit.
 $ExmodUnlimitedTestShareGb = 4
 
-# The memory a test unit takes: { ShareGb; LimitGb; FilterLimitGb; HeavyGb }. ShareGb is the whole GiB taken from the
-# budget; LimitGb the GC heap limit the host runs under, or $null for none; FilterLimitGb and HeavyGb are set only when
-# the run is under the filter limit, as that limit and as the limit EXMOD_HEAVY=1 would run it under.
+# The memory a test unit takes: { ShareGb; LimitGb; FilterLimitGb; HeavyGb; RetryLimitGb; RetryShareGb }. ShareGb is the whole GiB taken
+# from the budget; LimitGb the GC heap limit the host runs under, or $null for none; FilterLimitGb and HeavyGb are set only
+# when the run is under the filter limit, as that limit and as the limit EXMOD_HEAVY=1 would run it under. RetryLimitGb
+# and RetryShareGb are set only when the run starts under `filterStartGb`: the filter limit it reruns under after an
+# OutOfMemoryException and that rerun's share.
 # $Project: the test assembly. $PartHeapGb: the partition's own `heapGb`, or $null. $Filtered: the run has -Filter.
 function Get-ExmodTestShare([string]$Project, $PartHeapGb, [bool]$Filtered) {
   $mem = Get-ExmodTestMemory $Project
   $heap = if ($null -ne $PartHeapGb) { [int]$PartHeapGb } elseif ($mem) { $mem.HeapGb } else { $null }
   if ($Filtered -and $mem -and $null -ne $mem.FilterHeapGb -and $env:EXMOD_HEAVY -ne '1') {
-    return [pscustomobject]@{ ShareGb = $mem.FilterHeapGb + $ExmodHostOverheadGb; LimitGb = $mem.FilterHeapGb; FilterLimitGb = $mem.FilterHeapGb; HeavyGb = $heap }
+    $start = if ($null -ne $mem.FilterStartGb) { $mem.FilterStartGb } else { $mem.FilterHeapGb }
+    $retry = if ($start -ne $mem.FilterHeapGb) { $mem.FilterHeapGb } else { $null }
+    return [pscustomobject]@{ ShareGb = $start + $ExmodHostOverheadGb; LimitGb = $start; FilterLimitGb = $start; HeavyGb = $heap; RetryLimitGb = $retry; RetryShareGb = $(if ($retry) { $retry + $ExmodHostOverheadGb }) }
   }
   if ($null -eq $heap) {
-    return [pscustomobject]@{ ShareGb = $ExmodUnlimitedTestShareGb; LimitGb = $null; FilterLimitGb = $null; HeavyGb = $null }
+    return [pscustomobject]@{ ShareGb = $ExmodUnlimitedTestShareGb; LimitGb = $null; FilterLimitGb = $null; HeavyGb = $null; RetryLimitGb = $null; RetryShareGb = $null }
   }
-  return [pscustomobject]@{ ShareGb = $heap + $ExmodHostOverheadGb; LimitGb = $heap; FilterLimitGb = $null; HeavyGb = $null }
+  return [pscustomobject]@{ ShareGb = $heap + $ExmodHostOverheadGb; LimitGb = $heap; FilterLimitGb = $null; HeavyGb = $null; RetryLimitGb = $null; RetryShareGb = $null }
+}
+
+# Starts sampling the resident memory of a test host's process tree every EXMOD_MEMORY_SAMPLE_MS (default 3000) ms.
+# The host is the child of this process whose command line holds $Needle (its unique results directory), with every
+# descendant of it. Returns the sampler for Stop-ExmodMemorySampler, or $null where /proc does not exist (Windows).
+function Start-ExmodMemorySampler([string]$Needle) {
+  if ($OnWindows -or -not (Test-Path -LiteralPath '/proc/self/stat')) { return $null }
+  $state = [hashtable]::Synchronized(@{ Stop = $false; PeakBytes = [int64]0 })
+  $interval = if ($env:EXMOD_MEMORY_SAMPLE_MS) { [int]$env:EXMOD_MEMORY_SAMPLE_MS } else { 3000 }
+  $ps = [powershell]::Create()
+  [void]$ps.AddScript({
+      param($Needle, $Parent, $Interval, $State)
+      while (-not $State.Stop) {
+        $parentOf = @{}
+        foreach ($dir in [System.IO.Directory]::GetDirectories('/proc')) {
+          $id = [System.IO.Path]::GetFileName($dir)
+          if ($id -notmatch '^\d+$') { continue }
+          try { $stat = [System.IO.File]::ReadAllText("$dir/stat") } catch { continue }
+          $parentOf[[int]$id] = [int]($stat.Substring($stat.LastIndexOf(')') + 2).Split(' ')[1])
+        }
+        $tree = [System.Collections.Generic.HashSet[int]]::new()
+        foreach ($id in $parentOf.Keys) {
+          if ($parentOf[$id] -ne $Parent) { continue }
+          try { $cmd = [System.IO.File]::ReadAllText("/proc/$id/cmdline") } catch { continue }
+          if ($cmd.Contains($Needle, [System.StringComparison]::Ordinal)) { [void]$tree.Add($id) }
+        }
+        do {
+          $grew = $false
+          foreach ($id in $parentOf.Keys) {
+            if (-not $tree.Contains($id) -and $tree.Contains($parentOf[$id])) { [void]$tree.Add($id); $grew = $true }
+          }
+        } while ($grew)
+        $bytes = [int64]0
+        foreach ($id in $tree) {
+          try { $bytes += [int64]([System.IO.File]::ReadAllText("/proc/$id/statm").Split(' ')[1]) * 4096 } catch { }
+        }
+        if ($bytes -gt $State.PeakBytes) { $State.PeakBytes = $bytes }
+        for ($waited = 0; $waited -lt $Interval -and -not $State.Stop; $waited += 100) { Start-Sleep -Milliseconds 100 }
+      }
+    }).AddArgument($Needle).AddArgument([Environment]::ProcessId).AddArgument($interval).AddArgument($state)
+  return [pscustomobject]@{ Shell = $ps; Handle = $ps.BeginInvoke(); State = $state }
+}
+
+# Stops a sampler Start-ExmodMemorySampler returned and gives the largest resident size it saw in GiB, or $null for a
+# $null sampler or when it never saw the host.
+function Stop-ExmodMemorySampler($Sampler) {
+  if (-not $Sampler) { return $null }
+  $Sampler.State.Stop = $true
+  try { $Sampler.Shell.EndInvoke($Sampler.Handle) } catch { }
+  $Sampler.Shell.Dispose()
+  if ($Sampler.State.PeakBytes -le 0) { return $null }
+  return $Sampler.State.PeakBytes / 1GB
+}
+
+# Appends one JSON line for a finished test host to $EXMOD_MEMORY_LOG (default ~/.cache/exmod/memory-peaks.jsonl):
+# label, filtered, filter, shareGb, limitGb (null for none), peakGb (null when not sampled), seconds the share was
+# held, exit code and UTC time. $Reservation is the one Lock-ExmodMemory returned. Failing to write is ignored.
+function Add-ExmodMemoryPeakRecord([string]$Label, [bool]$Filtered, [string]$Filter, $Reservation, $LimitGb, $PeakGb, [int]$ExitCode) {
+  try {
+    $path = if ($env:EXMOD_MEMORY_LOG) { $env:EXMOD_MEMORY_LOG } else { Join-Path $HOME '.cache/exmod/memory-peaks.jsonl' }
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $path) | Out-Null
+    $row = [ordered]@{
+      label = $Label; filtered = $Filtered; filter = $Filter; shareGb = $Reservation.Gb; limitGb = $LimitGb
+      peakGb = if ($null -ne $PeakGb) { [Math]::Round($PeakGb, 2) } else { $null }
+      seconds = [Math]::Round(((Get-Date) - $Reservation.Taken).TotalSeconds); exit = $ExitCode
+      time = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture)
+    }
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes((ConvertTo-Json $row -Compress) + "`n")
+    $log = [System.IO.File]::Open($path, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
+    try { $log.Write($bytes, 0, $bytes.Length) }
+    finally { $log.Dispose() }
+  }
+  catch { }
 }
 
 # The `dotnet test` filter that selects what none of $Filters selects. Each filter is `|`-joined terms
@@ -595,6 +678,9 @@ function Invoke-Test([string[]]$Argv) {
       $holderFn = ${function:Get-FlockAncestorHolder}.ToString()
       $lockFn = ${function:Lock-ExmodMemory}.ToString()
       $unlockFn = ${function:Unlock-ExmodMemory}.ToString()
+      $startSamplerFn = ${function:Start-ExmodMemorySampler}.ToString()
+      $stopSamplerFn = ${function:Stop-ExmodMemorySampler}.ToString()
+      $recordFn = ${function:Add-ExmodMemoryPeakRecord}.ToString()
       $started = [System.Collections.Concurrent.ConcurrentDictionary[string, bool]]::new()
       foreach ($wave in $waves) {
         $units | Where-Object { (Get-ExmodTestWave $_.Version) -eq $wave } | ForEach-Object -ThrottleLimit $throttle -Parallel {
@@ -604,6 +690,10 @@ function Invoke-Test([string[]]$Argv) {
           ${function:Get-FlockAncestorHolder} = $using:holderFn
           ${function:Lock-ExmodMemory} = $using:lockFn
           ${function:Unlock-ExmodMemory} = $using:unlockFn
+          ${function:Start-ExmodMemorySampler} = $using:startSamplerFn
+          ${function:Stop-ExmodMemorySampler} = $using:stopSamplerFn
+          ${function:Add-ExmodMemoryPeakRecord} = $using:recordFn
+          $OnWindows = $using:OnWindows
           $started = $using:started
           $item = $_
           $wave = $using:wave
@@ -616,7 +706,6 @@ function Invoke-Test([string[]]$Argv) {
           $runFilter = if ($item.PartFilter) { $item.PartFilter } else { $filter }
           if ($runFilter) { $testArgs += @('--filter', $runFilter) }
           if ($item.Legacy) { $testArgs += '-p:Legacy=true' }
-          if ($null -ne $item.Share.LimitGb) { $testArgs += @('-e', ('DOTNET_GCHeapHardLimit=0x{0:X}' -f ([int64]$item.Share.LimitGb * 1GB))) }
           # Units ask for their share largest first, manifest order breaking ties: this one waits until the unit
           # before it has taken its share or is waiting for it.
           if ($item.Seq -gt 0) {
@@ -624,16 +713,36 @@ function Invoke-Test([string[]]$Argv) {
             while (-not $started.ContainsKey($before)) { Start-Sleep -Milliseconds 50 }
           }
           $mine = & $gateKey $item.Seq
-          $reservation = $null
-          try {
-            $reservation = Lock-ExmodMemory -Gb $item.Share.ShareGb -Label "$($item.Version)/$($item.Project)$(if ($item.Part) { "/$($item.Part)" })" -OnWait { $started[$mine] = $true }
-            $started[$mine] = $true
-            $out = & $dotnet @testArgs 2>&1
-            $ranExit = $LASTEXITCODE
-          }
-          finally {
-            $started[$mine] = $true
-            Unlock-ExmodMemory $reservation
+          $label = "$($item.Version)/$($item.Project)$(if ($item.Part) { "/$($item.Part)" })"
+          $limitGb = $item.Share.LimitGb
+          $shareGb = $item.Share.ShareGb
+          $retryGb = $item.Share.RetryLimitGb
+          while ($true) {
+            $attemptArgs = $testArgs
+            if ($null -ne $limitGb) { $attemptArgs += @('-e', ('DOTNET_GCHeapHardLimit=0x{0:X}' -f ([int64]$limitGb * 1GB))) }
+            $reservation = $null
+            $sampler = $null
+            try {
+              $reservation = Lock-ExmodMemory -Gb $shareGb -Label $label -OnWait { $started[$mine] = $true }
+              $started[$mine] = $true
+              $sampler = Start-ExmodMemorySampler $item.Blame
+              $out = & $dotnet @attemptArgs 2>&1
+              $ranExit = $LASTEXITCODE
+            }
+            finally {
+              $started[$mine] = $true
+              $peakGb = Stop-ExmodMemorySampler $sampler
+              Unlock-ExmodMemory $reservation -PeakGb $peakGb
+              if ($reservation) { Add-ExmodMemoryPeakRecord $label ([bool]$filter) $runFilter $reservation $limitGb $peakGb $ranExit }
+            }
+            if ($null -ne $retryGb -and $ranExit -ne 0 -and ($out | Select-String -Pattern 'OutOfMemoryException' -Quiet)) {
+              Write-Host "memory: $label ran out of memory under $limitGb GiB, retrying once under $retryGb GiB"
+              $limitGb = $retryGb
+              $shareGb = $item.Share.RetryShareGb
+              $retryGb = $null
+              continue
+            }
+            break
           }
           $LASTEXITCODE = $ranExit
           $out | Set-Content -LiteralPath $item.Log
@@ -671,7 +780,7 @@ function Invoke-Test([string[]]$Argv) {
           }
 
           if (-not $ok -and $null -ne $item.Share.FilterLimitGb -and ($out | Select-String -Pattern 'OutOfMemoryException' -Quiet)) {
-            $line = "$(($line | Out-String).Trim()) (ran under the $($item.Share.FilterLimitGb) GiB filter limit; EXMOD_HEAVY=1 runs it under $($item.Share.HeavyGb) GiB)"
+            $line = "$(($line | Out-String).Trim()) (ran under the $limitGb GiB filter limit; EXMOD_HEAVY=1 runs it under $($item.Share.HeavyGb) GiB)"
           }
 
           $failures = @(Get-ExmodTestFailures $out)
@@ -754,10 +863,15 @@ assembly. A -Filter run is not partitioned.
 
 Every test host takes a share of the machine's memory budget (MemTotal less 10 GiB, $EXMOD_MEMORY_GB sets it) before it
 starts, waiting when the budget is held, and gives it back when it ends; the units ask largest share first, manifest order breaking ties.
-The manifest's `testMemory` is { "<assembly>": { "heapGb": n, "filterHeapGb": m } } (whole GiB, at least 1; filterHeapGb
-optional): the host runs under a GC heap limit of heapGb (DOTNET_GCHeapHardLimit, passed as `dotnet test -e`) and its
+The manifest's `testMemory` is { "<assembly>": { "heapGb": n, "filterHeapGb": m, "filterStartGb": k } } (whole GiB, at least 1;
+filterHeapGb and filterStartGb optional): the host runs under a GC heap limit of heapGb (DOTNET_GCHeapHardLimit, passed as `dotnet test -e`) and its
 share is heapGb + 1 GiB. A partition may carry its own `heapGb`. A -Filter run of an assembly with filterHeapGb runs under
 that limit, and under heapGb with EXMOD_HEAVY=1; when it fails with an OutOfMemoryException its result line says so.
+With filterStartGb too, a -Filter run starts under filterStartGb (share filterStartGb + 1 GiB) and, when its output
+shows an OutOfMemoryException, reruns once under filterHeapGb. While a host runs, its process tree's resident memory is
+sampled every EXMOD_MEMORY_SAMPLE_MS (3000) ms on Linux; the `released` line ends with `, peak <p> GiB`, and one JSON
+line per run (label, filtered, filter, shareGb, limitGb, peakGb, seconds, exit, time) is appended to $EXMOD_MEMORY_LOG
+(~/.cache/exmod/memory-peaks.jsonl).
 An assembly with no entry takes 4 GiB and runs under no limit. -Coverage takes the whole budget and runs alone. The
 share lines are `memory: <label> took <k> GiB of <B> ...` and `... released ...`.
 
