@@ -17,6 +17,11 @@ public class LayoutTests {
       "exmods/mods/iiex/tests/goldens/iiex/blocktypes/mpenergy/flywheel.json"
     );
 
+  private static string? FlywheelLarge =>
+    FixturePath.Workspace(
+      "exmods/mods/iiex/tests/goldens/iiex/blocktypes/mpenergy/flywheellarge.json"
+    );
+
   [Fact]
   public void Load_reads_cells_numbers_fillers_and_anchor() {
     Layout layout = Layout.Load(Fixture);
@@ -159,10 +164,10 @@ public class LayoutTests {
 
   [Fact]
   public void Load_of_a_megablock_picks_the_attributesByType_entry_the_named_variant_matches() {
-    if (Flywheel is not { } flywheel)
+    if (Flywheel is not { } flywheel || FlywheelLarge is not { } flywheelLarge)
       return; // skips when the sibling exmods checkout is absent
     Layout normal = Layout.Load(flywheel, "mpenergy-flywheel-normal-ns");
-    Layout large = Layout.Load(flywheel, "mpenergy-flywheel-large-we");
+    Layout large = Layout.Load(flywheelLarge, "mpenergy-flywheel-large-we");
     Assert.Equal(8, normal.Fillers.Count);
     Assert.Equal(49, large.Fillers.Count);
   }

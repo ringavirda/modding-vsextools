@@ -223,11 +223,13 @@ public class PresentationTests {
     );
   }
 
-  // The one structure whose starter block is walled in on both axes and whose body then leans
+  // The structures whose starter block is walled in on both axes and whose body then leans
   // toward the camera: no turn puts that block in front of its own footprint, so the drawing keeps
   // the variant's own facing. Every other structure stands its starter block nearest the camera.
   private static readonly string[] AnchorBehind =
   [
+    "iiex:furnace-blastcore-tier1-n",
+    "iiex:furnace-cokeovencore-n",
     "iiex:furnace-cupolacore-tier1-n",
   ];
 
@@ -263,17 +265,15 @@ public class PresentationTests {
     )!;
     Assert.Equal("iiex:boilercornish-n-boilerplate", drawn.Code);
 
-    // BlockBoiler's own half turn lands in the frame fit, not in the facing: the facing convention
-    // alone answers south while the cells it places run the other way.
     Layout placed = Footprint.Placed(Layout.Load(file!, drawn.Path), index);
     Assert.Equal("south", Presentation.FrontOf(drawn));
     Assert.All(
       placed.Fillers,
-      f => Assert.True(f.Z >= 0, $"the body reaches {f}, south of the anchor")
+      f => Assert.True(f.Z <= 0, $"the body reaches {f}, north of the anchor")
     );
 
     Presentation.Staged staged = Presentation.Stage(placed, drawn);
-    Assert.Equal(180, staged.Angle);
+    Assert.Equal(0, staged.Angle);
     Assert.Equal("south", staged.Front);
     // Drawn that way round the body lies wholly behind the firebox end, which is the picture.
     Assert.All(

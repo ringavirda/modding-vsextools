@@ -491,4 +491,20 @@ public class BlocksTests {
       );
     }
   }
+
+  [Fact]
+  public void Alternatives_split_a_selector_group_on_its_top_level_bars_only() {
+    var alts = BlockIndex.Alternatives(
+      "*:@(brick-.*|banded-(face|corner)-tier[123]-(n|e)|game:plain)-x"
+    );
+    Assert.Equal(
+      new List<(string, string, bool)>
+      {
+        ("*", "brick-.*-x", true),
+        ("*", "banded-(face|corner)-tier[123]-(n|e)-x", true),
+        ("game", "plain", true),
+      },
+      alts
+    );
+  }
 }
