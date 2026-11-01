@@ -48,7 +48,9 @@ public static class WorldBox {
   /// </summary>
   /// <exception cref="KeyNotFoundException">No element has that path.</exception>
   /// <exception cref="ArgumentException">The element's or an ancestor's transform cannot be
-  /// inverted, or the box is too small for the element's rotation to fit.</exception>
+  /// inverted, the box is too small for the element's rotation to fit, or the element's rotation
+  /// is degenerate (45 degrees about one axis) and the box's size is not the current one; such an
+  /// element can only be translated.</exception>
   public static void SetWorld(Shape shape, string path, Box box) {
     List<PathedElement> all = Engine.Walk(shape);
     PathedElement pe =
@@ -64,18 +66,30 @@ public static class WorldBox {
     for (int r = 0; r < 3; r++)
       for (int c = 0; c < 3; c++)
         abs[r * 3 + c] = Math.Abs(w[r, c]);
-    double[] s =
-      Solve3(abs, [box.Size.X, box.Size.Y, box.Size.Z])
-      ?? throw new ArgumentException(
-        $"'{path}' has no box of that size under its rotation"
-      );
+    Vec3 size = Engine.Size(el);
+    double[] s;
+    double[]? solved = Solve3(abs, [box.Size.X, box.Size.Y, box.Size.Z]);
+    if (solved != null)
+      s = solved;
+    else {
+      Vec3 now = Of(w, size).Size;
+      Vec3 diff = box.Size - now;
+      if (
+        Math.Abs(diff.X) > 1e-9
+        || Math.Abs(diff.Y) > 1e-9
+        || Math.Abs(diff.Z) > 1e-9
+      )
+        throw new ArgumentException(
+          $"'{path}' has a degenerate rotation, so only a box of its current size {now} can be set"
+        );
+      s = [size.X, size.Y, size.Z];
+    }
     if (s.Any(v => v < 0))
       throw new ArgumentException(
         $"'{path}' has no box of that size under its rotation"
       );
 
     Vec3 from = Vec3.From(el.From, Vec3.Zero);
-    Vec3 size = Engine.Size(el);
     Vec3 newSize = new(s[0], s[1], s[2]);
     Vec3 newFrom = from + (size - newSize) * 0.5;
 

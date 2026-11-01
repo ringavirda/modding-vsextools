@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Xml.Linq;
 using Newtonsoft.Json;
 using Xunit;
 using Xunit.Abstractions;
@@ -122,6 +123,37 @@ public class ReaderTests(ITestOutputHelper output) {
   }
 
   [Fact]
+  public void Keys_match_without_regard_to_case_and_numbers_may_be_strings() {
+    Shape s = Reader.Read(
+      """{ "Elements": [ { "Name": "A", "From": ["1", 2, 3], "To": [4, 5, 6], "RotationY": "45" } ] }"""
+    );
+    Element el = s.Elements.Single();
+    Assert.Equal("A", el.Name);
+    Assert.Equal([1.0, 2, 3], el.From);
+    Assert.Equal(45, el.RotationY);
+    Assert.Empty(el.Unknown);
+  }
+
+  [Fact]
+  public void A_null_value_is_an_absent_key() {
+    Shape s = Reader.Read(
+      """{ "textureWidth": null, "elements": [ { "name": "A", "from": null, "rotationX": null, "faces": null } ] }"""
+    );
+    Assert.Null(s.TextureWidth);
+    Element el = s.Elements.Single();
+    Assert.Null(el.From);
+    Assert.Null(el.RotationX);
+    Assert.Empty(el.Faces);
+  }
+
+  [Fact]
+  public void A_clip_reads_its_name() {
+    Shape s = Reader.Read("""{ "animations": [ { "name": "open" } ] }""");
+    Assert.Equal("open", s.Animations.Single().Name);
+    Assert.Null(s.Animations.Single().Code);
+  }
+
+  [Fact]
   public void Core_references_neither_VintagestoryAPI_nor_SkiaSharp() {
     string[] names = typeof(Reader)
       .Assembly.GetReferencedAssemblies()
@@ -136,6 +168,23 @@ public class ReaderTests(ITestOutputHelper output) {
       n => n.StartsWith("SkiaSharp", StringComparison.Ordinal)
     );
     Assert.Contains("Newtonsoft.Json", names);
+  }
+
+  [Fact]
+  public void Core_project_file_references_only_Newtonsoft() {
+    string? csproj = WorkspacePath.Of(
+      "shapes/ExlibShapes.Core/ExlibShapes.Core.csproj"
+    );
+    Assert.NotNull(csproj);
+    XElement project = XDocument.Load(csproj!).Root!;
+    Assert.Equal(
+      ["Newtonsoft.Json"],
+      project
+        .Descendants("PackageReference")
+        .Select(r => (string)r.Attribute("Include")!)
+    );
+    Assert.Empty(project.Descendants("Reference"));
+    Assert.Empty(project.Descendants("ProjectReference"));
   }
 
   [SkippableFact]

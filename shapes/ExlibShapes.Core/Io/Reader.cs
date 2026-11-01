@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -7,7 +8,8 @@ using Newtonsoft.Json.Linq;
 namespace ExpandedLib.Shapes.Core;
 
 /// <summary>Reads shape JSON as the game does: comments, trailing commas, unquoted keys and
-/// single-quoted strings are accepted.</summary>
+/// single-quoted strings are accepted. Keys match without regard to case, a null value is an absent
+/// key, and a number may be written as a string.</summary>
 public static class Reader {
   /// <summary>Reads the shape file at <paramref name="path"/>.</summary>
   /// <exception cref="FileNotFoundException"><paramref name="path"/> does not exist.</exception>
@@ -41,32 +43,32 @@ public static class Reader {
     var shape = new Shape();
     foreach (JProperty p in obj.Properties()) {
       shape.KeyOrder.Add(p.Name);
-      switch (p.Name) {
+      switch (p.Name.ToLowerInvariant()) {
         case "textures":
-          foreach (JProperty t in Obj(p).Properties())
-            shape.Textures.Add(new(t.Name, Str(t.Value, t.Name)));
+          foreach (JProperty t in Obj(p)?.Properties() ?? [])
+            if (Str(t.Value, t.Name) is { } texture)
+              shape.Textures.Add(new(t.Name, texture));
           break;
-        case "textureSizes":
-          foreach (JProperty t in Obj(p).Properties())
-            shape.TextureSizes.Add(new(t.Name, Nums(t.Value, t.Name)!));
+        case "texturesizes":
+          foreach (JProperty t in Obj(p)?.Properties() ?? [])
+            if (Nums(t.Value, t.Name) is { } sizes)
+              shape.TextureSizes.Add(new(t.Name, sizes));
           break;
-        case "textureWidth":
+        case "texturewidth":
           shape.TextureWidth = Num(p.Value, p.Name);
           break;
-        case "textureHeight":
+        case "textureheight":
           shape.TextureHeight = Num(p.Value, p.Name);
           break;
         case "editor":
-          shape.Editor =
-            p.Value as JObject
-            ?? throw new JsonException("\"editor\" is not an object");
+          shape.Editor = Obj(p);
           break;
         case "elements":
-          foreach (JToken e in Arr(p))
+          foreach (JToken e in Arr(p) ?? [])
             shape.Elements.Add(ReadElement(e));
           break;
         case "animations":
-          foreach (JToken c in Arr(p))
+          foreach (JToken c in Arr(p) ?? [])
             shape.Animations.Add(ReadClip(c));
           break;
         default:
@@ -82,7 +84,7 @@ public static class Reader {
     var el = new Element();
     foreach (JProperty p in obj.Properties()) {
       el.KeyOrder.Add(p.Name);
-      switch (p.Name) {
+      switch (p.Name.ToLowerInvariant()) {
         case "name":
           el.Name = Str(p.Value, p.Name);
           break;
@@ -92,33 +94,34 @@ public static class Reader {
         case "to":
           el.To = Nums(p.Value, p.Name);
           break;
-        case "rotationOrigin":
+        case "rotationorigin":
           el.RotationOrigin = Nums(p.Value, p.Name);
           break;
-        case "rotationX":
+        case "rotationx":
           el.RotationX = Num(p.Value, p.Name);
           break;
-        case "rotationY":
+        case "rotationy":
           el.RotationY = Num(p.Value, p.Name);
           break;
-        case "rotationZ":
+        case "rotationz":
           el.RotationZ = Num(p.Value, p.Name);
           break;
-        case "scaleX":
+        case "scalex":
           el.ScaleX = Num(p.Value, p.Name);
           break;
-        case "scaleY":
+        case "scaley":
           el.ScaleY = Num(p.Value, p.Name);
           break;
-        case "scaleZ":
+        case "scalez":
           el.ScaleZ = Num(p.Value, p.Name);
           break;
         case "faces":
-          foreach (JProperty f in Obj(p).Properties())
-            el.Faces.Add(new(f.Name, ReadFace(f.Value)));
+          foreach (JProperty f in Obj(p)?.Properties() ?? [])
+            if (f.Value.Type != JTokenType.Null)
+              el.Faces.Add(new(f.Name, ReadFace(f.Value)));
           break;
         case "children":
-          foreach (JToken c in Arr(p))
+          foreach (JToken c in Arr(p) ?? [])
             el.Children.Add(ReadElement(c));
           break;
         default:
@@ -134,7 +137,7 @@ public static class Reader {
     var face = new Face();
     foreach (JProperty p in obj.Properties()) {
       face.KeyOrder.Add(p.Name);
-      switch (p.Name) {
+      switch (p.Name.ToLowerInvariant()) {
         case "texture":
           face.Texture = Str(p.Value, p.Name);
           break;
@@ -145,10 +148,11 @@ public static class Reader {
           face.Rotation = Num(p.Value, p.Name);
           break;
         case "enabled":
-          face.Enabled =
-            p.Value.Type == JTokenType.Boolean
-              ? (bool)p.Value
-              : throw new JsonException($"\"{p.Name}\" is not a boolean");
+          face.Enabled = p.Value.Type switch {
+            JTokenType.Null => null,
+            JTokenType.Boolean => (bool)p.Value,
+            _ => throw new JsonException($"\"{p.Name}\" is not a boolean"),
+          };
           break;
         default:
           face.Unknown.Add(p.Name, p.Value);
@@ -163,7 +167,10 @@ public static class Reader {
     var clip = new Clip();
     foreach (JProperty p in obj.Properties()) {
       clip.KeyOrder.Add(p.Name);
-      switch (p.Name) {
+      switch (p.Name.ToLowerInvariant()) {
+        case "name":
+          clip.Name = Str(p.Value, p.Name);
+          break;
         case "code":
           clip.Code = Str(p.Value, p.Name);
           break;
@@ -173,11 +180,11 @@ public static class Reader {
         case "quantityframes":
           clip.Quantity = Int(p.Value, p.Name);
           break;
-        case "onAnimationEnd":
+        case "onanimationend":
           clip.OnAnimationEnd = Str(p.Value, p.Name);
           break;
         case "keyframes":
-          foreach (JToken k in Arr(p))
+          foreach (JToken k in Arr(p) ?? [])
             clip.Keyframes.Add(ReadKeyframe(k));
           break;
         default:
@@ -193,12 +200,12 @@ public static class Reader {
     var key = new Keyframe();
     foreach (JProperty p in obj.Properties()) {
       key.KeyOrder.Add(p.Name);
-      switch (p.Name) {
+      switch (p.Name.ToLowerInvariant()) {
         case "frame":
           key.Frame = Int(p.Value, p.Name);
           break;
         case "elements":
-          foreach (JProperty e in Obj(p).Properties())
+          foreach (JProperty e in Obj(p)?.Properties() ?? [])
             key.Elements.Add(new(e.Name, e.Value));
           break;
         default:
@@ -212,37 +219,54 @@ public static class Reader {
   private static JObject AsObj(JToken t, string what) =>
     t as JObject ?? throw new JsonException($"a {what} is not an object");
 
-  private static JObject Obj(JProperty p) =>
-    p.Value as JObject
-    ?? throw new JsonException($"\"{p.Name}\" is not an object");
+  private static JObject? Obj(JProperty p) =>
+    p.Value.Type == JTokenType.Null
+      ? null
+      : p.Value as JObject
+        ?? throw new JsonException($"\"{p.Name}\" is not an object");
 
-  private static JArray Arr(JProperty p) =>
-    p.Value as JArray
-    ?? throw new JsonException($"\"{p.Name}\" is not an array");
+  private static JArray? Arr(JProperty p) =>
+    p.Value.Type == JTokenType.Null
+      ? null
+      : p.Value as JArray
+        ?? throw new JsonException($"\"{p.Name}\" is not an array");
 
-  private static string Str(JToken t, string key) =>
-    t.Type == JTokenType.String
-      ? (string)t!
-      : throw new JsonException($"\"{key}\" is not a string");
+  private static string? Str(JToken t, string key) =>
+    t.Type switch {
+      JTokenType.Null => null,
+      JTokenType.String => (string)t!,
+      _ => throw new JsonException($"\"{key}\" is not a string"),
+    };
 
-  private static double Num(JToken t, string key) =>
-    t.Type is JTokenType.Integer or JTokenType.Float
-      ? (double)t
-      : throw new JsonException($"\"{key}\" is not a number");
+  private static double? Num(JToken t, string key) =>
+    t.Type switch {
+      JTokenType.Null => null,
+      JTokenType.Integer or JTokenType.Float => (double)t,
+      JTokenType.String
+        when double.TryParse(
+          (string)t!,
+          NumberStyles.Float,
+          CultureInfo.InvariantCulture,
+          out double v
+        ) => v,
+      _ => throw new JsonException($"\"{key}\" is not a number"),
+    };
 
-  private static int Int(JToken t, string key) =>
-    t.Type is JTokenType.Integer or JTokenType.Float
-      ? (int)(double)t
-      : throw new JsonException($"\"{key}\" is not a number");
+  private static int? Int(JToken t, string key) => (int?)Num(t, key);
 
   private static double[]? Nums(JToken t, string key) {
+    if (t.Type == JTokenType.Null)
+      return null;
     if (t is not JArray arr)
       throw new JsonException($"\"{key}\" is not an array of numbers");
     var list = new List<double>(arr.Count);
     foreach (JToken v in arr) {
       if (v.Type == JTokenType.Undefined)
         continue;
-      list.Add(Num(v, key));
+      list.Add(
+        Num(v, key)
+          ?? throw new JsonException($"\"{key}\" is not an array of numbers")
+      );
     }
     return [.. list];
   }

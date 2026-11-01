@@ -33,12 +33,15 @@ public static class Poses {
   /// <summary>The clip of <paramref name="shape"/> whose code is <paramref name="code"/>.</summary>
   /// <exception cref="KeyNotFoundException">No clip has that code; the message lists the codes.</exception>
   public static Clip Find(Shape shape, string code) =>
-    shape.Animations.FirstOrDefault(a => a.Code == code)
+    shape.Animations.FirstOrDefault(a => (a.Code ?? a.Name) == code)
     ?? throw new KeyNotFoundException(
       $"no clip '{code}'; available: "
         + string.Join(
           ", ",
-          shape.Animations.Select(a => a.Code).Where(c => c != null).Order()
+          shape
+            .Animations.Select(a => a.Code ?? a.Name)
+            .Where(c => c != null)
+            .Order()
         )
     );
 

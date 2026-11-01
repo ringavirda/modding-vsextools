@@ -5,13 +5,16 @@ namespace ExpandedLib.Shapes.Core;
 
 /// <summary>One animation of a shape.</summary>
 public sealed class Clip {
+  /// <summary>The clip's <c>name</c>, null when absent; the game takes it as the code when <c>code</c> is absent.</summary>
+  public string? Name { get; set; }
+
   /// <summary>The clip's <c>code</c>, null when absent.</summary>
   public string? Code { get; set; }
 
   /// <summary>The clip's <c>version</c>, null when absent.</summary>
   public int? Version { get; set; }
 
-  /// <summary>The <c>quantityFrames</c> length in frames, null when absent.</summary>
+  /// <summary>The <c>quantityframes</c> length in frames, null when absent.</summary>
   public int? Quantity { get; set; }
 
   /// <summary>The <c>onAnimationEnd</c> value (<c>Hold</c>, <c>Repeat</c>, ...), null when absent.</summary>

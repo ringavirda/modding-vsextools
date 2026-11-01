@@ -88,6 +88,73 @@ public class EngineTests {
   }
 
   [Fact]
+  public void X_and_Y_rotations_turn_as_the_games_matrices_do() {
+    Shape s = Reader.Read(
+      """
+      { "elements": [
+        { "name": "X", "from": [0, 0, 0], "to": [1, 1, 1], "rotationX": 90 },
+        { "name": "Y", "from": [0, 0, 0], "to": [1, 1, 1], "rotationY": 90 }
+      ] }
+      """
+    );
+    Dictionary<string, Mat4d> world = Engine.WorldMatrices(s);
+    Near(new Vec3(0, 0, 1), world["X"].Mul(new Vec3(0, 1, 0)));
+    Near(new Vec3(0, 0, -1), world["Y"].Mul(new Vec3(1, 0, 0)));
+  }
+
+  private const string Octagon = """
+    { "elements": [ { "name": "O", "from": [0, 0, 0], "to": [4, 4, 4], "rotationY": 45 } ] }
+    """;
+
+  [Fact]
+  public void An_element_at_45_degrees_can_be_moved_without_resizing() {
+    Shape s = Reader.Read(Octagon);
+    Box now = WorldBox.Of(s, "O");
+    var asked = new Box(
+      now.Lo + new Vec3(3, 1, -2),
+      now.Hi + new Vec3(3, 1, -2)
+    );
+    WorldBox.SetWorld(s, "O", asked);
+    Box got = WorldBox.Of(s, "O");
+    Near(asked.Lo, got.Lo);
+    Near(asked.Hi, got.Hi);
+    Assert.Equal([4.0, 4, 4], Engine.Size(s.Elements[0]).ToArray());
+  }
+
+  [Fact]
+  public void An_element_at_45_degrees_refuses_a_resize() {
+    Shape s = Reader.Read(Octagon);
+    ArgumentException e = Assert.Throws<ArgumentException>(() =>
+      WorldBox.SetWorld(s, "O", new Box(new Vec3(0, 0, 0), new Vec3(9, 4, 9)))
+    );
+    Assert.Contains("degenerate", e.Message);
+  }
+
+  [Fact]
+  public void A_clip_with_only_a_name_is_found_by_it() {
+    Shape s = Reader.Read(
+      """{ "animations": [ { "name": "open", "quantityframes": 4 } ] }"""
+    );
+    Assert.Equal("open", Poses.Find(s, "open").Name);
+  }
+
+  [Fact]
+  public void Faces_are_matched_by_first_letter_without_regard_to_case() {
+    Shape s = Reader.Read(
+      """
+      { "elements": [ { "name": "F", "from": [0,0,0], "to": [1,1,1],
+          "faces": { "North": { "texture": "#a" }, "e": { "texture": "#a" }, "Up": { "texture": "#a" }, "x": { "texture": "#a" } } } ] }
+      """
+    );
+    Assert.Equal(
+      ["north", "east", "up"],
+      Engine
+        .FaceQuads(s.Elements[0], "F", Mat4d.Identity)
+        .ConvertAll(q => q.Face)
+    );
+  }
+
+  [Fact]
   public void Repeated_sibling_names_take_a_suffix_in_the_path() {
     Shape s = Reader.Read(
       """{ "elements": [ { "name": "P", "from": [0,0,0], "to": [1,1,1], "children": [ { "name": "k" }, { "name": "k" } ] } ] }"""

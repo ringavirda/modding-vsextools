@@ -172,6 +172,19 @@ public static class Engine {
     return pts;
   }
 
+  private static string? FaceOf(string key) =>
+    key.Length == 0
+      ? null
+      : char.ToLowerInvariant(key[0]) switch {
+        'n' => "north",
+        'e' => "east",
+        's' => "south",
+        'w' => "west",
+        'u' => "up",
+        'd' => "down",
+        _ => null,
+      };
+
   /// <summary>The enabled faces of <paramref name="el"/>, at <paramref name="path"/>, as world
   /// quads under the world matrix <paramref name="m"/>.</summary>
   public static List<Quad> FaceQuads(Element el, string path, Mat4d m) {
@@ -179,7 +192,7 @@ public static class Engine {
     Vec3 size = Size(el);
     foreach (string face in FaceNames)
       foreach (KeyValuePair<string, Face> kv in el.Faces) {
-        if (kv.Key != face || kv.Value.Enabled == false)
+        if (FaceOf(kv.Key) != face || kv.Value.Enabled == false)
           continue;
         Face spec = kv.Value;
         var pts = new Vec3[4];
