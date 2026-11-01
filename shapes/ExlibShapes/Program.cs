@@ -407,7 +407,8 @@ internal static class Program {
       );
     Variant? drawn = DrawnVariant(index, file, null);
     Layout loaded = Layout.Load(file, drawn?.Path);
-    if (OptOf(flags, "--as-built") is { } asBuilt)
+    string? asBuilt = OptOf(flags, "--as-built");
+    if (asBuilt != null)
       loaded = AsBuilt.Attach(loaded, index, AsBuilt.Read(asBuilt));
     Presentation.Staged staged = Presentation.Stage(
       Footprint.Placed(loaded, index),
@@ -474,7 +475,8 @@ internal static class Program {
       index.ParseWarnings,
       plans,
       front,
-      Schematic.UnpaintedFaces(layout, index)
+      Schematic.UnpaintedFaces(layout, index),
+      asBuilt == null ? null : Path.GetFileName(asBuilt)
     );
     string manifestPath = Path.Combine(outDir, $"{stem}.json");
     File.WriteAllText(manifestPath, manifest.ToString(Formatting.Indented));

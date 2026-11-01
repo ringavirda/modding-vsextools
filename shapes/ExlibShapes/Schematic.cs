@@ -1039,7 +1039,12 @@ public static class Schematic {
   /// layout), under <c>front</c>, and is JSON null for a structure that faces no way.
   /// <paramref name="unpaintedFaces"/> is <see cref="UnpaintedFaces"/>'s lines, under
   /// <c>unpaintedFaces</c> rather than among the warnings: a face a block assigns nothing is only
-  /// drawn where a picture shows it.</summary>
+  /// drawn where a picture shows it. <paramref name="asBuiltSource"/> is the file name of the
+  /// as-built map attached to <paramref name="layout"/>, or null for none: it adds an
+  /// <c>asBuilt</c> object <c>{source, cells}</c>, <c>cells</c> counting the layout's
+  /// <see cref="Cell.Finished"/> cells, and a <c>finished</c> object on each legend row with such
+  /// cells, full code to cell count, codes in ordinal order. <c>representative</c> stays the
+  /// selector's first alternative.</summary>
   public static JObject Manifest(
     Layout layout,
     IReadOnlyDictionary<int, LegendEntry> legend,
@@ -1049,7 +1054,8 @@ public static class Schematic {
     IReadOnlyList<string>? parseWarnings = null,
     IReadOnlyList<(string File, int Layer)>? plans = null,
     string? front = null,
-    IReadOnlyList<string>? unpaintedFaces = null
+    IReadOnlyList<string>? unpaintedFaces = null,
+    string? asBuiltSource = null
   ) {
     var rows = new JArray();
     var warnings = new JArray();
@@ -1067,19 +1073,30 @@ public static class Schematic {
         warnings.Add(
           $"{selector}: ambiguous between {string.Join(", ", spanned)}"
         );
-      rows.Add(
-        new JObject {
-          ["number"] = n,
-          ["display"] = row?.Display ?? n,
-          ["selector"] = selector,
-          // A null string assigns as JTokenType.String with a null value, not JTokenType.Null;
-          // JValue.CreateNull() is needed for the field to serialize as JSON null.
-          ["representative"] =
-            representative == null ? JValue.CreateNull() : representative,
-          ["color"] = row?.Color == null ? JValue.CreateNull() : row.Color,
-          ["optional"] = optional,
-        }
-      );
+      var entry = new JObject {
+        ["number"] = n,
+        ["display"] = row?.Display ?? n,
+        ["selector"] = selector,
+        // A null string assigns as JTokenType.String with a null value, not JTokenType.Null;
+        // JValue.CreateNull() is needed for the field to serialize as JSON null.
+        ["representative"] =
+          representative == null ? JValue.CreateNull() : representative,
+        ["color"] = row?.Color == null ? JValue.CreateNull() : row.Color,
+        ["optional"] = optional,
+      };
+      if (asBuiltSource != null) {
+        var finished = new JObject();
+        foreach (
+          var g in layout
+            .Cells.Where(c => c.Number == n && c.Finished != null)
+            .GroupBy(c => c.Finished!)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+        )
+          finished[g.Key] = g.Count();
+        if (finished.Count > 0)
+          entry["finished"] = finished;
+      }
+      rows.Add(entry);
     }
     foreach (string line in missingTextures ?? [])
       warnings.Add(line);
@@ -1089,7 +1106,7 @@ public static class Schematic {
     foreach ((string file, int layer) in plans ?? [])
       planRows.Add(new JObject { ["file"] = file, ["layer"] = layer });
 
-    return new JObject {
+    var manifest = new JObject {
       ["files"] = new JArray(files),
       ["plans"] = planRows,
       ["front"] = front == null ? JValue.CreateNull() : front,
@@ -1097,5 +1114,11 @@ public static class Schematic {
       ["unpaintedFaces"] = new JArray(unpaintedFaces ?? []),
       ["warnings"] = warnings,
     };
+    if (asBuiltSource != null)
+      manifest["asBuilt"] = new JObject {
+        ["source"] = asBuiltSource,
+        ["cells"] = layout.Cells.Count(c => c.Finished != null),
+      };
+    return manifest;
   }
 }

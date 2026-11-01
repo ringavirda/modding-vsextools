@@ -102,6 +102,32 @@ public class ResolverDumpTests {
     Assert.Equal(Normalize(expected), Normalize(sb.ToString()));
   }
 
+  /// <summary>One <c>asbuilt x y z n code shape rot</c> line per entry of an as-built map, in map
+  /// order, at the entry's offset in <paramref name="layout"/> (a layout the map is attached to,
+  /// turned by <paramref name="angle"/>), <c>n</c> the cell's number there.</summary>
+  internal static IEnumerable<string> AsBuiltLines(
+    Layout layout,
+    BlockIndex index,
+    IEnumerable<(Offset At, string Code)> entries,
+    int angle
+  ) {
+    foreach ((Offset at, string code) in entries) {
+      Offset o = Layout.RotateOffset(at, angle);
+      Cell cell = layout.Cells.Single(c =>
+        c.X == o.X && c.Y == o.Y && c.Z == o.Z
+      );
+      ResolvedBlock? block = index.Resolve(cell.Finished!);
+      string? shape =
+        block?.ShapePath != null ? Path.GetFileName(block.ShapePath) : null;
+      yield return $"asbuilt {o.X} {o.Y} {o.Z} {cell.Number} {cell.Finished} shape={shape ?? "None"} "
+        + (
+          block == null
+            ? "rot=None"
+            : $"rot=({FixtureText(block.RotateX)},{FixtureText(block.RotateY)},{FixtureText(block.RotateZ)})"
+        );
+    }
+  }
+
   // The fixture's own number format: True/False, and a whole number always shown with a
   // decimal point (90.0, not 90).
   private static string FixtureText(bool v) => v ? "True" : "False";

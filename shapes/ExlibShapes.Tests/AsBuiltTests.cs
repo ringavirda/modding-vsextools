@@ -194,4 +194,100 @@ public class AsBuiltTests {
         )
     );
   }
+
+  private static string RealMap() {
+    string? map = FixturePath.Workspace(
+      "exmods/mods/iiex/tests/asbuilt/blastcore.json"
+    );
+    Skip.If(map is null, "the sibling exmods checkout lacks the as-built map");
+    return map!;
+  }
+
+  private static JObject ManifestOf(string golden, params string[] extra) {
+    string dir = Path.Combine(
+      Path.GetTempPath(),
+      "exlib-shapes-" + System.Guid.NewGuid().ToString("N")
+    );
+    Assert.Equal(
+      0,
+      Program.RunSchematic([golden, "--out", dir, "--views", "plan", .. extra])
+    );
+    return (JObject)
+      JToken.Parse(File.ReadAllText(Path.Combine(dir, "blastcore.json")));
+  }
+
+  [SkippableFact]
+  public void The_manifest_counts_the_maps_cells_in_total_and_per_legend_row() {
+    string golden = Golden();
+    string map = RealMap();
+    int entries = AsBuilt.Read(map).Count;
+
+    JObject m = ManifestOf(golden, "--as-built", map);
+
+    Assert.Equal(Path.GetFileName(map), (string?)m["asBuilt"]!["source"]);
+    Assert.Equal(entries, (int)m["asBuilt"]!["cells"]!);
+    int summed = m["legend"]!.Sum(row =>
+      row["finished"] is JObject f ? f.Properties().Sum(p => (int)p.Value) : 0
+    );
+    Assert.Equal(entries, summed);
+    Assert.All(
+      m["legend"]!.Where(row => row["finished"] != null),
+      row =>
+        Assert.Equal(
+          row["finished"]!
+            .Children<JProperty>()
+            .Select(p => p.Name)
+            .OrderBy(n => n, System.StringComparer.Ordinal),
+          row["finished"]!.Children<JProperty>().Select(p => p.Name)
+        )
+    );
+  }
+
+  [SkippableFact]
+  public void Without_the_flag_the_manifest_has_no_as_built_fields() {
+    JObject m = ManifestOf(Golden());
+
+    Assert.Null(m["asBuilt"]);
+    Assert.All(m["legend"]!, row => Assert.Null(row["finished"]));
+  }
+
+  [SkippableFact]
+  public void The_plan_svg_is_the_same_string_with_and_without_the_map() {
+    string golden = Golden();
+    Layout plain = Layout.Load(golden);
+    Layout attached = AsBuilt.Attach(
+      plain,
+      IndexOf(golden),
+      AsBuilt.Read(RealMap())
+    );
+
+    foreach (int y in plain.Layers())
+      Assert.Equal(
+        Schematic.PlanSvg(plain, y, Schematic.LegendColors(plain)),
+        Schematic.PlanSvg(attached, y, Schematic.LegendColors(attached))
+      );
+  }
+
+  [SkippableFact]
+  public void The_dump_has_one_asbuilt_line_per_entry_at_every_angle() {
+    string golden = Golden();
+    BlockIndex index = IndexOf(golden);
+    var entries = AsBuilt.Read(RealMap());
+    Layout attached = AsBuilt.Attach(Layout.Load(golden), index, entries);
+
+    foreach (int angle in new[] { 0, 90, 180, 270 }) {
+      List<string> lines = ResolverDumpTests
+        .AsBuiltLines(attached.Rotated(angle), index, entries, angle)
+        .ToList();
+
+      Assert.Equal(entries.Count, lines.Count);
+      Assert.All(lines, l => Assert.StartsWith("asbuilt ", l));
+      Offset first = Layout.RotateOffset(entries[0].At, angle);
+      Assert.StartsWith($"asbuilt {first.X} {first.Y} {first.Z} ", lines[0]);
+      Assert.Contains(
+        $" {entries[0].Code[..entries[0].Code.LastIndexOf('-')]}-",
+        lines[0]
+      );
+    }
+  }
 }
