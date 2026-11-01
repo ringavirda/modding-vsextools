@@ -319,7 +319,10 @@ public class ItemViewsDumpTests {
   public void A_seraph_file_that_is_not_there_is_refused() {
     BlockIndex index = BlockIndex.Build([DemoRoot]);
     Assert.Throws<FileNotFoundException>(() =>
-      ItemViews.LoadSeraph(index, Path.Combine(Scratch("seraph-gone"), "x.json"))
+      ItemViews.LoadSeraph(
+        index,
+        Path.Combine(Scratch("seraph-gone"), "x.json")
+      )
     );
   }
 

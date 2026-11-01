@@ -54,9 +54,7 @@ public static partial class ItemViews {
     string? file = null,
     int frame = 0
   ) {
-    if (
-      (file ?? index.ShapePath(SeraphShape)) is not { } path
-    )
+    if ((file ?? index.ShapePath(SeraphShape)) is not { } path)
       return null;
     if (!File.Exists(path))
       throw new FileNotFoundException($"{path}: no such player shape", path);
