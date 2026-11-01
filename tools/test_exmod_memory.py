@@ -3,7 +3,9 @@ through pwsh ($PWSH, PATH, or the nearest .dotnet/tools above the checkout); ski
 POSIX."""
 
 import fcntl
+import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -75,6 +77,8 @@ class MemoryTests(unittest.TestCase):
         touch(os.path.join(self.repo, "exmod.json"), "{}")
         self.mem = os.path.join(self.tmp, "memory")
         self.meminfo = os.path.join(self.tmp, "meminfo")
+        self.proc = os.path.join(self.tmp, "proc")
+        os.makedirs(self.proc)
         self.set_available(64)
 
     def cleanup(self):
@@ -307,6 +311,99 @@ class MemoryTests(unittest.TestCase):
         self.assertEqual(1, out.count("memory: a released 2 GiB"), out)
         self.assertEqual("again", out.splitlines()[-1])
 
+
+    def fake_proc(self, pid, rss_gb, ppid=1):
+        """A process table entry under the fake EXMOD_PROC_DIR: parent ppid, resident size rss_gb GiB."""
+        touch(os.path.join(self.proc, str(pid), "stat"), f"{pid} (dotnet) S {ppid} 0 0 0\n")
+        touch(os.path.join(self.proc, str(pid), "statm"), f"0 {int(rss_gb * 262144)} 0 0 0 0 0\n")
+
+    def book(self, name, gb, pids):
+        """A running reservation of gb GiB whose host is the processes pids, owned by this (live) process."""
+        touch(os.path.join(self.mem, f"booked-{name}.json"), json.dumps({"owner": os.getpid(), "gb": gb, "pids": pids}))
+
+    def full_budget(self, n=4):
+        return [self.hold(f"{i}.lock") for i in range(n)]
+
+    def ask_real(self, gb, avail, **env):
+        """Asks for gb GiB of a fully booked 4 GiB budget with avail GiB of MemAvailable and the fake process table."""
+        self.set_available(avail)
+        return self.ask(gb, "w", EXMOD_PROC_DIR=self.proc, **env)
+
+    def test_a_share_is_admitted_on_real_use_when_the_bookings_are_full_but_memory_is_available(self):
+        # Fails if the real-use rule is gone (the share waits for a file): 40 - 10 floor - 0 growth = 30 GiB.
+        self.full_budget()
+        self.fake_proc(100, 4)
+        self.book("a", 4, [100])
+        w = self.ask_real(2, 40)
+        w.wait_for("took 2 GiB of 4", 8)
+        self.assertIn("(real use: 30 GiB available)", w.text())
+        w.finish()
+
+    def test_a_share_is_refused_while_the_running_hosts_still_have_room_to_grow(self):
+        # Fails if the remaining growth is left out of the headroom (14 - 10 = 4 admits the share at once).
+        self.full_budget()
+        self.fake_proc(100, 0.5)
+        self.book("a", 4, [100])
+        w = self.ask_real(2, 14)
+        w.never("took", 5)
+        self.fake_proc(100, 4)
+        w.wait_for("(real use: 4 GiB available)", 8)
+        w.finish()
+
+    def test_the_floor_is_kept(self):
+        # Fails if the floor is not subtracted: 11 GiB available admits the share of 2.
+        self.full_budget()
+        w = self.ask_real(2, 11)
+        w.never("took", 5)
+
+    def test_the_floor_setting_moves_the_floor(self):
+        # Fails if EXMOD_MEMORY_FLOOR_GB is ignored: 11 - 8 = 3 GiB is not seen and the share of 2 waits.
+        self.full_budget()
+        w = self.ask_real(2, 11, EXMOD_MEMORY_FLOOR_GB="8")
+        w.wait_for("(real use: 3 GiB available)", 8)
+        w.finish()
+
+    def test_a_host_with_no_pids_counts_its_whole_share(self):
+        # Fails if an unknown size counts as nothing still to grow: 15 - 10 - 4 = 1 refuses a share of 2.
+        self.full_budget()
+        self.book("a", 4, [])
+        w = self.ask_real(2, 15)
+        w.never("took", 4)
+
+    def test_a_host_whose_pid_is_gone_counts_its_whole_share(self):
+        # Fails if a PID missing from the process table counts as nothing still to grow.
+        self.full_budget()
+        self.book("b", 4, [999])
+        w = self.ask_real(2, 15)
+        w.never("took", 4)
+
+    def test_without_a_process_table_only_the_booked_rule_admits(self):
+        # Fails if the real-use rule runs with no process table (it then throws reading the missing table).
+        self.full_budget()
+        w = self.ask(2, "w")
+        w.never("took", 5)
+        self.assertEqual([], [ln for ln in w.text().splitlines() if not ln.startswith("memory: w waits for")], w.text())
+
+    def test_a_reservation_leaves_a_record_of_its_share_and_removes_it_on_release(self):
+        # Fails if the record is not written or Unlock-ExmodMemory leaves it behind.
+        body = (f"$r = Lock-ExmodMemory 2 'a'; [System.IO.File]::ReadAllText($r.Record); Unlock-ExmodMemory $r; "
+                f"\"left=$((Get-ChildItem '{self.mem}' -Filter 'booked-*.json').Count)\"")
+        out = self.start(body, EXMOD_PROC_DIR=self.proc).finish(30)
+        self.assertRegex(out, r'\{"owner":\d+,"gb":2,"pids":\[\]\}')
+        self.assertIn("left=0", out)
+
+    def test_the_sampler_writes_the_host_pids_into_the_reservation_record(self):
+        # Fails if the sampler never writes the record (pids stay empty) or reads PIDs outside the host's tree.
+        if not os.path.isdir("/proc/self"):
+            self.skipTest("no /proc")
+        body = ("$r = Lock-ExmodMemory 1 'a'; $s = Start-ExmodMemorySampler 'NEEDLE123' $r.Record; "
+                "$i = [System.Diagnostics.ProcessStartInfo]::new('bash'); foreach ($a in '-c', 'sleep 4; :', 'NEEDLE123') { $i.ArgumentList.Add($a) }; $p = [System.Diagnostics.Process]::Start($i); Start-Sleep -Milliseconds 1500; "
+                "\"pids=$(([System.IO.File]::ReadAllText($r.Record) | ConvertFrom-Json).pids -join ',') host=$($p.Id)\"; "
+                "Stop-ExmodMemorySampler $s | Out-Null; $p.Kill(); Unlock-ExmodMemory $r")
+        out = self.start(body, EXMOD_PROC_DIR="/proc", EXMOD_MEMORY_SAMPLE_MS="200").finish(30)
+        m = re.search(r"pids=([\d,]+) host=(\d+)", out)
+        self.assertTrue(m, out)
+        self.assertIn(m.group(2), m.group(1).split(","))
 
     def test_the_release_line_ends_with_the_peak_only_when_one_is_given(self):
         # Fails if Unlock-ExmodMemory leaves PeakGb off the line (the first line has no peak) or prints one when none is given.

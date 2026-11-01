@@ -375,17 +375,21 @@ function Get-ExmodTestShare([string]$Project, $PartHeapGb, [bool]$Filtered) {
 
 # Starts sampling the resident memory of a test host's process tree every EXMOD_MEMORY_SAMPLE_MS (default 3000) ms.
 # The host is the child of this process whose command line holds $Needle (its unique results directory), with every
-# descendant of it. Returns the sampler for Stop-ExmodMemorySampler, or $null where /proc does not exist (Windows).
-function Start-ExmodMemorySampler([string]$Needle) {
-  if ($OnWindows -or -not (Test-Path -LiteralPath '/proc/self/stat')) { return $null }
+# descendant of it, read from $env:EXMOD_PROC_DIR (default /proc). The PIDs of the host are written to the `pids` of
+# $RecordPath, the reservation's booked-<id>.json, whenever they change. Returns the sampler for Stop-ExmodMemorySampler,
+# or $null where the process table does not exist (Windows).
+function Start-ExmodMemorySampler([string]$Needle, [string]$RecordPath) {
+  $procDir = if ($env:EXMOD_PROC_DIR) { $env:EXMOD_PROC_DIR } else { '/proc' }
+  if ([System.OperatingSystem]::IsWindows() -or -not (Test-Path -LiteralPath $procDir -PathType Container)) { return $null }
   $state = [hashtable]::Synchronized(@{ Stop = $false; PeakBytes = [int64]0 })
   $interval = if ($env:EXMOD_MEMORY_SAMPLE_MS) { [int]$env:EXMOD_MEMORY_SAMPLE_MS } else { 3000 }
   $ps = [powershell]::Create()
   [void]$ps.AddScript({
-      param($Needle, $Parent, $Interval, $State)
+      param($Needle, $Parent, $Interval, $State, $ProcDir, $RecordPath)
+      $written = ''
       while (-not $State.Stop) {
         $parentOf = @{}
-        foreach ($dir in [System.IO.Directory]::GetDirectories('/proc')) {
+        foreach ($dir in [System.IO.Directory]::GetDirectories($ProcDir)) {
           $id = [System.IO.Path]::GetFileName($dir)
           if ($id -notmatch '^\d+$') { continue }
           try { $stat = [System.IO.File]::ReadAllText("$dir/stat") } catch { continue }
@@ -394,8 +398,19 @@ function Start-ExmodMemorySampler([string]$Needle) {
         $tree = [System.Collections.Generic.HashSet[int]]::new()
         foreach ($id in $parentOf.Keys) {
           if ($parentOf[$id] -ne $Parent) { continue }
-          try { $cmd = [System.IO.File]::ReadAllText("/proc/$id/cmdline") } catch { continue }
+          try { $cmd = [System.IO.File]::ReadAllText("$ProcDir/$id/cmdline") } catch { continue }
           if ($cmd.Contains($Needle, [System.StringComparison]::Ordinal)) { [void]$tree.Add($id) }
+        }
+        $roots = (@($tree) | Sort-Object) -join ','
+        if ($RecordPath -and $roots -and $roots -ne $written) {
+          try {
+            $rec = [System.IO.File]::ReadAllText($RecordPath) | ConvertFrom-Json
+            $rec.pids = @($tree | Sort-Object)
+            [System.IO.File]::WriteAllText("$RecordPath.tmp", (ConvertTo-Json $rec -Compress))
+            [System.IO.File]::Move("$RecordPath.tmp", $RecordPath, $true)
+            $written = $roots
+          }
+          catch { }
         }
         do {
           $grew = $false
@@ -405,12 +420,12 @@ function Start-ExmodMemorySampler([string]$Needle) {
         } while ($grew)
         $bytes = [int64]0
         foreach ($id in $tree) {
-          try { $bytes += [int64]([System.IO.File]::ReadAllText("/proc/$id/statm").Split(' ')[1]) * 4096 } catch { }
+          try { $bytes += [int64]([System.IO.File]::ReadAllText("$ProcDir/$id/statm").Split(' ')[1]) * 4096 } catch { }
         }
         if ($bytes -gt $State.PeakBytes) { $State.PeakBytes = $bytes }
         for ($waited = 0; $waited -lt $Interval -and -not $State.Stop; $waited += 100) { Start-Sleep -Milliseconds 100 }
       }
-    }).AddArgument($Needle).AddArgument([Environment]::ProcessId).AddArgument($interval).AddArgument($state)
+    }).AddArgument($Needle).AddArgument([Environment]::ProcessId).AddArgument($interval).AddArgument($state).AddArgument($procDir).AddArgument($RecordPath)
   return [pscustomobject]@{ Shell = $ps; Handle = $ps.BeginInvoke(); State = $state }
 }
 
@@ -693,7 +708,6 @@ function Invoke-Test([string[]]$Argv) {
           ${function:Start-ExmodMemorySampler} = $using:startSamplerFn
           ${function:Stop-ExmodMemorySampler} = $using:stopSamplerFn
           ${function:Add-ExmodMemoryPeakRecord} = $using:recordFn
-          $OnWindows = $using:OnWindows
           $started = $using:started
           $item = $_
           $wave = $using:wave
@@ -725,7 +739,7 @@ function Invoke-Test([string[]]$Argv) {
             try {
               $reservation = Lock-ExmodMemory -Gb $shareGb -Label $label -OnWait { $started[$mine] = $true }
               $started[$mine] = $true
-              $sampler = Start-ExmodMemorySampler $item.Blame
+              $sampler = Start-ExmodMemorySampler $item.Blame $reservation.Record
               $out = & $dotnet @attemptArgs 2>&1
               $ranExit = $LASTEXITCODE
             }
@@ -872,6 +886,10 @@ shows an OutOfMemoryException, reruns once under filterHeapGb. While a host runs
 sampled every EXMOD_MEMORY_SAMPLE_MS (3000) ms on Linux; the `released` line ends with `, peak <p> GiB`, and one JSON
 line per run (label, filtered, filter, shareGb, limitGb, peakGb, seconds, exit, time) is appended to $EXMOD_MEMORY_LOG
 (~/.cache/exmod/memory-peaks.jsonl).
+A share the free booking files cannot hold is still granted on real use when MemAvailable less EXMOD_MEMORY_FLOOR_GB (10)
+less what the running hosts may still grow to (their share less the resident size of their process tree, the whole share
+while unknown) is at least the share; the took line then ends `(real use: <h> GiB available)`. EXMOD_PROC_DIR (/proc)
+is the process table, and without one (Windows) only the booking rule admits.
 An assembly with no entry takes 4 GiB and runs under no limit. -Coverage takes the whole budget and runs alone. The
 share lines are `memory: <label> took <k> GiB of <B> ...` and `... released ...`.
 

@@ -272,7 +272,7 @@ class PartitionTests(unittest.TestCase):
             self.skipTest("no /proc")
         with tempfile.TemporaryDirectory() as d:
             log = os.path.join(d, "peaks.jsonl")
-            env = {"EXMOD_MEMORY_LOG": log, "EXMOD_MEMORY_SAMPLE_MS": "200", "TEST_HOLD_MB": "300", "TEST_HOLD_S": "2"}
+            env = {"EXMOD_MEMORY_LOG": log, "EXMOD_MEMORY_SAMPLE_MS": "200", "EXMOD_PROC_DIR": "/proc", "TEST_HOLD_MB": "300", "TEST_HOLD_S": "2"}
             out, _, _, _ = run_pwsh("", env, args="'-Filter', 'FullyQualifiedName~.Other.'",
                                     manifest=manifest(heap=8, filter_heap=3))
             m = re.search(r"memory: 1\.22/A\.Tests released 4 GiB at \d\d:\d\d:\d\d, held \d+ s, peak (\d+\.\d) GiB", out)
