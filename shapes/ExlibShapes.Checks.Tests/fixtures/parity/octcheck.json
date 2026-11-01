@@ -1,0 +1,79 @@
+{
+ "octagon-small.json": {
+  "exit": 0,
+  "enumerated": 1,
+  "faulted": []
+ },
+ "octagon-small-missing-chamfer.json": {
+  "exit": 1,
+  "enumerated": 1,
+  "faulted": [
+   "Bar",
+   "Bar"
+  ]
+ },
+ "shaft-small.json": {
+  "exit": 0,
+  "enumerated": 1,
+  "faulted": []
+ },
+ "rect-bar-small.json": {
+  "exit": 0,
+  "enumerated": 1,
+  "faulted": []
+ },
+ "rect-bar-small-unequal-inset.json": {
+  "exit": 1,
+  "enumerated": 1,
+  "faulted": [
+   "Rod"
+  ]
+ },
+ "shaft-small.json (no regular)": {
+  "exit": 1,
+  "enumerated": 1,
+  "faulted": [
+   "Bar"
+  ]
+ },
+ "uvwrap-octagon.json": {
+  "exit": 0,
+  "enumerated": 1,
+  "faulted": []
+ },
+ "ring-small.json": {
+  "exit": 0,
+  "enumerated": 1,
+  "faulted": []
+ },
+ "ring-small-dropped-plate.json": {
+  "exit": 1,
+  "enumerated": 1,
+  "faulted": [
+   "Ring",
+   "Ring",
+   "Ring"
+  ]
+ },
+ "ring-small-off-step.json": {
+  "exit": 1,
+  "enumerated": 1,
+  "faulted": [
+   "Ring",
+   "Ring",
+   "Ring",
+   "Ring",
+   "Ring/P1"
+  ]
+ },
+ "ring-regular-small.json": {
+  "exit": 0,
+  "enumerated": 1,
+  "faulted": []
+ },
+ "gearbevel-mitre-proposed.json": {
+  "exit": 0,
+  "enumerated": 1,
+  "faulted": []
+ }
+}

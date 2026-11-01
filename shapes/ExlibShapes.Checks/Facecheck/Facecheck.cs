@@ -29,7 +29,7 @@ public sealed class Facecheck : ICheck {
   private const double Grid = 0.25;
   private const double Out = 0.02;
 
-  private static readonly HashSet<string> LegacyWood =
+  internal static readonly HashSet<string> LegacyWood =
   [
     "oak",
     "generic",

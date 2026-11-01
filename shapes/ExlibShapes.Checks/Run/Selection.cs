@@ -8,7 +8,14 @@ namespace ExpandedLib.Shapes.Checks;
 public static class Selection {
   /// <summary>Every check the tool holds.</summary>
   public static IReadOnlyList<ICheck> All { get; } =
-  [new Facecheck(), new SizesCheck(), new Flushcheck(), new Footsweep()];
+  [
+    new Facecheck(),
+    new SizesCheck(),
+    new Flushcheck(),
+    new Footsweep(),
+    new Octcheck(),
+    new Uvwrap(),
+  ];
 
   /// <summary>Whether <paramref name="check"/> runs under <paramref name="profile"/>: structural checks always,
   /// period checks only under <see cref="Profile.ExpandedPeriod"/>.</summary>

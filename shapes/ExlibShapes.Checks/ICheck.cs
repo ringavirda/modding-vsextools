@@ -93,6 +93,9 @@ public sealed record FootprintSpec(
 /// <param name="Sizes">The sizes spec rows.</param>
 /// <param name="Hide">The subtree references flushcheck leaves out; a filling's structure when null.</param>
 /// <param name="Footprint">The declared footprint footsweep holds the shape to; the principal cell when null.</param>
+/// <param name="Regular">The paths or globs (<c>*</c>, <c>?</c>, <c>[set]</c>) of octagons octcheck holds regular.</param>
+/// <param name="Directed">Whether uvwrap judges the texels faces meet in world terms and a wood grain along the axis.</param>
+/// <param name="Tex">The texture width in texels uvwrap judges run-ons against.</param>
 /// <param name="WoodKeys">The texture keys whose grain runs along a part; the legacy set when null.</param>
 public sealed record CheckInput(
   Shape? Shape,
@@ -101,7 +104,10 @@ public sealed record CheckInput(
   IReadOnlyList<SizeRow>? Sizes = null,
   IReadOnlySet<string>? WoodKeys = null,
   IReadOnlyList<string>? Hide = null,
-  FootprintSpec? Footprint = null
+  FootprintSpec? Footprint = null,
+  IReadOnlyList<string>? Regular = null,
+  bool Directed = false,
+  double Tex = 16
 );
 
 /// <summary>A check: a pure function of its input to a pass, a fail or a question.</summary>

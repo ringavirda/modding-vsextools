@@ -52,7 +52,7 @@ public class ContractTests {
   public void Every_check_is_structural() {
     Assert.All(Selection.All, c => Assert.Equal(Profile.Structural, c.Profile));
     Assert.Equal(
-      ["facecheck", "flushcheck", "footsweep", "sizes"],
+      ["facecheck", "flushcheck", "footsweep", "octcheck", "sizes", "uvwrap"],
       Selection.All.Select(c => c.Id).Order(StringComparer.Ordinal)
     );
   }
@@ -86,6 +86,8 @@ public class ContractTests {
       "zfight",
       "footprint",
       "footsweep",
+      "octcheck",
+      "uvwrap",
     ];
     string[] versions = [.. ids.Select(CheckVersions.Of)];
     Assert.All(versions, v => Assert.Matches("^[0-9a-f]{64}$", v));
