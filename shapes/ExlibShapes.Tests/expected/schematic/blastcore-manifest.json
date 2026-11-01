@@ -12,7 +12,14 @@
       "selector": "*:@(refractorybricks-good-tier.*|bandedbrick-(face|corner|cornerleft|cornerright|end)-tier[123]-(n|e|s|w)|bandedbrick-plain-tier[123]|hoopedbrick-(face|corner|plain)-tier[123]-(n|e|s|w))",
       "representative": "game:refractorybricks-good-tier1",
       "color": "#4C72B0",
-      "optional": false
+      "optional": false,
+      "finished": {
+        "game:refractorybricks-good-tier1": 64,
+        "iiex:bandedbrick-face-tier1-e": 3,
+        "iiex:bandedbrick-face-tier1-n": 2,
+        "iiex:bandedbrick-face-tier1-s": 2,
+        "iiex:bandedbrick-face-tier1-w": 3
+      }
     },
     {
       "number": 2,
@@ -20,7 +27,18 @@
       "selector": "*:@(claybricks-(good-fire|clinkerrough)|refractorybricks-good-.*|brickcourse-.*|bandedbrick-(face|corner|cornerleft|cornerright|end)-[a-z0-9]+-(n|e|s|w)|bandedbrick-plain-[a-z0-9]+|hoopedbrick-(face|corner|plain)-tier[123]-(n|e|s|w))",
       "representative": "game:claybricks-clinkerrough",
       "color": "#DD8452",
-      "optional": false
+      "optional": false,
+      "finished": {
+        "game:claybricks-good-fire": 62,
+        "iiex:bandedbrick-corner-fire-e": 13,
+        "iiex:bandedbrick-corner-fire-n": 13,
+        "iiex:bandedbrick-corner-fire-s": 13,
+        "iiex:bandedbrick-corner-fire-w": 13,
+        "iiex:bandedbrick-face-fire-e": 35,
+        "iiex:bandedbrick-face-fire-n": 36,
+        "iiex:bandedbrick-face-fire-s": 36,
+        "iiex:bandedbrick-face-fire-w": 35
+      }
     },
     {
       "number": 3,
@@ -28,7 +46,13 @@
       "selector": "*:@(claybricks-(good-fire|clinkerrough)|refractorybricks-good-.*|brickcourse-.*|bandedbrick-(face|corner|cornerleft|cornerright|end|workarch)-[a-z0-9]+-(n|e|s|w)|bandedbrick-plain-[a-z0-9]+)",
       "representative": "game:claybricks-clinkerrough",
       "color": "#55A868",
-      "optional": false
+      "optional": false,
+      "finished": {
+        "iiex:bandedbrick-workarch-fire-e": 1,
+        "iiex:bandedbrick-workarch-fire-n": 1,
+        "iiex:bandedbrick-workarch-fire-s": 1,
+        "iiex:bandedbrick-workarch-fire-w": 1
+      }
     },
     {
       "number": 4,
@@ -76,7 +100,17 @@
       "selector": "*:@(refractorybricks-good-tier.*|hoopedbrick-(face|corner|plain)-tier[123]-(n|e|s|w))",
       "representative": "game:refractorybricks-good-tier1",
       "color": "#CCB974",
-      "optional": false
+      "optional": false,
+      "finished": {
+        "iiex:hoopedbrick-corner-tier1-e": 3,
+        "iiex:hoopedbrick-corner-tier1-n": 3,
+        "iiex:hoopedbrick-corner-tier1-s": 1,
+        "iiex:hoopedbrick-corner-tier1-w": 1,
+        "iiex:hoopedbrick-face-tier1-e": 3,
+        "iiex:hoopedbrick-face-tier1-n": 3,
+        "iiex:hoopedbrick-face-tier1-s": 3,
+        "iiex:hoopedbrick-face-tier1-w": 1
+      }
     },
     {
       "number": 10,
@@ -84,7 +118,11 @@
       "selector": "*:@(refractorybricks-good-tier.*|bandedbrick-(cornerleft|cornerright)-tier[123]-(n|e|s|w))",
       "representative": "game:refractorybricks-good-tier1",
       "color": "#64B5CD",
-      "optional": false
+      "optional": false,
+      "finished": {
+        "iiex:bandedbrick-cornerleft-tier1-w": 2,
+        "iiex:bandedbrick-cornerright-tier1-s": 2
+      }
     },
     {
       "number": 11,
@@ -120,5 +158,9 @@
     }
   ],
   "unpaintedFaces": [],
-  "warnings": []
+  "warnings": [],
+  "asBuilt": {
+    "source": "blastcore.json",
+    "cells": 356
+  }
 }

@@ -42,6 +42,22 @@ internal static class FixturePath {
     );
   }
 
+  /// <summary>True when <c>EXSHAPES_WRITE_EXPECTED=1</c>: a reference fact then calls
+  /// <see cref="Written"/> in place of comparing.</summary>
+  public static bool WriteExpected =>
+    Environment.GetEnvironmentVariable("EXSHAPES_WRITE_EXPECTED") == "1";
+
+  /// <summary>Writes <paramref name="content"/> to <c>expected/&lt;rel&gt;</c> and fails the fact
+  /// with "written": a write run is never green.</summary>
+  public static void Written(string rel, byte[] content) {
+    File.WriteAllBytes(Expected(rel), content);
+    throw new Xunit.Sdk.XunitException($"written {rel}");
+  }
+
+  /// <summary>Text form of <see cref="Written(string, byte[])"/>, written as given.</summary>
+  public static void Written(string rel, string content) =>
+    Written(rel, new System.Text.UTF8Encoding(false).GetBytes(content));
+
   /// <summary>This checkout's own root (the directory holding <c>exmod.json</c>, two levels above
   /// <c>ExlibShapes.Tests.csproj</c>).</summary>
   public static string RepoRoot {

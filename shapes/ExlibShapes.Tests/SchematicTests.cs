@@ -23,6 +23,9 @@ public class SchematicTests {
       "exmods/mods/iiex/tests/goldens/iiex/blocktypes/furnace/blastcore.json"
     );
 
+  private static string? BlastcoreMap =>
+    FixturePath.Workspace("exmods/mods/iiex/tests/asbuilt/blastcore.json");
+
   // The client install the texture facts need. CI provisions one (.github/workflows/ci.yml), so
   // its absence there fails rather than skipping and leaving the placeholder regression unguarded.
   private static string RequireClientGame() {
@@ -542,15 +545,17 @@ public class SchematicTests {
     );
   }
 
-  // The blastcore references draw each selector's first alternative, not the brick the finished
-  // furnace carries; the as-built map (AsBuiltTests) is what draws the latter.
   [Fact]
   public void Blastcore_golden_manifest_matches_the_reference_json_field_for_field() {
-    if (BlastcoreGolden is not { } golden)
+    if (BlastcoreGolden is not { } golden || BlastcoreMap is not { } map)
       return; // skips when the sibling exmods checkout is absent
     IReadOnlyList<string> roots = BlockIndex.DefaultRoots(golden);
     BlockIndex index = BlockIndex.Build(roots);
-    Layout layout = Layout.Load(golden);
+    Layout layout = AsBuilt.Attach(
+      Layout.Load(golden),
+      index,
+      AsBuilt.Read(map)
+    );
     Dictionary<int, LegendEntry> legend = Schematic.LegendColors(layout);
     foreach ((int n, string selector) in layout.Numbers) {
       ResolvedBlock? block = index.Resolve(selector);
@@ -565,8 +570,14 @@ public class SchematicTests {
       layout,
       legend,
       ["a.svg", "b.png"],
-      front: Presentation.FrontOf(drawn)
+      front: Presentation.FrontOf(drawn),
+      asBuiltSource: Path.GetFileName(map)
     );
+    if (FixturePath.WriteExpected)
+      FixturePath.Written(
+        "schematic/blastcore-manifest.json",
+        m.ToString(Newtonsoft.Json.Formatting.Indented)
+      );
     JObject expected = (JObject)
       JToken.Parse(
         File.ReadAllText(
@@ -585,6 +596,8 @@ public class SchematicTests {
     Skip.If(golden is null, "the sibling exmods checkout is absent");
     Layout layout = Layout.Load(golden!);
     string svg = Schematic.PlanSvg(layout, 0, Schematic.LegendColors(layout));
+    if (FixturePath.WriteExpected)
+      FixturePath.Written("schematic/blastcore-plan-y0.svg", svg);
     string expected = File.ReadAllText(
       FixturePath.Expected("schematic/blastcore-plan-y0.svg")
     );
@@ -601,8 +614,20 @@ public class SchematicTests {
     string game = RequireClientGame();
     IReadOnlyList<string> roots = BlockIndex.DefaultRoots(golden!);
     BlockIndex index = BlockIndex.Build(roots, game);
-    Layout layout = Layout.Load(golden!);
+    Skip.If(
+      BlastcoreMap is null,
+      "the sibling exmods checkout lacks the as-built map"
+    );
+    Layout layout = AsBuilt.Attach(
+      Layout.Load(golden!),
+      index,
+      AsBuilt.Read(BlastcoreMap!)
+    );
     using SKBitmap actual = Schematic.IsoPng(layout, index, ppu: 8);
+    if (FixturePath.WriteExpected) {
+      using SKData data = actual.Encode(SKEncodedImageFormat.Png, 100);
+      FixturePath.Written("schematic/blastcore-iso.png", data.ToArray());
+    }
     using SKBitmap expected = SKBitmap.Decode(
       FixturePath.Expected("schematic/blastcore-iso.png")
     );

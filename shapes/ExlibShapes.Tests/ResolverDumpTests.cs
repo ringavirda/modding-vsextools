@@ -34,8 +34,6 @@ public class ResolverDumpTests {
     "mods/siex/tests/goldens/siex/blocktypes/cowperstove/intake.json",
   ];
 
-  // The blastcore rows draw each selector's first alternative, not the brick the finished furnace
-  // carries; the as-built map (AsBuiltTests) is what draws the latter.
   [SkippableFact]
   public void Resolve_matches_the_reference_representative_for_every_selector_of_every_family_golden() {
     string? exmods = FixturePath.Workspace("exmods");
@@ -54,9 +52,23 @@ public class ResolverDumpTests {
       IReadOnlyList<string> roots = BlockIndex.DefaultRoots(golden);
       BlockIndex index = BlockIndex.Build(roots);
       string stem = Path.GetFileNameWithoutExtension(golden);
+      string map = Path.Combine(
+        repo,
+        "mods",
+        "iiex",
+        "tests",
+        "asbuilt",
+        "blastcore.json"
+      );
+      IReadOnlyList<(Offset At, string Code)>? entries =
+        stem == "blastcore" && rel.StartsWith("mods/iiex/")
+          ? AsBuilt.Read(map)
+          : null;
 
       foreach (int angle in new[] { 0, 90, 180, 270 }) {
         Layout layout = Layout.Load(golden);
+        if (entries != null)
+          layout = AsBuilt.Attach(layout, index, entries);
         if (angle != 0)
           layout = layout.Rotated(angle);
         string connectors = string.Join(
@@ -85,6 +97,9 @@ public class ResolverDumpTests {
             );
           }
         }
+        if (entries != null)
+          foreach (string line in AsBuiltLines(layout, index, entries, angle))
+            sb.AppendLine(line);
       }
     }
 
@@ -96,6 +111,8 @@ public class ResolverDumpTests {
       sb.ToString()
     );
 
+    if (FixturePath.WriteExpected)
+      FixturePath.Written("schematic/resolve-dump.txt", sb.ToString());
     string expected = File.ReadAllText(
       FixturePath.Expected("schematic/resolve-dump.txt")
     );
