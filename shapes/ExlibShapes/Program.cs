@@ -476,7 +476,8 @@ internal static class Program {
       plans,
       front,
       Schematic.UnpaintedFaces(layout, index),
-      asBuilt == null ? null : Path.GetFileName(asBuilt)
+      asBuilt == null ? null : Path.GetFileName(asBuilt),
+      index
     );
     string manifestPath = Path.Combine(outDir, $"{stem}.json");
     File.WriteAllText(manifestPath, manifest.ToString(Formatting.Indented));

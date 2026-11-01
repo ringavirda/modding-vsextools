@@ -70,6 +70,9 @@ public static class Schematic {
   private const string FillerColor = "#BFBFBF";
   private const string FillerTextureKey = "__filler";
   private const string OutlineTextureKey = "__outline";
+  private const string TuyereRole = "Tuyere";
+  private const string StubTextureKey = "stub";
+  private const string StubTexture = "game:block/metal/sheet-plain/iron5";
 
   /// <summary>The element and texture-key prefix <see cref="Compose"/> gives a filler-only
   /// megablock's own body, which no numbered cell names.</summary>
@@ -625,6 +628,54 @@ public static class Schematic {
     }
   }
 
+  // The blast pipe's stub on a tuyere's outer face: an octagonal run of four bars through the
+  // nozzle's axis, 6 across and 8 long, from the cell's face on the side the tuyere faces.
+  private static IEnumerable<JObject> StubBars(
+    int cell,
+    Cell c,
+    char side,
+    string textureKey
+  ) {
+    bool alongZ = side is 'n' or 's';
+    double t0 = side is 's' or 'e' ? 16 : -8;
+    (double A0, double A1, double B0, double B1, double Turn)[] bars =
+    [
+      (5, 11, 6.75, 9.25, 0),
+      (6.75, 9.25, 5, 11, 0),
+      (5, 11, 6.75, 9.25, 45),
+      (5, 11, 6.75, 9.25, -45),
+    ];
+    for (int j = 0; j < bars.Length; j++) {
+      (double a0, double a1, double b0, double b1, double turn) = bars[j];
+      double[] from = alongZ ? [a0, b0, t0] : [t0, b0, a0];
+      double[] to = alongZ ? [a1, b1, t0 + 8] : [t0 + 8, b1, a1];
+      var faces = new JObject();
+      foreach (string face in Geometry.Faces)
+        faces[face] = new JObject { ["texture"] = $"#{textureKey}" };
+      var bar = new JObject {
+        ["name"] = $"c{cell}stub{j}",
+        ["from"] = new JArray(
+          c.X * 16 + from[0],
+          c.Y * 16 + from[1],
+          c.Z * 16 + from[2]
+        ),
+        ["to"] = new JArray(
+          c.X * 16 + to[0],
+          c.Y * 16 + to[1],
+          c.Z * 16 + to[2]
+        ),
+        ["rotationOrigin"] = new JArray(
+          c.X * 16 + (from[0] + to[0]) / 2,
+          c.Y * 16 + (from[1] + to[1]) / 2,
+          c.Z * 16 + (from[2] + to[2]) / 2
+        ),
+        ["faces"] = faces,
+      };
+      bar[alongZ ? "rotationZ" : "rotationX"] = turn;
+      yield return bar;
+    }
+  }
+
   /// <summary>
   /// The composite raw shape JSON for <paramref name="layout"/> and the texture values (key to the
   /// resolved block's own value string) it references.
@@ -643,7 +694,10 @@ public static class Schematic {
   /// degrees: the machine is built that way round, so every drawn mesh turns with it about its own
   /// cell. A cell whose selector carries facing data has already turned, its code naming the
   /// rotated variant, and keeps its own rotation; so does a cell carrying an as-built code
-  /// (<see cref="Cell.Finished"/>), which is drawn in place of its selector's pick.
+  /// (<see cref="Cell.Finished"/>), which is drawn in place of its selector's pick. A cell whose
+  /// selector ends in a facing wildcard takes the side away from its one open neighbour
+  /// (<see cref="CellFacings"/>) and is drawn unspun likewise; each such cell in the layout's
+  /// <c>Tuyere</c> role also carries an iron pipe stub on its outer face.
   /// </para>
   /// </summary>
   public static (
@@ -652,6 +706,13 @@ public static class Schematic {
   ) Compose(Layout layout, BlockIndex index, int? cutAt = null, int spin = 0) {
     var elements = new JArray();
     var textureValues = new Dictionary<string, TextureRef>();
+    CellFacings facings = CellFacings.Of(layout, index);
+    HashSet<Offset> tuyeres = layout.Roles.TryGetValue(
+      TuyereRole,
+      out IReadOnlyList<Offset>? tuyereCells
+    )
+      ? [.. tuyereCells]
+      : [];
     for (int i = 0; i < layout.Cells.Count; i++) {
       Cell c = layout.Cells[i];
       if (cutAt != null && c.Y > cutAt)
@@ -661,6 +722,15 @@ public static class Schematic {
       if (c.Finished != null) {
         block = index.Resolve(c.Finished);
         cellSpin = 0;
+      } else if (facings.Codes.TryGetValue(i, out string? faced)) {
+        block = index.Resolve(faced);
+        cellSpin = 0;
+        if (tuyeres.Contains(new Offset(c.X, c.Y, c.Z))) {
+          string stubKey = $"c{i}_{StubTextureKey}";
+          foreach (JObject bar in StubBars(i, c, facings.Sides[i], stubKey))
+            elements.Add(bar);
+          textureValues[stubKey] = new TextureRef(StubTexture);
+        }
       } else {
         if (
           !layout.Numbers.TryGetValue(c.Number, out string? selector)
@@ -1044,7 +1114,9 @@ public static class Schematic {
   /// <c>asBuilt</c> object <c>{source, cells}</c>, <c>cells</c> counting the layout's
   /// <see cref="Cell.Finished"/> cells, and a <c>finished</c> object on each legend row with such
   /// cells, full code to cell count, codes in ordinal order. <c>representative</c> stays the
-  /// selector's first alternative.</summary>
+  /// selector's first alternative. <paramref name="index"/>, when given, adds a <c>faced</c>
+  /// object the same way for the cells of facing-wildcard rows (<see cref="CellFacings"/>) and
+  /// appends one warning per such cell it could not face, after <paramref name="parseWarnings"/>.</summary>
   public static JObject Manifest(
     Layout layout,
     IReadOnlyDictionary<int, LegendEntry> legend,
@@ -1055,8 +1127,10 @@ public static class Schematic {
     IReadOnlyList<(string File, int Layer)>? plans = null,
     string? front = null,
     IReadOnlyList<string>? unpaintedFaces = null,
-    string? asBuiltSource = null
+    string? asBuiltSource = null,
+    BlockIndex? index = null
   ) {
+    CellFacings? facings = index == null ? null : CellFacings.Of(layout, index);
     var rows = new JArray();
     var warnings = new JArray();
     foreach (int n in layout.Numbers.Keys.OrderBy(n => n)) {
@@ -1096,11 +1170,25 @@ public static class Schematic {
         if (finished.Count > 0)
           entry["finished"] = finished;
       }
+      if (facings != null) {
+        var faced = new JObject();
+        foreach (
+          var g in facings
+            .Codes.Where(kv => layout.Cells[kv.Key].Number == n)
+            .GroupBy(kv => kv.Value)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+        )
+          faced[g.Key] = g.Count();
+        if (faced.Count > 0)
+          entry["faced"] = faced;
+      }
       rows.Add(entry);
     }
     foreach (string line in missingTextures ?? [])
       warnings.Add(line);
     foreach (string line in parseWarnings ?? [])
+      warnings.Add(line);
+    foreach (string line in facings?.Warnings ?? [])
       warnings.Add(line);
     var planRows = new JArray();
     foreach ((string file, int layer) in plans ?? [])

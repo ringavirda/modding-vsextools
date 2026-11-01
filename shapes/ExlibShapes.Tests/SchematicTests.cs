@@ -594,7 +594,15 @@ public class SchematicTests {
   public void Blastcore_golden_plan_svg_layer_zero_matches_the_reference_text_exactly() {
     string? golden = BlastcoreGolden;
     Skip.If(golden is null, "the sibling exmods checkout is absent");
-    Layout layout = Layout.Load(golden!);
+    Skip.If(
+      BlastcoreMap is null,
+      "the sibling exmods checkout lacks the as-built map"
+    );
+    Layout layout = AsBuilt.Attach(
+      Layout.Load(golden!),
+      BlockIndex.Build(BlockIndex.DefaultRoots(golden!)),
+      AsBuilt.Read(BlastcoreMap!)
+    );
     string svg = Schematic.PlanSvg(layout, 0, Schematic.LegendColors(layout));
     if (FixturePath.WriteExpected)
       FixturePath.Written("schematic/blastcore-plan-y0.svg", svg);

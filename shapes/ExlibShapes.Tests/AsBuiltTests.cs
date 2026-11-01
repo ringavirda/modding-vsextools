@@ -109,6 +109,44 @@ public class AsBuiltTests {
     );
   }
 
+  [SkippableFact]
+  public void A_turned_as_built_cell_draws_unspun_like_a_named_oriented_selector() {
+    string golden = Golden();
+    Layout layout = Layout.Load(golden);
+    BlockIndex index = IndexOf(golden);
+    Layout attached = AsBuilt.Attach(
+      layout,
+      index,
+      layout
+        .Cells.Where(c => c.Number == 3)
+        .Select(c => (new Offset(c.X, c.Y, c.Z), WorkArch))
+    );
+    const string turned = "iiex:bandedbrick-workarch-tier1-w";
+    Layout plain = layout.Rotated(90);
+    var named = new Dictionary<int, string>(plain.Numbers) { [3] = turned };
+    var expectedLayout = new Layout(
+      plain.Cells,
+      named,
+      plain.Fillers,
+      new Dictionary<string, IReadOnlyList<int>>(plain.Facings) {
+        [turned] = [3],
+      },
+      plain.Connectors,
+      plain.Roles,
+      plain.Anchor,
+      plain.Principal
+    );
+
+    (JObject expected, _) = Schematic.Compose(expectedLayout, index, spin: 90);
+    (JObject actual, _) = Schematic.Compose(
+      attached.Rotated(90),
+      index,
+      spin: 90
+    );
+
+    Assert.True(JToken.DeepEquals(expected, actual));
+  }
+
   [Fact]
   public void Rotated_leaves_a_sideless_code_unchanged() {
     var layout = new Layout(
