@@ -21,7 +21,7 @@ public sealed record WorkedResult(
   IReadOnlyList<string> Failures
 );
 
-/// <summary>Step 7: worked items, the blank's cast form with its allowance off, the faces its steps cut
+/// <summary>Worked items: the blank's cast form with its allowance off, the faces its steps cut
 /// finished and its worked features cut in.</summary>
 public static partial class Worked {
   private const double Tol = 1e-4;

@@ -6,7 +6,7 @@ using ExpandedLib.Shapes.Core;
 
 namespace ExpandedLib.Shapes.Generators;
 
-/// <summary>Step 6: uv rects by face size and texture class, and round runs unrolled.</summary>
+/// <summary>Uv rects by face size and texture class, and round runs unrolled.</summary>
 public static class Uvs {
   private const string Generator = "castgen";
   private const double Tex = 16;
