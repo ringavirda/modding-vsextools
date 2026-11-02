@@ -464,8 +464,8 @@ public class CorefitTests {
 
   [Fact]
   public void Corefit_applies_to_cores_boxes_and_pours_with_cores_and_has_rows() {
-    Assert.Equal(["corefit"], KindTable.Gates("core"));
-    Assert.Equal(["corefit"], KindTable.Gates("corebox"));
+    Assert.Equal(["facecheck", "corefit"], KindTable.Gates("core"));
+    Assert.Equal(["facecheck", "corefit"], KindTable.Gates("corebox"));
     Assert.True(Selection.Applies(Check, Seated()));
     Assert.True(Selection.Applies(Check, CoreInput(Core())));
     Assert.True(Selection.Applies(Check, BoxInput(BoxShape())));

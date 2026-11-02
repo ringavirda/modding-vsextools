@@ -89,7 +89,11 @@ public class ParityLiveTests {
       };
       start.ArgumentList.Add("-I");
       start.ArgumentList.Add(
-        Path.Combine(AppContext.BaseDirectory, "recorders", "record_st10a.py")
+        Path.Combine(
+          AppContext.BaseDirectory,
+          "recorders",
+          "record_castgates.py"
+        )
       );
       start.Environment["FLOORFLASK"] = ff;
       start.Environment["PARITY_OUT"] = live;

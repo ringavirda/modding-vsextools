@@ -48,9 +48,9 @@ public static class Selection {
       ? [.. a.Select(t => (string?)t ?? "").Where(g => g != "")]
       : [];
 
-  /// <summary>Whether <paramref name="check"/> has anything to read in <paramref name="input"/>. octregular needs
+  /// <summary>Whether <paramref name="check"/> has anything to read in <paramref name="input"/>. octcheck needs an octagon in the shape, octregular needs
   /// the record to name regular globs (<see cref="RegularGlobs"/>), uvwrap a round run in the shape, blankmatch a
-  /// <c>blank</c> slot in the record; impression, flood, capacity, fit, pieces and parting not a closed pour's
+  /// <c>blank</c> slot in the record; impression, draw, flood, capacity, fit, pieces and parting not a closed pour's
   /// cope, whose record holds only its pair; feeding a closed pour or a <c>head</c> feed, pit a station with a head
   /// height, corefit a record with a <c>core</c> or <c>corebox</c> slot or a pour that sets cores; every other check always applies. Without these a check enumerates nothing
   /// and fails.</summary>
@@ -58,12 +58,27 @@ public static class Selection {
     check.Id switch {
       "octregular" => input.Record != null
         && RegularGlobs(input.Record).Count > 0,
+      "octcheck" => input.Shape != null
+        && Octagons
+          .Read(
+            new Tree(input.Shape),
+            new Frames(input.Shape),
+            new HashSet<string>(),
+            input.Regular ?? [],
+            Octagons.Hold.Structure
+          )
+          .Count > 0,
       "uvwrap" => input.Shape != null
         && RoundRuns.Find(new Tree(input.Shape), new Frames(input.Shape)).Count
           > 0,
       "blankmatch" => input.Record?.Carried.ContainsKey("blank") == true,
-      "impression" or "flood" or "capacity" or "fit" or "pieces" or "parting" =>
-        !Pour.IsCope(input.Record),
+      "impression"
+      or "draw"
+      or "flood"
+      or "capacity"
+      or "fit"
+      or "pieces"
+      or "parting" => !Pour.IsCope(input.Record),
       "feeding" => PourOf(input.Record) is not { } f
         || f.Closed
         || f.Feeds.Any(x => x.Kind == "head"),

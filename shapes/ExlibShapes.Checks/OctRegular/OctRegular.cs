@@ -6,7 +6,7 @@ namespace ExpandedLib.Shapes.Checks;
 /// <summary>
 /// Whether the octagonal bars <see cref="CheckInput.Regular"/> names are regular, all eight faces equal: the arms of
 /// the cross the across times tan 22.5 degrees and the diagonal flats within 0.01 of the axis flats. Only the
-/// octagons the globs match are read; none matched enumerates nothing and fails. One report line per octagon, then
+/// octagons the globs match are read (the record's <c>regular</c> globs when the input gives none); none matched enumerates nothing and fails. One report line per octagon, then
 /// one <c>  FAULT PATH: ...</c> line per fault.
 /// </summary>
 public sealed class OctRegular : ICheck {
@@ -24,15 +24,15 @@ public sealed class OctRegular : ICheck {
       new Tree(input.Shape),
       new Frames(input.Shape),
       new HashSet<string>(),
-      input.Regular ?? [],
+      input.Regular ?? (input.Record is { } r ? Selection.RegularGlobs(r) : []),
       Octagons.Hold.Regular
     );
     var lines = new List<string>();
-    foreach (Octagons.Reading r in read) {
-      lines.Add(r.Line);
-      lines.AddRange(r.Faults.Select(f => "  FAULT " + f));
+    foreach (Octagons.Reading o in read) {
+      lines.Add(o.Line);
+      lines.AddRange(o.Faults.Select(f => "  FAULT " + f));
     }
-    bool faults = read.Any(r => r.Faults.Count > 0);
+    bool faults = read.Any(o => o.Faults.Count > 0);
     lines.Add(
       $"{read.Count} regular octagons held; {(faults ? "faults" : "no fault")}"
     );

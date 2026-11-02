@@ -24,6 +24,20 @@ public class OctRegularTests {
   }
 
   [Fact]
+  public void The_records_regular_globs_are_read_when_the_input_gives_none() {
+    CheckResult r = Check.Run(
+      new CheckInput(
+        Fixtures.Shape("octagon-small.json"),
+        Record: CastFixtures.Record(
+          "\"kinds\": [\"casting\"], \"regular\": [\"*\"]"
+        )
+      )
+    );
+    Assert.Equal(1, r.Enumerated);
+    Assert.Contains("1 regular octagons held; faults", r.Lines);
+  }
+
+  [Fact]
   public void A_regular_bar_passes() {
     CheckResult r = Check.Run(
       new CheckInput(Fixtures.Shape("shaft-small.json"), Regular: ["*"])

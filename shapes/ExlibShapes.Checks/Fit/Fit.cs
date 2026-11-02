@@ -8,8 +8,9 @@ namespace ExpandedLib.Shapes.Checks;
 /// <summary>
 /// Whether the sand left between the metal and the flask holds: each piece keeps the station's margin from its sand
 /// box walls and floor (a closed pour's roof too), the pieces keep it apart, leaf from leaf, and each feed keeps it
-/// from every piece it does not enter. A feed enters a piece it overlaps or touches. With more than one piece and a
-/// station footprint, each piece's plan grown by the footprint stays inside its Bedded sand's plan. One line per
+/// from every piece it does not enter. A feed enters a piece it overlaps or touches. With a station footprint and
+/// either more than one piece or a head height (a pit), each piece's plan grown by the footprint stays inside its
+/// Bedded sand's plan, a lone piece's sand being all the sand leaves. One line per
 /// fault; needs the part record's pour, the settings and the cast.
 /// </summary>
 public sealed class Fit : ICheck {
@@ -72,7 +73,10 @@ public sealed class Fit : ICheck {
             $"{feed.Name} and Piece{k + 1}: {Fmt.G(gap)} apart, margin {Fmt.G(margin)}"
           );
       }
-    if (p.Station.Footprint is double foot && p.Pour.Pieces.Count > 1)
+    if (
+      p.Station.Footprint is double foot
+      && (p.Pour.Pieces.Count > 1 || p.Station.HeadHeight != null)
+    )
       counted += Footprint(input, p, foot, lines);
     bool faults = lines.Count > 0;
     lines.Add($"fit: {counted} clearances read");
@@ -91,16 +95,16 @@ public sealed class Fit : ICheck {
       input.Settings!
     );
     int counted = 0;
+    bool grouped = p.Pour.Pieces.Count > 1;
     for (int k = 0; k < p.Cast.Count; k++) {
       counted++;
       List<Box> bedded =
       [
         .. leaves
           .Where(l =>
-            l.Piece == k + 1
-            && l.Role == "sand"
+            l.Role == "sand"
             && !l.Level
-            && InGroup(l.Node, "Bedded")
+            && (!grouped || (l.Piece == k + 1 && InGroup(l.Node, "Bedded")))
           )
           .SelectMany(l => l.Cells),
       ];

@@ -1,6 +1,6 @@
 """Records the floor flask lane's verdicts on the stage gates' fixtures into $PARITY_OUT (parity/pieces, feeding, pit, parting and fit.json) and writes the fixtures' shapes beside them, reading the lane from $FLOORFLASK.
 
-Run record_st11b.py into the same $FIXTURES_OUT first: the closed pours are its closed-*.json drags and copes.
+Run record_closedpours.py into the same $FIXTURES_OUT first: the closed pours are its closed-*.json drags and copes.
 The lane's gates are called where they are functions: groupcheck.check, closedcheck head, seal and parting, flystd.check_parting, check_lie and check_margins, lathecheck.clear, and pitcolcheck's orient, seat and order, each with the module's tables
 pointed at the fixture. Each case holds the pour it is run as ("case") beside the verdict. `enumerated` is the count of subjects the lane reads in the case: the Piece groups, the closed pour's rules (the head, the flood's mouths and its leak, the cast's group pairs), the pit's bands, cores or gates, the parting's pieces and pattern leaves, the fit's pieces and the feeds that do not enter one."""
 import ast, contextlib, io, json, os, re, sys

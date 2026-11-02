@@ -92,6 +92,33 @@ public class FitTests {
     );
   }
 
+  private static Shape PitSand(double lo) =>
+    Reader.Read(
+      $$"""
+      { "textures": { "andesite": "block/stone/sand/andesite" },
+        "elements": [
+          { "name": "Sand1", "from": [{{lo}}, -14, -14], "to": [19.5, 14, 14], "faces": { "up": { "texture": "#andesite" } } } ] }
+      """
+    );
+
+  [Fact]
+  public void A_lone_pit_piece_holds_its_footprint_in_the_sand() {
+    string[] at = [PourFixtures.At(13, 0, -3)];
+    CheckInput Pit(double lo) =>
+      PourFixtures.Input(
+        PitSand(lo),
+        PourFixtures.Record(at, [PourFixtures.Runner1], station: "pit")
+      );
+    Assert.DoesNotContain(
+      Check.Run(Pit(12.5)).Lines,
+      l => l.Contains("its plan grown")
+    );
+    Assert.Contains(
+      "Piece1: its plan grown by 0.5 leaves the Bedded sand by 0.5",
+      Check.Run(Pit(13)).Lines
+    );
+  }
+
   [Fact]
   public void A_piece_with_no_bedded_sand_is_a_fault_with_more_than_one_piece() {
     CheckResult r = Run(Two, [], Fixtures.Shape("fill-ok.json"));

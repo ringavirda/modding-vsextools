@@ -73,6 +73,23 @@ public class LintsTests {
   }
 
   [Fact]
+  public void Octcheck_applies_only_to_a_shape_with_an_octagon() {
+    var octcheck = new Octcheck();
+    Assert.True(
+      Selection.Applies(
+        octcheck,
+        new CheckInput(Fixtures.Shape("octagon-small.json"))
+      )
+    );
+    Assert.False(
+      Selection.Applies(
+        octcheck,
+        new CheckInput(Fixtures.Shape("cast-ok.json"))
+      )
+    );
+  }
+
+  [Fact]
   public void Uvwrap_applies_only_to_a_shape_with_a_round_run() {
     var uvwrap = new Uvwrap();
     Assert.True(
@@ -104,17 +121,36 @@ public class LintsTests {
   [Fact]
   public void The_casting_pattern_and_worked_rows_name_their_gates() {
     Assert.Equal(
-      ["castonly", "allowance", "split", "role", "uvwrap", "octregular"],
+      [
+        "castonly",
+        "allowance",
+        "split",
+        "role",
+        "facecheck",
+        "flushcheck",
+        "octcheck",
+        "uvwrap",
+        "octregular",
+      ],
       KindTable.Gates("casting")
     );
-    Assert.Equal(["role", "draw"], KindTable.Gates("pattern"));
-    Assert.Equal(["role", "blankmatch"], KindTable.Gates("worked"));
+    Assert.Equal(
+      ["role", "draw", "split", "facecheck"],
+      KindTable.Gates("pattern")
+    );
+    Assert.Equal(
+      ["role", "split", "facecheck", "blankmatch"],
+      KindTable.Gates("worked")
+    );
     Assert.Equal(
       [
         "castonly",
         "allowance",
         "split",
         "role",
+        "facecheck",
+        "flushcheck",
+        "octcheck",
         "uvwrap",
         "octregular",
         "draw",
@@ -127,6 +163,9 @@ public class LintsTests {
         "allowance",
         "split",
         "role",
+        "facecheck",
+        "flushcheck",
+        "octcheck",
         "uvwrap",
         "octregular",
         "draw",
@@ -136,7 +175,16 @@ public class LintsTests {
         .Select(c => c.Id)
     );
     Assert.Equal(
-      ["castonly", "allowance", "split", "role", "draw"],
+      [
+        "castonly",
+        "allowance",
+        "split",
+        "role",
+        "facecheck",
+        "flushcheck",
+        "octcheck",
+        "draw",
+      ],
       Selection
         .For(["casting", "pattern"], Profile.Structural)
         .Select(c => c.Id)

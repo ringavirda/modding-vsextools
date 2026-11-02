@@ -15,16 +15,19 @@ public class ContractTests {
   }
 
   [Fact]
-  public void Filling_kinds_have_empty_rows_and_every_kind_has_one() {
+  public void Every_kind_has_a_row_and_the_filling_row_names_its_gates() {
     foreach (string kind in KindTable.Kinds)
-      Assert.NotNull(KindTable.Gates(kind));
+      Assert.Contains("facecheck", KindTable.Gates(kind));
     Assert.Equal(
       [
         "impression",
+        "draw",
         "flood",
         "capacity",
         "fit",
         "runner",
+        "split",
+        "facecheck",
         "pieces",
         "feeding",
         "pit",
@@ -44,7 +47,7 @@ public class ContractTests {
       )
     );
     Assert.Equal(
-      ["runner"],
+      ["runner", "split", "facecheck"],
       Selection
         .For(["filling"], Profile.Structural)
         .Where(c => Selection.Applies(c, input))
@@ -159,10 +162,13 @@ public class ContractTests {
     Assert.Equal(
       [
         "impression",
+        "draw",
         "flood",
         "capacity",
         "fit",
         "runner",
+        "split",
+        "facecheck",
         "pieces",
         "feeding",
         "pit",
