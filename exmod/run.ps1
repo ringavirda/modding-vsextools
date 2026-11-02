@@ -361,6 +361,12 @@ client runs from the store's game/<series> only, on Windows' own .NET runtime.
 
   -Mods       mod folder(s), or folder(s) of mod folders, instead of every built mod in the checkout
               and its resolved dependencies
+  -Seed       world seed, a whole number; written with the scenario serverconfig.json (loopback, admin
+              default role) into the data path before the first boot
+  -WorldType  standard or superflat (default standard when any world option is given)
+  -WorldConfig  one WorldConfiguration entry, repeatable (iiexBulkOre=normal); true/false and whole
+              numbers are written as such, anything else as text
+              A world option on a data path that already holds a world (Saves/*.vcdbs) is refused.
   -NoBuild    skip the build step; the mods must already be built (on a WSL share: already staged)
   -DataPath   client data path (default: <store>/data/default)
   -Provision  fetch a client install for this series into the store, if none is usable yet
@@ -384,7 +390,7 @@ its own, built or fetched first if needed.
 # itself: it just runs in the foreground and lets Ctrl+C reach it the ordinary way, which is how
 # the dedicated server saves and shuts down cleanly on its own.
 function Invoke-Server([string[]]$Argv) {
-  $positional = @(Get-Positional $Argv @('-Port', '-Configuration', '-Mods', '-DataPath') @('-NoBuild'))
+  $positional = @(Get-Positional $Argv @('-Port', '-Configuration', '-Mods', '-DataPath', '-Seed', '-WorldType', '-WorldConfig') @('-NoBuild'))
   $versionArg = if ($positional.Count -gt 0) { $positional[0] } else { 'latest' }
   $version = Resolve-RunVersion $versionArg
 
@@ -393,9 +399,21 @@ function Invoke-Server([string[]]$Argv) {
   $modsOpt = Get-Opt $Argv '-Mods' $null
   $noBuild = Get-Flag $Argv '-NoBuild'
   $dataPath = Get-Opt $Argv '-DataPath' (Join-Path $RepoRoot '.gamedata/server')
+  $seed = Get-Opt $Argv '-Seed' $null
+  $worldType = Get-Opt $Argv '-WorldType' $null
+  $worldPairs = @(Get-OptAll $Argv '-WorldConfig')
+  if ($null -ne $seed -or $null -ne $worldType -or $worldPairs.Count -gt 0) {
+    $world = Get-WorldServerConfig $seed $worldType $worldPairs
+    Test-WorldDataPathFresh $dataPath
+  }
 
   $serverDir = Resolve-SmokeServer $version
   $modsDest = Publish-RunMods $version $configuration $modsOpt $noBuild
+
+  if ($world) {
+    New-Item -ItemType Directory -Force -Path $dataPath | Out-Null
+    $world | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $dataPath 'serverconfig.json')
+  }
 
   Write-Step "Running the dedicated server ($version) on port $port"
   & dotnet (Join-Path $serverDir 'VintagestoryServer.dll') --dataPath $dataPath --addModPath $modsDest --port $port
@@ -407,7 +425,8 @@ Add-ExmodCommand -Group run -Name server -Summary 'build, stage and run a dedica
   param([string[]]$Argv) Invoke-Server $Argv
 } -Detail @'
 exmod server [latest|1.22|1.21|1.20] [-Port <n>] [-Configuration Debug] [-Mods <dir>[,...]]
-             [-NoBuild] [-DataPath <path>]
+             [-NoBuild] [-DataPath <path>] [-Seed <n>] [-WorldType standard|superflat]
+             [-WorldConfig <key>=<value>]...
 
 Builds this checkout's mods for the series (unless -NoBuild), stages them the way `exmod stage`
 would, and runs a real dedicated server in the foreground until Ctrl+C stops it. Unlike `smoke`,
@@ -1018,6 +1037,55 @@ function Get-ScenarioServerConfig([bool]$Keep = $false) {
     }
   }
   return $config
+}
+
+# Every value given to a repeatable option, in order.
+function Get-OptAll([string[]]$Argv, [string]$Name) {
+  $out = @()
+  for ($i = 0; $i -lt $Argv.Count; $i++) {
+    if ($Argv[$i] -ieq $Name) {
+      if ($i + 1 -ge $Argv.Count) { throw "$Name needs a value." }
+      $out += $Argv[$i + 1]
+      $i++
+    }
+  }
+  return $out
+}
+
+# The serverconfig.json of a probe world: the scenario's loopback, admin-role config with the world type
+# (standard unless named), the seed (a whole number, omitted when $null) and each `key=value` pair in
+# WorldConfiguration. A pair with no `=`, a seed that is not a whole number or an unknown type throws.
+function Get-WorldServerConfig($Seed, $WorldType, [string[]]$Pairs) {
+  $config = Get-ScenarioServerConfig $true
+  $type = if ($WorldType) { $WorldType } else { 'standard' }
+  if ($type -notin @('standard', 'superflat')) { throw "-WorldType must be standard or superflat, not '$type'." }
+  $config.WorldConfig.WorldType = $type
+  if ($null -ne $Seed) {
+    $n = 0L
+    if (-not [long]::TryParse([string]$Seed, [ref]$n)) { throw "-Seed must be a whole number, not '$Seed'." }
+    $config.WorldConfig.Seed = $n
+  }
+  foreach ($pair in $Pairs) {
+    $eq = $pair.IndexOf('=')
+    if ($eq -lt 1) { throw "-WorldConfig takes key=value, not '$pair'." }
+    $key = $pair.Substring(0, $eq)
+    $text = $pair.Substring($eq + 1)
+    $value = $text
+    $n = 0L
+    if ($text -ieq 'true') { $value = $true }
+    elseif ($text -ieq 'false') { $value = $false }
+    elseif ([long]::TryParse($text, [ref]$n)) { $value = $n }
+    $config.WorldConfig.WorldConfiguration[$key] = $value
+  }
+  return $config
+}
+
+# Throws when $DataPath already holds a saved world, whose seed and type a new serverconfig.json cannot change.
+function Test-WorldDataPathFresh([string]$DataPath) {
+  $saves = Join-Path $DataPath 'Saves'
+  if ((Test-Path $saves) -and @(Get-ChildItem -Path $saves -Filter '*.vcdbs' -File).Count -gt 0) {
+    throw "$DataPath already holds a world; -Seed, -WorldType and -WorldConfig need a fresh -DataPath."
+  }
 }
 
 # The read of one scenario run from the server log's lines, and the rules `exmod scenario` exits by
