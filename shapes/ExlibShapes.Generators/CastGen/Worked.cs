@@ -463,7 +463,7 @@ public static partial class Worked {
     ];
   }
 
-  private static string SettingsSha(Settings s) =>
+  internal static string SettingsSha(Settings s) =>
     Provenance.Sha256Of(
       string.Join(
         "\n",

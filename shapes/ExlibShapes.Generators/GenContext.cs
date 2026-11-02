@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text;
 using ExpandedLib.Shapes.Core;
+using Newtonsoft.Json.Linq;
 
 namespace ExpandedLib.Shapes.Generators;
 
@@ -22,11 +23,13 @@ public sealed record ResolvedSource(
 /// <param name="resolve">Reads (shape path, pin) into a source; throws when it cannot.</param>
 /// <param name="answers">The stored answers of the part being generated.</param>
 /// <param name="log">A sink for progress lines; null drops them.</param>
+/// <param name="blanks">Reads the blank file of a blank code as written; null when the run has no blank files.</param>
 public sealed class GenContext(
   Settings settings,
   Func<string, string, ResolvedSource> resolve,
   IReadOnlyList<Answer>? answers = null,
-  Action<string>? log = null
+  Action<string>? log = null,
+  Func<string, JObject>? blanks = null
 ) {
   /// <summary>The tool settings.</summary>
   public Settings Settings { get; } = settings;
@@ -39,6 +42,15 @@ public sealed class GenContext(
   /// <param name="sha">The commit or file sha it is pinned at.</param>
   public ResolvedSource Resolve(string shape, string sha) =>
     resolve(shape, sha);
+
+  /// <summary>The blank file of <paramref name="code"/>.</summary>
+  /// <param name="code">The blank code a user names.</param>
+  /// <exception cref="CastGenException">The run has no blank files.</exception>
+  public JObject Blank(string code) =>
+    blanks?.Invoke(code)
+    ?? throw new CastGenException(
+      $"blank \"{code}\": the run has no blank files"
+    );
 
   /// <summary>Writes a progress line.</summary>
   public void Log(string line) => log?.Invoke(line);
