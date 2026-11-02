@@ -659,6 +659,54 @@ Try-Case 'plain' { (Get-ScenarioServerConfig $false).DefaultRoleCode }
         self.assertEqual({"Default": "admin", "Codes": ["suplayer", "admin"]}, got["keep"])
         self.assertEqual("suplayer", got["plain"])
 
+    def test_the_world_server_config_carries_seed_type_and_pairs_in_the_scenario_config(self):
+        # Mutation: the seed assignment removed from Get-WorldServerConfig. Fails here.
+        got = run_cases(self.repo, r"""
+Try-Case 'world' {
+  $c = Get-WorldServerConfig '12345' 'standard' @('iiexBulkOre=normal', 'snowAccum=false', 'n=7')
+  $w = $c.WorldConfig
+  [ordered]@{ Seed = $w.Seed; Type = $w.WorldType; Ore = $w.WorldConfiguration.iiexBulkOre; Snow = $w.WorldConfiguration.snowAccum;
+    N = $w.WorldConfiguration.n; Mode = $w.WorldConfiguration.gameMode; Ip = $c.Ip; Role = $c.DefaultRoleCode }
+}
+Try-Case 'default' { $c = Get-WorldServerConfig $null $null @(); [ordered]@{ Type = $c.WorldConfig.WorldType; HasSeed = $c.WorldConfig.Contains('Seed') } }
+""")
+        self.assertEqual({"Seed": 12345, "Type": "standard", "Ore": "normal", "Snow": False, "N": 7,
+                          "Mode": "creative", "Ip": "127.0.0.1", "Role": "admin"}, got["world"])
+        self.assertEqual({"Type": "standard", "HasSeed": False}, got["default"])
+
+    def test_the_world_server_config_refuses_a_bad_seed_type_or_pair(self):
+        # Mutation: the long parse of the seed replaced by a cast that accepts text. Fails here.
+        got = run_cases(self.repo, r"""
+Try-Case 'seed' { Get-WorldServerConfig 'abc' 'standard' @() }
+Try-Case 'type' { Get-WorldServerConfig '1' 'flat' @() }
+Try-Case 'pair' { Get-WorldServerConfig '1' 'standard' @('novalue') }
+""")
+        self.assertIn("whole number", got["seed"]["Error"])
+        self.assertIn("standard or superflat", got["type"]["Error"])
+        self.assertIn("key=value", got["pair"]["Error"])
+
+    def test_a_data_path_holding_a_world_is_refused_and_a_fresh_one_passes(self):
+        # Mutation: the *.vcdbs filter dropped from Test-WorldDataPathFresh, so a Saves folder holding another file is refused. Fails here.
+        got = run_cases(self.repo, r"""
+Try-Case 'fresh' { Test-WorldDataPathFresh (Join-Path $RepoRoot 'nothing'); 'ok' }
+Try-Case 'empty' { New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot 'e/Saves') | Out-Null; Set-Content -Path (Join-Path $RepoRoot 'e/Saves/note.txt') -Value 'x'; Test-WorldDataPathFresh (Join-Path $RepoRoot 'e'); 'ok' }
+Try-Case 'world' {
+  New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot 'w/Saves') | Out-Null
+  Set-Content -Path (Join-Path $RepoRoot 'w/Saves/default.vcdbs') -Value 'x'
+  Test-WorldDataPathFresh (Join-Path $RepoRoot 'w')
+}
+""")
+        self.assertEqual("ok", got["fresh"])
+        self.assertEqual("ok", got["empty"])
+        self.assertIn("already holds a world", got["world"]["Error"])
+
+    def test_every_value_of_a_repeatable_option_is_returned_in_order(self):
+        # Mutation: Get-OptAll stops at the first match. Fails here.
+        got = run_cases(self.repo, r"""
+Try-Case 'all' { @(Get-OptAll @('-WorldConfig', 'a=1', '-Seed', '5', '-WorldConfig', 'b=2') '-WorldConfig') }
+""")
+        self.assertEqual(["a=1", "b=2"], as_list(got["all"]))
+
     def test_keep_is_a_flag_and_appends_keep_to_the_command(self):
         got = run_cases(self.repo, r"""
 Try-Case 'flag' { $o = Get-ScenarioOptions @('-Keep','iiex/sample'); [ordered]@{ Keep = $o.Keep; Names = @($o.Names); Off = (Get-ScenarioOptions @('iiex/sample')).Keep } }
