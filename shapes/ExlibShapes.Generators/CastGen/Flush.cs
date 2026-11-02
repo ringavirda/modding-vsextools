@@ -68,7 +68,9 @@ public static class Flush {
   /// only: a box one allowance thick over the overlap) and stagger (a face moved in by 0.001 x k). No face
   /// of <paramref name="cutFaces"/> moves, the first-sorting name is tried first, and a candidate is taken
   /// only if the pair count falls, no leaf is thinner than 0.001 and, when <paramref name="parting"/> is
-  /// given and the input drew cleanly, the draw check still passes. Only elements without a rotation move.</summary>
+  /// given and the input drew cleanly, the draw check still passes. A pair merges, trims or caps only between
+  /// elements without a rotation; a sink, raise or stagger also moves an element turned by a multiple of 90
+  /// degrees, by the face whose world normal is the pair's.</summary>
   /// <param name="leaves">The leaves; names are unique.</param>
   /// <param name="cutFaces">Entries <c>NAME/FACE</c> by the drawing's element name: the faces a step cuts.</param>
   /// <param name="allowance">One allowance step in voxels.</param>
@@ -77,6 +79,8 @@ public static class Flush {
   /// <param name="parting">The flask's parting height on y; null skips the draw check.</param>
   /// <param name="record">The item's record, whose <see cref="FlushMoves.Slot"/> is set to the moves made;
   /// null leaves it out.</param>
+  /// <param name="leaveCutPairs">Whether a pair whose two faces are both in <paramref name="cutFaces"/> is left as
+  /// it is, one surface a step finishes together, instead of failing.</param>
   /// <exception cref="CastGenException">No rule resolves a pair; the message names the pair.</exception>
   public static FlushResult Resolve(
     IReadOnlyList<Leaf> leaves,
@@ -85,14 +89,15 @@ public static class Flush {
     bool cast,
     IReadOnlyList<FlushPin> pins,
     double? parting = null,
-    PartRecord? record = null
+    PartRecord? record = null,
+    bool leaveCutPairs = false
   ) {
     var cur = leaves.ToList();
     var moves = new List<FlushMove>();
-    var ctx = new Ctx(cutFaces, allowance, cast);
+    var ctx = new Ctx(cutFaces, allowance, cast, leaveCutPairs);
     bool drawClean = parting != null && DrawPasses(cur, parting.Value);
     while (true) {
-      List<Flushcheck.Pair> pairs = PairsOf(cur);
+      List<Flushcheck.Pair> pairs = PairsOf(cur, ctx);
       if (pairs.Count == 0)
         break;
       Flushcheck.Pair pair = pairs
@@ -117,7 +122,7 @@ public static class Flush {
             ctx
           )
         ) {
-          if (!Accepts(next, pairs.Count, parting, drawClean))
+          if (!Accepts(next, pairs.Count, parting, drawClean, ctx))
             continue;
           cur = next;
           moves.AddRange(made);
@@ -141,7 +146,8 @@ public static class Flush {
   private sealed record Ctx(
     IReadOnlySet<string> Cut,
     double Allowance,
-    bool Cast
+    bool Cast,
+    bool LeaveCutPairs
   ) {
     public bool IsCut(Leaf l, string face) =>
       Cut.Contains($"{l.SourceName}/{face}");
@@ -166,8 +172,25 @@ public static class Flush {
     return shape;
   }
 
-  private static List<Flushcheck.Pair> PairsOf(IEnumerable<Leaf> leaves) =>
-    Flushcheck.Pairs(ShapeOf(leaves), null, []).Found;
+  private static List<Flushcheck.Pair> PairsOf(
+    IReadOnlyCollection<Leaf> leaves,
+    Ctx c
+  ) {
+    List<Flushcheck.Pair> found = Flushcheck
+      .Pairs(ShapeOf(leaves), null, [])
+      .Found;
+    if (!c.LeaveCutPairs)
+      return found;
+    Dictionary<string, Leaf> byName = leaves.ToDictionary(l => l.Name);
+    return
+    [
+      .. found.Where(p =>
+        !(
+          c.IsCut(byName[p.Path1], p.Face1) && c.IsCut(byName[p.Path2], p.Face2)
+        )
+      ),
+    ];
+  }
 
   private static bool DrawPasses(IEnumerable<Leaf> leaves, double parting) =>
     new Draw().Run(new CheckInput(ShapeOf(leaves), Parting: parting)).ExitCode
@@ -177,13 +200,14 @@ public static class Flush {
     List<Leaf> next,
     int before,
     double? parting,
-    bool drawClean
+    bool drawClean,
+    Ctx c
   ) {
     foreach (Leaf l in next)
       for (int a = 0; a < 3; a++)
         if (l.Element.To![a] - l.Element.From![a] < MinExtent)
           return false;
-    if (PairsOf(next).Count >= before)
+    if (PairsOf(next, c).Count >= before)
       return false;
     return parting == null || !drawClean || DrawPasses(next, parting.Value);
   }
@@ -199,52 +223,78 @@ public static class Flush {
     Flushcheck.Pair pair,
     Ctx c
   ) {
-    string face = pair.Face1;
-    if (pair.Face2 != face || !a.AxisAligned || !b.AxisAligned)
+    string fa = FaceOn(pair, a),
+      fb = FaceOn(pair, b);
+    if (!RightAngled(a) || !RightAngled(b))
       yield break;
+    bool plain = a.AxisAligned && b.AxisAligned && fa == fb;
+    string face = fa;
     (int axis, bool hi) = FaceAxes.Of(face);
     switch (rule) {
       case "merge":
+        if (!plain)
+          yield break;
         foreach (var m in Merge(cur, a, b, c))
           yield return m;
         break;
       case "sink" or "raise":
-        if (hi != (rule == "sink"))
+        if (WorldHi(a, fa) != (rule == "sink"))
           yield break;
-        foreach (Leaf l in new[] { a, b }) {
-          if (c.IsCut(l, face))
+        foreach ((Leaf l, string lf) in new[] { (a, fa), (b, fb) }) {
+          if (c.IsCut(l, lf))
             continue;
           for (int k = 1; k <= 2; k++) {
             double d = -k * c.Allowance;
             yield return (
-              Replace(cur, l, FaceAxes.Push(l, face, d)),
-              [new FlushMove(l.Name, rule, face, d)]
+              Replace(cur, l, FaceAxes.Push(l, lf, d)),
+              [new FlushMove(l.Name, rule, lf, d)]
             );
           }
         }
         break;
       case "trim":
+        if (!plain)
+          yield break;
         foreach (var m in Trim(cur, a, b, axis, c))
           yield return m;
         break;
       case "cap":
-        if (c.Cast && !c.IsCut(a, face) && !c.IsCut(b, face))
+        if (plain && c.Cast && !c.IsCut(a, face) && !c.IsCut(b, face))
           yield return Cap(cur, a, b, face, axis, hi, c);
         break;
       case "stagger":
-        foreach (Leaf l in new[] { a, b }) {
-          if (c.IsCut(l, face))
+        foreach ((Leaf l, string lf) in new[] { (a, fa), (b, fb) }) {
+          if (c.IsCut(l, lf))
             continue;
           for (int k = 1; k <= RingSteps; k++) {
             double d = -Ring * k;
             yield return (
-              Replace(cur, l, FaceAxes.Push(l, face, d)),
-              [new FlushMove(l.Name, rule, face, d)]
+              Replace(cur, l, FaceAxes.Push(l, lf, d)),
+              [new FlushMove(l.Name, rule, lf, d)]
             );
           }
         }
         break;
     }
+  }
+
+  private static string FaceOn(Flushcheck.Pair p, Leaf l) =>
+    p.Path1 == l.Name ? p.Face1 : p.Face2;
+
+  private static bool RightAngled(Leaf l) =>
+    new[] { l.Element.RotationX, l.Element.RotationY, l.Element.RotationZ }.All(
+      r => Math.Abs((r ?? 0) % 90) < 1e-6
+    );
+
+  private static bool WorldHi(Leaf l, string face) {
+    (int axis, bool hi) = FaceAxes.Of(face);
+    double[] n = [0, 0, 0];
+    n[axis] = hi ? 1 : -1;
+    (double X, double Y, double Z) w = Engine
+      .Local(l.Element)
+      .MulLinear(n[0], n[1], n[2]);
+    double[] v = [w.X, w.Y, w.Z];
+    return v[v.Select(Math.Abs).ToList().IndexOf(v.Max(Math.Abs))] > 0;
   }
 
   private static IEnumerable<(List<Leaf>, FlushMove[])> Merge(

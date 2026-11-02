@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using ExpandedLib.Shapes.Checks;
@@ -263,5 +264,72 @@ public class FlushTests {
       0,
       new Flushcheck().Run(new CheckInput(ItemShape(r.Leaves))).ExitCode
     );
+  }
+
+  private static List<Leaf> TurnedPair() {
+    string text =
+      "{ \"elements\": [ "
+      + Fx.Cube("A", "[0, 0, 0]", "[8, 4, 8]")
+      + ", "
+      + Fx.Cube(
+        "B",
+        "[4, 1, 2]",
+        "[12, 4, 6]",
+        "\"rotationOrigin\": [8, 2.5, 4], \"rotationX\": 180,"
+      )
+      + " ] }";
+    return
+    [
+      .. Select
+        .Groups(Reader.Read(text), ["A", "B"])
+        .Select(l => l with { Stage = "cast", Role = "cast" }),
+    ];
+  }
+
+  [Fact]
+  public void A_pair_whose_faces_meet_through_a_half_turn_is_resolved() {
+    FlushResult r = Run(TurnedPair(), ["A/up"]);
+
+    Assert.Equal(
+      new FlushMove("B", "sink", "down", -0.125),
+      Assert.Single(r.Moves)
+    );
+    Assert.Equal(0, Pairs(r.Leaves));
+  }
+
+  [SkippableFact]
+  public void The_lathe_head_bush_pair_of_its_drawing_passes_flushcheck() {
+    string? dir = AppContext.BaseDirectory;
+    string? file = null;
+    while (dir != null && file == null) {
+      string f = System.IO.Path.Combine(
+        dir,
+        "exmods/workbench/shapes-finished/machine-tools/lathe/machine-mp-megablock-lathe-proposed.json"
+      );
+      if (System.IO.File.Exists(f))
+        file = f;
+      dir = System.IO.Path.GetDirectoryName(dir);
+    }
+    Skip.If(file == null, "the lathe drawing is not in this workspace");
+    Shape lathe = Reader.Read(System.IO.File.ReadAllText(file!));
+    List<string> paths =
+    [
+      .. Engine
+        .Walk(lathe)
+        .Select(p => p.Path)
+        .Where(p => p.EndsWith("/Cube262") || p.EndsWith("/Cube287")),
+    ];
+    Assert.Equal(2, paths.Count);
+    List<Leaf> leaves =
+    [
+      .. Select
+        .Groups(lathe, paths)
+        .Select(l => l with { Stage = "cast", Role = "cast" }),
+    ];
+
+    FlushResult r = Run(leaves);
+
+    Assert.NotEmpty(r.Moves);
+    Assert.Equal(0, Pairs(r.Leaves));
   }
 }

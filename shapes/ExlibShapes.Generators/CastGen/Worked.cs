@@ -254,6 +254,16 @@ public static partial class Worked {
                 kv.Value.Texture = key;
           recStep.Faces.Add(cut);
         }
+        if (f.Origin == "drilled") {
+          var fill = new Regex("^" + Regex.Escape(id) + @"_fill\d*$");
+          items.RemoveAll(l => fill.IsMatch(l.Name));
+          foreach (
+            string gone in rec
+              .Elements.Keys.Where(k => fill.IsMatch(k))
+              .ToList()
+          )
+            rec.Elements.Remove(gone);
+        }
         var feature = new Feature { Step = step.Step };
         feature.Elements.AddRange(f.Elements);
         feature.Faces.AddRange(f.Faces);
@@ -280,6 +290,8 @@ public static partial class Worked {
           );
         var feature = new Feature { Origin = uf.Origin, Step = step.Step };
         feature.Faces.AddRange(uf.Faces);
+        foreach (Leaf l in made)
+          items = Carve(items, l.Box, taken, rec);
         foreach (Leaf l in made) {
           Element e = Select.Clone(l.Element, false);
           foreach (KeyValuePair<string, Face> kv in e.Faces)
@@ -307,6 +319,28 @@ public static partial class Worked {
       rec.Steps.Add(recStep);
     }
 
+    var cutFaces = new HashSet<string>(
+      rec.Steps.SelectMany(st => st.Faces),
+      StringComparer.Ordinal
+    );
+    items = Flush
+      .Resolve(
+        items,
+        cutFaces,
+        blank.Spec.Allowance,
+        false,
+        Flush.Pins(user?.Record),
+        null,
+        rec,
+        true
+      )
+      .Leaves.ToList();
+    items = Splits.Apply(items);
+    foreach (Leaf l in items)
+      rec.Elements.TryAdd(
+        l.Name,
+        new ElementPart { Stage = l.Stage ?? "cast", Role = l.Role ?? "cast" }
+      );
     items = Uvs.Unroll(ctx, spec.Item, [.. Uvs.Assign(ctx, spec.Item, items)]);
     var shape = new Shape();
     foreach (Leaf l in items) {
@@ -330,6 +364,65 @@ public static partial class Worked {
       SettingsSha(ctx.Settings)
     );
     return new GenOutput(spec.Item, rec.Kinds, shape, rec, hash);
+  }
+
+  private static List<Leaf> Carve(
+    List<Leaf> items,
+    Box cut,
+    ISet<string> taken,
+    PartRecord rec
+  ) {
+    var outp = new List<Leaf>();
+    foreach (Leaf l in items) {
+      Box b = l.Box;
+      bool overlaps = Enumerable
+        .Range(0, 3)
+        .All(a =>
+          Math.Min(b.Hi[a], cut.Hi[a]) - Math.Max(b.Lo[a], cut.Lo[a]) > Tol
+        );
+      if (!overlaps) {
+        outp.Add(l);
+        continue;
+      }
+      if (!l.AxisAligned)
+        throw new CastGenException(
+          $"{l.SourcePath}: a rotated element is cut by a worked feature"
+        );
+      var cutOut = new List<Leaf>();
+      var from = (double[])l.Element.From!.Clone();
+      var to = (double[])l.Element.To!.Clone();
+      for (int a = 0; a < 3; a++) {
+        double lo = Math.Max(from[a], cut.Lo[a]),
+          hi = Math.Min(to[a], cut.Hi[a]);
+        foreach ((double f, double t) in new[] { (from[a], lo), (hi, to[a]) }) {
+          if (t - f <= Tol)
+            continue;
+          Element e = Select.Clone(l.Element, true);
+          e.From = (double[])from.Clone();
+          e.To = (double[])to.Clone();
+          e.From[a] = f;
+          e.To[a] = t;
+          cutOut.Add(l with { Element = e });
+        }
+        from[a] = lo;
+        to[a] = hi;
+      }
+      bool first = true;
+      foreach (Leaf piece in cutOut) {
+        string name = l.Name;
+        if (!first)
+          for (int i = 2; !taken.Add(name = $"{l.Name}_c{i}"); i++) { }
+        first = false;
+        rec.Elements[name] = new ElementPart {
+          Stage = l.Stage ?? "cast",
+          Role = l.Role ?? "cast",
+        };
+        outp.Add(piece with { Name = name });
+      }
+      if (cutOut.Count == 0)
+        rec.Elements.Remove(l.Name);
+    }
+    return outp;
   }
 
   private static List<Leaf> Start(
