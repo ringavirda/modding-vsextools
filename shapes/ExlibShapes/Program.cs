@@ -448,19 +448,48 @@ internal static class Program {
       }
 
     if (viewSet.Contains("iso")) {
+      IReadOnlyList<(Offset Cell, string Color)> outlines =
+        Schematic.FunctionalCells(layout, index);
       string path = Path.Combine(outDir, $"{stem}-iso.png");
-      using (SKBitmap img = Schematic.IsoPng(layout, index, ppu, spin: spin))
+      using (
+        SKBitmap img = Schematic.IsoPng(
+          layout,
+          index,
+          ppu,
+          spin: spin,
+          outlines: outlines
+        )
+      )
         SavePng(img, path);
       files.Add(path);
 
-      List<int> cutLayers = layer switch {
+      Layout opposite = layout.Rotated(180);
+      string oppositePath = Path.Combine(outDir, $"{stem}-iso-a180.png");
+      using (
+        SKBitmap img = Schematic.IsoPng(
+          opposite,
+          index,
+          ppu,
+          spin: spin + 180,
+          outlines: Schematic.FunctionalCells(opposite, index)
+        )
+      )
+        SavePng(img, oppositePath);
+      files.Add(oppositePath);
+
+      SortedSet<int> cutLayers = layer switch {
         "all" => [.. layout.Layers()],
         null => [],
         _ => [int.Parse(layer, CultureInfo.InvariantCulture)],
       };
+      foreach ((Offset cell, _) in outlines)
+        if (cell != layout.Anchor)
+          cutLayers.Add(cell.Y);
       foreach (int y in cutLayers) {
         string cutPath = Path.Combine(outDir, $"{stem}-iso-y{y}.png");
-        using (SKBitmap img = Schematic.IsoPng(layout, index, ppu, y, spin))
+        using (
+          SKBitmap img = Schematic.IsoPng(layout, index, ppu, y, spin, outlines)
+        )
           SavePng(img, cutPath);
         files.Add(cutPath);
       }

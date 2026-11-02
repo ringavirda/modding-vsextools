@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using SkiaSharp;
@@ -892,14 +893,16 @@ public static class Schematic {
   /// runs down the left edge, one labelled tick per drawn Y layer carried across the picture as a
   /// faint guide (<see cref="ScaleRows"/>), so height is counted off the face a reader is looking
   /// at. <paramref name="spin"/> turns every drawn mesh, as
-  /// <see cref="Compose"/> means it.
+  /// <see cref="Compose"/> means it. <paramref name="outlines"/> (<see cref="FunctionalCells"/>)
+  /// draws each cell's box edges over the picture, through the shell; null draws none.
   /// </summary>
   public static SKBitmap IsoPng(
     Layout layout,
     BlockIndex index,
     int ppu = 8,
     int? cutAt = null,
-    int spin = 0
+    int spin = 0,
+    IReadOnlyList<(Offset Cell, string Color)>? outlines = null
   ) {
     (JObject raw, Dictionary<string, TextureRef> textureValues) = Compose(
       layout,
@@ -907,7 +910,68 @@ public static class Schematic {
       cutAt,
       spin
     );
-    return Iso(raw, textureValues, layout, index, ppu, cutAt);
+    return Iso(raw, textureValues, layout, index, ppu, cutAt, outlines);
+  }
+
+  private static readonly Regex MasonrySelector = new(
+    "bricks?-|brickcourse|structurefiller",
+    RegexOptions.CultureInvariant
+  );
+
+  /// <summary>
+  /// The cells of <paramref name="layout"/>'s functional legend rows, each with its row's legend
+  /// colour (<c>#RRGGBB</c>, as <see cref="LegendColors"/> assigns): the rows that are not optional
+  /// and whose selector names no brick, banded or hooped brick, brick course or structure filler.
+  /// The principal's own cell is included.
+  /// </summary>
+  public static IReadOnlyList<(Offset Cell, string Color)> FunctionalCells(
+    Layout layout,
+    BlockIndex index
+  ) {
+    Dictionary<int, LegendEntry> legend = LegendColors(layout);
+    var colours = new Dictionary<int, string>();
+    foreach ((int n, string selector) in layout.Numbers)
+      if (!index.Optional(selector) && !MasonrySelector.IsMatch(selector))
+        colours[n] = legend[n].Color!;
+    return
+    [
+      .. layout
+        .Cells.Where(c => colours.ContainsKey(c.Number))
+        .Select(c => (new Offset(c.X, c.Y, c.Z), colours[c.Number])),
+    ];
+  }
+
+  // Each outlined cell's twelve box edges over the finished drawing, 2 px in the cell's colour, with
+  // no depth test; a cell above `cutAt` is not drawn and so not outlined.
+  private static void DrawOutlines(
+    SKBitmap drawing,
+    Renderer.Projection projection,
+    IReadOnlyList<(Offset Cell, string Color)> outlines,
+    int? cutAt
+  ) {
+    using var canvas = new SKCanvas(drawing);
+    foreach ((Offset cell, string color) in outlines) {
+      if (cutAt != null && cell.Y > cutAt)
+        continue;
+      using var paint = new SKPaint {
+        Color = SKColor.Parse(color),
+        IsAntialias = false,
+        StrokeWidth = 2,
+        Style = SKPaintStyle.Stroke,
+      };
+      SKPoint Corner(int k) {
+        (double col, double row) = projection.Screen(
+          (cell.X + (k & 1)) * 16,
+          (cell.Y + ((k >> 1) & 1)) * 16,
+          (cell.Z + ((k >> 2) & 1)) * 16
+        );
+        return new SKPoint((float)col, (float)row);
+      }
+      for (int k = 0; k < 8; k++)
+        for (int bit = 1; bit < 8; bit <<= 1)
+          if ((k & bit) == 0)
+            canvas.DrawLine(Corner(k), Corner(k | bit), paint);
+    }
   }
 
   // The isometric picture of a composed shape with the layer scale of `layout` beside it.
@@ -917,7 +981,8 @@ public static class Schematic {
     Layout layout,
     BlockIndex index,
     int ppu,
-    int? cutAt
+    int? cutAt,
+    IReadOnlyList<(Offset Cell, string Color)>? outlines = null
   ) {
     Shape shape =
       JsonConvert.DeserializeObject<Shape>(raw.ToString())
@@ -994,12 +1059,10 @@ public static class Schematic {
       textures: textures,
       overlay: PlannedSchematic.BoxPrefix
     );
-    return WithLayerScale(
-      drawing,
-      Renderer.Project(loaded, iso, ppu),
-      layout,
-      cutAt
-    );
+    Renderer.Projection projection = Renderer.Project(loaded, iso, ppu);
+    if (outlines is { Count: > 0 })
+      DrawOutlines(drawing, projection, outlines, cutAt);
+    return WithLayerScale(drawing, projection, layout, cutAt);
   }
 
   // Pixels reserved left of the drawing for the layer scale: a two-character label, its tick and
