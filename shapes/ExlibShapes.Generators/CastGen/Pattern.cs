@@ -43,6 +43,9 @@ public static partial class Patterns {
   /// <param name="prints">The core prints, in the same frame.</param>
   /// <param name="parting">The y of the parting; null for an open pour.</param>
   /// <param name="spec">The spec text the provenance hash is taken over.</param>
+  /// <param name="head">The height of a feeding head, in voxels, for a piece stood on end; none when null. The head
+  /// is the element <c>Head</c> over the top of the casting, the plan of the leaves that reach the top, and is
+  /// drawn after the loose pieces are taken off.</param>
   /// <exception cref="CastGenException">A turned leaf crosses the parting, or no leaf split off draws the
   /// pattern.</exception>
   public static PatternResult Make(
@@ -51,7 +54,8 @@ public static partial class Patterns {
     IReadOnlyList<Leaf> cast,
     IReadOnlyList<PatternPrint> prints,
     double? parting,
-    string spec
+    string spec,
+    double? head = null
   ) {
     string key = "#" + ctx.Settings.RoleKey("pattern");
     List<Leaf> leaves =
@@ -71,8 +75,10 @@ public static partial class Patterns {
 
     if (parting is double cut)
       main = [.. main.SelectMany(l => Cut(l, cut))];
+    if (head is double rise)
+      main.Add(Head(main, rise, key));
     var made = new List<GenOutput>();
-    var hash = HashOf(spec, cast, prints, parting, ctx.Settings);
+    var hash = HashOf(spec, cast, prints, parting, ctx.Settings, head);
     GenOutput pattern = Output(ctx, item, Splits.Apply(main), parting, hash);
     for (int i = 0; i < loose.Count; i++)
       made.Add(
@@ -97,6 +103,22 @@ public static partial class Patterns {
       Stage = "cast",
       Role = "pattern",
     };
+  }
+
+  private static Leaf Head(List<Leaf> main, double rise, string key) {
+    double top = main.Max(l => l.Box.Hi.Y);
+    List<Box> reach =
+    [
+      .. main.Where(l => l.Box.Hi.Y >= top - Eps).Select(l => l.Box),
+    ];
+    Element e = PrintBox(
+      "Head",
+      [reach.Min(b => b.Lo.X), top, reach.Min(b => b.Lo.Z)],
+      [reach.Max(b => b.Hi.X), top + rise, reach.Max(b => b.Hi.Z)]
+    );
+    foreach (KeyValuePair<string, Face> kv in e.Faces)
+      kv.Value.Texture = key;
+    return new Leaf("Head", "Head", "Head", e, "cast", "pattern");
   }
 
   private static Element PrintBox(string name, double[] from, double[] to) {
@@ -256,7 +278,8 @@ public static partial class Patterns {
     IReadOnlyList<Leaf> cast,
     IReadOnlyList<PatternPrint> prints,
     double? parting,
-    Settings settings
+    Settings settings,
+    double? head
   ) {
     var sb = new StringBuilder(CanonicalWriter.Write(Flush.ShapeOf(cast)));
     foreach (PatternPrint p in prints)
@@ -267,7 +290,10 @@ public static partial class Patterns {
         )
       );
     sb.Append(
-      string.Create(CultureInfo.InvariantCulture, $"\nparting {parting}")
+      string.Create(
+        CultureInfo.InvariantCulture,
+        $"\nparting {parting}{(head is double h ? $" head {h}" : "")}"
+      )
     );
     return Provenance.InputHash(
       spec,

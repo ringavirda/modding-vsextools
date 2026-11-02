@@ -1,0 +1,337 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using ExpandedLib.Shapes.Checks;
+using ExpandedLib.Shapes.Core;
+
+namespace ExpandedLib.Shapes.Generators;
+
+/// <summary>A cut in the sand the metal runs through.</summary>
+/// <param name="Name">The feed's name in the record.</param>
+/// <param name="Kind"><c>runner</c>, <c>gate</c>, <c>head</c>, <c>sprue</c> or <c>riser</c>.</param>
+/// <param name="Boxes">The feed's boxes in the filling's space; empty for a feed the pattern carries.</param>
+/// <param name="Pattern">The globs of the pattern elements a head is, placed by the piece it enters.</param>
+/// <param name="Into">The piece, from 1, the feed enters; null for a runner or sprue.</param>
+public sealed record FeedLaid(
+  string Name,
+  string Kind,
+  IReadOnlyList<Box> Boxes,
+  IReadOnlyList<string> Pattern,
+  int? Into
+);
+
+internal readonly record struct Rect(double X0, double Z0, double X1, double Z1) {
+  public double CentreX => (X0 + X1) / 2;
+  public double CentreZ => (Z0 + Z1) / 2;
+
+  public static Rect Of(IEnumerable<Box> boxes) =>
+    new(
+      boxes.Min(b => b.Lo.X),
+      boxes.Min(b => b.Lo.Z),
+      boxes.Max(b => b.Hi.X),
+      boxes.Max(b => b.Hi.Z)
+    );
+
+  public bool Overlaps(Rect o) =>
+    X1 > o.X0 && o.X1 > X0 && Z1 > o.Z0 && o.Z1 > Z0;
+}
+
+/// <summary>Step 11: the runner, gates, heads, sprue and risers of a pour.</summary>
+internal static class Feeds {
+  private const double Eps = 1e-9;
+  private const double Past = 0.5;
+
+  /// <summary>Lays the feeds of a pour by one rule at every station. An open pour's runner crosses the station's
+  /// <c>RunnerX</c> from the drop's far edge toward piece 1 at the sand's top, ending <c>Past</c> inside it, and
+  /// is none when the drop lies over piece 1; each later piece gets a gate <c>GateAcross</c> wide, <c>chain</c> from
+  /// the piece before and <c>pairs</c> or <c>rows</c> from the main runner, <c>Past</c> into each end, one box or two
+  /// at a right angle where no straight one stays the margin clear of the other pieces. A closed pour's sprue stands
+  /// over the station's sprue rect from the parting to the sand's top, its runner and gates lie in the drag under the
+  /// parting, and a riser stands through the cope over each asked point. A station with a head height gets a head
+  /// feed over each piece, the pattern's <c>Head</c>.</summary>
+  /// <param name="item">The filling's name, for messages.</param>
+  /// <param name="station">The station row.</param>
+  /// <param name="closed">Whether the pour is closed.</param>
+  /// <param name="fill">The fill order, <c>chain</c>, <c>pairs</c> or <c>rows</c>.</param>
+  /// <param name="pieces">The metal of each piece in the filling's space, its head included.</param>
+  /// <param name="risers">The kind and the point on the cast's top of each riser, in the filling's space.</param>
+  /// <exception cref="CastGenException">The station lacks a runner depth, a gate width, a drop or a sprue; a piece has
+  /// no metal in the runner's depth; no route keeps the margin.</exception>
+  public static List<FeedLaid> Lay(
+    string item,
+    Station station,
+    bool closed,
+    string fill,
+    IReadOnlyList<IReadOnlyList<Box>> pieces,
+    IReadOnlyList<(string Kind, Vec3 Top)> risers
+  ) {
+    double top = station.SandTo[1];
+    double depth =
+      station.RunnerDepth
+      ?? throw new CastGenException($"{item}: the station has no runnerDepth");
+    double across =
+      station.GateAcross
+      ?? throw new CastGenException($"{item}: the station has no gateAcross");
+    double margin = station.Margin;
+    var feeds = new List<FeedLaid>();
+    double y1 = top;
+    Rect source;
+    double pastSource;
+    if (closed) {
+      double[] sp =
+        station.Sprue
+        ?? throw new CastGenException($"{item}: the station has no sprue");
+      double parting =
+        station.Parting
+        ?? throw new CastGenException($"{item}: a closed pour needs a parting");
+      feeds.Add(
+        new FeedLaid(
+          "Sprue",
+          "sprue",
+          [
+            new Box(
+              new Vec3(sp[0], parting, sp[1]),
+              new Vec3(sp[2], top, sp[3])
+            ),
+          ],
+          [],
+          null
+        )
+      );
+      y1 = parting;
+      source = new Rect(sp[0], sp[1], sp[2], sp[3]);
+      pastSource = Past;
+    } else {
+      double[] drop =
+        station.Drop
+        ?? throw new CastGenException($"{item}: the station has no drop");
+      source = new Rect(drop[0], drop[2], drop[3], drop[5]);
+      pastSource = 0;
+    }
+    double y0 = y1 - depth;
+
+    Rect[] feet = new Rect[pieces.Count];
+    for (int k = 0; k < pieces.Count; k++) {
+      List<Box> band =
+      [
+        .. pieces[k].Where(b => b.Hi.Y > y0 + Eps && b.Lo.Y < y1 - Eps),
+      ];
+      if (band.Count == 0)
+        throw new CastGenException(
+          $"{item}: Piece{k + 1} has no metal between y {Fmt.G(y0)} and {Fmt.G(y1)}, where the runner lies"
+        );
+      feet[k] = Rect.Of(band);
+    }
+
+    List<Box> Reach(
+      string what,
+      int piece,
+      Rect a,
+      double pastA,
+      Rect b,
+      double w,
+      Func<Box, bool> clear
+    ) =>
+      Route(a, pastA, b, w, y0, y1, clear)
+      ?? throw new CastGenException(
+        $"{item}: no {what} reaches Piece{piece} and keeps the margin {Fmt.G(margin)} from the others"
+      );
+
+    bool Clear(Box b, params int[] enters) =>
+      Enumerable
+        .Range(0, pieces.Count)
+        .Where(k => !enters.Contains(k))
+        .All(k => pieces[k].All(p => Gap(b, p) >= margin - Eps));
+
+    Rect main = source;
+    if (feet[0].Overlaps(source)) {
+      main = feet[0];
+    } else {
+      double w = source.X1 - source.X0;
+      List<Box> run = Reach(
+        "runner",
+        1,
+        source,
+        pastSource,
+        feet[0],
+        source.X1 - source.X0,
+        b => Clear(b, 0)
+      );
+      feeds.Add(new FeedLaid("Runner1", "runner", run, [], null));
+      main = Rect.Of(run);
+    }
+    for (int k = 1; k < pieces.Count; k++) {
+      int from = fill == "chain" ? k - 1 : -1;
+      Rect a = from >= 0 ? feet[from] : main;
+      List<Box> gate = Reach(
+        "gate",
+        k + 1,
+        a,
+        Past,
+        feet[k],
+        across,
+        b => Clear(b, from >= 0 ? [k, from] : [k])
+      );
+      if (gate.Count > 0)
+        feeds.Add(new FeedLaid($"Gate{k + 1}", "gate", gate, [], k + 1));
+    }
+    if (station.HeadHeight != null)
+      for (int k = 0; k < pieces.Count; k++)
+        feeds.Add(new FeedLaid($"Head{k + 1}", "head", [], ["Head"], k + 1));
+    if (closed)
+      for (int i = 0; i < risers.Count; i++) {
+        (string kind, Vec3 at) = risers[i];
+        double[] section = station.Risers.TryGetValue(kind, out double[]? s)
+          ? s
+          : throw new CastGenException(
+            $"{item}: the station has no riser section \"{kind}\""
+          );
+        feeds.Add(
+          new FeedLaid(
+            $"Riser{i + 1}",
+            "riser",
+            [
+              new Box(
+                new Vec3(at.X - section[0] / 2, at.Y, at.Z - section[1] / 2),
+                new Vec3(at.X + section[0] / 2, top, at.Z + section[1] / 2)
+              ),
+            ],
+            [],
+            null
+          )
+        );
+      }
+    return feeds;
+  }
+
+  private static List<Box>? Route(
+    Rect a,
+    double pastA,
+    Rect b,
+    double w,
+    double y0,
+    double y1,
+    Func<Box, bool> clear
+  ) {
+    if (a.Overlaps(b))
+      return [];
+    var tries = new List<List<Box>>();
+    double ox0 = Math.Max(a.X0, b.X0),
+      ox1 = Math.Min(a.X1, b.X1),
+      oz0 = Math.Max(a.Z0, b.Z0),
+      oz1 = Math.Min(a.Z1, b.Z1);
+    if (ox1 - ox0 >= w - Eps)
+      tries.Add([
+        LegZ((ox0 + ox1) / 2, w, a, pastA, b, b.Z1 <= a.Z0 + Eps, y0, y1),
+      ]);
+    if (oz1 - oz0 >= w - Eps)
+      tries.Add([
+        LegX((oz0 + oz1) / 2, w, a, pastA, b, b.X1 <= a.X0 + Eps, y0, y1),
+      ]);
+
+    double cx = a.CentreX,
+      cz = a.CentreZ;
+    bool south = b.CentreZ <= a.Z0 + Eps;
+    bool west = b.CentreX <= a.X0 + Eps;
+    Box zFirst = LegZTo(cx, w, a, pastA, b.CentreZ, south, y0, y1);
+    Box xAfter = LegXTo(b.CentreZ, w, cx, b, b.X1 <= cx + Eps, y0, y1);
+    tries.Add([zFirst, xAfter]);
+    Box xFirst = LegXTo2(cz, w, a, pastA, b.CentreX, west, y0, y1);
+    Box zAfter = LegZFrom(b.CentreX, w, cz, b, b.Z1 <= cz + Eps, y0, y1);
+    tries.Add([xFirst, zAfter]);
+    return tries.FirstOrDefault(t => t.All(clear));
+  }
+
+  private static Box LegZ(
+    double cx,
+    double w,
+    Rect a,
+    double pastA,
+    Rect b,
+    bool towardLow,
+    double y0,
+    double y1
+  ) {
+    double lo = towardLow ? b.Z1 - Past : a.Z1 - pastA,
+      hi = towardLow ? a.Z0 + pastA : b.Z0 + Past;
+    return new Box(new Vec3(cx - w / 2, y0, lo), new Vec3(cx + w / 2, y1, hi));
+  }
+
+  private static Box LegX(
+    double cz,
+    double w,
+    Rect a,
+    double pastA,
+    Rect b,
+    bool towardLow,
+    double y0,
+    double y1
+  ) {
+    double lo = towardLow ? b.X1 - Past : a.X1 - pastA,
+      hi = towardLow ? a.X0 + pastA : b.X0 + Past;
+    return new Box(new Vec3(lo, y0, cz - w / 2), new Vec3(hi, y1, cz + w / 2));
+  }
+
+  private static Box LegZTo(
+    double cx,
+    double w,
+    Rect a,
+    double pastA,
+    double z,
+    bool towardLow,
+    double y0,
+    double y1
+  ) {
+    double lo = towardLow ? z - w / 2 : a.Z1 - pastA,
+      hi = towardLow ? a.Z0 + pastA : z + w / 2;
+    return new Box(new Vec3(cx - w / 2, y0, lo), new Vec3(cx + w / 2, y1, hi));
+  }
+
+  private static Box LegXTo(
+    double z,
+    double w,
+    double cx,
+    Rect b,
+    bool towardLow,
+    double y0,
+    double y1
+  ) {
+    double lo = towardLow ? b.X1 - Past : cx - w / 2,
+      hi = towardLow ? cx + w / 2 : b.X0 + Past;
+    return new Box(new Vec3(lo, y0, z - w / 2), new Vec3(hi, y1, z + w / 2));
+  }
+
+  private static Box LegXTo2(
+    double cz,
+    double w,
+    Rect a,
+    double pastA,
+    double x,
+    bool towardLow,
+    double y0,
+    double y1
+  ) {
+    double lo = towardLow ? x - w / 2 : a.X1 - pastA,
+      hi = towardLow ? a.X0 + pastA : x + w / 2;
+    return new Box(new Vec3(lo, y0, cz - w / 2), new Vec3(hi, y1, cz + w / 2));
+  }
+
+  private static Box LegZFrom(
+    double x,
+    double w,
+    double cz,
+    Rect b,
+    bool towardLow,
+    double y0,
+    double y1
+  ) {
+    double lo = towardLow ? b.Z1 - Past : cz - w / 2,
+      hi = towardLow ? cz + w / 2 : b.Z0 + Past;
+    return new Box(new Vec3(x - w / 2, y0, lo), new Vec3(x + w / 2, y1, hi));
+  }
+
+  private static double Gap(Box a, Box b) =>
+    Enumerable
+      .Range(0, 3)
+      .Max(i => Math.Max(a.Lo[i] - b.Hi[i], b.Lo[i] - a.Hi[i]));
+}
