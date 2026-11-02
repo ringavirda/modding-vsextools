@@ -19,7 +19,7 @@ namespace ExpandedLib.Shapes;
 // blocktype variant to the views a wiki page shows, one itemtype variant to its own picture, or
 // prints a shape's own element tree or its measured extents; see README.md for the full option list
 // of each. Exit codes: 0 success, 1 a resolved run-time error (a bad shape, no such clip), 2 usage.
-// exlib-shapes gen|check|show|answer ARGS - the shape tool's verbs (ExlibShapes.Ops); a failed gate exits 1 and an
+// exlib-shapes gen|check|show|answer|import ARGS - the shape tool's verbs (ExlibShapes.Ops); a failed gate exits 1 and an
 // open question 3.
 
 /// <summary>Malformed command-line usage - reported on stderr with exit code 2, not a stack
@@ -71,7 +71,7 @@ internal static class Program {
         "item-views" => RunItemViews(rest),
         "tree" => RunTree(rest),
         "measure" => RunMeasure(rest),
-        "gen" or "check" or "show" or "answer" => ShapeToolCli.Run(
+        "gen" or "check" or "show" or "answer" or "import" => ShapeToolCli.Run(
           args,
           Console.Out,
           Console.Error,
@@ -93,7 +93,7 @@ internal static class Program {
 
   private const string Usage =
     "usage: exlib-shapes {render,schematic,scene,block,item,item-views,tree,measure} FILE [options]\n"
-    + "       exlib-shapes {gen,check,show,answer} ARGS";
+    + "       exlib-shapes {gen,check,show,answer,import} ARGS";
 
   private static int Unknown(string command) {
     Console.Error.WriteLine($"exlib-shapes: no such command: {command}");

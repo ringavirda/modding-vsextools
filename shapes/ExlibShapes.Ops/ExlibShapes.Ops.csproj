@@ -11,6 +11,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource
+      Include="Import\lane_dump.py"
+      LogicalName="lane_dump.py"
+    />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\ExlibShapes.Core\ExlibShapes.Core.csproj" />
     <ProjectReference Include="..\ExlibShapes.Checks\ExlibShapes.Checks.csproj" />
     <ProjectReference Include="..\ExlibShapes.Generators\ExlibShapes.Generators.csproj" />

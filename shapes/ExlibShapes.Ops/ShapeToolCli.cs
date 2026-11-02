@@ -17,11 +17,11 @@ internal sealed record Outcome(
   IReadOnlyDictionary<string, int> Enumerated
 );
 
-/// <summary>The shape tool's verbs <c>gen</c>, <c>check</c>, <c>show</c> and <c>answer</c>.</summary>
+/// <summary>The shape tool's verbs <c>gen</c>, <c>check</c>, <c>show</c>, <c>answer</c> and <c>import</c>.</summary>
 public static class ShapeToolCli {
   /// <summary>The verbs <see cref="Run"/> takes.</summary>
   public static IReadOnlyList<string> Verbs { get; } =
-  ["gen", "check", "show", "answer"];
+  ["gen", "check", "show", "answer", "import"];
 
   /// <summary>Runs one verb. Exit 0 passes; 1 is a failed gate or a resolved run-time error (a stale output, a bad
   /// drawing, a spec that cannot be made); 2 is usage; 3 is an open question, printed as <c>Question:</c> lines.
@@ -94,6 +94,10 @@ public static class ShapeToolCli {
       ),
       "answer" => AnswerCommand.Run(
         Args.Parse(rest, Set(AnswerCommand.Values), Set()),
+        output
+      ),
+      "import" => ImportCommand.Run(
+        Args.Parse(rest, Set(ImportCommand.Values), Set()),
         output
       ),
       _ => throw new CliUsageException(

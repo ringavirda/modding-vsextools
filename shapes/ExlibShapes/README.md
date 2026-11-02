@@ -244,7 +244,7 @@ red and a red frame round a row with any failing gate. `--seraph FILE` poses a p
 place of the game's (its skin is the game's), so a clip a patch adds can be rendered; `--frame N`
 is the frame of the held clip the tp and fp views pose the player at (default 0).
 
-## gen / check / show / answer
+## gen / check / show / answer / import
 
 The shape tool's verbs. They need no game install.
 
@@ -269,6 +269,18 @@ version is refused. `--catalogue` lists the ruling lints; `--mutate` is not avai
 
 `exlib-shapes show PART [--root DIR]` prints a part's record, gate status and open questions, or a spec file's bill
 (own castings, blank users with counts, the set, the standard items counted), in under 40 lines.
+
+`exlib-shapes import DRAWING [--lane DIR --module lathe|shaper|smallflask] [--out DIR] [--python EXE] [--search DIR]`
+first lists every drawing of DRAWING's block (the plain file, its `-proposed` and `-sketch` forms, any `old/` copy and the
+shipped asset, under the nearest folder holding `workbench/`, or `--search`), then writes `OUT/NAME.part.json`: kinds
+`machine`, every named element's stage (iron5 faces `fastener`, else `cast`), and, with a lane, a feature per drawing
+group holding elements the lane's tables work after the pour (`*_ALLOW` faces, ring staves; `*_SUNK`, `*_RAISED` and
+`*_TRIM` rows go to the record's `import.moves`). A lane's lathe BORE rings are confirmed `bored`; every other such
+feature is a guess, marked `unconfirmed`, and goes out as one `Question` for its group. With a lane it also writes
+`OUT/MODULE.json`, a machine file of the module's casting kinds (the lathe's seven include press.py's cross slide) with
+each kind's groups and lie; a file there with no provenance row is not overwritten. The lane's tables are read by
+`python3 -I` on a dumper that imports the lane module; `--python` or `EXLIB_SHAPES_PYTHON` names an interpreter with
+the lane's packages (numpy). `smallflask` reads `propose.py` and has no casting kinds. Exits 3 when it asked.
 
 Exit codes: `0` pass, `1` a gate failed or the run could not be made, `2` usage, `3` an open question. Each command
 appends one line to `$XDG_STATE_HOME/exlib-shapes/runs.jsonl`. Inside the workspace, `exmod shapetool VERB ARGS` runs

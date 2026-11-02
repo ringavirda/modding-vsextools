@@ -45,7 +45,7 @@ function Get-ExlibShapesRunDll([string]$Game) {
   $dll
 }
 
-# Runs one shape tool verb (gen, check, show, answer) and returns the tool's own exit code: 1 is a
+# Runs one shape tool verb (gen, check, show, answer, import) and returns the tool's own exit code: 1 is a
 # failed gate, 3 an open question, 2 usage, none of them an exmod error. Needs no game install unless
 # the tool has to be built.
 function Invoke-ShapeTool([string[]]$Argv) {
@@ -369,13 +369,14 @@ published. Only the build needs the exclusive build lock; the renders do not:
   EXMOD_SHAPES_NO_BUILD=1 exmod render FILE --out=DIR
 '@
 
-Add-ExmodCommand -Group source -Name shapetool -Summary 'run a shape tool verb: gen, check, show, answer' -Action {
+Add-ExmodCommand -Group source -Name shapetool -Summary 'run a shape tool verb: gen, check, show, answer, import' -Action {
   param([string[]]$Argv) exit (Invoke-ShapeTool $Argv)
 } -Detail @'
 exmod shapetool gen SPEC --root DIR [--runtime RDIR] [--shapes DIR] [--settings FILE] [--domain MOD]
 exmod shapetool check PATH... [--catalogue] [--mutate] [--source SHAPE] [--settings FILE] [--cache DIR]
 exmod shapetool show PART [--root DIR] [--settings FILE] [--source SHAPE] [--cache DIR]
 exmod shapetool answer PART FEATURE OPTION [--root DIR] [--shapes DIR] [--by NAME]
+exmod shapetool import DRAWING [--lane DIR --module lathe|shaper|smallflask] [--out DIR] [--python EXE] [--search DIR]
 
 Passes the verb to exlib-shapes and exits with its code: 0 passed, 1 a gate failed or the run could not
 be made, 2 usage, 3 an open question, printed as `Question:` lines for the main session to ask.
@@ -387,6 +388,8 @@ be made, 2 usage, 3 an open question, printed as `Question:` lines for the main 
            every shape in it that has a record; --catalogue lists the ruling lints
   show     a part's record, gate status and open questions, or a spec file's bill, in under 40 lines
   answer   stores the answer to an open question in the part's record, against the feature's sha
+  import   lists every drawing of a drawing's block, then writes its record skeleton and, with a lane, a
+           machine file of the lane's casting kinds; guesses go out as Questions, one per drawing group
 
 Runs the published copy (`exmod shapes-build`) under EXMOD_SHAPES_NO_BUILD, takes no lock, and appends
 one line per command to $XDG_STATE_HOME/exlib-shapes/runs.jsonl:

@@ -4,7 +4,7 @@
 
 ### Added
 
-- `exmod shapetool VERB ARGS` runs `exlib-shapes gen`, `check`, `show` or `answer` on the published tool and exits with its code (1 a gate failed, 2 usage, 3 an open question). A change confined to the tool's Core, Checks, Generators or Ops projects now rebuilds and republishes it.
+- `exmod shapetool VERB ARGS` runs `exlib-shapes gen`, `check`, `show`, `answer` or `import` on the published tool and exits with its code (1 a gate failed, 2 usage, 3 an open question). A change confined to the tool's Core, Checks, Generators or Ops projects now rebuilds and republishes it.
 - `exmod test -Coverage` writes the cobertura report to `.exmod/out/coverage.xml` under the repo root instead of `coverage.xml` at its root.
 - `exmod item-views --seraph FILE --frame N`: `--seraph` poses a player shape file in place of the game's, so a clip a patch adds can be rendered, and `--frame` is the frame of the held clip the tp and fp views pose the player at (default 0).
 - A test assembly may declare `partitions` in the repo's `exmod.json` (`{ "<assembly>": { "parts": [{ "name", "filter", "heapGb" }, ..., { "name" }] } }`): the test command without `-Filter` runs it as one `dotnet test` process per part, the last part being the complement of the others' filters (terms `Property~value` or `Property=value`, `|`-joined), and sums their counts, failures and logs so the census, zero and drop rules see one assembly. Each part's log is `<series>-<assembly>-<part>.log`. With `-Filter`, or no declaration, the assembly runs whole. `memoryGb` is no longer read.
