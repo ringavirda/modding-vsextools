@@ -370,6 +370,53 @@ public sealed class BlockIndex {
     return null;
   }
 
+  /// <summary>True when <paramref name="code"/> (a full <c>domain:path</c>) is one of the codes
+  /// <paramref name="selector"/> admits: some alternative of the selector, by its own domain and
+  /// glob or regex path, matches it whole.</summary>
+  public static bool Admits(string selector, string code) {
+    int colon = code.IndexOf(':');
+    string domain = colon >= 0 ? code[..colon] : "game";
+    string path = colon >= 0 ? code[(colon + 1)..] : code;
+    foreach ((string d, string p, bool isRegex) in Alternatives(selector)) {
+      if (d != "*" && d != domain)
+        continue;
+      Regex pattern = isRegex ? new Regex("^(?:" + p + ")$") : GlobRegex(p);
+      if (pattern.IsMatch(path))
+        return true;
+    }
+    return false;
+  }
+
+  /// <summary>The indexed variant whose full code is <paramref name="code"/>, or null when none
+  /// is.</summary>
+  public Variant? Exact(string code) =>
+    _byCode.TryGetValue(code, out List<Variant>? found)
+      ? Disambiguate(found, code)
+      : null;
+
+  /// <summary>
+  /// The index of the dash-segment of <paramref name="variant"/>'s code that carries its
+  /// horizontal side - the variant group whose states are exactly n, e, s and w across the
+  /// variant's file - or -1 when the file has no such group.
+  /// </summary>
+  public int SideSegment(Variant variant) {
+    var states = new Dictionary<string, HashSet<string>>();
+    foreach (Variant sibling in VariantsOf(variant.SourceFile))
+      foreach ((string axis, string state) in sibling.States) {
+        if (!states.TryGetValue(axis, out HashSet<string>? set))
+          states[axis] = set = [];
+        set.Add(state);
+      }
+    string[] sides = ["n", "e", "s", "w"];
+    int segment = ((string)variant.Raw["code"]!).Split('-').Length;
+    foreach ((string axis, string state) in variant.States) {
+      if (states[axis].SetEquals(sides))
+        return segment;
+      segment += state.Split('-').Length;
+    }
+    return -1;
+  }
+
   /// <summary>True when the selector's first-resolving alternative is empty space - drawn as
   /// such, not warned about when nothing else matches.</summary>
   public bool Optional(string selector) {

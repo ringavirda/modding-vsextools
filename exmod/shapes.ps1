@@ -182,7 +182,7 @@ Add-ExmodCommand -Group source -Name schematic -Summary 'render a multiblock/meg
   param([string[]]$Argv) Invoke-Schematic $Argv
 } -Detail @'
 exmod schematic FILE --out=DIR [--views plan,iso] [--angle N] [--layer N|all] [--ppu N]
-  [--roots PATH...] [--game PATH]
+  [--as-built FILE] [--roots PATH...] [--game PATH]
 
 Renders a blocktype file's multiblockStructure or megablock footprint to a plan-grid SVG per Y
 layer, an isometric textured composite, and a `<stem>.json` manifest the wiki's directive reads - see
@@ -201,6 +201,7 @@ published.
   --angle N       turn the structure before rendering (0, 90, 180 or 270)
   --layer N|all   an iso render cut at Y layer N, or one per layer with "all"
   --ppu N         pixels per shape unit for the iso render (default: 8)
+  --as-built FILE an as-built map whose cells the iso draws in place of each selector's pick
   --roots PATH    extra mod repository roots to resolve selectors against (repeatable)
   --game PATH     a specific game install (default: this repository's own provisioned one)
 '@

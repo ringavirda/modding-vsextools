@@ -225,6 +225,8 @@ public class ProgramArgsTests {
     "--roots=/r",
     "--game=/g"
   )]
+  [InlineData("schematic", "--out=/tmp/x", "--as-built=/a")]
+  [InlineData("schematic", "--out", "/tmp/x", "--as-built", "/a")]
   [InlineData("scene", "--out", "/tmp/x", "--roots", "a", "b", "--game", "x")]
   [InlineData("tree", "--group=a", "--game=/g")]
   [InlineData("tree", "--group", "a", "--game", "x")]
