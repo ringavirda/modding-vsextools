@@ -33,6 +33,7 @@ public static class Selection {
     new Feeding(),
     new Pit(),
     new Parting(),
+    new Corefit(),
   ];
 
   /// <summary>Whether <paramref name="check"/> runs under <paramref name="profile"/>: structural checks always,
@@ -51,7 +52,7 @@ public static class Selection {
   /// the record to name regular globs (<see cref="RegularGlobs"/>), uvwrap a round run in the shape, blankmatch a
   /// <c>blank</c> slot in the record; impression, flood, capacity, fit, pieces and parting not a closed pour's
   /// cope, whose record holds only its pair; feeding a closed pour or a <c>head</c> feed, pit a station with a head
-  /// height; every other check always applies. Without these a check enumerates nothing
+  /// height, corefit a record with a <c>core</c> or <c>corebox</c> slot or a pour that sets cores; every other check always applies. Without these a check enumerates nothing
   /// and fails.</summary>
   public static bool Applies(ICheck check, CheckInput input) =>
     check.Id switch {
@@ -66,6 +67,7 @@ public static class Selection {
       "feeding" => PourOf(input.Record) is not { } f
         || f.Closed
         || f.Feeds.Any(x => x.Kind == "head"),
+      "corefit" => Corefit.Reads(input.Record),
       "pit" => !Pour.IsCope(input.Record)
         && (
           PourOf(input.Record) is not { } q

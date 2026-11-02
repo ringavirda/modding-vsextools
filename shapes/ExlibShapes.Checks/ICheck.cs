@@ -109,6 +109,8 @@ public sealed record FootprintSpec(
 /// <param name="Pattern">The pattern whose elements a head or riser feed names.</param>
 /// <param name="Pair">The cope of a closed pour, read beside its drag.</param>
 /// <param name="Cores">The core items of <c>pour.cores</c>, in that order.</param>
+/// <param name="CoreRecords">The part records of <paramref name="Cores"/>, whose <c>core</c> slots name the run and the
+/// prints.</param>
 /// <param name="CutFaces">The feature names of the blank's record whose faces a user may cut; the faces the blank
 /// record's steps cut when null.</param>
 public sealed record CheckInput(
@@ -133,7 +135,8 @@ public sealed record CheckInput(
   Shape? Cast = null,
   Shape? Pattern = null,
   Shape? Pair = null,
-  IReadOnlyList<Shape>? Cores = null
+  IReadOnlyList<Shape>? Cores = null,
+  IReadOnlyList<PartRecord>? CoreRecords = null
 );
 
 /// <summary>A check: a pure function of its input to a pass, a fail or a question.</summary>

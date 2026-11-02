@@ -29,6 +29,7 @@ public class ContractTests {
         "feeding",
         "pit",
         "parting",
+        "corefit",
       ],
       KindTable.Gates("filling")
     );
@@ -128,6 +129,7 @@ public class ContractTests {
         "blankmatch",
         "capacity",
         "castonly",
+        "corefit",
         "draw",
         "facecheck",
         "feeding",
@@ -165,6 +167,7 @@ public class ContractTests {
         "feeding",
         "pit",
         "parting",
+        "corefit",
       ],
       Selection
         .For(["filling", "item"], Profile.ExpandedPeriod)
@@ -215,6 +218,7 @@ public class ContractTests {
       "feeding",
       "pit",
       "parting",
+      "corefit",
     ];
     string[] versions = [.. ids.Select(CheckVersions.Of)];
     Assert.All(versions, v => Assert.Matches("^[0-9a-f]{64}$", v));
