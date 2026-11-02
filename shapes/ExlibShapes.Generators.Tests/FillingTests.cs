@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using ExpandedLib.Shapes.Checks;
 using ExpandedLib.Shapes.Core;
@@ -98,7 +99,7 @@ public class FillingTests(ITestOutputHelper output) {
     es.SelectMany(e => new[] { e.Name! }.Concat(Names(e.Children)));
 
   [Fact]
-  public void A_piece_under_the_drop_is_poured_from_a_runner_and_passes_the_gates() {
+  public void A_piece_away_from_the_drop_is_poured_from_a_runner_and_passes_the_gates() {
     PourRequest r = Request("floor", Block(6, 4, 6), [At(13, 10, -3)]);
 
     FillingResult f = Make(r);
@@ -106,7 +107,7 @@ public class FillingTests(ITestOutputHelper output) {
     Assert.Empty(Failing(f, r));
     JToken run = Pour(f)["feeds"]!.Single(x => (string?)x["name"] == "Runner1");
     Assert.Equal(
-      [15.0, 13.5, 2.5, 17, 14, 9],
+      [15.0, 13.5, 2.5, 17, 14, 10],
       run["boxes"]![0]!.Select(n => (double)n)
     );
     Assert.Equal(360, (double)Pour(f)["units"]!["perPiece"]!);
@@ -128,7 +129,7 @@ public class FillingTests(ITestOutputHelper output) {
 
   [Fact]
   public void A_drop_over_the_piece_lays_no_runner() {
-    PourRequest r = Request("floor", Block(6, 4, 6), [At(13, 10, 5)]);
+    PourRequest r = Request("floor", Block(6, 4, 6), [At(13, 10, 4)]);
 
     FillingResult f = Make(r);
 
@@ -286,14 +287,116 @@ public class FillingTests(ITestOutputHelper output) {
     );
   }
 
-  [Fact]
-  public void A_station_without_a_drop_depth_or_sprue_is_refused() {
-    PourRequest r = Request("small", Block(4, 4, 4), [At(2, 9, 2)]);
+  private static GenContext WithStation(string row) {
+    string text = File.ReadAllText(
+      Path.Combine(AppContext.BaseDirectory, "fixtures", "settings.json")
+    );
+    text = text.Replace(
+      "\"stations\": {",
+      "\"stations\": { \"odd\": { " + row + " },"
+    );
+    return new GenContext(
+      Settings.Read(text),
+      (shape, sha) => throw new InvalidOperationException(shape),
+      null
+    );
+  }
+
+  private const string Sand =
+    "\"sandFrom\": [2, 2, -14], \"sandTo\": [30, 14, 14], \"floor\": 2, \"margin\": 1.0, \"ladleUnits\": 2.5, \"risers\": {}";
+
+  [Theory]
+  [InlineData("\"runnerDepth\": 0.5, \"gateAcross\": 1", false, "has no drop")]
+  [InlineData(
+    "\"gateAcross\": 1, \"drop\": [15, 13.5, 9, 17, 14, 10]",
+    false,
+    "no runnerDepth"
+  )]
+  [InlineData(
+    "\"runnerDepth\": 0.5, \"drop\": [15, 13.5, 9, 17, 14, 10]",
+    false,
+    "no gateAcross"
+  )]
+  [InlineData(
+    "\"runnerDepth\": 0.5, \"gateAcross\": 1, \"parting\": 8",
+    true,
+    "has no sprue"
+  )]
+  [InlineData(
+    "\"runnerDepth\": 0.5, \"gateAcross\": 1, \"sprue\": [15, 8, 17, 10]",
+    true,
+    "needs a parting"
+  )]
+  public void A_station_missing_one_field_of_the_rule_is_refused(
+    string row,
+    bool closed,
+    string message
+  ) {
+    PourRequest r = Request(
+      "odd",
+      Block(4, 4, 4),
+      [At(2, 9, 2)],
+      closed: closed
+    );
 
     Assert.Contains(
-      "no runnerDepth",
+      message,
+      Assert
+        .Throws<CastGenException>(() =>
+          Fillings.Make(WithStation(Sand + ", " + row), r, "spec")
+        )
+        .Message
+    );
+  }
+
+  [Fact]
+  public void An_open_runner_crosses_the_stations_runner_x_from_the_drops_far_edge() {
+    PourRequest r = Request("odd", Block(6, 4, 6), [At(13, 10, -3)]);
+
+    FillingResult f = Fillings.Make(
+      WithStation(
+        Sand
+          + ", \"runnerX\": [14, 18], \"runnerDepth\": 0.5, \"gateAcross\": 1, \"drop\": [15, 13.5, 9, 17, 14, 10]"
+      ),
+      r,
+      "spec"
+    );
+
+    JToken run = Pour(f)["feeds"]!.Single(x => (string?)x["name"] == "Runner1");
+    Assert.Equal(
+      [14.0, 13.5, 2.5, 18, 14, 10],
+      run["boxes"]![0]!.Select(n => (double)n)
+    );
+  }
+
+  [Fact]
+  public void A_piece_in_the_runner_box_is_refused() {
+    PourRequest r = Request("floor", Block(6, 4, 6), [At(13, 10, 5)]);
+
+    Assert.Contains(
+      "lies in the runner box",
       Assert.Throws<CastGenException>(() => Make(r)).Message
     );
+  }
+
+  [Fact]
+  public void A_head_over_16_across_is_fed_whole() {
+    List<Leaf> cast = Leaves(Bx("Body", "[0, 0, 0]", "[20, 12.5, 4]"));
+    PatternResult p = Patterns.Make(
+      Ctx,
+      "pattern-castthing",
+      cast,
+      [],
+      null,
+      "spec",
+      1.5
+    );
+
+    FillingResult f = Make(
+      Request("pit", cast, [At(6, 0, -2)], pattern: p.Pattern.Shape)
+    );
+
+    Assert.Equal(20 * 4 * 1.5 * 2.5, (double)Pour(f)["units"]!["share"]!);
   }
 
   private static (Shape Pattern, List<Leaf> Cast) Column() {
@@ -567,5 +670,75 @@ public class FillingTests(ITestOutputHelper output) {
 
     Assert.Equal(0, impression.ExitCode);
     Assert.True(Count(null) > 0);
+  }
+
+  private static string? ShaperStandard() {
+    for (
+      DirectoryInfo? dir = new(AppContext.BaseDirectory);
+      dir != null;
+      dir = dir.Parent
+    ) {
+      string file = Path.Combine(
+        dir.FullName,
+        "exmods",
+        "workbench",
+        "shapes-finished",
+        "items",
+        "cast-shaper-standard-proposed.json"
+      );
+      if (File.Exists(file))
+        return file;
+    }
+    return null;
+  }
+
+  [SkippableTheory]
+  [InlineData("0.125", null)]
+  [InlineData("1/32", 1.0 / 32)]
+  public void The_shaper_standard_pit_filling_is_counted_at_each_step(
+    string label,
+    double? step
+  ) {
+    string? file = ShaperStandard();
+    Skip.If(
+      file is null,
+      "the sibling exmods checkout with cast-shaperstandard is absent"
+    );
+    Shape drawn = Reader.Read(File.ReadAllText(file!));
+    List<Leaf> cast = Select.Groups(drawn, ["Standard"]);
+    Box bounds = Occupancy.Of(cast).Bounds;
+    Mat4d at = At(16 - bounds.Centre.X, 12.5 - bounds.Hi.Y, -bounds.Centre.Z);
+    double top = cast.Max(l => l.Box.Hi.Y);
+    List<Box> reach =
+    [
+      .. cast.Where(l => l.Box.Hi.Y >= top - 1e-9).Select(l => l.Box),
+    ];
+    Shape pattern = Reader.Read(
+      $$"""{ "elements": [ { "name": "Head", "from": [{{reach.Min(b => b.Lo.X)}}, {{top}}, {{reach.Min(b => b.Lo.Z)}}], "to": [{{reach.Max(b => b.Hi.X)}}, {{top + 1.5}}, {{reach.Max(b => b.Hi.Z)}}], "faces": { "up": { "texture": "#c" } } } ] }"""
+    );
+    PourRequest r = Request("pit", cast, [at], pattern: pattern, step: step);
+
+    FillingResult f = Make(r);
+    CheckResult g = new Impression().Run(
+      new CheckInput(
+        f.Filling.Shape,
+        Record: f.Filling.Record,
+        Settings: Fx.Settings,
+        Cast: ItemShape(cast),
+        Pattern: pattern
+      )
+    );
+    string gate = string.Join(
+      " ",
+      g.Lines.Where(l => l.StartsWith("in:") || l.StartsWith("open:"))
+        .Select(l =>
+          l.Substring(0, l.IndexOf(" vx3", StringComparison.Ordinal) + 4)
+        )
+    );
+    output.WriteLine(
+      $"shaper standard pit filling at {label}: {f.Filling.Shape.Elements.Count} elements, impression exit {g.ExitCode}, {gate}"
+    );
+
+    Assert.NotEmpty(f.Filling.Shape.Elements);
   }
 }

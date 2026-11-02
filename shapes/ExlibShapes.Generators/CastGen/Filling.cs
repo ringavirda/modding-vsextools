@@ -33,8 +33,8 @@ public sealed record RiserAsk(string Kind, double[] At, int Piece = 1);
 /// <param name="CastLeaves">The cast item's leaves, root-level, in its model space.</param>
 /// <param name="Pieces">Each piece's placement, the cast item's model space in the filling's, in pressing
 /// order.</param>
-/// <param name="PatternShape">The pattern item's shape; its <c>Head</c> element is the head of a station that has a
-/// head height.</param>
+/// <param name="PatternShape">The pattern item's shape; its <c>Head</c> element and its splits <c>Head_s2</c> and on are the head of a station that
+/// has a head height.</param>
 /// <param name="Cores">The cores set in the casting, in the record's order.</param>
 /// <param name="Fill">The fill order, <c>chain</c>, <c>pairs</c> or <c>rows</c>.</param>
 /// <param name="Order">The press order the pieces' plan runs in, <c>one</c> for a single piece.</param>
@@ -84,7 +84,7 @@ public static class Fillings {
   /// <param name="request">What the pour is made from.</param>
   /// <param name="spec">The spec text the provenance hash is taken over.</param>
   /// <exception cref="CastGenException">The station is unknown or lacks a part of the rule, a head is missing from the
-  /// pattern, a closed pour has more than one piece, two pieces' zones overlap, or a feed cannot be laid.</exception>
+  /// pattern, a piece or a feed lies in the runner box, a closed pour has more than one piece, two pieces' zones overlap, or a feed cannot be laid.</exception>
   public static FillingResult Make(
     GenContext ctx,
     PourRequest request,
@@ -104,13 +104,18 @@ public static class Fillings {
     var cast = r.Pieces.Select(at => Occupancy.Of(r.CastLeaves, at)).ToList();
     var heads = new List<Occupancy>();
     if (st.HeadHeight != null) {
-      Element head =
-        r.PatternShape?.Elements.FirstOrDefault(e => e.Name == "Head")
-        ?? throw new CastGenException(
+      List<Leaf> head =
+      [
+        .. (r.PatternShape?.Elements ?? [])
+          .Where(IsHead)
+          .Select(e => new Leaf(e.Name!, e.Name!, e.Name!, e)),
+      ];
+      if (head.Count == 0)
+        throw new CastGenException(
           $"{name}: the station has a head height and the pattern has no Head"
         );
       foreach (Mat4d at in r.Pieces)
-        heads.Add(Occupancy.Of([new Leaf("Head", "Head", "Head", head)], at));
+        heads.Add(Occupancy.Of(head, at));
     }
     List<IReadOnlyList<Box>> metal =
     [
@@ -257,6 +262,20 @@ public static class Fillings {
         foreach (Box b in Sands.Fill(zones[k], level, r.Step))
           dragRoot.Add((Sand(b), $"Piece{k + 1}/Level"));
       }
+    }
+
+    foreach (StationBox rb in st.RunnerBox) {
+      Box runnerBox = Of(rb.From, rb.To);
+      for (int k = 0; k < metal.Count; k++)
+        if (metal[k].Any(b => Overlap(b, runnerBox)))
+          throw new CastGenException(
+            $"{name}: Piece{k + 1} lies in the runner box {rb.Name}"
+          );
+      foreach (FeedLaid f in feeds)
+        if (f.Boxes.Any(b => Overlap(b, runnerBox)))
+          throw new CastGenException(
+            $"{name}: {f.Name} lies in the runner box {rb.Name}"
+          );
     }
 
     var coreRoot = new List<(Leaf, string?)>();
@@ -437,6 +456,17 @@ public static class Fillings {
     return new GenOutput(item, rec.Kinds, shape, rec, hash);
   }
 
+  private static bool Overlap(Box a, Box b) =>
+    a.Hi.X > b.Lo.X + 1e-9
+    && b.Hi.X > a.Lo.X + 1e-9
+    && a.Hi.Y > b.Lo.Y + 1e-9
+    && b.Hi.Y > a.Lo.Y + 1e-9
+    && a.Hi.Z > b.Lo.Z + 1e-9
+    && b.Hi.Z > a.Lo.Z + 1e-9;
+
+  private static bool IsHead(Element e) =>
+    e.Name is "Head" || (e.Name?.StartsWith("Head_s") ?? false);
+
   private static string HashOf(
     GenContext ctx,
     PourRequest r,
@@ -452,9 +482,7 @@ public static class Fillings {
       text.Append('\n').Append(c.Item).Append(Invariant(Rows(c.At)));
       text.Append(CanonicalWriter.Write(Flush.ShapeOf(c.Leaves)));
     }
-    if (
-      r.PatternShape?.Elements.FirstOrDefault(e => e.Name == "Head") is { } head
-    )
+    foreach (Element head in (r.PatternShape?.Elements ?? []).Where(IsHead))
       text.Append(
         CanonicalWriter.Write(
           new Shape { Elements = { Select.Clone(head, false) } }

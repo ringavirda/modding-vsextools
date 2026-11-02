@@ -42,7 +42,7 @@ internal static class Feeds {
   private const double Past = 0.5;
 
   /// <summary>Lays the feeds of a pour by one rule at every station. An open pour's runner crosses the station's
-  /// <c>RunnerX</c> from the drop's far edge toward piece 1 at the sand's top, ending <c>Past</c> inside it, and
+  /// <c>RunnerX</c> from the drop's far z edge toward piece 1 at the sand's top, ending <c>Past</c> inside it, and
   /// is none when the drop lies over piece 1; each later piece gets a gate <c>GateAcross</c> wide, <c>chain</c> from
   /// the piece before and <c>pairs</c> or <c>rows</c> from the main runner, <c>Past</c> into each end, one box or two
   /// at a right angle where no straight one stays the margin clear of the other pieces. A closed pour's sprue stands
@@ -55,7 +55,8 @@ internal static class Feeds {
   /// <param name="fill">The fill order, <c>chain</c>, <c>pairs</c> or <c>rows</c>.</param>
   /// <param name="pieces">The metal of each piece in the filling's space, its head included.</param>
   /// <param name="risers">The kind and the point on the cast's top of each riser, in the filling's space.</param>
-  /// <exception cref="CastGenException">The station lacks a runner depth, a gate width, a drop or a sprue; a piece has
+  /// <exception cref="CastGenException">The station lacks a runner depth, a gate width, a drop, a sprue, a parting
+  /// or a riser's section; a piece has
   /// no metal in the runner's depth; no route keeps the margin.</exception>
   public static List<FeedLaid> Lay(
     string item,
@@ -76,6 +77,7 @@ internal static class Feeds {
     var feeds = new List<FeedLaid>();
     double y1 = top;
     Rect source;
+    Rect over;
     double pastSource;
     if (closed) {
       double[] sp =
@@ -100,12 +102,17 @@ internal static class Feeds {
       );
       y1 = parting;
       source = new Rect(sp[0], sp[1], sp[2], sp[3]);
+      over = source;
       pastSource = Past;
     } else {
       double[] drop =
         station.Drop
         ?? throw new CastGenException($"{item}: the station has no drop");
-      source = new Rect(drop[0], drop[2], drop[3], drop[5]);
+      over = new Rect(drop[0], drop[2], drop[3], drop[5]);
+      double[] span = station.RunnerX is { Length: 2 } rx
+        ? rx
+        : [drop[0], drop[3]];
+      source = new Rect(span[0], over.Z0, span[1], over.Z1);
       pastSource = 0;
     }
     double y0 = y1 - depth;
@@ -144,10 +151,13 @@ internal static class Feeds {
         .All(k => pieces[k].All(p => Gap(b, p) >= margin - Eps));
 
     Rect main = source;
-    if (feet[0].Overlaps(source)) {
+    if (feet[0].Overlaps(over)) {
       main = feet[0];
     } else {
-      double w = source.X1 - source.X0;
+      if (!closed) {
+        double far = feet[0].CentreZ <= over.Z0 + Eps ? over.Z1 : over.Z0;
+        source = new Rect(source.X0, far, source.X1, far);
+      }
       List<Box> run = Reach(
         "runner",
         1,
