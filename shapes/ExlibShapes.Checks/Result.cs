@@ -77,6 +77,14 @@ public sealed class CheckResult {
     );
   }
 
+  /// <summary>A result as it was recorded, whatever its verdict.</summary>
+  internal static CheckResult Restore(
+    string check,
+    Verdict verdict,
+    int enumerated,
+    IReadOnlyList<string> lines
+  ) => new(check, verdict, enumerated, lines);
+
   /// <summary>A result that asks for a ruling.</summary>
   public static CheckResult Ask(
     string check,
