@@ -80,6 +80,20 @@ public class SettingsTests {
   }
 
   [Fact]
+  public void Stations_hold_the_drop_runner_box_inlet_and_sprue() {
+    Station floor = Fixture().Stations["floor"];
+    Assert.Equal([15.0, 13.5, 9, 17, 14, 10], floor.Drop);
+    Assert.Equal(7, floor.RunnerBox.Count);
+    Assert.Equal("BoxWallE", floor.RunnerBox[6].Name);
+    Assert.Equal([18.0, 14, 11], floor.RunnerBox[6].From);
+    Assert.Equal([15.0, 8, 17, 10], Fixture().Stations["long"].Sprue);
+    InletCut basin = Fixture().Stations["small"].Inlet[0];
+    Assert.Equal(("Basin", "inlet"), (basin.Name, basin.Kind));
+    Assert.Equal([10.0, 13, 10.5], basin.From);
+    Assert.Null(Fixture().Stations["pit"].Sprue);
+  }
+
+  [Fact]
   public void Runtime_path_follows_the_domain_then_the_wildcard() {
     Settings s = Fixture();
     Assert.Equal(

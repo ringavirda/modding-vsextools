@@ -455,10 +455,7 @@ public class ItemViewsTests {
   public void Spear_and_rod_lie_flat_on_the_ground(string file, string code) {
     (LoadedShape shape, _, _, ItemTransform ground) = Vanilla(file, code);
     // The item's thinnest box axis (a tie goes to y, the authored up) is its top face's normal.
-    Dictionary<string, Renderer.Mat4d> mats = Renderer.WorldMatricesD(
-      shape,
-      null
-    );
+    Dictionary<string, Core.Mat4d> mats = Renderer.WorldMatricesD(shape, null);
     var points = shape
       .Leaves()
       .SelectMany(el => Renderer.FaceQuadsD(el, mats[el.Path]))
@@ -506,7 +503,7 @@ public class ItemViewsTests {
     );
   }
 
-  private static Renderer.Mat4d Anchor(ItemViews.Seraph seraph, string clip) =>
+  private static Core.Mat4d Anchor(ItemViews.Seraph seraph, string clip) =>
     Renderer.WorldMatricesD(seraph.Shape, Poses.PoseAt(seraph.Shape, clip, 0))[
       seraph.Shape.Find("ItemAnchor")!.Path
     ];
@@ -515,7 +512,7 @@ public class ItemViewsTests {
   // by the item's rotation plus the attachment point's -180 about y, moved by the translation,
   // scaled, all about the origin, in blocks, then through the anchor.
   private static (double X, double Y, double Z) Held(
-    Renderer.Mat4d anchor,
+    Core.Mat4d anchor,
     ItemTransform t,
     (double X, double Y, double Z) p
   ) {
@@ -535,10 +532,7 @@ public class ItemViewsTests {
     (double X, double Y, double Z) Low,
     (double X, double Y, double Z) High
   ) Ends(LoadedShape shape) {
-    Dictionary<string, Renderer.Mat4d> mats = Renderer.WorldMatricesD(
-      shape,
-      null
-    );
+    Dictionary<string, Core.Mat4d> mats = Renderer.WorldMatricesD(shape, null);
     var points = shape
       .Leaves()
       .SelectMany(el => Renderer.FaceQuadsD(el, mats[el.Path]))
@@ -567,7 +561,7 @@ public class ItemViewsTests {
       seraph,
       clip
     );
-    Renderer.Mat4d anchor = Anchor(seraph, clip);
+    Core.Mat4d anchor = Anchor(seraph, clip);
     ((double, double, double) low, (double, double, double) high) = Ends(shape);
     foreach (View view in ItemViews.TpAngles) {
       Renderer.Projection projection = Renderer.Project(
@@ -589,7 +583,7 @@ public class ItemViewsTests {
         Assert.InRange(row, expectedRow - 1, expectedRow + 1);
       }
     }
-    Dictionary<string, Renderer.Mat4d> bodyMats = Renderer.WorldMatricesD(
+    Dictionary<string, Core.Mat4d> bodyMats = Renderer.WorldMatricesD(
       seraph.Shape,
       null
     );
@@ -697,7 +691,7 @@ public class ItemViewsTests {
       new View(ItemViews.FpLevel.Yaw, pitchDeg),
       perspective: ItemViews.FpCamera
     );
-    Renderer.Mat4d anchor = Anchor(seraph, clip + "-fp");
+    Core.Mat4d anchor = Anchor(seraph, clip + "-fp");
     ((double, double, double) low, (double, double, double) high) = Ends(shape);
     var pixels = new List<(double Col, double Row, double Depth)>();
     foreach ((double, double, double) end in new[] { low, high }) {
@@ -859,7 +853,7 @@ public class ItemViewsTests {
   [SkippableFact]
   public void Seraph_null_faces_are_not_drawn() {
     ItemViews.Seraph seraph = VanillaTp("part/rod.json", "rod-iron").Seraph;
-    Dictionary<string, Renderer.Mat4d> mats = Renderer.WorldMatricesD(
+    Dictionary<string, Core.Mat4d> mats = Renderer.WorldMatricesD(
       seraph.Shape,
       null
     );
@@ -876,7 +870,7 @@ public class ItemViewsTests {
           seraph.Shape,
           seraph.Textures,
           null,
-          Renderer.Mat4d.Identity,
+          Core.Mat4d.Identity,
           seraph.UvSize
         ),
       ],
@@ -903,7 +897,7 @@ public class ItemViewsTests {
     Assert.Equal(
       ["null", "skin"],
       Renderer
-        .FaceQuadsD(box, Renderer.Mat4d.Identity)
+        .FaceQuadsD(box, Core.Mat4d.Identity)
         .Select(q => q.Texture)
         .Order(StringComparer.Ordinal)
     );
@@ -941,7 +935,7 @@ public class ItemViewsTests {
           ShapeFile.FromRaw(raw, null),
           textures,
           null,
-          Renderer.Mat4d.Identity,
+          Core.Mat4d.Identity,
           (32, 76)
         ),
       ],
@@ -1142,27 +1136,27 @@ public class ItemViewsTests {
 
   // The game's gui chain, InventoryItemRenderer.RenderItemstackToGui without the origRotate spin,
   // written in the game's order on a y-down slot and turned y up for the renderer.
-  private static Renderer.Mat4d GameSlotChain(ItemTransform t, bool block) {
+  private static Core.Mat4d GameSlotChain(ItemTransform t, bool block) {
     const double size = 25.6;
-    return Renderer.Mat4d.Scale(1, -1, 1)
-      * Renderer.Mat4d.Translate(block ? 0 : -3, block ? 0 : -1, 0)
-      * Renderer.Mat4d.Translate(
+    return Core.Mat4d.Scale(1, -1, 1)
+      * Core.Mat4d.Translate(block ? 0 : -3, block ? 0 : -1, 0)
+      * Core.Mat4d.Translate(
         t.Origin.X + t.Translation.X,
         t.Origin.Y + t.Translation.Y,
         t.Origin.Z * size + t.Translation.Z
       )
-      * Renderer.Mat4d.Scale(
+      * Core.Mat4d.Scale(
         size * t.ScaleXyz.X,
         size * t.ScaleXyz.Y,
         size * t.ScaleXyz.Z
       )
-      * Renderer.Mat4d.RotateByXyz(
+      * Core.Mat4d.RotateByXyz(
         t.Rotation.X + (block ? 180 : 0),
         t.Rotation.Y,
         t.Rotation.Z
       )
-      * Renderer.Mat4d.Translate(-t.Origin.X, -t.Origin.Y, -t.Origin.Z)
-      * Renderer.Mat4d.Scale(1.0 / 16, 1.0 / 16, 1.0 / 16);
+      * Core.Mat4d.Translate(-t.Origin.X, -t.Origin.Y, -t.Origin.Z)
+      * Core.Mat4d.Scale(1.0 / 16, 1.0 / 16, 1.0 / 16);
   }
 
   private static readonly ItemTransform SlotSample = new(
@@ -1177,8 +1171,8 @@ public class ItemViewsTests {
   [InlineData(true)]
   [InlineData(false)]
   public void Slot_matrix_is_the_games_chain_per_class(bool block) {
-    Renderer.Mat4d expected = GameSlotChain(SlotSample, block);
-    Renderer.Mat4d actual = ItemViews.SlotModel(SlotSample, block);
+    Core.Mat4d expected = GameSlotChain(SlotSample, block);
+    Core.Mat4d actual = ItemViews.SlotModel(SlotSample, block);
     foreach (double x in new[] { 0.0, 16.0 })
       foreach (double y in new[] { 0.0, 16.0 })
         foreach (double z in new[] { 0.0, 16.0 }) {
@@ -1199,7 +1193,7 @@ public class ItemViewsTests {
       (1, 1, 1),
       false
     );
-    Renderer.Mat4d model = ItemViews.SlotModel(flat, true);
+    Core.Mat4d model = ItemViews.SlotModel(flat, true);
     (double X, double Y, double Z) centre = model.Mul(8, 8, 8);
     (double X, double Y, double Z) bottom = model.Mul(8, 0, 8);
     // The game adds the origin's x and y in pixels, unscaled: half a pixel off the slot centre.
@@ -1223,7 +1217,7 @@ public class ItemViewsTests {
       (5, 5, 5),
       true
     );
-    Renderer.Mat4d model = ItemViews.GroundModel(transform);
+    Core.Mat4d model = ItemViews.GroundModel(transform);
     // The gearpinion hub's box (5.8, 6.24, 0) to (10.2, 9.76, 3) turned x, then z, then y, with
     // scale 5 so a voxel of the shape stays a voxel of the ground; worked by hand.
     (double X, double Y, double Z)[] expected =

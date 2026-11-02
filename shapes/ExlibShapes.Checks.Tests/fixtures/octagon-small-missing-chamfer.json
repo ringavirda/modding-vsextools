@@ -1,0 +1,117 @@
+{
+ "elements": [
+  {
+   "name": "Bar",
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    4,
+    6.0,
+    2.0
+   ],
+   "faces": {
+    "north": {
+     "texture": "#iron"
+    }
+   },
+   "children": [
+    {
+     "name": "X",
+     "from": [
+      1.0,
+      0.01,
+      -1.0
+     ],
+     "to": [
+      3.0,
+      6.01,
+      3.0
+     ],
+     "faces": {
+      "north": {
+       "texture": "#iron"
+      }
+     }
+    },
+    {
+     "name": "C0",
+     "from": [
+      0,
+      -0.01,
+      0
+     ],
+     "to": [
+      1.4142,
+      5.99,
+      1.0
+     ],
+     "rotationOrigin": [
+      0,
+      -0.01,
+      0
+     ],
+     "rotationY": 45,
+     "faces": {
+      "north": {
+       "texture": "#iron"
+      }
+     }
+    },
+    {
+     "name": "C2",
+     "from": [
+      0,
+      -0.01,
+      1.0
+     ],
+     "to": [
+      1.4142,
+      5.99,
+      2.0
+     ],
+     "rotationOrigin": [
+      0,
+      -0.01,
+      2.0
+     ],
+     "rotationY": -45,
+     "faces": {
+      "north": {
+       "texture": "#iron"
+      }
+     }
+    },
+    {
+     "name": "C3",
+     "from": [
+      2.5858,
+      -0.01,
+      1.0
+     ],
+     "to": [
+      4,
+      5.99,
+      2.0
+     ],
+     "rotationOrigin": [
+      4,
+      -0.01,
+      2.0
+     ],
+     "rotationY": 45,
+     "faces": {
+      "north": {
+       "texture": "#iron"
+      }
+     }
+    }
+   ]
+  }
+ ],
+ "textures": {
+  "iron": "block/metal/plate/iron"
+ }
+}

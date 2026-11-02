@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace ExpandedLib.Shapes.Core;
 
@@ -56,6 +58,15 @@ public readonly struct Mat4d {
   public static Mat4d Identity =>
     new([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
+  /// <summary>A transform from its 16 entries, row-major.</summary>
+  /// <exception cref="ArgumentException"><paramref name="rows"/> does not hold 16 numbers.</exception>
+  public static Mat4d FromRows(IReadOnlyList<double> rows) =>
+    rows.Count == 16
+      ? new([.. rows])
+      : throw new ArgumentException(
+        $"a transform has 16 entries, got {rows.Count}"
+      );
+
   /// <summary>The entry at row <paramref name="r"/>, column <paramref name="c"/> (0-3).</summary>
   public double this[int r, int c] => _m[r * 4 + c];
 
@@ -69,6 +80,10 @@ public readonly struct Mat4d {
   /// <summary>A per-axis scale about the origin.</summary>
   public static Mat4d Scale(Vec3 s) =>
     new([s.X, 0, 0, 0, 0, s.Y, 0, 0, 0, 0, s.Z, 0, 0, 0, 0, 1]);
+
+  /// <summary>A per-axis scale about the origin.</summary>
+  public static Mat4d Scale(double x, double y, double z) =>
+    Scale(new Vec3(x, y, z));
 
   /// <summary>The game's <c>Mat4f.RotateByXYZ</c>: <c>Rx . Ry . Rz</c> for angles in degrees.</summary>
   public static Mat4d RotateByXyz(double rx, double ry, double rz) {
@@ -111,6 +126,22 @@ public readonly struct Mat4d {
       _m[4] * p.X + _m[5] * p.Y + _m[6] * p.Z + _m[7],
       _m[8] * p.X + _m[9] * p.Y + _m[10] * p.Z + _m[11]
     );
+
+  /// <summary>The point (<paramref name="x"/>, <paramref name="y"/>, <paramref name="z"/>) transformed, translation included.</summary>
+  public (double X, double Y, double Z) Mul(double x, double y, double z) {
+    Vec3 r = Mul(new Vec3(x, y, z));
+    return (r.X, r.Y, r.Z);
+  }
+
+  /// <summary>The point <paramref name="p"/> transformed, translation included.</summary>
+  public (double X, double Y, double Z) Mul((double X, double Y, double Z) p) =>
+    Mul(p.X, p.Y, p.Z);
+
+  /// <summary>The direction (<paramref name="x"/>, <paramref name="y"/>, <paramref name="z"/>) transformed by the upper-left 3x3 alone.</summary>
+  public (double X, double Y, double Z) MulLinear(double x, double y, double z) {
+    Vec3 r = MulLinear(new Vec3(x, y, z));
+    return (r.X, r.Y, r.Z);
+  }
 
   /// <summary>The direction <paramref name="d"/> transformed by the upper-left 3x3 alone.</summary>
   public Vec3 MulLinear(Vec3 d) =>

@@ -1,0 +1,123 @@
+{
+ "textures": {
+  "cast-iron1": "block/metal/cast-iron1",
+  "iron5": "block/metal/sheet-plain/iron5",
+  "wood": "block/wood/planks/{wood}1"
+ },
+ "elements": [
+  {
+   "name": "Bed",
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    0,
+    0,
+    0
+   ],
+   "children": [
+    {
+     "name": "Seat",
+     "from": [
+      4,
+      2,
+      0
+     ],
+     "to": [
+      12,
+      4,
+      8
+     ],
+     "faces": {
+      "north": {
+       "texture": "#cast-iron1"
+      },
+      "east": {
+       "texture": "#cast-iron1"
+      },
+      "south": {
+       "texture": "#cast-iron1"
+      },
+      "west": {
+       "texture": "#cast-iron1"
+      },
+      "up": {
+       "texture": "#cast-iron1"
+      },
+      "down": {
+       "texture": "#cast-iron1"
+      }
+     }
+    },
+    {
+     "name": "Way",
+     "from": [
+      4,
+      4,
+      0
+     ],
+     "to": [
+      12,
+      5.125,
+      8
+     ],
+     "faces": {
+      "north": {
+       "texture": "#cast-iron1"
+      },
+      "east": {
+       "texture": "#cast-iron1"
+      },
+      "south": {
+       "texture": "#cast-iron1"
+      },
+      "west": {
+       "texture": "#cast-iron1"
+      },
+      "up": {
+       "texture": "#cast-iron1"
+      },
+      "down": {
+       "texture": "#cast-iron1"
+      }
+     }
+    },
+    {
+     "name": "Lug",
+     "from": [
+      12,
+      2,
+      2
+     ],
+     "to": [
+      14,
+      4,
+      4
+     ],
+     "faces": {
+      "north": {
+       "texture": "#cast-iron1"
+      },
+      "east": {
+       "texture": "#cast-iron1"
+      },
+      "south": {
+       "texture": "#cast-iron1"
+      },
+      "west": {
+       "texture": "#cast-iron1"
+      },
+      "up": {
+       "texture": "#cast-iron1"
+      },
+      "down": {
+       "texture": "#cast-iron1"
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

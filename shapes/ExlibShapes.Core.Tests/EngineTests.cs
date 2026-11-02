@@ -205,4 +205,12 @@ public class EngineTests {
         } ]
       }
       """;
+
+  [Fact]
+  public void FromRows_reads_row_major_and_refuses_other_lengths() {
+    Mat4d m = Mat4d.FromRows([1, 0, 0, 5, 0, 1, 0, 6, 0, 0, 1, 7, 0, 0, 0, 1]);
+    Assert.Equal(5, m[0, 3]);
+    Assert.Equal(7, m[2, 3]);
+    Assert.Throws<ArgumentException>(() => Mat4d.FromRows([1, 0, 0]));
+  }
 }

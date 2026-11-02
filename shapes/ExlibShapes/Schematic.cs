@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using SkiaSharp;
@@ -70,6 +71,9 @@ public static class Schematic {
   private const string FillerColor = "#BFBFBF";
   private const string FillerTextureKey = "__filler";
   private const string OutlineTextureKey = "__outline";
+  private const string TuyereRole = "Tuyere";
+  private const string StubTextureKey = "stub";
+  private const string StubTexture = "game:block/metal/sheet-plain/iron5";
 
   /// <summary>The element and texture-key prefix <see cref="Compose"/> gives a filler-only
   /// megablock's own body, which no numbered cell names.</summary>
@@ -625,6 +629,54 @@ public static class Schematic {
     }
   }
 
+  // The blast pipe's stub on a tuyere's outer face: an octagonal run of four bars through the
+  // nozzle's axis, 6 across and 8 long, from the cell's face on the side the tuyere faces.
+  private static IEnumerable<JObject> StubBars(
+    int cell,
+    Cell c,
+    char side,
+    string textureKey
+  ) {
+    bool alongZ = side is 'n' or 's';
+    double t0 = side is 's' or 'e' ? 16 : -8;
+    (double A0, double A1, double B0, double B1, double Turn)[] bars =
+    [
+      (5, 11, 6.75, 9.25, 0),
+      (6.75, 9.25, 5, 11, 0),
+      (5, 11, 6.75, 9.25, 45),
+      (5, 11, 6.75, 9.25, -45),
+    ];
+    for (int j = 0; j < bars.Length; j++) {
+      (double a0, double a1, double b0, double b1, double turn) = bars[j];
+      double[] from = alongZ ? [a0, b0, t0] : [t0, b0, a0];
+      double[] to = alongZ ? [a1, b1, t0 + 8] : [t0 + 8, b1, a1];
+      var faces = new JObject();
+      foreach (string face in Geometry.Faces)
+        faces[face] = new JObject { ["texture"] = $"#{textureKey}" };
+      var bar = new JObject {
+        ["name"] = $"c{cell}stub{j}",
+        ["from"] = new JArray(
+          c.X * 16 + from[0],
+          c.Y * 16 + from[1],
+          c.Z * 16 + from[2]
+        ),
+        ["to"] = new JArray(
+          c.X * 16 + to[0],
+          c.Y * 16 + to[1],
+          c.Z * 16 + to[2]
+        ),
+        ["rotationOrigin"] = new JArray(
+          c.X * 16 + (from[0] + to[0]) / 2,
+          c.Y * 16 + (from[1] + to[1]) / 2,
+          c.Z * 16 + (from[2] + to[2]) / 2
+        ),
+        ["faces"] = faces,
+      };
+      bar[alongZ ? "rotationZ" : "rotationX"] = turn;
+      yield return bar;
+    }
+  }
+
   /// <summary>
   /// The composite raw shape JSON for <paramref name="layout"/> and the texture values (key to the
   /// resolved block's own value string) it references.
@@ -642,7 +694,11 @@ public static class Schematic {
   /// <paramref name="spin"/> is the turn <see cref="Presentation.Stage"/> made of the layout, in
   /// degrees: the machine is built that way round, so every drawn mesh turns with it about its own
   /// cell. A cell whose selector carries facing data has already turned, its code naming the
-  /// rotated variant, and keeps its own rotation.
+  /// rotated variant, and keeps its own rotation; so does a cell carrying an as-built code
+  /// (<see cref="Cell.Finished"/>), which is drawn in place of its selector's pick. A cell whose
+  /// selector ends in a facing wildcard takes the side away from its one open neighbour
+  /// (<see cref="CellFacings"/>) and is drawn unspun likewise; each such cell in the layout's
+  /// <c>Tuyere</c> role also carries an iron pipe stub on its outer face.
   /// </para>
   /// </summary>
   public static (
@@ -651,23 +707,47 @@ public static class Schematic {
   ) Compose(Layout layout, BlockIndex index, int? cutAt = null, int spin = 0) {
     var elements = new JArray();
     var textureValues = new Dictionary<string, TextureRef>();
+    CellFacings facings = CellFacings.Of(layout, index);
+    HashSet<Offset> tuyeres = layout.Roles.TryGetValue(
+      TuyereRole,
+      out IReadOnlyList<Offset>? tuyereCells
+    )
+      ? [.. tuyereCells]
+      : [];
     for (int i = 0; i < layout.Cells.Count; i++) {
       Cell c = layout.Cells[i];
       if (cutAt != null && c.Y > cutAt)
         continue;
-      if (
-        !layout.Numbers.TryGetValue(c.Number, out string? selector)
-        || index.Optional(selector)
-      )
-        continue;
-      ResolvedBlock? block = index.Resolve(selector);
+      ResolvedBlock? block;
+      int cellSpin;
+      if (c.Finished != null) {
+        block = index.Resolve(c.Finished);
+        cellSpin = 0;
+      } else if (facings.Codes.TryGetValue(i, out string? faced)) {
+        block = index.Resolve(faced);
+        cellSpin = 0;
+        if (tuyeres.Contains(new Offset(c.X, c.Y, c.Z))) {
+          string stubKey = $"c{i}_{StubTextureKey}";
+          foreach (JObject bar in StubBars(i, c, facings.Sides[i], stubKey))
+            elements.Add(bar);
+          textureValues[stubKey] = new TextureRef(StubTexture);
+        }
+      } else {
+        if (
+          !layout.Numbers.TryGetValue(c.Number, out string? selector)
+          || index.Optional(selector)
+        )
+          continue;
+        block = index.Resolve(selector);
+        cellSpin = layout.Facings.ContainsKey(selector) ? 0 : spin;
+      }
       if (block == null)
         continue;
       (JObject group, Dictionary<string, TextureRef> values) = WrappedCell(
         block,
         new Offset(c.X, c.Y, c.Z),
         $"c{i}",
-        layout.Facings.ContainsKey(selector) ? 0 : spin
+        cellSpin
       );
       elements.Add(group);
       foreach ((string key, TextureRef value) in values)
@@ -813,14 +893,16 @@ public static class Schematic {
   /// runs down the left edge, one labelled tick per drawn Y layer carried across the picture as a
   /// faint guide (<see cref="ScaleRows"/>), so height is counted off the face a reader is looking
   /// at. <paramref name="spin"/> turns every drawn mesh, as
-  /// <see cref="Compose"/> means it.
+  /// <see cref="Compose"/> means it. <paramref name="outlines"/> (<see cref="FunctionalCells"/>)
+  /// draws each cell's box edges over the picture, through the shell; null draws none.
   /// </summary>
   public static SKBitmap IsoPng(
     Layout layout,
     BlockIndex index,
     int ppu = 8,
     int? cutAt = null,
-    int spin = 0
+    int spin = 0,
+    IReadOnlyList<(Offset Cell, string Color)>? outlines = null
   ) {
     (JObject raw, Dictionary<string, TextureRef> textureValues) = Compose(
       layout,
@@ -828,7 +910,68 @@ public static class Schematic {
       cutAt,
       spin
     );
-    return Iso(raw, textureValues, layout, index, ppu, cutAt);
+    return Iso(raw, textureValues, layout, index, ppu, cutAt, outlines);
+  }
+
+  private static readonly Regex MasonrySelector = new(
+    "bricks?-|brickcourse|structurefiller",
+    RegexOptions.CultureInvariant
+  );
+
+  /// <summary>
+  /// The cells of <paramref name="layout"/>'s functional legend rows, each with its row's legend
+  /// colour (<c>#RRGGBB</c>, as <see cref="LegendColors"/> assigns): the rows that are not optional
+  /// and whose selector names no brick, banded or hooped brick, brick course or structure filler.
+  /// The principal's own cell is included.
+  /// </summary>
+  public static IReadOnlyList<(Offset Cell, string Color)> FunctionalCells(
+    Layout layout,
+    BlockIndex index
+  ) {
+    Dictionary<int, LegendEntry> legend = LegendColors(layout);
+    var colours = new Dictionary<int, string>();
+    foreach ((int n, string selector) in layout.Numbers)
+      if (!index.Optional(selector) && !MasonrySelector.IsMatch(selector))
+        colours[n] = legend[n].Color!;
+    return
+    [
+      .. layout
+        .Cells.Where(c => colours.ContainsKey(c.Number))
+        .Select(c => (new Offset(c.X, c.Y, c.Z), colours[c.Number])),
+    ];
+  }
+
+  // Each outlined cell's twelve box edges over the finished drawing, 2 px in the cell's colour, with
+  // no depth test; a cell above `cutAt` is not drawn and so not outlined.
+  private static void DrawOutlines(
+    SKBitmap drawing,
+    Renderer.Projection projection,
+    IReadOnlyList<(Offset Cell, string Color)> outlines,
+    int? cutAt
+  ) {
+    using var canvas = new SKCanvas(drawing);
+    foreach ((Offset cell, string color) in outlines) {
+      if (cutAt != null && cell.Y > cutAt)
+        continue;
+      using var paint = new SKPaint {
+        Color = SKColor.Parse(color),
+        IsAntialias = false,
+        StrokeWidth = 2,
+        Style = SKPaintStyle.Stroke,
+      };
+      SKPoint Corner(int k) {
+        (double col, double row) = projection.Screen(
+          (cell.X + (k & 1)) * 16,
+          (cell.Y + ((k >> 1) & 1)) * 16,
+          (cell.Z + ((k >> 2) & 1)) * 16
+        );
+        return new SKPoint((float)col, (float)row);
+      }
+      for (int k = 0; k < 8; k++)
+        for (int bit = 1; bit < 8; bit <<= 1)
+          if ((k & bit) == 0)
+            canvas.DrawLine(Corner(k), Corner(k | bit), paint);
+    }
   }
 
   // The isometric picture of a composed shape with the layer scale of `layout` beside it.
@@ -838,7 +981,8 @@ public static class Schematic {
     Layout layout,
     BlockIndex index,
     int ppu,
-    int? cutAt
+    int? cutAt,
+    IReadOnlyList<(Offset Cell, string Color)>? outlines = null
   ) {
     Shape shape =
       JsonConvert.DeserializeObject<Shape>(raw.ToString())
@@ -915,12 +1059,10 @@ public static class Schematic {
       textures: textures,
       overlay: PlannedSchematic.BoxPrefix
     );
-    return WithLayerScale(
-      drawing,
-      Renderer.Project(loaded, iso, ppu),
-      layout,
-      cutAt
-    );
+    Renderer.Projection projection = Renderer.Project(loaded, iso, ppu);
+    if (outlines is { Count: > 0 })
+      DrawOutlines(drawing, projection, outlines, cutAt);
+    return WithLayerScale(drawing, projection, layout, cutAt);
   }
 
   // Pixels reserved left of the drawing for the layer scale: a two-character label, its tick and
@@ -1030,7 +1172,14 @@ public static class Schematic {
   /// layout), under <c>front</c>, and is JSON null for a structure that faces no way.
   /// <paramref name="unpaintedFaces"/> is <see cref="UnpaintedFaces"/>'s lines, under
   /// <c>unpaintedFaces</c> rather than among the warnings: a face a block assigns nothing is only
-  /// drawn where a picture shows it.</summary>
+  /// drawn where a picture shows it. <paramref name="asBuiltSource"/> is the file name of the
+  /// as-built map attached to <paramref name="layout"/>, or null for none: it adds an
+  /// <c>asBuilt</c> object <c>{source, cells}</c>, <c>cells</c> counting the layout's
+  /// <see cref="Cell.Finished"/> cells, and a <c>finished</c> object on each legend row with such
+  /// cells, full code to cell count, codes in ordinal order. <c>representative</c> stays the
+  /// selector's first alternative. <paramref name="index"/>, when given, adds a <c>faced</c>
+  /// object the same way for the cells of facing-wildcard rows (<see cref="CellFacings"/>) and
+  /// appends one warning per such cell it could not face, after <paramref name="parseWarnings"/>.</summary>
   public static JObject Manifest(
     Layout layout,
     IReadOnlyDictionary<int, LegendEntry> legend,
@@ -1040,8 +1189,11 @@ public static class Schematic {
     IReadOnlyList<string>? parseWarnings = null,
     IReadOnlyList<(string File, int Layer)>? plans = null,
     string? front = null,
-    IReadOnlyList<string>? unpaintedFaces = null
+    IReadOnlyList<string>? unpaintedFaces = null,
+    string? asBuiltSource = null,
+    BlockIndex? index = null
   ) {
+    CellFacings? facings = index == null ? null : CellFacings.Of(layout, index);
     var rows = new JArray();
     var warnings = new JArray();
     foreach (int n in layout.Numbers.Keys.OrderBy(n => n)) {
@@ -1058,29 +1210,54 @@ public static class Schematic {
         warnings.Add(
           $"{selector}: ambiguous between {string.Join(", ", spanned)}"
         );
-      rows.Add(
-        new JObject {
-          ["number"] = n,
-          ["display"] = row?.Display ?? n,
-          ["selector"] = selector,
-          // A null string assigns as JTokenType.String with a null value, not JTokenType.Null;
-          // JValue.CreateNull() is needed for the field to serialize as JSON null.
-          ["representative"] =
-            representative == null ? JValue.CreateNull() : representative,
-          ["color"] = row?.Color == null ? JValue.CreateNull() : row.Color,
-          ["optional"] = optional,
-        }
-      );
+      var entry = new JObject {
+        ["number"] = n,
+        ["display"] = row?.Display ?? n,
+        ["selector"] = selector,
+        // A null string assigns as JTokenType.String with a null value, not JTokenType.Null;
+        // JValue.CreateNull() is needed for the field to serialize as JSON null.
+        ["representative"] =
+          representative == null ? JValue.CreateNull() : representative,
+        ["color"] = row?.Color == null ? JValue.CreateNull() : row.Color,
+        ["optional"] = optional,
+      };
+      if (asBuiltSource != null) {
+        var finished = new JObject();
+        foreach (
+          var g in layout
+            .Cells.Where(c => c.Number == n && c.Finished != null)
+            .GroupBy(c => c.Finished!)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+        )
+          finished[g.Key] = g.Count();
+        if (finished.Count > 0)
+          entry["finished"] = finished;
+      }
+      if (facings != null) {
+        var faced = new JObject();
+        foreach (
+          var g in facings
+            .Codes.Where(kv => layout.Cells[kv.Key].Number == n)
+            .GroupBy(kv => kv.Value)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+        )
+          faced[g.Key] = g.Count();
+        if (faced.Count > 0)
+          entry["faced"] = faced;
+      }
+      rows.Add(entry);
     }
     foreach (string line in missingTextures ?? [])
       warnings.Add(line);
     foreach (string line in parseWarnings ?? [])
       warnings.Add(line);
+    foreach (string line in facings?.Warnings ?? [])
+      warnings.Add(line);
     var planRows = new JArray();
     foreach ((string file, int layer) in plans ?? [])
       planRows.Add(new JObject { ["file"] = file, ["layer"] = layer });
 
-    return new JObject {
+    var manifest = new JObject {
       ["files"] = new JArray(files),
       ["plans"] = planRows,
       ["front"] = front == null ? JValue.CreateNull() : front,
@@ -1088,5 +1265,11 @@ public static class Schematic {
       ["unpaintedFaces"] = new JArray(unpaintedFaces ?? []),
       ["warnings"] = warnings,
     };
+    if (asBuiltSource != null)
+      manifest["asBuilt"] = new JObject {
+        ["source"] = asBuiltSource,
+        ["cells"] = layout.Cells.Count(c => c.Finished != null),
+      };
+    return manifest;
   }
 }

@@ -1,0 +1,141 @@
+{
+ "elements": [
+  {
+   "name": "Rod",
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    4,
+    6.0,
+    2.4
+   ],
+   "faces": {
+    "north": {
+     "texture": "#iron"
+    }
+   },
+   "children": [
+    {
+     "name": "X",
+     "from": [
+      0.5,
+      0.01,
+      -0.5
+     ],
+     "to": [
+      3.5,
+      5.99,
+      2.9
+     ],
+     "faces": {
+      "north": {
+       "texture": "#iron"
+      }
+     }
+    },
+    {
+     "name": "C0",
+     "from": [
+      0,
+      0.02,
+      -0.7
+     ],
+     "to": [
+      0.5,
+      5.98,
+      0
+     ],
+     "rotationOrigin": [
+      0,
+      0.02,
+      0
+     ],
+     "rotationY": -45,
+     "faces": {
+      "north": {
+       "texture": "#iron"
+      }
+     }
+    },
+    {
+     "name": "C1",
+     "from": [
+      3.5,
+      0.02,
+      -0.7
+     ],
+     "to": [
+      4,
+      5.98,
+      0
+     ],
+     "rotationOrigin": [
+      4,
+      0.02,
+      0
+     ],
+     "rotationY": 45,
+     "faces": {
+      "north": {
+       "texture": "#iron"
+      }
+     }
+    },
+    {
+     "name": "C2",
+     "from": [
+      0,
+      0.02,
+      2.4
+     ],
+     "to": [
+      0.5,
+      5.98,
+      3.0999999999999996
+     ],
+     "rotationOrigin": [
+      0,
+      0.02,
+      2.4
+     ],
+     "rotationY": 45,
+     "faces": {
+      "north": {
+       "texture": "#iron"
+      }
+     }
+    },
+    {
+     "name": "C3",
+     "from": [
+      3.5,
+      0.02,
+      2.4
+     ],
+     "to": [
+      4,
+      5.98,
+      3.0999999999999996
+     ],
+     "rotationOrigin": [
+      4,
+      0.02,
+      2.4
+     ],
+     "rotationY": -45,
+     "faces": {
+      "north": {
+       "texture": "#iron"
+      }
+     }
+    }
+   ]
+  }
+ ],
+ "textures": {
+  "iron": "block/metal/plate/iron"
+ }
+}

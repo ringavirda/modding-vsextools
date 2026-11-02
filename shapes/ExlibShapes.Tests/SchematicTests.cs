@@ -23,6 +23,9 @@ public class SchematicTests {
       "exmods/mods/iiex/tests/goldens/iiex/blocktypes/furnace/blastcore.json"
     );
 
+  private static string? BlastcoreMap =>
+    FixturePath.Workspace("exmods/mods/iiex/tests/asbuilt/blastcore.json");
+
   // The client install the texture facts need. CI provisions one (.github/workflows/ci.yml), so
   // its absence there fails rather than skipping and leaving the placeholder regression unguarded.
   private static string RequireClientGame() {
@@ -544,11 +547,15 @@ public class SchematicTests {
 
   [Fact]
   public void Blastcore_golden_manifest_matches_the_reference_json_field_for_field() {
-    if (BlastcoreGolden is not { } golden)
+    if (BlastcoreGolden is not { } golden || BlastcoreMap is not { } map)
       return; // skips when the sibling exmods checkout is absent
     IReadOnlyList<string> roots = BlockIndex.DefaultRoots(golden);
     BlockIndex index = BlockIndex.Build(roots);
-    Layout layout = Layout.Load(golden);
+    Layout layout = AsBuilt.Attach(
+      Layout.Load(golden),
+      index,
+      AsBuilt.Read(map)
+    );
     Dictionary<int, LegendEntry> legend = Schematic.LegendColors(layout);
     foreach ((int n, string selector) in layout.Numbers) {
       ResolvedBlock? block = index.Resolve(selector);
@@ -562,9 +569,16 @@ public class SchematicTests {
     JObject m = Schematic.Manifest(
       layout,
       legend,
-      ["a.svg", "b.png"],
-      front: Presentation.FrontOf(drawn)
+      ["blastcore-plan-y0.svg", .. BlastcoreIsoFiles],
+      front: Presentation.FrontOf(drawn),
+      asBuiltSource: Path.GetFileName(map),
+      index: index
     );
+    if (FixturePath.WriteExpected)
+      FixturePath.Written(
+        "schematic/blastcore-manifest.json",
+        m.ToString(Newtonsoft.Json.Formatting.Indented)
+      );
     JObject expected = (JObject)
       JToken.Parse(
         File.ReadAllText(
@@ -581,8 +595,18 @@ public class SchematicTests {
   public void Blastcore_golden_plan_svg_layer_zero_matches_the_reference_text_exactly() {
     string? golden = BlastcoreGolden;
     Skip.If(golden is null, "the sibling exmods checkout is absent");
-    Layout layout = Layout.Load(golden!);
+    Skip.If(
+      BlastcoreMap is null,
+      "the sibling exmods checkout lacks the as-built map"
+    );
+    Layout layout = AsBuilt.Attach(
+      Layout.Load(golden!),
+      BlockIndex.Build(BlockIndex.DefaultRoots(golden!)),
+      AsBuilt.Read(BlastcoreMap!)
+    );
     string svg = Schematic.PlanSvg(layout, 0, Schematic.LegendColors(layout));
+    if (FixturePath.WriteExpected)
+      FixturePath.Written("schematic/blastcore-plan-y0.svg", svg);
     string expected = File.ReadAllText(
       FixturePath.Expected("schematic/blastcore-plan-y0.svg")
     );
@@ -599,12 +623,182 @@ public class SchematicTests {
     string game = RequireClientGame();
     IReadOnlyList<string> roots = BlockIndex.DefaultRoots(golden!);
     BlockIndex index = BlockIndex.Build(roots, game);
-    Layout layout = Layout.Load(golden!);
-    using SKBitmap actual = Schematic.IsoPng(layout, index, ppu: 8);
+    Skip.If(
+      BlastcoreMap is null,
+      "the sibling exmods checkout lacks the as-built map"
+    );
+    Layout layout = AsBuilt.Attach(
+      Layout.Load(golden!),
+      index,
+      AsBuilt.Read(BlastcoreMap!)
+    );
+    using SKBitmap actual = Schematic.IsoPng(
+      layout,
+      index,
+      ppu: 8,
+      outlines: Schematic.FunctionalCells(layout, index)
+    );
+    if (FixturePath.WriteExpected) {
+      using SKData data = actual.Encode(SKEncodedImageFormat.Png, 100);
+      FixturePath.Written("schematic/blastcore-iso.png", data.ToArray());
+    }
     using SKBitmap expected = SKBitmap.Decode(
       FixturePath.Expected("schematic/blastcore-iso.png")
     );
     AssertMatchesWithinTolerance(expected, actual, "blastcore-iso");
+  }
+
+  private static readonly string[] BlastcoreIsoFiles =
+  [
+    "blastcore-iso.png",
+    "blastcore-iso-a180.png",
+    "blastcore-iso-y1.png",
+    "blastcore-iso-y2.png",
+    "blastcore-iso-y10.png",
+  ];
+
+  private static string? blastcoreRun;
+
+  // `exmod schematic` on the blastcore golden with its map, the iso views only, once per test run.
+  private string BlastcoreRun() {
+    if (blastcoreRun != null)
+      return blastcoreRun;
+    string golden = BlastcoreGolden!;
+    string dir = Path.Combine(
+      Path.GetTempPath(),
+      "exlib-shapes-" + Guid.NewGuid().ToString("N")
+    );
+    Assert.Equal(
+      0,
+      Program.RunSchematic([
+        golden,
+        "--out",
+        dir,
+        "--views",
+        "iso",
+        "--as-built",
+        BlastcoreMap!,
+        "--game",
+        RequireClientGame(),
+      ])
+    );
+    return blastcoreRun = dir;
+  }
+
+  [SkippableFact]
+  public void Blastcore_run_writes_the_main_iso_the_opposite_corner_and_a_cutaway_per_functional_course() {
+    Skip.If(BlastcoreGolden is null, "the sibling exmods checkout is absent");
+    Skip.If(
+      BlastcoreMap is null,
+      "the sibling exmods checkout lacks the as-built map"
+    );
+    JObject manifest = (JObject)
+      JToken.Parse(
+        File.ReadAllText(Path.Combine(BlastcoreRun(), "blastcore.json"))
+      );
+    Assert.Equal(
+      BlastcoreIsoFiles,
+      manifest["files"]!.Select(f => Path.GetFileName((string)f!))
+    );
+  }
+
+  [SkippableTheory]
+  [InlineData("blastcore-iso-a180")]
+  [InlineData("blastcore-iso-y1")]
+  [InlineData("blastcore-iso-y2")]
+  [InlineData("blastcore-iso-y10")]
+  public void Blastcore_extra_iso_views_match_their_reference_renders(
+    string name
+  ) {
+    Skip.If(BlastcoreGolden is null, "the sibling exmods checkout is absent");
+    Skip.If(
+      BlastcoreMap is null,
+      "the sibling exmods checkout lacks the as-built map"
+    );
+    string actualPath = Path.Combine(BlastcoreRun(), name + ".png");
+    if (FixturePath.WriteExpected)
+      FixturePath.Written(
+        $"schematic/{name}.png",
+        File.ReadAllBytes(actualPath)
+      );
+    using SKBitmap actual = SKBitmap.Decode(actualPath);
+    using SKBitmap expected = SKBitmap.Decode(
+      FixturePath.Expected($"schematic/{name}.png")
+    );
+    AssertMatchesWithinTolerance(expected, actual, name);
+  }
+
+  [SkippableFact]
+  public void Functional_cells_are_the_blastcore_rows_that_are_neither_masonry_nor_open() {
+    string? golden = BlastcoreGolden;
+    Skip.If(golden is null, "the sibling exmods checkout is absent");
+    Skip.If(
+      BlastcoreMap is null,
+      "the sibling exmods checkout lacks the as-built map"
+    );
+    BlockIndex index = BlockIndex.Build(BlockIndex.DefaultRoots(golden!));
+    Layout layout = AsBuilt.Attach(
+      Layout.Load(golden!),
+      index,
+      AsBuilt.Read(BlastcoreMap!)
+    );
+    IReadOnlyList<(Offset Cell, string Color)> functional =
+      Schematic.FunctionalCells(layout, index);
+    var perSelector = layout
+      .Cells.Where(c =>
+        functional.Any(f => f.Cell == new Offset(c.X, c.Y, c.Z))
+      )
+      .GroupBy(c => layout.Numbers[c.Number])
+      .ToDictionary(g => g.Key, g => g.Count());
+    Assert.Equal(
+      new Dictionary<string, int> {
+        ["iiex:furnace-blastcore-*-n"] = 1,
+        ["iiex:furnace-irontap-w"] = 1,
+        ["iiex:furnace-slagtap-e"] = 1,
+        ["iiex:furnace-tuyere-*"] = 2,
+        ["iiex:furnace-tunneldoor-e"] = 1,
+      },
+      perSelector
+    );
+  }
+
+  [SkippableFact]
+  public void Outlines_draw_the_slag_tap_through_the_shell_in_its_legend_colour() {
+    string? golden = BlastcoreGolden;
+    Skip.If(golden is null, "the sibling exmods checkout is absent");
+    Skip.If(
+      BlastcoreMap is null,
+      "the sibling exmods checkout lacks the as-built map"
+    );
+    BlockIndex index = BlockIndex.Build(
+      BlockIndex.DefaultRoots(golden!),
+      RequireClientGame()
+    );
+    Layout layout = AsBuilt.Attach(
+      Layout.Load(golden!),
+      index,
+      AsBuilt.Read(BlastcoreMap!)
+    );
+    using SKBitmap plain = Schematic.IsoPng(layout, index, ppu: 8);
+    using SKBitmap outlined = Schematic.IsoPng(
+      layout,
+      index,
+      ppu: 8,
+      outlines: Schematic.FunctionalCells(layout, index)
+    );
+    Offset slag = layout
+      .Cells.Where(c => layout.Numbers[c.Number] == "iiex:furnace-slagtap-e")
+      .Select(c => new Offset(c.X, c.Y, c.Z))
+      .Single();
+    SKColor colour = SKColor.Parse(
+      Schematic.FunctionalCells(layout, index).Single(f => f.Cell == slag).Color
+    );
+    int drawn = 0;
+    for (int y = 0; y < plain.Height; y++)
+      for (int x = 0; x < plain.Width; x++)
+        if (outlined.GetPixel(x, y) == colour && plain.GetPixel(x, y) != colour)
+          drawn++;
+    Assert.InRange(drawn, 1500, 2500);
   }
 
   [Fact]

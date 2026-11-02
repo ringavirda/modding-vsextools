@@ -85,10 +85,10 @@ public static partial class ItemViews {
       seraph,
       FpClip(seraph.Shape, clip)
     );
-    Renderer.Mat4d placement =
-      Renderer.Mat4d.RotateByXyz(0, 0, pitchDeg * follow)
-      * Renderer.Mat4d.Translate(-8, -EyeHeight * 16, -8)
-      * Renderer.Mat4d.Translate(0, handsYOffset * 16, 0);
+    Core.Mat4d placement =
+      Core.Mat4d.RotateByXyz(0, 0, pitchDeg * follow)
+      * Core.Mat4d.Translate(-8, -EyeHeight * 16, -8)
+      * Core.Mat4d.Translate(0, handsYOffset * 16, 0);
     HashSet<string> arms =
     [
       .. FpArms.Select(name =>

@@ -351,12 +351,20 @@ internal static class Program {
     (string file, string[] flags) = FileAndFlags(
       args,
       "usage: exlib-shapes schematic FILE --out DIR [--views plan,iso] [--angle N] [--layer N|all] "
-        + "[--ppu N] [--shape COPY] [--roots PATH...] [--game PATH]"
+        + "[--ppu N] [--shape COPY] [--as-built FILE] [--roots PATH...] [--game PATH]"
     );
     RejectUnknownFlags(
       "schematic",
       flags,
-      ["--out", "--views", "--angle", "--layer", "--ppu", "--shape"],
+      [
+        "--out",
+        "--views",
+        "--angle",
+        "--layer",
+        "--ppu",
+        "--shape",
+        "--as-built",
+      ],
       ["--roots"],
       []
     );
@@ -398,8 +406,12 @@ internal static class Program {
         "--shape applies to a planned layout (layout-recap/1), not a blocktype file"
       );
     Variant? drawn = DrawnVariant(index, file, null);
+    Layout loaded = Layout.Load(file, drawn?.Path);
+    string? asBuilt = OptOf(flags, "--as-built");
+    if (asBuilt != null)
+      loaded = AsBuilt.Attach(loaded, index, AsBuilt.Read(asBuilt));
     Presentation.Staged staged = Presentation.Stage(
-      Footprint.Placed(Layout.Load(file, drawn?.Path), index),
+      Footprint.Placed(loaded, index),
       drawn
     );
     Layout layout = staged.Layout;
@@ -436,19 +448,48 @@ internal static class Program {
       }
 
     if (viewSet.Contains("iso")) {
+      IReadOnlyList<(Offset Cell, string Color)> outlines =
+        Schematic.FunctionalCells(layout, index);
       string path = Path.Combine(outDir, $"{stem}-iso.png");
-      using (SKBitmap img = Schematic.IsoPng(layout, index, ppu, spin: spin))
+      using (
+        SKBitmap img = Schematic.IsoPng(
+          layout,
+          index,
+          ppu,
+          spin: spin,
+          outlines: outlines
+        )
+      )
         SavePng(img, path);
       files.Add(path);
 
-      List<int> cutLayers = layer switch {
+      Layout opposite = layout.Rotated(180);
+      string oppositePath = Path.Combine(outDir, $"{stem}-iso-a180.png");
+      using (
+        SKBitmap img = Schematic.IsoPng(
+          opposite,
+          index,
+          ppu,
+          spin: spin + 180,
+          outlines: Schematic.FunctionalCells(opposite, index)
+        )
+      )
+        SavePng(img, oppositePath);
+      files.Add(oppositePath);
+
+      SortedSet<int> cutLayers = layer switch {
         "all" => [.. layout.Layers()],
         null => [],
         _ => [int.Parse(layer, CultureInfo.InvariantCulture)],
       };
+      foreach ((Offset cell, _) in outlines)
+        if (cell != layout.Anchor)
+          cutLayers.Add(cell.Y);
       foreach (int y in cutLayers) {
         string cutPath = Path.Combine(outDir, $"{stem}-iso-y{y}.png");
-        using (SKBitmap img = Schematic.IsoPng(layout, index, ppu, y, spin))
+        using (
+          SKBitmap img = Schematic.IsoPng(layout, index, ppu, y, spin, outlines)
+        )
           SavePng(img, cutPath);
         files.Add(cutPath);
       }
@@ -463,7 +504,9 @@ internal static class Program {
       index.ParseWarnings,
       plans,
       front,
-      Schematic.UnpaintedFaces(layout, index)
+      Schematic.UnpaintedFaces(layout, index),
+      asBuilt == null ? null : Path.GetFileName(asBuilt),
+      index
     );
     string manifestPath = Path.Combine(outDir, $"{stem}.json");
     File.WriteAllText(manifestPath, manifest.ToString(Formatting.Indented));

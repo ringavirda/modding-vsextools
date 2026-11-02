@@ -1,7 +1,11 @@
 {
   "files": [
-    "a.svg",
-    "b.png"
+    "blastcore-plan-y0.svg",
+    "blastcore-iso.png",
+    "blastcore-iso-a180.png",
+    "blastcore-iso-y1.png",
+    "blastcore-iso-y2.png",
+    "blastcore-iso-y10.png"
   ],
   "plans": [],
   "front": "south",
@@ -12,7 +16,14 @@
       "selector": "*:@(refractorybricks-good-tier.*|bandedbrick-(face|corner|cornerleft|cornerright|end)-tier[123]-(n|e|s|w)|bandedbrick-plain-tier[123]|hoopedbrick-(face|corner|plain)-tier[123]-(n|e|s|w))",
       "representative": "game:refractorybricks-good-tier1",
       "color": "#4C72B0",
-      "optional": false
+      "optional": false,
+      "finished": {
+        "game:refractorybricks-good-tier1": 64,
+        "iiex:bandedbrick-face-tier1-e": 3,
+        "iiex:bandedbrick-face-tier1-n": 2,
+        "iiex:bandedbrick-face-tier1-s": 2,
+        "iiex:bandedbrick-face-tier1-w": 3
+      }
     },
     {
       "number": 2,
@@ -20,7 +31,26 @@
       "selector": "*:@(claybricks-(good-fire|clinkerrough)|refractorybricks-good-.*|brickcourse-.*|bandedbrick-(face|corner|cornerleft|cornerright|end)-[a-z0-9]+-(n|e|s|w)|bandedbrick-plain-[a-z0-9]+|hoopedbrick-(face|corner|plain)-tier[123]-(n|e|s|w))",
       "representative": "game:claybricks-clinkerrough",
       "color": "#DD8452",
-      "optional": false
+      "optional": false,
+      "finished": {
+        "game:claybricks-good-fire": 62,
+        "iiex:bandedbrick-corner-fire-e": 13,
+        "iiex:bandedbrick-corner-fire-n": 13,
+        "iiex:bandedbrick-corner-fire-s": 13,
+        "iiex:bandedbrick-corner-fire-w": 13,
+        "iiex:bandedbrick-corner-tier1-e": 3,
+        "iiex:bandedbrick-corner-tier1-n": 3,
+        "iiex:bandedbrick-corner-tier1-s": 1,
+        "iiex:bandedbrick-corner-tier1-w": 1,
+        "iiex:bandedbrick-face-fire-e": 35,
+        "iiex:bandedbrick-face-fire-n": 36,
+        "iiex:bandedbrick-face-fire-s": 36,
+        "iiex:bandedbrick-face-fire-w": 35,
+        "iiex:bandedbrick-face-tier1-e": 3,
+        "iiex:bandedbrick-face-tier1-n": 3,
+        "iiex:bandedbrick-face-tier1-s": 3,
+        "iiex:bandedbrick-face-tier1-w": 1
+      }
     },
     {
       "number": 3,
@@ -28,7 +58,13 @@
       "selector": "*:@(claybricks-(good-fire|clinkerrough)|refractorybricks-good-.*|brickcourse-.*|bandedbrick-(face|corner|cornerleft|cornerright|end|workarch)-[a-z0-9]+-(n|e|s|w)|bandedbrick-plain-[a-z0-9]+)",
       "representative": "game:claybricks-clinkerrough",
       "color": "#55A868",
-      "optional": false
+      "optional": false,
+      "finished": {
+        "iiex:bandedbrick-workarch-fire-e": 1,
+        "iiex:bandedbrick-workarch-fire-n": 1,
+        "iiex:bandedbrick-workarch-fire-s": 1,
+        "iiex:bandedbrick-workarch-fire-w": 1
+      }
     },
     {
       "number": 4,
@@ -60,7 +96,11 @@
       "selector": "iiex:furnace-tuyere-*",
       "representative": "iiex:furnace-tuyere-s",
       "color": "#DA8BC3",
-      "optional": false
+      "optional": false,
+      "faced": {
+        "iiex:furnace-tuyere-n": 1,
+        "iiex:furnace-tuyere-s": 1
+      }
     },
     {
       "number": 8,
@@ -73,31 +113,35 @@
     {
       "number": 9,
       "display": 9,
-      "selector": "*:@(refractorybricks-good-tier.*|hoopedbrick-(face|corner|plain)-tier[123]-(n|e|s|w))",
+      "selector": "*:@(refractorybricks-good-tier.*|bandedbrick-(cornerleft|cornerright)-tier[123]-(n|e|s|w))",
       "representative": "game:refractorybricks-good-tier1",
       "color": "#CCB974",
-      "optional": false
+      "optional": false,
+      "finished": {
+        "iiex:bandedbrick-cornerleft-tier1-w": 2,
+        "iiex:bandedbrick-cornerright-tier1-s": 2
+      }
     },
     {
       "number": 10,
       "display": 10,
-      "selector": "*:@(refractorybricks-good-tier.*|bandedbrick-(cornerleft|cornerright)-tier[123]-(n|e|s|w))",
-      "representative": "game:refractorybricks-good-tier1",
+      "selector": "exlib:structurefiller",
+      "representative": "exlib:structurefiller",
       "color": "#64B5CD",
       "optional": false
     },
     {
       "number": 11,
       "display": 11,
-      "selector": "exlib:structurefiller",
-      "representative": "exlib:structurefiller",
+      "selector": "*:@(air|coalpile|furnace-chargepile)",
+      "representative": null,
       "color": "#D96262",
-      "optional": false
+      "optional": true
     },
     {
       "number": 12,
       "display": 12,
-      "selector": "*:@(air|coalpile|furnace-chargepile)",
+      "selector": "*:@(air|coalpile|furnace-chargepile|hearthmetal-.*)",
       "representative": null,
       "color": "#6284D9",
       "optional": true
@@ -105,20 +149,16 @@
     {
       "number": 13,
       "display": 13,
-      "selector": "*:@(air|coalpile|furnace-chargepile|hearthmetal-.*)",
-      "representative": null,
-      "color": "#A7D962",
-      "optional": true
-    },
-    {
-      "number": 14,
-      "display": 14,
       "selector": "game:air",
       "representative": null,
-      "color": "#D962CA",
+      "color": "#A7D962",
       "optional": true
     }
   ],
   "unpaintedFaces": [],
-  "warnings": []
+  "warnings": [],
+  "asBuilt": {
+    "source": "blastcore.json",
+    "cells": 356
+  }
 }

@@ -131,28 +131,28 @@ public static partial class ItemViews {
   /// </summary>
   /// <param name="t">The collectible's resolved gui transform.</param>
   /// <param name="block">True when the collectible is a block, false for an item.</param>
-  internal static Renderer.Mat4d SlotModel(ItemTransform t, bool block = false) {
+  internal static Core.Mat4d SlotModel(ItemTransform t, bool block = false) {
     const double size = 25.6;
     (double ox, double oy, double oz) = t.Origin;
-    return Renderer.Mat4d.Scale(1, -1, 1)
-      * (block ? Renderer.Mat4d.Identity : Renderer.Mat4d.Translate(-3, -1, 0))
-      * Renderer.Mat4d.Translate(
+    return Core.Mat4d.Scale(1, -1, 1)
+      * (block ? Core.Mat4d.Identity : Core.Mat4d.Translate(-3, -1, 0))
+      * Core.Mat4d.Translate(
         ox + t.Translation.X,
         oy + t.Translation.Y,
         oz * size + t.Translation.Z
       )
-      * Renderer.Mat4d.Scale(
+      * Core.Mat4d.Scale(
         size * t.ScaleXyz.X,
         size * t.ScaleXyz.Y,
         size * t.ScaleXyz.Z
       )
-      * Renderer.Mat4d.RotateByXyz(
+      * Core.Mat4d.RotateByXyz(
         t.Rotation.X + (block ? 180 : 0),
         t.Rotation.Y,
         t.Rotation.Z
       )
-      * Renderer.Mat4d.Translate(-ox, -oy, -oz)
-      * Renderer.Mat4d.Scale(1.0 / 16, 1.0 / 16, 1.0 / 16);
+      * Core.Mat4d.Translate(-ox, -oy, -oz)
+      * Core.Mat4d.Scale(1.0 / 16, 1.0 / 16, 1.0 / 16);
   }
 
   /// <summary>
@@ -161,21 +161,17 @@ public static partial class ItemViews {
   /// mesh unit per unit of scale, then rotation about y, z and x in call order (a vertex takes x
   /// first, then z, then y).
   /// </summary>
-  internal static Renderer.Mat4d GroundModel(ItemTransform t) =>
-    Renderer.Mat4d.Scale(16, 16, 16)
-    * Renderer.Mat4d.Translate(
-      t.Translation.X,
-      t.Translation.Y,
-      t.Translation.Z
-    )
-    * Renderer.Mat4d.Scale(
+  internal static Core.Mat4d GroundModel(ItemTransform t) =>
+    Core.Mat4d.Scale(16, 16, 16)
+    * Core.Mat4d.Translate(t.Translation.X, t.Translation.Y, t.Translation.Z)
+    * Core.Mat4d.Scale(
       0.2 * t.ScaleXyz.X,
       0.2 * t.ScaleXyz.Y,
       0.2 * t.ScaleXyz.Z
     )
-    * Renderer.Mat4d.RotateByXyz(0, t.Rotation.Y, 0)
-    * Renderer.Mat4d.RotateByXyz(0, 0, t.Rotation.Z)
-    * Renderer.Mat4d.RotateByXyz(t.Rotation.X, 0, 0)
-    * Renderer.Mat4d.Translate(-t.Origin.X, -t.Origin.Y, -t.Origin.Z)
-    * Renderer.Mat4d.Scale(1.0 / 16, 1.0 / 16, 1.0 / 16);
+    * Core.Mat4d.RotateByXyz(0, t.Rotation.Y, 0)
+    * Core.Mat4d.RotateByXyz(0, 0, t.Rotation.Z)
+    * Core.Mat4d.RotateByXyz(t.Rotation.X, 0, 0)
+    * Core.Mat4d.Translate(-t.Origin.X, -t.Origin.Y, -t.Origin.Z)
+    * Core.Mat4d.Scale(1.0 / 16, 1.0 / 16, 1.0 / 16);
 }

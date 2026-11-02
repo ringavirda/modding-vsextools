@@ -52,9 +52,23 @@ public class ResolverDumpTests {
       IReadOnlyList<string> roots = BlockIndex.DefaultRoots(golden);
       BlockIndex index = BlockIndex.Build(roots);
       string stem = Path.GetFileNameWithoutExtension(golden);
+      string map = Path.Combine(
+        repo,
+        "mods",
+        "iiex",
+        "tests",
+        "asbuilt",
+        "blastcore.json"
+      );
+      IReadOnlyList<(Offset At, string Code)>? entries =
+        stem == "blastcore" && rel.StartsWith("mods/iiex/")
+          ? AsBuilt.Read(map)
+          : null;
 
       foreach (int angle in new[] { 0, 90, 180, 270 }) {
         Layout layout = Layout.Load(golden);
+        if (entries != null)
+          layout = AsBuilt.Attach(layout, index, entries);
         if (angle != 0)
           layout = layout.Rotated(angle);
         string connectors = string.Join(
@@ -83,6 +97,9 @@ public class ResolverDumpTests {
             );
           }
         }
+        if (entries != null)
+          foreach (string line in AsBuiltLines(layout, index, entries, angle))
+            sb.AppendLine(line);
       }
     }
 
@@ -94,10 +111,38 @@ public class ResolverDumpTests {
       sb.ToString()
     );
 
+    if (FixturePath.WriteExpected)
+      FixturePath.Written("schematic/resolve-dump.txt", sb.ToString());
     string expected = File.ReadAllText(
       FixturePath.Expected("schematic/resolve-dump.txt")
     );
     Assert.Equal(Normalize(expected), Normalize(sb.ToString()));
+  }
+
+  /// <summary>One <c>asbuilt x y z n code shape rot</c> line per entry of an as-built map, in map
+  /// order, at the entry's offset in <paramref name="layout"/> (a layout the map is attached to,
+  /// turned by <paramref name="angle"/>), <c>n</c> the cell's number there.</summary>
+  internal static IEnumerable<string> AsBuiltLines(
+    Layout layout,
+    BlockIndex index,
+    IEnumerable<(Offset At, string Code)> entries,
+    int angle
+  ) {
+    foreach ((Offset at, string code) in entries) {
+      Offset o = Layout.RotateOffset(at, angle);
+      Cell cell = layout.Cells.Single(c =>
+        c.X == o.X && c.Y == o.Y && c.Z == o.Z
+      );
+      ResolvedBlock? block = index.Resolve(cell.Finished!);
+      string? shape =
+        block?.ShapePath != null ? Path.GetFileName(block.ShapePath) : null;
+      yield return $"asbuilt {o.X} {o.Y} {o.Z} {cell.Number} {cell.Finished} shape={shape ?? "None"} "
+        + (
+          block == null
+            ? "rot=None"
+            : $"rot=({FixtureText(block.RotateX)},{FixtureText(block.RotateY)},{FixtureText(block.RotateZ)})"
+        );
+    }
   }
 
   // The fixture's own number format: True/False, and a whole number always shown with a

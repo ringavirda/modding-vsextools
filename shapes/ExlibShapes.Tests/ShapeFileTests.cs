@@ -1,4 +1,6 @@
+using System;
 using System.Linq;
+using System.Numerics;
 using Newtonsoft.Json;
 using Vintagestory.API.Common;
 using Xunit;
@@ -44,5 +46,31 @@ public class ShapeFileTests {
       ["Tooth", "Tooth", "Tooth"],
       shape.Leaves().Select(el => el.Name)
     );
+  }
+
+  private static Vector3 WorldOfOrigin(string element) {
+    string json = "{\"elements\": [" + element + "]}";
+    LoadedShape shape = ShapeFile.FromRaw(
+      JsonConvert.DeserializeObject<Shape>(json)!,
+      null
+    );
+    return Vector3.Transform(Vector3.Zero, Geometry.WorldMatrices(shape)["A"]);
+  }
+
+  [Fact]
+  public void A_rotated_element_with_no_origin_pivots_at_the_parents_zero() {
+    Vector3 p = WorldOfOrigin(
+      """{"name": "A", "from": [4,0,0], "to": [5,1,1], "rotationZ": 90, "faces": {}}"""
+    );
+    Assert.Equal(0f, p.X, 1e-4f);
+    Assert.Equal(4f, MathF.Abs(p.Y), 1e-4f);
+  }
+
+  [Fact]
+  public void Element_scale_is_multiplied_into_the_local_matrix() {
+    Vector3 p = WorldOfOrigin(
+      """{"name": "A", "from": [1,0,0], "to": [2,1,1], "scaleX": 2, "faces": {}}"""
+    );
+    Assert.Equal(2f, p.X, 1e-4f);
   }
 }

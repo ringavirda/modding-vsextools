@@ -205,10 +205,7 @@ public static class Presentation {
   private static List<(Vector3 Normal, double Area, string Texture)> Faces(
     LoadedShape shape
   ) {
-    Dictionary<string, Renderer.Mat4d> mats = Renderer.WorldMatricesD(
-      shape,
-      null
-    );
+    Dictionary<string, Core.Mat4d> mats = Renderer.WorldMatricesD(shape, null);
     var faces = new List<(Vector3, double, string)>();
     foreach (Node leaf in shape.Leaves())
       foreach (Renderer.QuadD quad in Renderer.FaceQuadsD(leaf, mats[leaf.Path])) {

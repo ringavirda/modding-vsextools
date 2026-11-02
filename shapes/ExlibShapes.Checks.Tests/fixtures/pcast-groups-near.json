@@ -1,0 +1,88 @@
+{
+ "textures": {
+  "cast-iron1": "block/metal/cast-iron1"
+ },
+ "elements": [
+  {
+   "name": "Bed",
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    0,
+    0,
+    0
+   ],
+   "children": [
+    {
+     "name": "Left",
+     "from": [
+      0,
+      0,
+      0
+     ],
+     "to": [
+      0,
+      0,
+      0
+     ],
+     "children": [
+      {
+       "name": "LeftBody",
+       "from": [
+        0,
+        0,
+        0
+       ],
+       "to": [
+        2,
+        4,
+        6
+       ],
+       "faces": {
+        "up": {
+         "texture": "#cast-iron1"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "name": "Right",
+     "from": [
+      0,
+      0,
+      0
+     ],
+     "to": [
+      0,
+      0,
+      0
+     ],
+     "children": [
+      {
+       "name": "RightBody",
+       "from": [
+        2.5,
+        0,
+        0
+       ],
+       "to": [
+        6,
+        4,
+        6
+       ],
+       "faces": {
+        "up": {
+         "texture": "#cast-iron1"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

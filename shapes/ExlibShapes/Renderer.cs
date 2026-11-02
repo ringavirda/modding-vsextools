@@ -4,10 +4,11 @@ using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using SkiaSharp;
+using Mat4d = ExpandedLib.Shapes.Core.Mat4d;
 
-// Lets GeometryTests cross-check Geometry's public float32 chain against the double-precision
-// chain below, which the pixel comparison in RendererTests already validates end to end - closing
-// the coverage gap a float32-only unit test on Geometry alone would leave.
+// Lets GeometryTests cross-check Geometry's public float32 chain against Core's double-precision
+// engine (ExlibShapes.Core/Engine), which the pixel comparison in RendererTests already validates end to
+// end - closing the coverage gap a float32-only unit test on Geometry alone would leave.
 [assembly: InternalsVisibleTo("ExlibShapes.Tests")]
 
 namespace ExpandedLib.Shapes;
@@ -169,134 +170,14 @@ public static class Renderer {
     public (double X, double Y, double Z) Mul(Vector3 v) => Mul(v.X, v.Y, v.Z);
   }
 
-  // A double-precision mirror of Geometry's world-matrix and face-quad chain, used only for the
-  // pixel data this renderer produces. Model Creator shapes routinely abut two elements at an
-  // exact shared face; System.Numerics' float32 can, after several composed local matrices,
-  // flip which of two coincident faces wins the z-buffer's strict `>` test at a seam pixel -
-  // a difference in which face is drawn, not a rounding difference in one face's own colour, so
-  // the pixel tolerance cannot absorb it. Geometry's own float32 API is unaffected and stays as
-  // specified for every other consumer, which tolerates the schematic drawings' own rounding.
-  internal readonly struct Mat4d {
-    private readonly double[] _m; // row-major 4x4, m[r*4+c], column-vector convention (m @ v)
-
-    private Mat4d(double[] m) => _m = m;
-
-    public static Mat4d Identity =>
-      new([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
-
-    public static Mat4d Translate(double x, double y, double z) {
-      double[] m = [1, 0, 0, x, 0, 1, 0, y, 0, 0, 1, z, 0, 0, 0, 1];
-      return new Mat4d(m);
-    }
-
-    public static Mat4d Scale(double x, double y, double z) =>
-      new([x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0, 0, 0, 0, 1]);
-
-    // Mat4f.RotateByXYZ, column-vector convention.
-    public static Mat4d RotateByXyz(double rx, double ry, double rz) {
-      double sx = Math.Sin(rx * Math.PI / 180),
-        cx = Math.Cos(rx * Math.PI / 180);
-      double sy = Math.Sin(ry * Math.PI / 180),
-        cy = Math.Cos(ry * Math.PI / 180);
-      double sz = Math.Sin(rz * Math.PI / 180),
-        cz = Math.Cos(rz * Math.PI / 180);
-      double[] m = Identity._m.ToArray();
-      m[0] = cy * cz;
-      m[1] = -cy * sz;
-      m[2] = sy;
-      m[4] = sx * sy * cz + cx * sz;
-      m[5] = cx * cz - sx * sy * sz;
-      m[6] = -sx * cy;
-      m[8] = -cx * sy * cz + sx * sz;
-      m[9] = sx * cz + cx * sy * sz;
-      m[10] = cx * cy;
-      return new Mat4d(m);
-    }
-
-    public static Mat4d operator *(Mat4d a, Mat4d b) {
-      var r = new double[16];
-      for (int row = 0; row < 4; row++)
-        for (int col = 0; col < 4; col++) {
-          double s = 0;
-          for (int k = 0; k < 4; k++)
-            s += a._m[row * 4 + k] * b._m[k * 4 + col];
-          r[row * 4 + col] = s;
-        }
-      return new Mat4d(r);
-    }
-
-    public (double X, double Y, double Z) Mul(double x, double y, double z) {
-      double[] v = [x, y, z, 1];
-      var r = new double[4];
-      for (int row = 0; row < 4; row++)
-        for (int k = 0; k < 4; k++)
-          r[row] += _m[row * 4 + k] * v[k];
-      return (r[0], r[1], r[2]);
-    }
-
-    public (double X, double Y, double Z) Mul(
-      (double X, double Y, double Z) v
-    ) => Mul(v.X, v.Y, v.Z);
-
-    // The upper-left 3x3 applied to a direction: computed straight from the
-    // matrix's own linear entries, not by subtracting two transformed points - that subtraction
-    // rounds differently at the ULP level, enough to matter at an exactly grazing face (view-space
-    // normal.z essentially 0) the cull test is deciding.
-    public (double X, double Y, double Z) MulLinear(
-      double x,
-      double y,
-      double z
-    ) =>
-      (
-        _m[0] * x + _m[1] * y + _m[2] * z,
-        _m[4] * x + _m[5] * y + _m[6] * z,
-        _m[8] * x + _m[9] * y + _m[10] * z
-      );
-  }
-
-  internal static Mat4d LocalMatrixD(Node el, Pose? pose) {
-    (double X, double Y, double Z) rot =
-      pose == null
-        ? (el.Rotation.X, el.Rotation.Y, el.Rotation.Z)
-        : (
-          el.Rotation.X + pose.Rotation.X,
-          el.Rotation.Y + pose.Rotation.Y,
-          el.Rotation.Z + pose.Rotation.Z
-        );
-    (double X, double Y, double Z) offset =
-      pose == null ? (0, 0, 0) : (pose.Offset.X, pose.Offset.Y, pose.Offset.Z);
-    (double X, double Y, double Z) stretch =
-      pose == null
-        ? (1, 1, 1)
-        : (pose.Stretch.X, pose.Stretch.Y, pose.Stretch.Z);
-    return Mat4d.Translate(el.Origin.X, el.Origin.Y, el.Origin.Z)
-      * Mat4d.RotateByXyz(rot.X, rot.Y, rot.Z)
-      * Mat4d.Scale(stretch.X, stretch.Y, stretch.Z)
-      * Mat4d.Translate(
-        el.From.X + offset.X - el.Origin.X,
-        el.From.Y + offset.Y - el.Origin.Y,
-        el.From.Z + offset.Z - el.Origin.Z
-      );
-  }
+  internal static Mat4d LocalMatrixD(Node el, Pose? pose) =>
+    CoreBridge.Local(el, pose);
 
   internal static Dictionary<string, Mat4d> WorldMatricesD(
     LoadedShape shape,
     IReadOnlyDictionary<string, Pose>? poses,
     Mat4d? model = null
-  ) {
-    var outp = new Dictionary<string, Mat4d>();
-    void Rec(Node el, Mat4d parentM) {
-      Pose? pose = null;
-      poses?.TryGetValue(el.Name, out pose);
-      Mat4d m = parentM * LocalMatrixD(el, pose);
-      outp[el.Path] = m;
-      foreach (Node c in el.Children)
-        Rec(c, m);
-    }
-    foreach (Node el in shape.Elements)
-      Rec(el, model ?? Mat4d.Identity);
-    return outp;
-  }
+  ) => CoreBridge.WorldMatrices(shape, poses, model);
 
   /// <summary>One shape of a scene drawn by the part-list overloads of <see cref="Render"/>,
   /// <see cref="Fit"/> and <see cref="Project"/>: its own textures and poses, placed by

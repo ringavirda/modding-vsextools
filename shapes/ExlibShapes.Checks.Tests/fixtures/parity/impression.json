@@ -1,0 +1,21 @@
+{
+ "fill-ok": {
+  "exit": 0,
+  "enumerated": 1,
+  "faulted": []
+ },
+ "fill-in": {
+  "exit": 1,
+  "enumerated": 1,
+  "faulted": [
+   "in"
+  ]
+ },
+ "fill-open": {
+  "exit": 1,
+  "enumerated": 1,
+  "faulted": [
+   "open"
+  ]
+ }
+}
