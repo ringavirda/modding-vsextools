@@ -603,7 +603,27 @@ public class FillingTests(ITestOutputHelper output) {
           )
         );
       }
-      PourRequest r = Request("floor", Leaves([.. boxes]), [Mat4d.Identity]);
+      List<Leaf> leaves = Leaves([.. boxes]);
+      for (int i = 0; i < rng.Next(0, 3); i++) {
+        double tx = Q(3, 21),
+          tz = Q(-12, 3),
+          ty = Q(3, 10);
+        double angle = rng.Next(2) == 0 ? 22.5 : 45;
+        Element e = Reader
+          .Read(
+            $$"""
+            { "elements": [ { "name": "Turn{{i}}", "from": [{{tx}}, {{ty}}, {{tz}}], "to": [{{tx
+              + Q(1, 5)}}, {{Math.Min(13, ty + Q(0.5, 3))}}, {{tz + Q(1, 5)}}],
+              "rotationY": {{angle}}, "rotationOrigin": [{{tx + 1}}, {{ty}}, {{tz + 1}}],
+              "faces": { "up": { "texture": "#c" } } } ] }
+            """
+          )
+          .Elements[0];
+        leaves.Add(
+          new Leaf($"Turn{i}", $"Turn{i}", $"Turn{i}", e, "cast", "cast")
+        );
+      }
+      PourRequest r = Request("floor", leaves, [Mat4d.Identity]);
       FillingResult f = Make(r);
       var input = new CheckInput(
         f.Filling.Shape,
@@ -618,7 +638,7 @@ public class FillingTests(ITestOutputHelper output) {
   }
 
   [Fact]
-  public void A_turned_column_is_filled_exactly_at_the_fine_step_and_counted_at_both() {
+  public void A_turned_column_is_filled_within_the_band_and_counted_at_both_steps() {
     Element e = Reader
       .Read(
         """
@@ -647,14 +667,13 @@ public class FillingTests(ITestOutputHelper output) {
         )
       ).Filling.Shape.Elements.Count;
 
-    PourRequest fine = Request(
+    PourRequest pour = Request(
       "pit",
       cast,
       [At(16, -13, 0)],
-      pattern: patternShape,
-      step: Fillings.Fine
+      pattern: patternShape
     );
-    FillingResult f = Make(fine);
+    FillingResult f = Make(pour);
     CheckResult impression = new Impression().Run(
       new CheckInput(
         f.Filling.Shape,
@@ -740,5 +759,35 @@ public class FillingTests(ITestOutputHelper output) {
     );
 
     Assert.NotEmpty(f.Filling.Shape.Elements);
+  }
+
+  [SkippableFact]
+  public void The_shaper_standard_pattern_is_made_in_under_30_seconds() {
+    string? file = ShaperStandard();
+    Skip.If(
+      file is null,
+      "the sibling exmods checkout with cast-shaperstandard is absent"
+    );
+    Shape drawn = Reader.Read(File.ReadAllText(file!));
+    List<Leaf> cast = Select.Groups(drawn, ["Standard"]);
+
+    var watch = System.Diagnostics.Stopwatch.StartNew();
+    var made = System.Threading.Tasks.Task.Run(() =>
+      Patterns.Make(Ctx, "pattern-castthing", cast, [], null, "spec", 1.5)
+    );
+    bool done;
+    string outcome;
+    try {
+      done = made.Wait(TimeSpan.FromSeconds(30));
+      outcome = done ? $"{made.Result.Loose.Count} loose pieces" : "not made";
+    } catch (AggregateException e) when (e.InnerException is CastGenException c) {
+      done = true;
+      outcome = c.Message;
+    }
+    output.WriteLine(
+      $"shaper standard pattern: {watch.Elapsed.TotalSeconds:F1} s, {outcome}"
+    );
+
+    Assert.True(done);
   }
 }

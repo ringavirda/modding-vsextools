@@ -93,7 +93,7 @@ public class SandTests {
     var occ = Occupancy.Of(Ring());
     var region = B(0, 0, 0, 16, 4, 16);
 
-    List<Box> sand = Sands.Fill(region, occ, 1.0 / 32);
+    List<Box> sand = Sands.Fill(region, occ);
 
     Assert.Equal(4, occ.Prisms.Count);
     Assert.True(In(sand, new Vec3(8, 2, 8)));
@@ -104,7 +104,11 @@ public class SandTests {
         In(sand, new Vec3(x, 2, z)),
         $"sand in the ring wall at {x}, {z}"
       );
-    Assert.Equal(16 * 4 * 16 - Sands.Volume(occ, 1.0 / 32), Volume(sand), 1e-6);
+    Assert.Equal(
+      16 * 4 * 16 - Sands.Volume(occ, Sands.Step),
+      Volume(sand),
+      1e-6
+    );
   }
 
   [Fact]

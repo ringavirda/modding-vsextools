@@ -32,6 +32,21 @@ internal readonly record struct Lattice(double Step, double Phase) {
     return true;
   }
 
+  /// <summary>The area of the faces of a box of <paramref name="size"/> placed by <paramref name="world"/> whose
+  /// normal does not lie on a world axis, in vx2; 0 when the leaf is aligned.</summary>
+  public static double TurnedArea(Mat4d world, Vec3 size) {
+    double[] extent = [size.X, size.Y, size.Z];
+    double total = 0;
+    for (int a = 0; a < 3; a++) {
+      var unit = new double[3];
+      unit[a] = 1;
+      Vec3 d = world.MulLinear(new Vec3(unit[0], unit[1], unit[2]));
+      if (Enumerable.Range(0, 3).Count(i => Math.Abs(d[i]) > Eps) != 1)
+        total += 2 * extent[(a + 1) % 3] * extent[(a + 2) % 3];
+    }
+    return total;
+  }
+
   /// <summary>
   /// The solid of a box of <paramref name="size"/> placed by <paramref name="world"/>: its exact bounds when aligned,
   /// else the boxes of the lattice cells whose sample lies inside it, a run along x per row of y and z, equal runs of

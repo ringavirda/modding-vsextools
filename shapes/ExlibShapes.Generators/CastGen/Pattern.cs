@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
-using System.Text.RegularExpressions;
 using ExpandedLib.Shapes.Checks;
 using ExpandedLib.Shapes.Core;
 
@@ -25,11 +24,9 @@ public sealed record PatternResult(
 );
 
 /// <summary>Step 9: the pattern of a casting.</summary>
-public static partial class Patterns {
+public static class Patterns {
   private const double Eps = 1e-9;
-
-  [GeneratedRegex(@", (\d+) not unbroken")]
-  private static partial Regex Broken();
+  private const double Slack = 1e-7;
 
   /// <summary>The pattern of a casting: its cast leaves (allowances already out) and the core prints, every face
   /// the pattern role's texture. Where a column of the pattern would not draw from the parting, the leaves that
@@ -139,24 +136,26 @@ public static partial class Patterns {
   ) {
     List<Leaf> main = [.. leaves];
     var taken = new List<Leaf>();
-    int broken = BrokenColumns(main, parting);
-    while (broken > 0) {
+    var field = new DrawField(Flush.ShapeOf(main), parting);
+    double broken = field.Broken;
+    while (broken > Slack) {
       Leaf? best = null;
-      int least = broken;
+      double least = broken;
       foreach (Leaf l in main.OrderBy(l => l.Name, StringComparer.Ordinal)) {
-        int left = BrokenColumns([.. main.Where(m => m != l)], parting);
-        if (left < least) {
+        double left = field.Without(l.Name);
+        if (left < least - Slack) {
           best = l;
           least = left;
         }
       }
       if (best == null)
         throw new CastGenException(
-          $"{item}: {broken} columns do not draw from the parting at y {Fmt.G(parting)} and no one leaf taken off frees them"
+          $"{item}: {Fmt.G(broken)} vx2 of columns do not draw from the parting at y {Fmt.G(parting)} and no one leaf taken off frees them"
         );
       main.Remove(best);
+      field.Remove(best.Name);
       taken.Add(best);
-      broken = least;
+      broken = field.Broken;
     }
 
     var groups = new List<List<Leaf>>();
@@ -181,15 +180,6 @@ public static partial class Patterns {
       ]
     );
   }
-
-  private static int BrokenColumns(List<Leaf> leaves, double parting) =>
-    leaves.Count == 0
-      ? 0
-      : new Draw()
-        .Run(new CheckInput(Flush.ShapeOf(leaves), Parting: parting))
-        .Lines.Select(l => Broken().Match(l))
-        .Where(m => m.Success)
-        .Sum(m => int.Parse(m.Groups[1].Value));
 
   private static bool Touch(Box a, Box b) =>
     Enumerable
