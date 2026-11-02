@@ -19,7 +19,17 @@ public class ContractTests {
     foreach (string kind in KindTable.Kinds)
       Assert.NotNull(KindTable.Gates(kind));
     Assert.Equal(
-      ["impression", "flood", "capacity", "fit", "runner"],
+      [
+        "impression",
+        "flood",
+        "capacity",
+        "fit",
+        "runner",
+        "pieces",
+        "feeding",
+        "pit",
+        "parting",
+      ],
       KindTable.Gates("filling")
     );
   }
@@ -39,6 +49,43 @@ public class ContractTests {
         .Where(c => Selection.Applies(c, input))
         .Select(c => c.Id)
     );
+  }
+
+  [Fact]
+  public void Feeding_and_pit_apply_only_where_their_rules_do() {
+    CheckInput open = StageFixtures.Input(
+      Fixtures.Shape("fill-ok.json"),
+      StageFixtures.Record(
+        "floor",
+        [PourFixtures.At(13, 10, -3)],
+        [PourFixtures.Runner1]
+      )
+    );
+    CheckInput head = StageFixtures.Input(
+      Fixtures.Shape("fill-ok.json"),
+      StageFixtures.Record(
+        "floor",
+        [PourFixtures.At(13, 10, -3)],
+        [
+          """{ "name": "Head1", "kind": "head", "into": 1, "boxes": [[14, 13, -1, 16, 15, 1]] }""",
+        ]
+      )
+    );
+    CheckInput pit = StageFixtures.Input(
+      Fixtures.Shape("fill-ok.json"),
+      StageFixtures.Record(
+        "pit",
+        [PourFixtures.At(13, 0, -3)],
+        [PourFixtures.Runner1]
+      )
+    );
+    var feeding = new Feeding();
+    var tall = new Pit();
+    Assert.False(Selection.Applies(feeding, open));
+    Assert.True(Selection.Applies(feeding, head));
+    Assert.True(Selection.Applies(feeding, StageFixtures.Closed()));
+    Assert.False(Selection.Applies(tall, open));
+    Assert.True(Selection.Applies(tall, pit));
   }
 
   [Fact]
@@ -83,12 +130,16 @@ public class ContractTests {
         "castonly",
         "draw",
         "facecheck",
+        "feeding",
         "fit",
         "flood",
         "flushcheck",
         "footsweep",
         "impression",
         "octcheck",
+        "parting",
+        "pieces",
+        "pit",
         "role",
         "runner",
         "sizes",
@@ -104,7 +155,17 @@ public class ContractTests {
   [Fact]
   public void Selection_follows_the_table_rows() {
     Assert.Equal(
-      ["impression", "flood", "capacity", "fit", "runner"],
+      [
+        "impression",
+        "flood",
+        "capacity",
+        "fit",
+        "runner",
+        "pieces",
+        "feeding",
+        "pit",
+        "parting",
+      ],
       Selection
         .For(["filling", "item"], Profile.ExpandedPeriod)
         .Select(c => c.Id)
@@ -150,6 +211,10 @@ public class ContractTests {
       "capacity",
       "fit",
       "runner",
+      "pieces",
+      "feeding",
+      "pit",
+      "parting",
     ];
     string[] versions = [.. ids.Select(CheckVersions.Of)];
     Assert.All(versions, v => Assert.Matches("^[0-9a-f]{64}$", v));

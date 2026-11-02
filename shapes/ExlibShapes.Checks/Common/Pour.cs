@@ -28,6 +28,8 @@ internal sealed class Pour {
   public IReadOnlyList<(string Item, Mat4d At)> Cores { get; private init; } =
   [];
   public IReadOnlyList<Feed> Feeds { get; private init; } = [];
+  public string? Fill { get; private init; }
+  public string? Order { get; private init; }
   public double? PerPiece { get; private init; }
   public double? Share { get; private init; }
 
@@ -57,6 +59,8 @@ internal sealed class Pour {
           ),
         ],
         Feeds = [.. (o["feeds"] as JArray ?? []).Select(ReadFeed)],
+        Fill = (string?)o["fill"],
+        Order = (string?)o["order"],
         PerPiece = (double?)o["units"]?["perPiece"],
         Share = (double?)o["units"]?["share"],
       };

@@ -29,6 +29,10 @@ public static class Selection {
     new Capacity(),
     new Fit(),
     new Runner(),
+    new Pieces(),
+    new Feeding(),
+    new Pit(),
+    new Parting(),
   ];
 
   /// <summary>Whether <paramref name="check"/> runs under <paramref name="profile"/>: structural checks always,
@@ -45,8 +49,9 @@ public static class Selection {
 
   /// <summary>Whether <paramref name="check"/> has anything to read in <paramref name="input"/>. octregular needs
   /// the record to name regular globs (<see cref="RegularGlobs"/>), uvwrap a round run in the shape, blankmatch a
-  /// <c>blank</c> slot in the record; impression, flood, capacity and fit not a closed pour's cope, whose record
-  /// holds only its pair; every other check always applies. Without these a check enumerates nothing
+  /// <c>blank</c> slot in the record; impression, flood, capacity, fit, pieces and parting not a closed pour's
+  /// cope, whose record holds only its pair; feeding a closed pour or a <c>head</c> feed, pit a station with a head
+  /// height; every other check always applies. Without these a check enumerates nothing
   /// and fails.</summary>
   public static bool Applies(ICheck check, CheckInput input) =>
     check.Id switch {
@@ -56,11 +61,35 @@ public static class Selection {
         && RoundRuns.Find(new Tree(input.Shape), new Frames(input.Shape)).Count
           > 0,
       "blankmatch" => input.Record?.Carried.ContainsKey("blank") == true,
-      "impression" or "flood" or "capacity" or "fit" => !Pour.IsCope(
-        input.Record
-      ),
+      "impression" or "flood" or "capacity" or "fit" or "pieces" or "parting" =>
+        !Pour.IsCope(input.Record),
+      "feeding" => PourOf(input.Record) is not { } f
+        || f.Closed
+        || f.Feeds.Any(x => x.Kind == "head"),
+      "pit" => !Pour.IsCope(input.Record)
+        && (
+          PourOf(input.Record) is not { } q
+          || StationOf(input, q) is not { } s
+          || s.HeadHeight != null
+        ),
       _ => true,
     };
+
+  private static Pour? PourOf(PartRecord? record) {
+    try {
+      return Pour.Read(record);
+    } catch (CheckUsageException) {
+      return null;
+    }
+  }
+
+  private static Station? StationOf(CheckInput input, Pour pour) =>
+    input.Station
+    ?? (
+      input.Settings?.Stations.TryGetValue(pour.Station, out Station? s) == true
+        ? s
+        : null
+    );
 
   /// <summary>Parses a settings lint profile name.</summary>
   /// <exception cref="ArgumentException">The name is neither <c>structural</c> nor <c>expanded-period</c>.</exception>

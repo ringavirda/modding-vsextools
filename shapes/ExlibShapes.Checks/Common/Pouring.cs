@@ -12,12 +12,16 @@ namespace ExpandedLib.Shapes.Checks;
 /// <param name="Role"><c>sand</c>, <c>runner</c> or <c>core</c>.</param>
 /// <param name="Piece">The k of the <c>Piece&lt;k&gt;</c> group above it, 0 when none.</param>
 /// <param name="Level">Whether a group named <c>Level</c> is above it.</param>
+/// <param name="Bedded">Whether a group named <c>Bedded</c> is above it.</param>
+/// <param name="CoreGroup">The name of the <c>Core&lt;i&gt;</c> group above it, null when none.</param>
 internal sealed record FillingLeaf(
   Node Node,
   Box Box,
   string Role,
   int Piece,
-  bool Level
+  bool Level,
+  bool Bedded = false,
+  string? CoreGroup = null
 );
 
 /// <summary>A filling read into the solids and the metal of its pour, in the filling's space.</summary>
@@ -68,11 +72,17 @@ internal sealed class Pouring {
     var leaves = new List<FillingLeaf>();
     foreach (Node leaf in tree.Leaves) {
       bool core = false,
-        level = false;
+        level = false,
+        bedded = false;
+      string? coreGroup = null;
       int piece = 0;
       for (Node? n = leaf; n != null; n = n.Parent) {
-        core |= CoreGroup.IsMatch(n.Name);
+        if (CoreGroup.IsMatch(n.Name)) {
+          core = true;
+          coreGroup = n.Name;
+        }
         level |= n.Name == "Level";
+        bedded |= n.Name == "Bedded";
         if (PieceGroup.Match(n.Name) is { Success: true } m)
           piece = int.Parse(m.Groups[1].Value);
       }
@@ -96,7 +106,9 @@ internal sealed class Pouring {
           Aligned(frames.Mat(leaf), leaf.Size, leaf.Path, gate),
           role,
           piece,
-          level
+          level,
+          bedded,
+          coreGroup
         )
       );
     }
