@@ -88,8 +88,7 @@ public sealed class Fit : ICheck {
     List<FillingLeaf> leaves = Pouring.Leaves(
       input.Shape!,
       input,
-      input.Settings!,
-      "fit"
+      input.Settings!
     );
     int counted = 0;
     for (int k = 0; k < p.Cast.Count; k++) {
@@ -103,7 +102,7 @@ public sealed class Fit : ICheck {
             && !l.Level
             && InGroup(l.Node, "Bedded")
           )
-          .Select(l => l.Box),
+          .SelectMany(l => l.Cells),
       ];
       if (bedded.Count == 0) {
         lines.Add($"Piece{k + 1}: no Bedded sand to hold its footprint");

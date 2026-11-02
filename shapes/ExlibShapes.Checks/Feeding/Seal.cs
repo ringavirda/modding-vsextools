@@ -21,7 +21,7 @@ internal static class Seal {
     List<Box> copeSand =
     [
       .. Pouring
-        .Leaves(pair, input, input.Settings!, "feeding")
+        .Leaves(pair, input, input.Settings!)
         .Where(l => l.Role == "sand")
         .Select(l => l.Box),
     ];

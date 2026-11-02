@@ -11,7 +11,7 @@ namespace ExpandedLib.Shapes.Checks;
 /// starts at the cavity samples in the station's first inlet cut, else its drop (a closed pour's cope), and spreads
 /// through the six neighbours. It passes when every cast sample of every piece is reached; a seed with no cavity
 /// fails. One line per piece with unreached samples, in vx3 with the worst half-voxel plan cell, and a summary line.
-/// Reads axis-aligned leaves only; needs the part record's pour, the settings and the cast.
+/// A turned leaf is read on the same lattice, a sample inside its box; needs the part record's pour, the settings and the cast.
 /// </summary>
 public sealed class Flood : ICheck {
   private const double Step = 1.0 / 16;
@@ -27,7 +27,7 @@ public sealed class Flood : ICheck {
   public CheckResult Run(CheckInput input) {
     if (input.Shape == null)
       return CheckResult.Of(Id, 0, false, []);
-    Pouring p = Pouring.Of(input, Id);
+    Pouring p = Pouring.Of(input, Id, Lattice.Flood);
     List<Box> reach = [.. p.Metal, p.Seed];
     var lo = new double[3];
     var n = new int[3];

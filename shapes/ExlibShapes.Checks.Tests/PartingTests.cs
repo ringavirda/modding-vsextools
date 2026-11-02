@@ -163,4 +163,47 @@ public class PartingTests {
     );
     Assert.Equal(["parting"], StageFixtures.Rejecting(input));
   }
+
+  [Fact]
+  public void A_turned_pattern_element_is_read_to_the_parting() {
+    Shape Turned(double dragTop) =>
+      StageFixtures.Roots(
+        StageFixtures.Group(
+          "Drag",
+          PourFixtures.Turned("DragBody", 0, 0, 0, 6, dragTop, 6, "cast-iron1")
+        ),
+        StageFixtures.Group(
+          "Cope",
+          StageFixtures.Box("CopeBody", 0, 3, 0, 6, 4, 6, "cast-iron1")
+        )
+      );
+    CheckResult fits = Check.Run(StageFixtures.Closed(pattern: Turned(3)));
+    Assert.Equal(0, fits.ExitCode);
+    Assert.Contains("parting: 5 rules read", fits.Lines);
+    Assert.Contains(
+      "Piece1: pattern Drag element DragBody reaches y 9, past the parting at 8",
+      Check.Run(StageFixtures.Closed(pattern: Turned(4))).Lines
+    );
+  }
+
+  [Fact]
+  public void A_turned_drag_sand_leaf_over_the_parting_is_named() {
+    CheckInput input = StageFixtures.Input(
+      PourFixtures.WithTurned(
+        "closed-drag.json",
+        PourFixtures.Turned("Hump", 0, 6, -4, 4, 9, 0)
+      ),
+      StageFixtures.Record(
+        "long",
+        [PourFixtures.At(13, 5, -3)],
+        [StageFixtures.Sprue, StageFixtures.Riser],
+        "closed"
+      ),
+      pair: Fixtures.Shape("closed-cope.json")
+    );
+    Assert.Contains(
+      "drag: sand reaches y 9, over the parting at 8",
+      Check.Run(input).Lines
+    );
+  }
 }

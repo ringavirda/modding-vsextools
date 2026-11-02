@@ -13,7 +13,7 @@ namespace ExpandedLib.Shapes.Checks;
 /// Level's top is the top of the sand outside the pieces, and the pieces with the sand outside cover every 0.25
 /// plan cell of the station's sand box. The pieces' plan centres then run in the pour's <c>order</c>
 /// (<c>alt</c>, <c>south</c>, <c>west</c>, <c>pairs&lt;N&gt;</c>, <c>rows&lt;N&gt;</c>). A leaf covers the cells whose
-/// centre lies in its bounds; the runner box covers none. One line per fault; needs the part record's pour and the
+/// centre lies in its bounds, a turned leaf in its 1/32 lattice cells; the runner box covers none. One line per fault; needs the part record's pour and the
 /// settings.
 /// </summary>
 public sealed class Pieces : ICheck {
@@ -37,7 +37,7 @@ public sealed class Pieces : ICheck {
       ?? throw new CheckUsageException("pieces reads the settings, none given");
     Station station =
       input.Station ?? Pouring.StationOf(settings, pour.Station);
-    List<FillingLeaf> leaves = Pouring.Leaves(input.Shape, input, settings, Id);
+    List<FillingLeaf> leaves = Pouring.Leaves(input.Shape, input, settings);
     var tree = new Tree(input.Shape);
     int want = pour.Pieces.Count > 1 ? pour.Pieces.Count : 0;
     List<Node> found =
@@ -82,12 +82,12 @@ public sealed class Pieces : ICheck {
       bedded[k] = Cells(
         leaves
           .Where(l => l.Piece == k && l.Bedded && l.Role != "runner")
-          .Select(l => l.Box)
+          .SelectMany(l => l.Cells)
       );
       feet[k] = Cells(
         leaves
           .Where(l => l.Piece == k && l.Level && l.Role != "runner")
-          .Select(l => l.Box)
+          .SelectMany(l => l.Cells)
       );
     }
     foreach (int k in numbers) {
@@ -135,7 +135,7 @@ public sealed class Pieces : ICheck {
         }
       }
     }
-    HashSet<(int, int)> covered = Cells(outside.Select(l => l.Box));
+    HashSet<(int, int)> covered = Cells(outside.SelectMany(l => l.Cells));
     foreach (int k in numbers) {
       covered.UnionWith(feet[k]);
       covered.UnionWith(bedded[k]);

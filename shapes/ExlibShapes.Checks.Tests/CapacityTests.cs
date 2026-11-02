@@ -1,5 +1,6 @@
 using System.Linq;
 using ExpandedLib.Shapes.Core;
+using Newtonsoft.Json.Linq;
 using Xunit;
 
 namespace ExpandedLib.Shapes.Checks.Tests;
@@ -80,6 +81,31 @@ public class CapacityTests {
           PourFixtures.One(400)
         )
       )
+    );
+  }
+
+  [Fact]
+  public void A_turned_cast_leaf_weighs_what_it_holds() {
+    Shape cast = Fixtures.Edited(
+      "fill-cast.json",
+      raw => {
+        JObject body = CastFixtures.Find(raw, "Body");
+        body["rotationY"] = 45;
+        body["rotationOrigin"] = new JArray(3, 2, 3);
+      }
+    );
+    CheckResult r = Check.Run(
+      PourFixtures.Input(
+        Fixtures.Shape("fill-ok.json"),
+        PourFixtures.One(),
+        cast
+      )
+    );
+    Assert.Equal(0, r.ExitCode);
+    Assert.InRange(
+      PourFixtures.Number(r.Lines, "Piece1 perPiece: recorded 360, computed "),
+      357,
+      363
     );
   }
 }

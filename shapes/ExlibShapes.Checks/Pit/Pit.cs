@@ -12,7 +12,7 @@ namespace ExpandedLib.Shapes.Checks;
 /// of sand between that foot and the flask floor. Order: the <c>gate</c> feeds, by the piece they enter, lie
 /// strictly farther from the drop's far edge on z with each piece, each gate overlaps its piece on z, and with
 /// the pour's order <c>alt</c> the gate of an odd piece lies west of the runner's centre and an even piece's east.
-/// One line per fault; reads axis-aligned leaves; needs the part record's pour, the settings and the cast.
+/// One line per fault; reads a turned leaf on the 1/32 lattice; needs the part record's pour, the settings and the cast.
 /// </summary>
 public sealed class Pit : ICheck {
   private const double Eps = 1e-9;
@@ -98,8 +98,7 @@ public sealed class Pit : ICheck {
     List<FillingLeaf> leaves = Pouring.Leaves(
       input.Shape!,
       input,
-      input.Settings!,
-      "pit"
+      input.Settings!
     );
     int counted = 0;
     foreach (
@@ -122,11 +121,13 @@ public sealed class Pit : ICheck {
         l.Role == "sand"
         && !l.Level
         && l.CoreGroup == null
-        && Math.Abs(l.Box.Hi.Y - foot) <= Seated
-        && l.Box.Lo.X < maxX
-        && l.Box.Hi.X > minX
-        && l.Box.Lo.Z < maxZ
-        && l.Box.Hi.Z > minZ
+        && l.Cells.Any(c =>
+          Math.Abs(c.Hi.Y - foot) <= Seated
+          && c.Lo.X < maxX
+          && c.Hi.X > minX
+          && c.Lo.Z < maxZ
+          && c.Hi.Z > minZ
+        )
       );
       if (!seated)
         lines.Add($"{core.Key}: its foot at y {Fmt.G(foot)} rests on no sand");

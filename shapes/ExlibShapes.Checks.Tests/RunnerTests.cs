@@ -178,4 +178,30 @@ public class RunnerTests {
     );
     Assert.Contains("R: does not meet the sprue", bad.Lines);
   }
+
+  [Fact]
+  public void A_turned_sand_leaf_in_a_runner_box_counts_its_own_volume() {
+    Shape fill = PourFixtures.WithTurned(
+      "fill-ok.json",
+      PourFixtures.Turned("Chip", 11, 13.25, 12, 13, 13.75, 14)
+    );
+    CheckResult r = Check.Run(
+      PourFixtures.Input(
+        fill,
+        PourFixtures.Record(
+          [PourFixtures.At(13, 10, -3)],
+          [PourFixtures.Runner1]
+        )
+      )
+    );
+    string line = Assert.Single(
+      r.Lines,
+      l => l.EndsWith("vx3 of sand in its volume")
+    );
+    Assert.InRange(
+      PourFixtures.Number([line], line[..(line.IndexOf(": ") + 2)]),
+      1.9,
+      2.1
+    );
+  }
 }

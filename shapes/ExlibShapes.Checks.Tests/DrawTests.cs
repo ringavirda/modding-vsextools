@@ -109,20 +109,11 @@ public class DrawTests {
   }
 
   [Fact]
-  public void Empty_input_fails_and_the_parting_is_required_and_turned_leaves_refused() {
+  public void Empty_input_fails_and_the_parting_is_required() {
     Assert.Equal(Verdict.Fail, Check.Run(new CheckInput(null)).Verdict);
     Assert.Throws<CheckUsageException>(() =>
       Check.Run(new CheckInput(Fixtures.Shape("pattern-ok.json")))
     );
-    Shape turned = Fixtures.Edited(
-      "pattern-ok.json",
-      raw => {
-        JObject body = CastFixtures.Find(raw, "CopeBody");
-        body["rotationY"] = 45;
-        body["rotationOrigin"] = new JArray(8, 8, 6);
-      }
-    );
-    Assert.Throws<CheckUsageException>(() => Check.Run(Pattern(turned)));
     Shape nothing = Fixtures.Edited(
       "pattern-ok.json",
       raw => {
@@ -130,5 +121,24 @@ public class DrawTests {
       }
     );
     Assert.Equal(1, Check.Run(Pattern(nothing)).ExitCode);
+  }
+
+  [Fact]
+  public void A_turned_leaf_occupies_the_columns_inside_it_not_its_bounds() {
+    Shape turned = Fixtures.Edited(
+      "pattern-ok.json",
+      raw => {
+        JObject body = CastFixtures.Find(raw, "CopeBody");
+        body["rotationY"] = 45;
+        body["rotationOrigin"] = new JArray(8, 9.5, 6);
+      }
+    );
+    CheckResult r = Check.Run(Pattern(turned));
+    Assert.Equal(0, r.ExitCode);
+    Assert.InRange(
+      PourFixtures.Number(r.Lines, "Cope: "),
+      16 * 1024 * 0.985,
+      16 * 1024 * 1.015
+    );
   }
 }

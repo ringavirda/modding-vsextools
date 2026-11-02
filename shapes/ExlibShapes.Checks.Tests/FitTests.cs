@@ -1,5 +1,7 @@
+using System;
 using System.Linq;
 using ExpandedLib.Shapes.Core;
+using Newtonsoft.Json.Linq;
 using Xunit;
 
 namespace ExpandedLib.Shapes.Checks.Tests;
@@ -104,5 +106,35 @@ public class FitTests {
       settings: PourFixtures.WithFloorMargin(9)
     );
     Assert.Equal(["fit"], PourFixtures.Rejecting(input));
+  }
+
+  [Fact]
+  public void Turned_pieces_are_a_margin_apart_by_their_corners_not_their_bounds() {
+    Shape cast = Fixtures.Edited(
+      "fill-cast.json",
+      raw => {
+        JObject body = CastFixtures.Find(raw, "Body");
+        body["rotationY"] = 45;
+        body["rotationOrigin"] = new JArray(3, 2, 3);
+      }
+    );
+    CheckResult r = Check.Run(
+      PourFixtures.Input(
+        Fixtures.Shape("fill-ok.json"),
+        PourFixtures.Record(
+          [PourFixtures.At(8, 10, -8), PourFixtures.At(14, 10, -2)],
+          []
+        ),
+        cast,
+        PourFixtures.WithFloorMargin(2)
+      )
+    );
+    double nearest = r
+      .Lines.Where(l =>
+        l.StartsWith("Piece1 and Piece2: ", StringComparison.Ordinal)
+      )
+      .Min(l => PourFixtures.Number([l], "Piece1 and Piece2: "));
+    Assert.InRange(nearest, 1.7, 1.8);
+    Assert.DoesNotContain(r.Lines, l => l.Contains("wall"));
   }
 }

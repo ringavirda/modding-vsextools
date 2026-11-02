@@ -5,30 +5,36 @@ using ExpandedLib.Shapes.Core;
 
 namespace ExpandedLib.Shapes.Checks;
 
-/// <summary>A core's boxes split into its body and its prints, in one frame.</summary>
-/// <param name="Body">The boxes that are not prints.</param>
-/// <param name="Prints">The print boxes with their element names.</param>
+/// <summary>A print leaf of a core: its element name, world bounds and the boxes that make it up.</summary>
+/// <param name="Name">The element name.</param>
+/// <param name="Box">The world bounds.</param>
+/// <param name="Solid">The bounds itself when the leaf is aligned, else its 1/32 lattice cells.</param>
+internal sealed record Print(string Name, Box Box, IReadOnlyList<Box> Solid);
+
+/// <summary>A core's leaves split into its body and its prints, in one frame.</summary>
+/// <param name="Body">The world bounds of the leaves that are not prints.</param>
+/// <param name="Prints">The prints.</param>
 internal sealed record CoreParts(
   IReadOnlyList<Box> Body,
-  IReadOnlyList<(string Name, Box Box)> Prints
+  IReadOnlyList<Print> Prints
 ) {
   /// <summary>Splits the leaves of <paramref name="core"/>, each placed by <paramref name="at"/> when given.</summary>
-  /// <exception cref="CheckUsageException">A leaf is turned off the axes.</exception>
   public static CoreParts Of(
     Shape core,
     IReadOnlyList<string> prints,
-    Mat4d? at,
-    string gate
+    Mat4d? at
   ) {
     var tree = new Tree(core);
     var frames = new Frames(core);
     var body = new List<Box>();
-    var found = new List<(string, Box)>();
+    var found = new List<Print>();
     foreach (Node leaf in tree.Leaves) {
       Mat4d world = at is Mat4d a ? a * frames.Mat(leaf) : frames.Mat(leaf);
-      Box box = Pouring.Aligned(world, leaf.Size, leaf.Path, gate);
+      Box box = WorldBox.Of(world, leaf.Size);
       if (Matches(leaf, prints))
-        found.Add((leaf.Name, box));
+        found.Add(
+          new Print(leaf.Name, box, Lattice.Fine.Solid(world, leaf.Size))
+        );
       else
         body.Add(box);
     }

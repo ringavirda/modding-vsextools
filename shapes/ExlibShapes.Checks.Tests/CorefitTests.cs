@@ -485,4 +485,38 @@ public class CorefitTests {
     );
     Assert.Throws<CheckUsageException>(() => Check.Run(input));
   }
+
+  [Fact]
+  public void Corefit_seat_sand_turned_clear_of_a_print_holds_none_and_over_it_holds() {
+    CheckResult clear = Check.Run(
+      Seated(8, 20, PourFixtures.Turned("Plug", 7.1, 4, -0.9, 8.1, 6, 0.1))
+    );
+    Assert.Equal(0, clear.ExitCode);
+    CheckResult over = Check.Run(
+      Seated(8, 20, PourFixtures.Turned("Plug", 7.7, 4, -0.3, 8.7, 6, 0.7))
+    );
+    Assert.Contains("seat: core-bed PrintW holds sand", over.Lines);
+  }
+
+  [Fact]
+  public void Corefit_seat_a_turned_print_holds_sand_by_its_corners_not_its_bounds() {
+    CheckInput input = Seated(
+      8,
+      20.02,
+      Block("Corner", 19.85, 4, 0.3, 19.95, 6, 0.4)
+    ) with {
+      Cores =
+      [
+        Group(
+          "Core",
+          Leaf("Body", [0, 0, 0], [8, 2, 2]),
+          Leaf("PrintW", [-2, 0, 0], [0, 2, 2]),
+          PourFixtures.Turned("PrintC", 8.7929, 0, 0.5, 9.7929, 2, 1.5, "wood")
+        ),
+      ],
+    };
+    CheckResult r = Check.Run(input);
+    Assert.Equal(0, r.ExitCode);
+    Assert.Equal(4, r.Enumerated);
+  }
 }

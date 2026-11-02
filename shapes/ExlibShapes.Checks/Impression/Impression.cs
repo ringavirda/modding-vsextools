@@ -7,7 +7,7 @@ namespace ExpandedLib.Shapes.Checks;
 /// Whether the sand takes the shape of the metal exactly: no sand stands in the metal (<c>in</c>) and no cavity
 /// stands outside the metal and the cores (<c>open</c>). The metal is the placed cast, every feed, the inlet cuts and
 /// the drop; the cavity is the station's sand box less sand, runner box, cores and metal. Volumes are exact sums over
-/// the box grid, in vx3, each with its worst half-voxel plan cell. Reads axis-aligned leaves only; needs the part
+/// the box grid, in vx3, each with its worst half-voxel plan cell. A turned leaf is read on the 1/32 lattice, a cell whose centre lies inside its box; needs the part
 /// record's pour, the settings and the cast.
 /// </summary>
 public sealed class Impression : ICheck {

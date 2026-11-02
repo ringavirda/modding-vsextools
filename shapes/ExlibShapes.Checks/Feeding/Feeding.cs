@@ -12,7 +12,7 @@ namespace ExpandedLib.Shapes.Checks;
 /// cast leaves the flask only by the <c>sprue</c> and <c>riser</c> feeds' mouths at that top and by no wall or the
 /// floor (the flood is a 1/8 voxel lattice set 1/64 off the planes, so a gap narrower than a step is no leak); and
 /// the groups of the cast item (the elements the cast fans out into) lie the station's margin apart, leaf bounds
-/// against leaf bounds. One line per fault; reads axis-aligned leaves; needs the part record's pour, the settings
+/// against leaf bounds. One line per fault; reads a turned leaf on the 1/32 lattice; needs the part record's pour, the settings
 /// and the cast.
 /// </summary>
 public sealed class Feeding : ICheck {
@@ -99,9 +99,7 @@ public sealed class Feeding : ICheck {
       .. groups.Select(g =>
         Tree.Subtree(g)
           .Where(n => n.IsLeaf)
-          .Select(n =>
-            Pouring.Aligned(frames.Mat(n), n.Size, n.Path, "feeding")
-          )
+          .SelectMany(n => Lattice.Fine.Solid(frames.Mat(n), n.Size))
           .ToList()
       ),
     ];

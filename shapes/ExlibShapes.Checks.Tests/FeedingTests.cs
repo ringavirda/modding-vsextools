@@ -161,4 +161,24 @@ public class FeedingTests {
       Check.Run(input with { Pair = empty })
     );
   }
+
+  [Fact]
+  public void Groups_with_a_turned_leaf_are_a_margin_apart_by_its_corners_not_its_bounds() {
+    Shape cast = StageFixtures.CastOf(
+      StageFixtures.Group(
+        "Left",
+        StageFixtures.Box("LeftBody", 0, 0, 0, 2, 4, 6, "cast-iron1")
+      ),
+      StageFixtures.Group(
+        "Right",
+        PourFixtures.Turned("RightBody", 2, 0, 6.5, 4, 4, 8.5, "cast-iron1")
+      )
+    );
+    CheckResult r = Check.Run(StageFixtures.Closed(cast: cast));
+    Assert.InRange(
+      PourFixtures.Number(r.Lines, "layout: Left and Right are "),
+      0.5,
+      0.57
+    );
+  }
 }

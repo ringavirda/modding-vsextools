@@ -15,7 +15,9 @@ namespace ExpandedLib.Shapes.Checks;
 /// plan is its pocket grown by a wall of 1; the boards of the up and down faces run along the pocket's long side. A
 /// filling with <c>pour.cores</c>: each placed core's prints hold no sand and each print's end face lies within 1/32 of
 /// the seat's sand. One line per fault, opening with the rule: <c>length</c>, <c>section</c>, <c>prints</c>,
-/// <c>pocket</c>, <c>extent</c>, <c>grain</c> or <c>seat</c>; lengths agree within 0.001.
+/// <c>pocket</c>, <c>extent</c>, <c>grain</c> or <c>seat</c>; lengths agree within 0.001. The core and seat rules read
+/// the world bounds of a turned leaf, the seat's sand overlap its 1/32 lattice cells; a core box reads axis-aligned
+/// leaves only.
 /// </summary>
 public sealed partial class Corefit : ICheck {
   internal const double Tol = 1e-3;
@@ -117,15 +119,13 @@ public sealed partial class Corefit : ICheck {
     [
       .. sourceTree
         .Leaves.Where(n => CoreParts.Matches(n, f.Elements))
-        .Select(n =>
-          Pouring.Aligned(sourceFrames.Mat(n), n.Size, n.Path, "corefit")
-        ),
+        .Select(n => WorldBox.Of(sourceFrames.Mat(n), n.Size)),
     ];
     if (cored.Count == 0)
       throw new CheckUsageException(
         $"corefit: feature '{feature}' names no element of the drawing"
       );
-    CoreParts parts = CoreParts.Of(input.Shape!, prints, null, "corefit");
+    CoreParts parts = CoreParts.Of(input.Shape!, prints, null);
     if (parts.Body.Count == 0)
       throw new CheckUsageException("corefit: the core has only prints");
     string name = "xyz"[a].ToString();
@@ -189,20 +189,22 @@ public sealed partial class Corefit : ICheck {
         new Vec3(a == 0 ? 1 : 0, a == 1 ? 1 : 0, a == 2 ? 1 : 0)
       );
       int axis = Enumerable.Range(0, 3).MaxBy(k => Math.Abs(run[k]));
-      CoreParts parts = CoreParts.Of(cores[i], prints, at, "corefit");
+      CoreParts parts = CoreParts.Of(cores[i], prints, at);
       double centre =
         (CoreParts.Lo(parts.Body, axis) + CoreParts.Hi(parts.Body, axis)) / 2;
-      foreach ((string name, Box print) in parts.Prints) {
+      foreach (
+        (string name, Box print, IReadOnlyList<Box> solid) in parts.Prints
+      ) {
         string who = $"{p.Pour.Cores[i].Item} {name}";
         counted += 2;
-        if (p.Sand.Any(s => Overlaps(s, print, -1)))
+        if (p.Sand.Any(s => solid.Any(c => Overlaps(s, c, -1))))
           lines.Add($"seat: {who} holds sand");
         bool low = (print.Lo[axis] + print.Hi[axis]) / 2 < centre;
         double plane = low ? print.Lo[axis] : print.Hi[axis];
         if (
           !p.Sand.Any(s =>
             Math.Abs((low ? s.Hi[axis] : s.Lo[axis]) - plane) <= SeatTol
-            && Overlaps(s, print, axis)
+            && solid.Any(c => Overlaps(s, c, axis))
           )
         )
           lines.Add(

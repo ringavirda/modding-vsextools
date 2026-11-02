@@ -66,4 +66,15 @@ public class ImpressionTests {
       )
     );
   }
+
+  [Fact]
+  public void A_turned_sand_leaf_in_the_metal_counts_its_own_volume() {
+    Shape fill = PourFixtures.WithTurned(
+      "fill-ok.json",
+      PourFixtures.Turned("Cube", 15, 11, -1, 17, 13, 1)
+    );
+    CheckResult r = Check.Run(PourFixtures.Input(fill, PourFixtures.One()));
+    Assert.Equal(1, r.ExitCode);
+    Assert.InRange(PourFixtures.Number(r.Lines, "in: "), 7.9, 8.1);
+  }
 }

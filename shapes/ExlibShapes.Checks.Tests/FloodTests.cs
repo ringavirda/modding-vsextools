@@ -81,4 +81,22 @@ public class FloodTests {
     );
     Assert.Equal(["flood"], PourFixtures.Rejecting(input));
   }
+
+  [Fact]
+  public void A_turned_sand_leaf_in_the_cast_takes_its_own_volume_from_the_samples() {
+    Shape fill = PourFixtures.WithTurned(
+      "fill-ok.json",
+      PourFixtures.Turned("Cube", 15, 11, -1, 17, 13, 1)
+    );
+    CheckResult turned = Check.Run(
+      PourFixtures.Input(fill, PourFixtures.One())
+    );
+    double whole = PourFixtures.Number(
+        Check.Run(For("fill-ok")).Lines,
+        "flood: "
+      ),
+      left = PourFixtures.Number(turned.Lines, "flood: ");
+    Assert.Equal(0, turned.ExitCode);
+    Assert.InRange((whole - left) / 4096, 7.9, 8.1);
+  }
 }

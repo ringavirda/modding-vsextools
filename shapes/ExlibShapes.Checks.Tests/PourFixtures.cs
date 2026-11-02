@@ -1,5 +1,10 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 using ExpandedLib.Shapes.Core;
+using Newtonsoft.Json.Linq;
 
 namespace ExpandedLib.Shapes.Checks.Tests;
 
@@ -89,5 +94,39 @@ internal static class PourFixtures {
           { "name": "Body", "from": [0,0,0], "to": [{{x}}, {{y}}, {{z}}],
             "faces": { "up": { "texture": "#cast-iron1" } } } ] } ] }
       """
+    );
+
+  /// <summary>A box element turned 45 degrees about y around its centre.</summary>
+  public static string Turned(
+    string name,
+    double x0,
+    double y0,
+    double z0,
+    double x1,
+    double y1,
+    double z1,
+    string texture = "andesite"
+  ) =>
+    $$"""{ "name": "{{name}}", "from": [{{x0}}, {{y0}}, {{z0}}], "to": [{{x1}}, {{y1}}, {{z1}}], "rotationY": 45, "rotationOrigin": [{{(x0 + x1) / 2}}, {{(y0 + y1) / 2}}, {{(z0 + z1) / 2}}], "faces": { "up": { "texture": "#{{texture}}" } } }""";
+
+  /// <summary>A copy of <paramref name="name"/> with a turned box element added at the top.</summary>
+  public static Shape WithTurned(string name, string element) =>
+    Fixtures.Edited(
+      name,
+      raw => ((JArray)raw["elements"]!).Add(JObject.Parse(element))
+    );
+
+  /// <summary>The first number in the line of <paramref name="lines"/> that starts with <paramref name="prefix"/>, after the prefix.</summary>
+  public static double Number(IEnumerable<string> lines, string prefix) =>
+    double.Parse(
+      Regex
+        .Match(
+          lines.First(l => l.StartsWith(prefix, StringComparison.Ordinal))[
+            prefix.Length..
+          ],
+          @"-?\d+(\.\d+)?"
+        )
+        .Value,
+      CultureInfo.InvariantCulture
     );
 }

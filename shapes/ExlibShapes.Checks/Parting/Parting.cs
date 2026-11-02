@@ -11,7 +11,7 @@ namespace ExpandedLib.Shapes.Checks;
 /// parting; no sand box of the drag reaches over it by more than 0.001, none of the cope under it by more than
 /// that, and no box stands in both halves; and where the pattern has roots named <c>Drag</c> and <c>Cope</c>,
 /// placed by each piece's <c>at</c>, the drag's stay under the parting and the cope's over it. One line per fault;
-/// reads axis-aligned leaves; needs the part record's pour, and for a closed pour the settings, cast and cope.
+/// reads a turned leaf on the 1/32 lattice; needs the part record's pour, and for a closed pour the settings, cast and cope.
 /// </summary>
 public sealed class Parting : ICheck {
   private const double Eps = 1e-6;
@@ -110,9 +110,9 @@ public sealed class Parting : ICheck {
     string? skip
   ) =>
     Pouring
-      .Leaves(shape, input, settings, "parting")
+      .Leaves(shape, input, settings)
       .Where(l => l.Role == "sand" && !(skip == "Level" && l.Level))
-      .Select(l => l.Box);
+      .SelectMany(l => l.Cells);
 
   private static int PatternHalves(
     Shape pattern,
@@ -132,15 +132,14 @@ public sealed class Parting : ICheck {
       foreach (Node leaf in Tree.Subtree(r).Where(n => n.IsLeaf))
         for (int k = 0; k < p.Pour.Pieces.Count; k++) {
           counted++;
-          Box b = Pouring.Aligned(
+          List<Box> solid = Lattice.Fine.Solid(
             p.Pour.Pieces[k] * frames.Mat(leaf),
-            leaf.Size,
-            leaf.Path,
-            "parting"
+            leaf.Size
           );
-          if (drag ? b.Hi.Y > parting + Eps : b.Lo.Y < parting - Eps)
+          double reach = drag ? solid.Max(b => b.Hi.Y) : solid.Min(b => b.Lo.Y);
+          if (drag ? reach > parting + Eps : reach < parting - Eps)
             lines.Add(
-              $"Piece{k + 1}: pattern {root} element {leaf.Name} reaches y {Fmt.G(drag ? b.Hi.Y : b.Lo.Y)}, past the parting at {Fmt.G(parting)}"
+              $"Piece{k + 1}: pattern {root} element {leaf.Name} reaches y {Fmt.G(reach)}, past the parting at {Fmt.G(parting)}"
             );
         }
     }

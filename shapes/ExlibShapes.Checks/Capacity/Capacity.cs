@@ -8,7 +8,7 @@ namespace ExpandedLib.Shapes.Checks;
 /// <summary>
 /// Whether the record's units are what the metal weighs: <c>units.perPiece</c> is the station's ladle units per vx3
 /// times the cast's volume and <c>units.share</c> the same of the head, riser and sprue feeds, each rounded and held to
-/// within 1 unit. Volumes are exact sums over the box grid; runner and gate cuts are not counted. One line per figure;
+/// within 1 unit. Volumes are exact sums over the box grid, a turned leaf counted on the 1/32 lattice; runner and gate cuts are not counted. One line per figure;
 /// needs the part record's pour with its units, the settings and the cast.
 /// </summary>
 public sealed class Capacity : ICheck {

@@ -7,6 +7,18 @@ using Newtonsoft.Json.Linq;
 namespace ExpandedLib.Shapes.Checks;
 
 public sealed partial class Corefit {
+  private static Box AlignedBox(
+    Mat4d world,
+    Vec3 size,
+    string path,
+    string gate
+  ) =>
+    Lattice.IsAligned(world)
+      ? WorldBox.Of(world, size)
+      : throw new CheckUsageException(
+        $"{path}: {gate} needs a core box on the axes"
+      );
+
   private static int CoreboxRules(
     CheckInput input,
     JObject slot,
@@ -38,7 +50,7 @@ public sealed partial class Corefit {
       List<Box> boxes =
       [
         .. leaves.Select(n =>
-          Pouring.Aligned(frames.Mat(n), n.Size, n.Path, "corefit")
+          AlignedBox(frames.Mat(n), n.Size, n.Path, "corefit")
         ),
       ];
       if (boxes.Count == 0)
@@ -80,7 +92,7 @@ public sealed partial class Corefit {
     Box coreBounds = Bounds(
       new Tree(core)
         .Leaves.Select(n =>
-          Pouring.Aligned(new Frames(core).Mat(n), n.Size, n.Path, "corefit")
+          AlignedBox(new Frames(core).Mat(n), n.Size, n.Path, "corefit")
         )
         .ToList()
     );

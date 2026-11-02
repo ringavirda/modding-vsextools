@@ -198,4 +198,32 @@ public class PitTests {
     Assert.Throws<CheckUsageException>(() => Check.Run(input));
     Assert.False(Selection.Applies(Check, input));
   }
+
+  private static CheckInput CoredOnTurned(double stemX, double stemZ) =>
+    StageFixtures.Input(
+      StageFixtures.Sand(
+        PourFixtures.Turned("Under", 2, -14, -14, 30, -5, 14),
+        StageFixtures.Group(
+          "Core1",
+          StageFixtures.Box("Stem", stemX, -5, stemZ, stemX + 2, 3, stemZ + 2)
+        )
+      ),
+      StageFixtures.Record(
+        "pit",
+        [PourFixtures.At(13, 0, -3)],
+        [PourFixtures.Runner1]
+      )
+    );
+
+  [Fact]
+  public void A_core_seats_on_a_turned_leaf_only_where_the_leaf_is() {
+    Assert.DoesNotContain(
+      Check.Run(CoredOnTurned(15, -1)).Lines,
+      l => l.Contains("rests on no sand")
+    );
+    Assert.Contains(
+      "Core1: its foot at y -5 rests on no sand",
+      Check.Run(CoredOnTurned(33, 14)).Lines
+    );
+  }
 }

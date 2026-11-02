@@ -321,4 +321,23 @@ public class PiecesTests {
       Check.Run(input).Lines
     );
   }
+
+  [Fact]
+  public void A_turned_sand_leaf_covers_the_cells_inside_it_not_its_bounds() {
+    CheckInput input = Two([
+      StageFixtures.Box("SlabW", 2, 2, -14, 12, 14, 14),
+      StageFixtures.Box("SlabE", 20, 2, -14, 30, 14, 14),
+      PourFixtures.Turned("Fill", 12, 2, -4, 20, 14, 4),
+      StageFixtures.Piece(1, 6, 12),
+      StageFixtures.Piece(2, 20, 26),
+    ]);
+    CheckResult r = Check.Run(input);
+    double reach = 4 * System.Math.Sqrt(2),
+      expected = (8 * 28 - (4 * reach * 4 - 32)) / 0.0625;
+    Assert.InRange(
+      PourFixtures.Number(r.Lines, "cover: "),
+      expected * 0.985,
+      expected * 1.015
+    );
+  }
 }

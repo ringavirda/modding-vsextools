@@ -13,7 +13,7 @@ namespace ExpandedLib.Shapes.Checks;
 /// feeds also holds each <c>runner</c> and <c>gate</c> feed to the station's depth from the sand's top (a closed
 /// pour's, down from the parting) and at least the station's gate width across its narrow plan axis, with the first
 /// runner, or the first gate where there is none, meeting the drop (a closed pour's, the sprue). One line per
-/// fault. Reads axis-aligned leaves only; needs the part record's pour and the settings, the station from the input
+/// fault. A turned leaf is read on the 1/32 lattice for the sand in its volume; needs the part record's pour and the settings, the station from the input
 /// or the pour.
 /// </summary>
 public sealed class Runner : ICheck {
@@ -35,7 +35,7 @@ public sealed class Runner : ICheck {
       ?? throw new CheckUsageException("runner reads the settings, none given");
     Station station =
       input.Station ?? Pouring.StationOf(settings, pour.Station);
-    List<FillingLeaf> leaves = Pouring.Leaves(input.Shape, input, settings, Id);
+    List<FillingLeaf> leaves = Pouring.Leaves(input.Shape, input, settings);
     List<FillingLeaf> runners = [.. leaves.Where(l => l.Role == "runner")];
     var lines = new List<string>();
     int counted = leaves.Count;
@@ -49,7 +49,9 @@ public sealed class Runner : ICheck {
     else {
       List<Box> sand =
       [
-        .. leaves.Where(l => l.Role == "sand" && !l.Level).Select(l => l.Box),
+        .. leaves
+          .Where(l => l.Role == "sand" && !l.Level)
+          .SelectMany(l => l.Cells),
       ];
       foreach (StationBox row in station.RunnerBox) {
         List<FillingLeaf> named =
@@ -81,10 +83,10 @@ public sealed class Runner : ICheck {
           );
         counted++;
         if (sand.Count > 0) {
-          var grid = new BoxGrid(sand.Append(leaf.Box));
+          var grid = new BoxGrid(sand.Concat(leaf.Cells));
           double v = grid.Total(
             grid.Mark(sand)
-              .Zip(grid.Mark([leaf.Box]), (a, b) => a && b)
+              .Zip(grid.Mark(leaf.Cells), (a, b) => a && b)
               .ToArray()
           );
           if (v > 1e-6)

@@ -11,8 +11,8 @@ namespace ExpandedLib.Shapes.Checks;
 /// column; y is sampled every 1/32 voxel, the drag's from the sample under the parting down and the cope's from the
 /// parting up, a leaf holding a sample on [lo, hi). No gap is bridged: a gap the sand step leaves counts as a
 /// failure. One summary line per half (<c>Drag: N columns occupied, M not unbroken from the parting</c>, ending
-/// <c>  FAIL</c> when M is not 0) and one <c>  Drag x A..B z C..D: first gap at y Y</c> per broken column. Reads
-/// axis-aligned leaves only; needs <see cref="CheckInput.Parting"/>.
+/// <c>  FAIL</c> when M is not 0) and one <c>  Drag x A..B z C..D: first gap at y Y</c> per broken column. A turned leaf
+/// is read as the 1/32 lattice cells whose centre lies inside it; needs <see cref="CheckInput.Parting"/>.
 /// </summary>
 public sealed class Draw : ICheck {
   private const double Step = 1.0 / 32;
@@ -36,25 +36,20 @@ public sealed class Draw : ICheck {
     var tree = new Tree(input.Shape);
     var frames = new Frames(input.Shape);
     var boxes = new List<Box>();
-    foreach (Node leaf in tree.Leaves) {
-      Mat4d m = frames.Mat(leaf);
-      for (int a = 0; a < 3; a++) {
-        var unit = new double[3];
-        unit[a] = 1;
-        Vec3 d = m.MulLinear(new Vec3(unit[0], unit[1], unit[2]));
-        if (Enumerable.Range(0, 3).Count(i => Math.Abs(d[i]) > 1e-9) != 1)
-          throw new CheckUsageException(
-            $"{leaf.Path}: draw reads axis-aligned leaves, this one is turned"
-          );
-      }
-      boxes.Add(WorldBox.Of(m, leaf.Size));
-    }
+    foreach (Node leaf in tree.Leaves)
+      boxes.AddRange(Lattice.Fine.Solid(frames.Mat(leaf), leaf.Size));
     if (boxes.Count == 0)
       return CheckResult.Of(Id, 0, false, []);
     double[] xs = Breaks(boxes, 0),
       zs = Breaks(boxes, 2);
-    double top = boxes.Max(b => b.Hi.Y),
-      bottom = boxes.Min(b => b.Lo.Y);
+    var columns = new List<Box>[xs.Length - 1, zs.Length - 1];
+    foreach (Box b in boxes) {
+      (int i0, int i1) = Span(xs, b.Lo.X, b.Hi.X);
+      (int k0, int k1) = Span(zs, b.Lo.Z, b.Hi.Z);
+      for (int i = i0; i < i1; i++)
+        for (int k = k0; k < k1; k++)
+          (columns[i, k] ??= []).Add(b);
+    }
     var lines = new List<string>();
     int enumerated = 0;
     bool faults = false;
@@ -63,17 +58,9 @@ public sealed class Draw : ICheck {
       var broken = new List<string>();
       for (int i = 0; i + 1 < xs.Length; i++)
         for (int k = 0; k + 1 < zs.Length; k++) {
-          double cx = (xs[i] + xs[i + 1]) / 2,
-            cz = (zs[k] + zs[k + 1]) / 2;
-          List<Box> over =
-          [
-            .. boxes.Where(b =>
-            b.Lo.X <= cx && cx <= b.Hi.X && b.Lo.Z <= cz && cz <= b.Hi.Z
-          ),
-        ];
-          if (over.Count == 0)
+          if (columns[i, k] is not { } over)
             continue;
-          (int total, int run) = Column(over, parting, dir, top, bottom);
+          (int total, int run) = Column(over, parting, dir);
           if (total == 0)
             continue;
           occupied++;
@@ -93,6 +80,12 @@ public sealed class Draw : ICheck {
     return CheckResult.Of(Id, enumerated, faults, lines);
   }
 
+  private static (int, int) Span(double[] breaks, double lo, double hi) =>
+    (
+      Array.BinarySearch(breaks, Math.Round(lo, 9)),
+      Array.BinarySearch(breaks, Math.Round(hi, 9))
+    );
+
   private static double[] Breaks(List<Box> boxes, int axis) =>
     [
       .. boxes
@@ -108,25 +101,43 @@ public sealed class Draw : ICheck {
   private static (int Total, int Run) Column(
     List<Box> over,
     double parting,
-    int dir,
-    double top,
-    double bottom
+    int dir
   ) {
     int first = dir < 0 ? 1 : 0;
+    var spans = new List<(int Lo, int Hi)>();
+    foreach (Box b in over) {
+      bool Hit(int n) {
+        double y = parting + dir * n * Step;
+        return b.Lo.Y - Eps <= y && y < b.Hi.Y - Eps;
+      }
+
+      double n1 = (b.Lo.Y - parting) / (dir * Step),
+        n2 = (b.Hi.Y - parting) / (dir * Step);
+      int lo = (int)Math.Floor(Math.Min(n1, n2)) - 1,
+        hi = (int)Math.Ceiling(Math.Max(n1, n2)) + 1;
+      while (lo <= hi && !Hit(lo))
+        lo++;
+      while (hi >= lo && !Hit(hi))
+        hi--;
+      lo = Math.Max(lo, first);
+      if (lo <= hi)
+        spans.Add((lo, hi));
+    }
+    spans.Sort();
     int total = 0,
-      run = 0;
+      run = 0,
+      end = first - 1;
     bool alive = true;
-    for (int n = first; ; n++) {
-      double y = parting + dir * n * Step;
-      if (dir < 0 ? y < bottom - Step : y > top + Step)
-        break;
-      bool hit = over.Any(b => b.Lo.Y - Eps <= y && y < b.Hi.Y - Eps);
-      if (hit) {
-        total++;
-        if (alive)
-          run++;
-      } else
+    foreach ((int lo, int hi) in spans) {
+      if (hi <= end)
+        continue;
+      int from = Math.Max(lo, end + 1);
+      total += hi - from + 1;
+      if (alive && lo <= end + 1)
+        run += hi - from + 1;
+      else
         alive = false;
+      end = hi;
     }
     return (total, run);
   }

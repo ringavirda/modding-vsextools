@@ -14,6 +14,7 @@ namespace ExpandedLib.Shapes.Checks;
 /// <param name="Level">Whether a group named <c>Level</c> is above it.</param>
 /// <param name="Bedded">Whether a group named <c>Bedded</c> is above it.</param>
 /// <param name="CoreGroup">The name of the <c>Core&lt;i&gt;</c> group above it, null when none.</param>
+/// <param name="Solid">The boxes that make up the leaf: <paramref name="Box"/> itself when aligned, else its lattice cells.</param>
 internal sealed record FillingLeaf(
   Node Node,
   Box Box,
@@ -21,8 +22,12 @@ internal sealed record FillingLeaf(
   int Piece,
   bool Level,
   bool Bedded = false,
-  string? CoreGroup = null
-);
+  string? CoreGroup = null,
+  IReadOnlyList<Box>? Solid = null
+) {
+  /// <summary>The boxes that make up the leaf.</summary>
+  public IReadOnlyList<Box> Cells => Solid ?? [Box];
+}
 
 /// <summary>A filling read into the solids and the metal of its pour, in the filling's space.</summary>
 internal sealed class Pouring {
@@ -59,13 +64,14 @@ internal sealed class Pouring {
     Cast.SelectMany(c => c).Concat(Feeds.SelectMany(f => f.Boxes)).Concat(Cuts);
 
   /// <summary>The leaves of <paramref name="shape"/> as a filling reads them.</summary>
-  /// <exception cref="CheckUsageException">A leaf is turned, or the settings lack the runner role.</exception>
+  /// <exception cref="CheckUsageException">The settings lack the runner role.</exception>
   public static List<FillingLeaf> Leaves(
     Shape shape,
     CheckInput input,
     Settings settings,
-    string gate
+    Lattice? lattice = null
   ) {
+    Lattice lat = lattice ?? Lattice.Fine;
     var tree = new Tree(shape);
     var frames = new Frames(shape);
     string runnerKey = RoleTextures.KeyOf(settings, "runner");
@@ -100,39 +106,32 @@ internal sealed class Pouring {
           ? "runner"
           : "sand";
       }
+      Mat4d world = frames.Mat(leaf);
+      List<Box> solid = lat.Solid(world, leaf.Size);
       leaves.Add(
         new FillingLeaf(
           leaf,
-          Aligned(frames.Mat(leaf), leaf.Size, leaf.Path, gate),
+          WorldBox.Of(world, leaf.Size),
           role,
           piece,
           level,
           bedded,
-          coreGroup
+          coreGroup,
+          solid
         )
       );
     }
     return leaves;
   }
 
-  /// <summary>The bounds of a box of <paramref name="size"/> placed by <paramref name="world"/>.</summary>
-  /// <exception cref="CheckUsageException">The placement turns the box off the axes.</exception>
-  public static Box Aligned(Mat4d world, Vec3 size, string path, string gate) {
-    for (int a = 0; a < 3; a++) {
-      var unit = new double[3];
-      unit[a] = 1;
-      Vec3 d = world.MulLinear(new Vec3(unit[0], unit[1], unit[2]));
-      if (Enumerable.Range(0, 3).Count(i => Math.Abs(d[i]) > 1e-9) != 1)
-        throw new CheckUsageException(
-          $"{path}: {gate} reads axis-aligned leaves, this one is turned"
-        );
-    }
-    return WorldBox.Of(world, size);
-  }
-
   /// <summary>Reads the solids and the metal of the pour <paramref name="input"/> holds.</summary>
-  /// <exception cref="CheckUsageException">The record has no pour, an input the pour names is missing, or a leaf is turned.</exception>
-  public static Pouring Of(CheckInput input, string gate) {
+  /// <exception cref="CheckUsageException">The record has no pour or an input the pour names is missing.</exception>
+  public static Pouring Of(
+    CheckInput input,
+    string gate,
+    Lattice? lattice = null
+  ) {
+    Lattice lat = lattice ?? Lattice.Fine;
     Shape shape = input.Shape!;
     Pour pour = Pour.Read(input.Record);
     Settings settings =
@@ -144,7 +143,7 @@ internal sealed class Pouring {
     Shape cast =
       input.Cast
       ?? throw new CheckUsageException($"{gate} reads the cast, none given");
-    List<FillingLeaf> leaves = Leaves(shape, input, settings, gate);
+    List<FillingLeaf> leaves = Leaves(shape, input, settings, lat);
     List<Box> sand = SandOf(leaves),
       runner = RoleOf(leaves, "runner"),
       cores = RoleOf(leaves, "core");
@@ -159,7 +158,7 @@ internal sealed class Pouring {
         ?? throw new CheckUsageException(
           $"{gate} reads the cope of a closed pour, none given"
         );
-      List<FillingLeaf> cope = Leaves(pair, input, settings, gate);
+      List<FillingLeaf> cope = Leaves(pair, input, settings, lat);
       sand =
       [
         .. Clip(sand, double.NegativeInfinity, parting),
@@ -173,8 +172,8 @@ internal sealed class Pouring {
     List<Node> castLeaves = [.. new Tree(cast).Leaves];
     foreach (Mat4d at in pour.Pieces)
       placedCast.Add([
-        .. castLeaves.Select(l =>
-          Aligned(at * castFrames.Mat(l), l.Size, l.Path, gate)
+        .. castLeaves.SelectMany(l =>
+          lat.Solid(at * castFrames.Mat(l), l.Size)
         ),
       ]);
     var feeds = new List<(Feed, List<Box>)>();
@@ -207,7 +206,7 @@ internal sealed class Pouring {
               || Sweep.GlobMatches(n.Name, g)
             )
           )
-            boxes.Add(Aligned(at * patternFrames.Mat(n), n.Size, n.Path, gate));
+            boxes.AddRange(lat.Solid(at * patternFrames.Mat(n), n.Size));
       }
       feeds.Add((f, boxes));
     }
@@ -254,10 +253,14 @@ internal sealed class Pouring {
     Of([box[0], box[1], box[2]], [box[3], box[4], box[5]]);
 
   private static List<Box> SandOf(List<FillingLeaf> leaves) =>
-    [.. leaves.Where(l => l.Role == "sand" && !l.Level).Select(l => l.Box)];
+    [
+      .. leaves
+        .Where(l => l.Role == "sand" && !l.Level)
+        .SelectMany(l => l.Cells),
+    ];
 
   private static List<Box> RoleOf(List<FillingLeaf> leaves, string role) =>
-    [.. leaves.Where(l => l.Role == role).Select(l => l.Box)];
+    [.. leaves.Where(l => l.Role == role).SelectMany(l => l.Cells)];
 
   private static IEnumerable<Box> Clip(
     IEnumerable<Box> boxes,
