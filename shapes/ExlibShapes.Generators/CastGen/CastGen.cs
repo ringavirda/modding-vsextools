@@ -536,12 +536,47 @@ public sealed partial class CastGen : IGenerator {
       ),
       c.SpecText
     );
-    filling.Filling.Record.Carried["draw"] = new JObject {
-      ["parting"] = closed ? st.Parting : st.SandTo[1] - (st.RunnerDepth ?? 0),
-    };
+    string drawName = c.Code + "-draw";
+    var drawRec = new PartRecord { Shape = drawName + ".json" };
+    foreach (Element e in pattern.Pattern.Shape.Elements)
+      drawRec.Elements[e.Name ?? ""] = new ElementPart {
+        Stage = "cast",
+        Role = "pattern",
+      };
+    acc.Inputs.TryAdd(
+      drawName,
+      new GenInput(drawName, Placed(pattern.Pattern.Shape, at), drawRec)
+    );
+    foreach (GenOutput? o in new[] { filling.Filling, filling.Cope })
+      if (o != null)
+        o.Record.Carried["draw"] = new JObject {
+          ["input"] = drawName,
+          ["parting"] = closed ? st.Parting : st.SandTo[1],
+        };
     acc.Outputs.Add(filling.Filling);
     if (filling.Cope != null)
       acc.Outputs.Add(filling.Cope);
+  }
+
+  private static Shape Placed(Shape pattern, Mat4d at) {
+    Vec3 d = at.Mul(Vec3.Zero);
+    var shape = new Shape();
+    foreach (Element src in pattern.Elements) {
+      Element e = Select.Clone(src, false);
+      e.From = [e.From![0] + d.X, e.From[1] + d.Y, e.From[2] + d.Z];
+      e.To = [e.To![0] + d.X, e.To[1] + d.Y, e.To[2] + d.Z];
+      if (e.RotationOrigin != null)
+        e.RotationOrigin =
+        [
+          e.RotationOrigin[0] + d.X,
+          e.RotationOrigin[1] + d.Y,
+          e.RotationOrigin[2] + d.Z,
+        ];
+      shape.Elements.Add(e);
+    }
+    foreach (var t in pattern.Textures)
+      shape.Textures.Add(t);
+    return shape;
   }
 
   private static readonly LieSpec Identity = new([

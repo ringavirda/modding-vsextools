@@ -81,9 +81,7 @@ internal static class GenCommand {
     foreach (GenInput input in result.Inputs) {
       string inputPath = Path.Combine(root, "inputs", input.Name + ".json");
       CanonicalWriter.WriteFile(input.Shape, inputPath);
-      input.Record.ShapeSha = Provenance.Sha256Of(
-        File.ReadAllBytes(inputPath)
-      );
+      input.Record.ShapeSha = Provenance.Sha256Of(File.ReadAllBytes(inputPath));
       input.Record.WriteFile(Workspace.RecordFileOf(inputPath));
     }
     foreach (string redraw in result.Redraws)

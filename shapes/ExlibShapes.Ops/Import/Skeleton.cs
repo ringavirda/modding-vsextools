@@ -163,7 +163,9 @@ internal static class Skeleton {
       record.Features.TryAdd(kv.Key, kv.Value);
     if (record.Steps.Count == 0)
       record.Steps.AddRange(earlier.Steps);
-    record.Answers.AddRange(earlier.Answers.Where(a => !stale.Contains(a.Feature)));
+    record.Answers.AddRange(
+      earlier.Answers.Where(a => !stale.Contains(a.Feature))
+    );
     foreach (JProperty p in earlier.Carried.Properties())
       if (p.Name != "import")
         record.Carried[p.Name] = p.Value;

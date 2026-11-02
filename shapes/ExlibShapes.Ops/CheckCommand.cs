@@ -105,7 +105,11 @@ internal static class CheckCommand {
             new CheckJob(
               full,
               c,
-              c.Id == "blankmatch" ? PlacedFor(input, full) : input,
+              c.Id switch {
+                "blankmatch" => PlacedFor(input, full),
+                "draw" => DrawnFor(input, full),
+                _ => input,
+              },
               stale
             )
           );
@@ -120,7 +124,11 @@ internal static class CheckCommand {
     return Directory
       .EnumerateFiles(path, "*.json", SearchOption.AllDirectories)
       .Where(f =>
-        !Path.GetRelativePath(path, f).StartsWith("inputs" + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+        !Path.GetRelativePath(path, f)
+          .StartsWith(
+            "inputs" + Path.DirectorySeparatorChar,
+            StringComparison.Ordinal
+          )
         && !f.EndsWith(".part.json", StringComparison.Ordinal)
         && File.Exists(Workspace.RecordFileOf(f))
       )
@@ -198,11 +206,14 @@ internal static class CheckCommand {
     } else if (record.Carried["blankform"] is JObject form) {
       if (Input((string?)form["input"]) is { } got)
         (source, sourceRecord) = got;
-      cutFaces = [.. (form["cutFeatures"] as JArray ?? []).Select(t => (string)t!)];
+      cutFaces =
+      [
+        .. (form["cutFeatures"] as JArray ?? []).Select(t => (string)t!),
+      ];
     } else if (
-      record.Carried["core"] is JObject core
-      && Input((string?)core["source"]) is { } fed
-    )
+        record.Carried["core"] is JObject core
+        && Input((string?)core["source"]) is { } fed
+      )
       (source, sourceRecord) = fed;
     if (sourcePath != null) {
       source = Reader.ReadFile(sourcePath);
@@ -255,8 +266,23 @@ internal static class CheckCommand {
     ReadInput(
       file,
       (string?)(input.Record!.Carried["blankform"] as JObject)?["placed"]
-    ) is { } placed
-      ? input with { Shape = placed.Shape, Record = placed.Record }
+    )
+      is { } placed
+      ? input with {
+        Shape = placed.Shape,
+        Record = placed.Record,
+      }
+      : input;
+
+  private static CheckInput DrawnFor(CheckInput input, string file) =>
+    ReadInput(
+      file,
+      (string?)(input.Record!.Carried["draw"] as JObject)?["input"]
+    )
+      is { } drawn
+      ? input with {
+        Shape = drawn.Shape,
+      }
       : input;
 
   private static string? SiblingPath(string dir, string? item) {

@@ -307,14 +307,86 @@ public class CliTests {
     w.Gen(w.MachineSpec(Workspace.Casting(), Workspace.User()));
     string items = Path.Combine(w.Out, "items");
 
-    (_, string cast, _) = Check(w, Path.Combine(items, "cast-planer-bed-proposed.json"));
-    (_, string pattern, _) = Check(w, Path.Combine(items, "pattern-cast-planer-bed-proposed.json"));
-    (_, string worked, _) = Check(w, Path.Combine(items, "planer-bed-proposed.json"));
+    (_, string cast, _) = Check(
+      w,
+      Path.Combine(items, "cast-planer-bed-proposed.json")
+    );
+    (_, string pattern, _) = Check(
+      w,
+      Path.Combine(items, "pattern-cast-planer-bed-proposed.json")
+    );
+    (_, string worked, _) = Check(
+      w,
+      Path.Combine(items, "planer-bed-proposed.json")
+    );
 
     Assert.Contains("PASS allowance", cast);
     Assert.Contains("PASS draw", pattern);
     Assert.Contains("PASS blankmatch", worked);
     Assert.DoesNotContain("SKIP", cast + pattern + worked);
+  }
+
+  [Fact]
+  public void Cli_check_draws_a_generated_filling_and_fails_one_with_an_undercut_piece() {
+    using var w = new Workspace();
+    w.Gen(w.MachineSpec(Workspace.Casting()));
+    string filling = Path.Combine(
+      w.Out,
+      "items",
+      "floorflask-filling-cast-planer-bed-proposed.json"
+    );
+    string draw = Path.Combine(w.Out, "inputs", "cast-planer-bed-draw.json");
+
+    (_, string good, _) = Check(w, filling);
+    JObject record = JObject.Parse(
+      File.ReadAllText(filling.Replace(".json", ".part.json"))
+    );
+    double parting = (double)record["draw"]!["parting"]!;
+    JObject drawn = JObject.Parse(File.ReadAllText(draw));
+    ((JArray)drawn["elements"]!).Add(
+      JObject.Parse(
+        $$"""
+        { "name": "Undercut", "from": [0, {{parting
+          - 3}}, 0], "to": [1, {{parting - 2}}, 1],
+          "faces": { "up": { "texture": "#pattern1" } } }
+        """
+      )
+    );
+    File.WriteAllText(draw, drawn.ToString());
+    (int exit, string bad, _) = Check(w, filling);
+
+    Assert.Contains("PASS draw", good);
+    Assert.Equal(1, exit);
+    Assert.Contains("FAIL draw", bad);
+  }
+
+  [Fact]
+  public void Cli_check_matches_a_worked_item_the_blank_file_lists_to_its_blank_form() {
+    using var w = new Workspace();
+    File.WriteAllText(
+      Path.Combine(w.Spec, "blanks", "castbed.json"),
+      """
+      { "blank": "castbed", "size": [16, 4, 16], "cutFaces": "from-record",
+        "form": { "shape": "b.json", "sha": "HEAD", "groups": ["Root"] },
+        "worked": [ { "item": "castbed-planed", "steps": [ { "step": "plane", "cuts": ["ways"] } ] } ] }
+      """
+    );
+    (int gen, _, string genErr) = w.Run(
+      "gen",
+      Path.Combine(w.Spec, "blanks", "castbed.json"),
+      "--root",
+      w.Out,
+      "--shapes",
+      w.Shapes
+    );
+
+    (_, string output, string err) = Check(
+      w,
+      Path.Combine(w.Out, "items", "castbed-planed-proposed.json")
+    );
+
+    Assert.True(gen == 0, genErr);
+    Assert.Contains("PASS blankmatch", output + err);
   }
 
   [Fact]
@@ -337,15 +409,24 @@ public class CliTests {
     using var w = new Workspace();
     w.Gen(w.MachineSpec(Workspace.Casting()));
 
-    (int exit, string output, string err) = Check(w, Path.Combine(w.Out, "items"));
+    (int exit, string output, string err) = Check(
+      w,
+      Path.Combine(w.Out, "items")
+    );
 
     Assert.NotEqual(2, exit);
     Assert.Contains(
-      "PASS corefit " + Path.Combine(w.Out, "items", "drysandcore-cast-planer-bed-proposed.json"),
+      "PASS corefit "
+        + Path.Combine(
+          w.Out,
+          "items",
+          "drysandcore-cast-planer-bed-proposed.json"
+        ),
       output
     );
     Assert.Contains(
-      "PASS corefit " + Path.Combine(w.Out, "items", "corebox-cast-planer-bed-proposed.json"),
+      "PASS corefit "
+        + Path.Combine(w.Out, "items", "corebox-cast-planer-bed-proposed.json"),
       output
     );
     Assert.DoesNotContain("SKIP", output);
@@ -379,7 +460,9 @@ public class CliTests {
     using var w = new Workspace();
     w.Gen(
       w.MachineSpec(
-        Workspace.Casting() + ", " + Workspace.Casting("[\"Root/Base\"]", "cast-planer-base"),
+        Workspace.Casting()
+          + ", "
+          + Workspace.Casting("[\"Root/Base\"]", "cast-planer-base"),
         Workspace.User()
       )
     );

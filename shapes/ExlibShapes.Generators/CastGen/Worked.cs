@@ -4,8 +4,8 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using ExpandedLib.Shapes.Checks;
 using ExpandedLib.Shapes.Core;
-using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace ExpandedLib.Shapes.Generators;
 
