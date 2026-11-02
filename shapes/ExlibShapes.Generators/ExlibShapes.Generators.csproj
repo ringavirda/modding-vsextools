@@ -12,5 +12,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ExlibShapes.Core\ExlibShapes.Core.csproj" />
+    <ProjectReference Include="..\ExlibShapes.Checks\ExlibShapes.Checks.csproj" />
   </ItemGroup>
 </Project>

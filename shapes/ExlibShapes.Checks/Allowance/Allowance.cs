@@ -13,6 +13,11 @@ namespace ExpandedLib.Shapes.Checks;
 /// One line per fault: <c>NAME: missing from the item</c>, <c>NAME: not in the source</c>,
 /// <c>NAME: box [..] against [..], the source plus the allowance on [faces]</c>, or
 /// <c>NAME/FACE: not a face of a cast element in the source</c>. Needs the source shape, its record and the item.
+/// The item's record (<see cref="CheckInput.Record"/>) may carry <see cref="FlushMoves"/>: a recorded move of a face
+/// no step cuts, a merge of two elements no step cuts or a cap beside a face no step cuts explains the difference
+/// from source plus allowance; a move or merge on a cut face and a cap on one are faults
+/// (<c>NAME/FACE: a RULE move on a face a step cuts</c>, <c>NAME: a merge on an element a step cuts</c>,
+/// <c>NAME: cap not D thick beside OF/FACE, or on a face a step cuts</c>).
 /// </summary>
 public sealed class Allowance : ICheck {
   private const double Tol = 1e-4;
@@ -65,9 +70,36 @@ public sealed class Allowance : ICheck {
       if (!cuts.TryAdd(name, [face]))
         cuts[name].Add(face);
     }
+    List<FlushMove> moves = FlushMoves.Read(input.Record);
+    var absorbed = moves
+      .Where(m => m.Rule == "merge")
+      .ToDictionary(m => m.Element, m => m.Into ?? "");
     foreach ((string name, Box want) in cast) {
       List<string> faces = cuts.GetValueOrDefault(name) ?? [];
+      if (absorbed.ContainsKey(name)) {
+        if (faces.Count > 0)
+          lines.Add($"{name}: a merge on an element a step cuts");
+        continue;
+      }
       Box out_ = Moved(want, faces, input.Allowance);
+      foreach (
+        FlushMove m in moves.Where(m =>
+          m.Rule is not ("merge" or "cap") && m.Element == name
+        )
+      ) {
+        if (faces.Contains(m.Face))
+          lines.Add($"{name}/{m.Face}: a {m.Rule} move on a face a step cuts");
+        else
+          out_ = Shifted(out_, m.Face, m.Distance);
+      }
+      foreach (
+        FlushMove m in moves.Where(m => m.Rule == "merge" && m.Into == name)
+      ) {
+        if (faces.Count > 0)
+          lines.Add($"{name}: a merge on an element a step cuts");
+        if (cast.TryGetValue(m.Element, out Box other))
+          out_ = Union(out_, other);
+      }
       if (!item.TryGetValue(name, out Box got)) {
         lines.Add($"{name}: missing from the item");
         continue;
@@ -77,9 +109,21 @@ public sealed class Allowance : ICheck {
           $"{name}: box {Show(got)} against {Show(out_)}, the source plus the allowance on [{string.Join(", ", faces)}]"
         );
     }
-    foreach (string name in item.Keys)
-      if (!drawn.ContainsKey(name))
-        lines.Add($"{name}: not in the source");
+    foreach ((string name, Box got) in item)
+      if (!drawn.ContainsKey(name)) {
+        FlushMove? cap = moves.FirstOrDefault(m =>
+          m.Rule == "cap" && m.Element == name
+        );
+        if (cap == null)
+          lines.Add($"{name}: not in the source");
+        else if (
+          cuts.GetValueOrDefault(cap.Of ?? "")?.Contains(cap.Face) == true
+          || !CapFits(got, cap)
+        )
+          lines.Add(
+            $"{name}: cap not {Fmt.G(cap.Distance)} thick beside {cap.Of}/{cap.Face}, or on a face a step cuts"
+          );
+      }
     bool faults = lines.Count > 0;
     if (!faults)
       lines.Add($"allowance: {cast.Count} elements ok");
@@ -142,6 +186,58 @@ public sealed class Allowance : ICheck {
       new Vec3(lo[0], lo[1], lo[2]),
       new Vec3(hi[0], hi[1], hi[2])
     );
+  }
+
+  private static Box Shifted(Box b, string face, double d) {
+    double[] lo = b.Lo.ToArray(),
+      hi = b.Hi.ToArray();
+    switch (face) {
+      case "east":
+        hi[0] += d;
+        break;
+      case "west":
+        lo[0] -= d;
+        break;
+      case "up":
+        hi[1] += d;
+        break;
+      case "down":
+        lo[1] -= d;
+        break;
+      case "south":
+        hi[2] += d;
+        break;
+      default:
+        lo[2] -= d;
+        break;
+    }
+    return new Box(
+      new Vec3(lo[0], lo[1], lo[2]),
+      new Vec3(hi[0], hi[1], hi[2])
+    );
+  }
+
+  private static Box Union(Box a, Box b) =>
+    new(
+      new Vec3(
+        Math.Min(a.Lo.X, b.Lo.X),
+        Math.Min(a.Lo.Y, b.Lo.Y),
+        Math.Min(a.Lo.Z, b.Lo.Z)
+      ),
+      new Vec3(
+        Math.Max(a.Hi.X, b.Hi.X),
+        Math.Max(a.Hi.Y, b.Hi.Y),
+        Math.Max(a.Hi.Z, b.Hi.Z)
+      )
+    );
+
+  private static bool CapFits(Box b, FlushMove cap) {
+    int axis = cap.Face switch {
+      "east" or "west" => 0,
+      "up" or "down" => 1,
+      _ => 2,
+    };
+    return Math.Abs(b.Hi[axis] - b.Lo[axis] - cap.Distance) <= Tol;
   }
 
   private static bool Near(Box a, Box b) =>

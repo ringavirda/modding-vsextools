@@ -21,5 +21,6 @@
   <ItemGroup>
     <ProjectReference Include="..\ExlibShapes.Generators\ExlibShapes.Generators.csproj" />
     <ProjectReference Include="..\ExlibShapes.Core\ExlibShapes.Core.csproj" />
+    <ProjectReference Include="..\ExlibShapes.Checks\ExlibShapes.Checks.csproj" />
   </ItemGroup>
 </Project>

@@ -172,6 +172,117 @@ public class AllowanceTests {
     Assert.Equal(0, Check.Run(Input(item) with { Allowance = 0.25 }).ExitCode);
   }
 
+  private static CheckInput Moved(Shape item, params FlushMove[] moves) {
+    PartRecord rec = CastFixtures.Record(CastFixtures.CastRecord);
+    FlushMoves.Write(rec, moves);
+    return Input(item) with { Record = rec };
+  }
+
+  private static Shape LugSunk() =>
+    Fixtures.Edited(
+      "cast-ok.json",
+      raw => CastFixtures.Move(CastFixtures.Find(raw, "Lug"), "to", 0, 13.875)
+    );
+
+  [Fact]
+  public void A_recorded_sink_explains_the_difference_and_the_same_sink_unrecorded_fails() {
+    FlushMove sink = new("Lug", "sink", "east", -0.125);
+    Assert.Equal(0, Check.Run(Moved(LugSunk(), sink)).ExitCode);
+    CheckResult bare = Check.Run(Input(LugSunk()));
+    Assert.Equal(1, bare.ExitCode);
+    Assert.Contains(
+      "Lug: box [12, 2, 2]..[13.875, 4, 4] against [12, 2, 2]..[14, 4, 4], the source plus the allowance on []",
+      bare.Lines
+    );
+    Assert.Equal(1, Check.Run(Moved(LugSunk())).ExitCode);
+  }
+
+  [Fact]
+  public void A_recorded_move_on_a_cut_face_fails() {
+    CheckResult r = Check.Run(
+      Moved(
+        Fixtures.Shape("cast-ok.json"),
+        new FlushMove("Way", "sink", "up", -0.125)
+      )
+    );
+    Assert.Equal(1, r.ExitCode);
+    Assert.Contains("Way/up: a sink move on a face a step cuts", r.Lines);
+  }
+
+  [Fact]
+  public void A_recorded_cap_is_accepted_only_at_its_thickness_and_off_a_cut_face() {
+    static Shape Capped(string name) =>
+      Fixtures.Edited(
+        "cast-ok.json",
+        raw => {
+          JObject cap = (JObject)CastFixtures.Find(raw, "Lug").DeepClone();
+          cap["name"] = name;
+          CastFixtures.Move(cap, "from", 1, 4);
+          CastFixtures.Move(cap, "to", 1, 4.125);
+          if (name == "Way_cap") {
+            CastFixtures.Move(cap, "from", 1, 5.125);
+            CastFixtures.Move(cap, "to", 1, 5.25);
+          }
+          ((JArray)raw["elements"]![0]!["children"]!).Add(cap);
+        }
+      );
+    Shape lug = Capped("Lug_cap");
+    Assert.Equal(
+      0,
+      Check
+        .Run(
+          Moved(lug, new FlushMove("Lug_cap", "cap", "up", 0.125, null, "Lug"))
+        )
+        .ExitCode
+    );
+    Assert.Contains(
+      "Lug_cap: cap not 0.25 thick beside Lug/up, or on a face a step cuts",
+      Check
+        .Run(
+          Moved(lug, new FlushMove("Lug_cap", "cap", "up", 0.25, null, "Lug"))
+        )
+        .Lines
+    );
+    Assert.Contains(
+      "Way_cap: cap not 0.125 thick beside Way/up, or on a face a step cuts",
+      Check
+        .Run(
+          Moved(
+            Capped("Way_cap"),
+            new FlushMove("Way_cap", "cap", "up", 0.125, null, "Way")
+          )
+        )
+        .Lines
+    );
+  }
+
+  [Fact]
+  public void A_recorded_merge_takes_the_union_and_never_of_a_cut_element() {
+    Shape merged = Fixtures.Edited(
+      "cast-ok.json",
+      raw => {
+        CastFixtures.Find(raw, "Lug").Remove();
+        CastFixtures.Move(CastFixtures.Find(raw, "Seat"), "to", 0, 14);
+      }
+    );
+    Assert.Equal(
+      0,
+      Check
+        .Run(Moved(merged, new FlushMove("Lug", "merge", "", 0, "Seat")))
+        .ExitCode
+    );
+    Shape wayGone = Fixtures.Edited(
+      "cast-ok.json",
+      raw => CastFixtures.Find(raw, "Way").Remove()
+    );
+    Assert.Contains(
+      "Way: a merge on an element a step cuts",
+      Check
+        .Run(Moved(wayGone, new FlushMove("Way", "merge", "", 0, "Seat")))
+        .Lines
+    );
+  }
+
   [Fact]
   public void Empty_input_fails_and_the_source_is_required() {
     Assert.Equal(Verdict.Fail, Check.Run(new CheckInput(null)).Verdict);

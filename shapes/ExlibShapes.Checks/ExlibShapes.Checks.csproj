@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="ExlibShapes.Checks.Tests" />
+    <InternalsVisibleTo Include="ExlibShapes.Generators" />
   </ItemGroup>
 
   <ItemGroup>
