@@ -38,7 +38,10 @@ public sealed record GenOutput(
 public sealed record GenResult(
   IReadOnlyList<GenOutput> Outputs,
   IReadOnlyList<Question> Questions
-);
+) {
+  /// <summary>One <c>redraw: ...</c> row per machine drawing that differs from its blank; empty when none.</summary>
+  public IReadOnlyList<string> Redraws { get; init; } = [];
+}
 
 /// <summary>A generator: pure over its context and spec, no file I/O.</summary>
 public interface IGenerator {

@@ -156,7 +156,7 @@ public static class Flush {
   private static string High(Flushcheck.Pair p) =>
     string.CompareOrdinal(p.Path1, p.Path2) <= 0 ? p.Path2 : p.Path1;
 
-  private static Shape ShapeOf(IEnumerable<Leaf> leaves) {
+  internal static Shape ShapeOf(IEnumerable<Leaf> leaves) {
     var shape = new Shape();
     foreach (Leaf l in leaves) {
       Element e = Select.Clone(l.Element, false);

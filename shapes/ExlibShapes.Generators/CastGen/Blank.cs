@@ -24,8 +24,19 @@ public sealed class BlankResult {
   /// <summary>The faces of <see cref="CutFeatures"/>, as <c>name/direction</c>.</summary>
   public List<string> CutFaces { get; } = [];
 
+  /// <summary>The blank's part record: every cast element tagged cast, the source record's features and steps.</summary>
+  public PartRecord Record { get; } = new();
+
   /// <summary>Eye calls left open; when present <see cref="Cast"/> is empty.</summary>
   public List<Question> Questions { get; } = [];
+
+  internal void TagCast() {
+    foreach (Leaf l in Cast)
+      Record.Elements[l.Name] = new ElementPart {
+        Stage = "cast",
+        Role = l.Role ?? "cast",
+      };
+  }
 
   /// <summary>The bounds of <see cref="Cast"/>; the size the blank reaches.</summary>
   public Box Extent =>
@@ -81,6 +92,7 @@ public static class Blank {
       res.Cast.Add(
         new Leaf(spec.Blank, spec.Blank, spec.Blank, e, "cast", "cast")
       );
+      res.TagCast();
       return res;
     }
 
@@ -116,6 +128,10 @@ public static class Blank {
       res.CutFeatures.Add(id);
       res.CutFaces.AddRange(f.Faces);
     }
+    res.TagCast();
+    foreach (KeyValuePair<string, Feature> kv in rs.Record.Features)
+      res.Record.Features[kv.Key] = kv.Value;
+    res.Record.Steps.AddRange(rs.Record.Steps);
     return res;
   }
 
