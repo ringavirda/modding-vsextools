@@ -51,7 +51,7 @@ function Get-ExlibShapesRunDll([string]$Game) {
 function Invoke-ShapeTool([string[]]$Argv) {
   $game = if ($env:EXMOD_SHAPES_NO_BUILD) { $null } else { Resolve-GameInstall $CurrentGameVersion 'client' }
   $dll = Get-ExlibShapesRunDll $game
-  dotnet $dll @Argv
+  dotnet $dll @Argv | Out-Host
   $LASTEXITCODE
 }
 

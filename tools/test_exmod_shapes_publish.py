@@ -183,11 +183,11 @@ ConvertTo-Json -Compress @(($a -ne $b), (Test-ShapesPublished $root $a), (Test-S
 
     def test_shapetool_runs_the_published_tool_and_returns_its_exit_code(self):
         # Fails if a nonzero tool exit (3, an open question) becomes an exmod error, the verb is not
-        # passed through, or the run builds.
+        # passed through, the run builds, or the tool's own output joins the returned code.
         got = self.run_body("""
 Pub 's1' | Out-Null
 $global:seen = @()
-function dotnet { $global:seen += ($args -join '|'); $global:LASTEXITCODE = 3 }
+function dotnet { $global:seen += ($args -join '|'); 'tool output'; $global:LASTEXITCODE = 3 }
 $env:EXMOD_SHAPES_NO_BUILD = '1'
 $code = Invoke-ShapeTool @('check', 'a.json', '--catalogue')
 ConvertTo-Json -Compress @($code, $global:seen)""")
