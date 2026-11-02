@@ -87,5 +87,7 @@
     <ProjectReference Include="..\..\assets\ExlibAssets\ExlibAssets.csproj" />
     <!-- The shape model, reader and the element transform, with no game or imaging dependency. -->
     <ProjectReference Include="..\ExlibShapes.Core\ExlibShapes.Core.csproj" />
+    <!-- The gen, check, show and answer verbs. -->
+    <ProjectReference Include="..\ExlibShapes.Ops\ExlibShapes.Ops.csproj" />
   </ItemGroup>
 </Project>

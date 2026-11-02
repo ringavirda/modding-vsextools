@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The commands over Core, Checks and Generators: no game or imaging dependency. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>ExpandedLib.Shapes.Ops</RootNamespace>
+    <AssemblyName>ExlibShapes.Ops</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ExlibShapes.Core\ExlibShapes.Core.csproj" />
+    <ProjectReference Include="..\ExlibShapes.Checks\ExlibShapes.Checks.csproj" />
+    <ProjectReference Include="..\ExlibShapes.Generators\ExlibShapes.Generators.csproj" />
+  </ItemGroup>
+</Project>

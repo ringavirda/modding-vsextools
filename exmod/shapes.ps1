@@ -25,18 +25,34 @@ function Invoke-ExlibShapes([string]$Subcommand, [string[]]$Argv) {
   $toolArgs = @($Subcommand) + $Argv
   if (-not (Get-Opt $Argv '--game' $null)) { $toolArgs += @('--game', $game) }
 
+  $dll = Get-ExlibShapesRunDll $game
+  dotnet $dll @toolArgs
+  if ($LASTEXITCODE -ne 0) { throw "exlib-shapes $Subcommand failed (exit $LASTEXITCODE)." }
+}
+
+# The tool's dll a command runs: the published copy under EXMOD_SHAPES_NO_BUILD (it refuses when
+# nothing is published), else the build output, built first when stale.
+function Get-ExlibShapesRunDll([string]$Game) {
   if ($env:EXMOD_SHAPES_NO_BUILD) {
     $dir = Get-ShapesPublished (Get-ShapesPublishRoot)
     if (-not $dir) {
       throw "exlib-shapes is not published, and EXMOD_SHAPES_NO_BUILD forbids building. Publish it first: exmod shapes-build"
     }
-    $dll = Join-Path $dir 'exlib-shapes.dll'
-  } else {
-    $dll = Get-ExlibShapesDll
-    if (Test-ExlibShapesStale $dll $game) { Build-ExlibShapes $game }
+    return (Join-Path $dir 'exlib-shapes.dll')
   }
-  dotnet $dll @toolArgs
-  if ($LASTEXITCODE -ne 0) { throw "exlib-shapes $Subcommand failed (exit $LASTEXITCODE)." }
+  $dll = Get-ExlibShapesDll
+  if (Test-ExlibShapesStale $dll $Game) { Build-ExlibShapes $Game }
+  $dll
+}
+
+# Runs one shape tool verb (gen, check, show, answer) and returns the tool's own exit code: 1 is a
+# failed gate, 3 an open question, 2 usage, none of them an exmod error. Needs no game install unless
+# the tool has to be built.
+function Invoke-ShapeTool([string[]]$Argv) {
+  $game = if ($env:EXMOD_SHAPES_NO_BUILD) { $null } else { Resolve-GameInstall $CurrentGameVersion 'client' }
+  $dll = Get-ExlibShapesRunDll $game
+  dotnet $dll @Argv
+  $LASTEXITCODE
 }
 
 # The built tool: Debug output of shapes/ExlibShapes.
@@ -45,23 +61,32 @@ function Get-ExlibShapesDll {
 }
 
 # True when $Dll is missing or older than any input of the build: the sources and project files of
-# ExlibShapes and the ExlibAssets project it references, the props, packages and SDK pin they
+# ExlibShapes, the ExlibAssets project it references and the shape tool's Core, Checks, Generators
+# and Ops projects, the shapes/Directory.Build.targets that embeds their versions, the props, packages and SDK pin they
 # import, exmod.json (the package version), and the game's VintagestoryAPI.dll. bin/ and obj/ are
 # not inputs.
 function Test-ExlibShapesStale([string]$Dll, [string]$Game) {
   if (-not (Test-Path -LiteralPath $Dll)) { return $true }
   $built = (Get-Item -LiteralPath $Dll).LastWriteTimeUtc
   $inputs = @()
-  foreach ($dir in 'shapes/ExlibShapes', 'assets/ExlibAssets') {
+  foreach ($dir in 'shapes/ExlibShapes', 'shapes/ExlibShapes.Core', 'shapes/ExlibShapes.Checks', 'shapes/ExlibShapes.Generators', 'shapes/ExlibShapes.Ops', 'assets/ExlibAssets') {
     $inputs += Get-ChildItem (Join-Path $ToolsRoot $dir) -Recurse -File |
       Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' -and $_.Name -ne 'README.md' }
   }
-  foreach ($name in 'Directory.Build.props', 'Directory.Build.targets', 'Directory.Build.rsp', 'Directory.Packages.props', 'global.json', 'exmod.json') {
+  foreach ($name in 'shapes/Directory.Build.targets', 'Directory.Build.props', 'Directory.Build.targets', 'Directory.Build.rsp', 'Directory.Packages.props', 'global.json', 'exmod.json') {
     $inputs += Get-Item -LiteralPath (Join-Path $ToolsRoot $name)
   }
   $api = Join-Path $Game 'VintagestoryAPI.dll'
   if (Test-Path -LiteralPath $api) { $inputs += Get-Item -LiteralPath $api }
   [bool]($inputs | Where-Object { $_.LastWriteTimeUtc -gt $built } | Select-Object -First 1)
+}
+
+# The stamp a publish is made from: the newest write time of the build folder's dlls, so a change
+# confined to a referenced project, whose dll is rewritten while the exe's is not, still republishes.
+function Get-ShapesBuildStamp([string]$BuildDir) {
+  $newest = Get-ChildItem -LiteralPath $BuildDir -Filter '*.dll' -File |
+    Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+  [string]$newest.LastWriteTimeUtc.Ticks
 }
 
 # Builds the tool. A build rewrites bin/ and obj/, so renders side by side run from the published
@@ -138,7 +163,7 @@ function Invoke-ShapesBuild([string[]]$Argv) {
   if (Test-ExlibShapesStale (Get-ExlibShapesDll) $game) { Build-ExlibShapes $game } else { 'exlib-shapes is current.' }
   $dll = Get-Item -LiteralPath (Get-ExlibShapesDll)
   $root = Get-ShapesPublishRoot
-  $stamp = [string]$dll.LastWriteTimeUtc.Ticks
+  $stamp = Get-ShapesBuildStamp $dll.DirectoryName
   if (Test-ShapesPublished $root $stamp) { return }
   $dest = Publish-ExlibShapes $root $dll.DirectoryName $stamp
   Remove-OldShapesPublishes $root
@@ -342,4 +367,30 @@ published. Only the build needs the exclusive build lock; the renders do not:
 
   flock -w 240 -o LOCK exmod shapes-build
   EXMOD_SHAPES_NO_BUILD=1 exmod render FILE --out=DIR
+'@
+
+Add-ExmodCommand -Group source -Name shapetool -Summary 'run a shape tool verb: gen, check, show, answer' -Action {
+  param([string[]]$Argv) exit (Invoke-ShapeTool $Argv)
+} -Detail @'
+exmod shapetool gen SPEC --root DIR [--runtime RDIR] [--shapes DIR] [--settings FILE] [--domain MOD]
+exmod shapetool check PATH... [--catalogue] [--mutate] [--source SHAPE] [--settings FILE] [--cache DIR]
+exmod shapetool show PART [--root DIR] [--settings FILE] [--source SHAPE] [--cache DIR]
+exmod shapetool answer PART FEATURE OPTION [--root DIR] [--shapes DIR] [--by NAME]
+
+Passes the verb to exlib-shapes and exits with its code: 0 passed, 1 a gate failed or the run could not
+be made, 2 usage, 3 an open question, printed as `Question:` lines for the main session to ask.
+
+  gen      runs CastGen on a blank file or a machine file (its blanks/ beside it) and writes
+           DIR/items/<name>-proposed.json with its part record, the provenance rows and
+           DIR/questions.json; --runtime also writes the runtime shapes
+  check    runs the gates of each shape's kinds through the content-keyed cache; a directory takes
+           every shape in it that has a record; --catalogue lists the ruling lints
+  show     a part's record, gate status and open questions, or a spec file's bill, in under 40 lines
+  answer   stores the answer to an open question in the part's record, against the feature's sha
+
+Runs the published copy (`exmod shapes-build`) under EXMOD_SHAPES_NO_BUILD, takes no lock, and appends
+one line per command to $XDG_STATE_HOME/exlib-shapes/runs.jsonl:
+
+  flock -w 240 -o LOCK exmod shapes-build
+  EXMOD_SHAPES_NO_BUILD=1 exmod shapetool gen SPEC --root DIR
 '@

@@ -244,6 +244,36 @@ red and a red frame round a row with any failing gate. `--seraph FILE` poses a p
 place of the game's (its skin is the game's), so a clip a patch adds can be rendered; `--frame N`
 is the frame of the held clip the tp and fp views pose the player at (default 0).
 
+## gen / check / show / answer
+
+The shape tool's verbs. They need no game install.
+
+`exlib-shapes gen SPEC --root DIR [--shapes DIR] [--runtime RDIR --domain MOD] [--settings FILE]` runs CastGen on a
+blank file, or on a machine file whose blank files are in `blanks/` beside it. Drawings are read with `git show` at the
+spec's pinned sha, relative to `--shapes` (default `--root`); a drawing's `.part.json` beside it must be for the pinned
+bytes. Each output is written to `DIR/items/NAME-proposed.json` with `NAME-proposed.part.json` beside it and a row in
+`DIR/provenance.jsonl`; `--runtime` also writes the runtime shape to `RDIR/NAME.json`. A file there with no matching
+provenance row is not overwritten. `redraw:` lines name what a user drew differently from its blank. An eye call with no
+stored answer prints `Question: FEATURE: TEXT [options: ...; suggested: ...]`, is kept in `DIR/questions.json`, and
+exits 3 after the other outputs are written.
+
+`exlib-shapes answer PART FEATURE OPTION [--root DIR] [--shapes DIR] [--by NAME]` stores the option in PART's record
+(PART is the drawing's path under `--shapes`), against the feature's fingerprint; a regeneration asks again only when the
+feature changed.
+
+`exlib-shapes check PATH... [--settings FILE] [--cache DIR] [--source SHAPE]` runs the gates of each shape's record kinds
+(a directory takes every shape that has a record) through the content-keyed cache and the shared run slots. A filling
+reads its cast, pattern, cope and cores from the shapes beside it. `draw` is skipped for want of a parting height, and
+`allowance` and `blankmatch` without `--source`; each skip is printed as `SKIP`. An output made by another generator
+version is refused. `--catalogue` lists the ruling lints; `--mutate` is not available and exits 2.
+
+`exlib-shapes show PART [--root DIR]` prints a part's record, gate status and open questions, or a spec file's bill
+(own castings, blank users with counts, the set, the standard items counted), in under 40 lines.
+
+Exit codes: `0` pass, `1` a gate failed or the run could not be made, `2` usage, `3` an open question. Each command
+appends one line to `$XDG_STATE_HOME/exlib-shapes/runs.jsonl`. Inside the workspace, `exmod shapetool VERB ARGS` runs
+the published copy and returns these codes.
+
 ## tree / measure
 
 `exlib-shapes tree FILE [--group PREFIX]` prints a shape's element tree (name, extent, rotation,

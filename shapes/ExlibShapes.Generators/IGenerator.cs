@@ -15,7 +15,13 @@ public sealed record Question(
   string Text,
   IReadOnlyList<string> Options,
   string Suggested
-);
+) {
+  /// <summary>The source shape path the question is about, as the spec writes it; empty when the resolver gave no path.</summary>
+  public string Part { get; init; } = "";
+
+  /// <summary>The fingerprint an answer to this question is stored against (<c>featureSha</c> of the part record).</summary>
+  public string FeatureSha { get; init; } = "";
+}
 
 /// <summary>One shape a generator produced, with its part record.</summary>
 /// <param name="Name">The output name (no extension).</param>

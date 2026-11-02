@@ -1,6 +1,6 @@
 """Tests for the shapes tool's published copy in exmod/shapes.ps1 (Publish-ExlibShapes,
-Remove-OldShapesPublishes, Test-ShapesPublished and the EXMOD_SHAPES_NO_BUILD path of
-Invoke-ExlibShapes), run through pwsh on a temporary publish root and a fake build folder with
+Remove-OldShapesPublishes, Test-ShapesPublished, Test-ExlibShapesStale, Get-ShapesBuildStamp,
+Invoke-ShapeTool and the EXMOD_SHAPES_NO_BUILD path of Invoke-ExlibShapes), run through pwsh on a temporary publish root and a fake build folder with
 `dotnet`, Build-ExlibShapes and the game lookup stubbed; skipped when no pwsh is found. Each test
 names the mutation it fails under."""
 
@@ -126,6 +126,74 @@ $env:EXMOD_SHAPES_NO_BUILD = '1'
 try { Invoke-ExlibShapes 'render' @('a.json'); 'ran' } catch { $_.Exception.Message }""")
         self.assertIn("not published", got[-1])
         self.assertIn("exmod shapes-build", got[-1])
+
+    def fake_tools_root(self):
+        """A tools checkout with every input of the shapes build one hour old and a built exe dll now."""
+        fake = os.path.join(self.tmp, "tools")
+        dirs = ["ExlibShapes", "ExlibShapes.Core", "ExlibShapes.Checks", "ExlibShapes.Generators", "ExlibShapes.Ops"]
+        files = [os.path.join("shapes", d, "x.cs") for d in dirs]
+        files += [os.path.join("assets", "ExlibAssets", "x.cs"), os.path.join("shapes", "Directory.Build.targets")]
+        files += ["Directory.Build.props", "Directory.Build.targets", "Directory.Build.rsp",
+                  "Directory.Packages.props", "global.json", "exmod.json"]
+        old = os.path.getmtime(self.tmp) - 3600
+        for f in files:
+            path = os.path.join(fake, f)
+            touch(path, "x")
+            os.utime(path, (old, old))
+        dll = os.path.join(fake, "shapes", "ExlibShapes", "bin", "Debug", "net10.0", "exlib-shapes.dll")
+        touch(dll, "tool")
+        return fake, files
+
+    def test_stale_sees_a_change_in_each_project_the_tool_is_built_from(self):
+        # Fails if Core, Checks, Generators, Ops or shapes/Directory.Build.targets is left out of the
+        # inputs, so a change confined to one of them would run the old build.
+        fake, files = self.fake_tools_root()
+        env_fake = "$ToolsRoot = $env:TEST_FAKE"
+        for f in files:
+            if f.endswith("ExlibShapes" + os.sep + "x.cs") or f.startswith("assets"):
+                continue
+            path = os.path.join(fake, f)
+            old = os.path.getmtime(path)
+            body = env_fake + "\nTest-ExlibShapesStale (Get-ExlibShapesDll) 'nogame'"
+            script = exmod_script(HEAD + body)
+            env = exmod_env(os.path.join(self.tmp, "local"), TEST_REPO=self.repo, TEST_TMP=self.tmp, TEST_FAKE=fake)
+            def stale():
+                out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script],
+                                     env=env, capture_output=True, text=True)
+                self.assertEqual(0, out.returncode, out.stdout + out.stderr)
+                return out.stdout.splitlines()[-1]
+            with self.subTest(changed=f):
+                self.assertEqual("False", stale())
+                os.utime(path, (old + 7200, old + 7200))
+                self.assertEqual("True", stale())
+                os.utime(path, (old, old))
+
+    def test_publish_stamp_follows_the_newest_dll_so_a_core_only_change_republishes(self):
+        # Fails if the stamp is the exe dll's write time alone: a rebuild that rewrites only
+        # ExlibShapes.Core.dll then matches the stamp of the publish already made.
+        got = self.run_body("""
+$a = Get-ShapesBuildStamp $build
+Pub $a | Out-Null
+$core = Join-Path $build 'ExlibShapes.Core.dll'
+Set-Content -LiteralPath $core -Value 'core2'
+(Get-Item -LiteralPath $core).LastWriteTimeUtc = [datetime]::UtcNow.AddMinutes(5)
+$b = Get-ShapesBuildStamp $build
+ConvertTo-Json -Compress @(($a -ne $b), (Test-ShapesPublished $root $a), (Test-ShapesPublished $root $b))""")
+        self.assertEqual([True, True, False], json.loads(got[-1]))
+
+    def test_shapetool_runs_the_published_tool_and_returns_its_exit_code(self):
+        # Fails if a nonzero tool exit (3, an open question) becomes an exmod error, the verb is not
+        # passed through, or the run builds.
+        got = self.run_body("""
+Pub 's1' | Out-Null
+$global:seen = @()
+function dotnet { $global:seen += ($args -join '|'); $global:LASTEXITCODE = 3 }
+$env:EXMOD_SHAPES_NO_BUILD = '1'
+$code = Invoke-ShapeTool @('check', 'a.json', '--catalogue')
+ConvertTo-Json -Compress @($code, $global:seen)""")
+        code, seen = json.loads(got[-1])
+        self.assertEqual(3, code)
+        self.assertEqual(os.path.join(self.root, self.publishes()[0], "exlib-shapes.dll") + "|check|a.json|--catalogue", seen[0] if isinstance(seen, list) else seen)
 
 
 if __name__ == "__main__":

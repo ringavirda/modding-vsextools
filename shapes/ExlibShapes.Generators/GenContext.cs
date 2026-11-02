@@ -11,10 +11,12 @@ namespace ExpandedLib.Shapes.Generators;
 /// <param name="Shape">The shape.</param>
 /// <param name="Record">Its part record; an empty record when the drawing has none.</param>
 /// <param name="ShapeSha">Lowercase hex sha256 of the shape file bytes.</param>
+/// <param name="Path">The shape path as the spec writes it; empty when the resolver has none.</param>
 public sealed record ResolvedSource(
   Shape Shape,
   PartRecord Record,
-  string ShapeSha
+  string ShapeSha,
+  string Path = ""
 );
 
 /// <summary>What a generator run sees: settings, the stored answers, a resolver for pinned

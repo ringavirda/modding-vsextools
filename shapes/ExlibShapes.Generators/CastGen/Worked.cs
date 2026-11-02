@@ -95,7 +95,11 @@ public static partial class Worked {
               l,
               ["accept"],
               "accept"
-            )),
+            )
+            {
+              Part = rs.Path,
+              FeatureSha = Provenance.Sha256Of(l),
+            }),
         ],
         redraws,
         []

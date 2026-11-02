@@ -221,7 +221,10 @@ public static class CastSet {
             $"\"{kv.Key}\" has no stage in its record: is it cast, worked or a fastener?",
             ["cast", "worked", "fastener"],
             "cast"
-          )
+          ) {
+            Part = src.Path,
+            FeatureSha = sha,
+          }
         );
     }
 
