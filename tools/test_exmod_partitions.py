@@ -221,6 +221,36 @@ class PartitionTests(unittest.TestCase):
         self.assertRegex(out, r"memory: 1\.22/A\.Tests took 9 GiB of 54")
         self.assertEqual(["DOTNET_GCHeapHardLimit=0x%X" % (8 << 30)], [a[a.index("-e") + 1] for a in RUNS])
 
+    def test_a_heavy_filtered_run_books_what_the_parts_its_filter_reaches_need(self):
+        # Fails when EXMOD_HEAVY=1 books the whole heap whatever the filter reaches (the worlds run takes 21 not 5), when a term
+        # that contains no part's value is taken as reaching only one part (the bare `Walk` run takes 6, not 21), or when
+        # one reached heavy part is missed in a `|` union (the worlds-and-walks run takes 6), or when a negated term is read as reaching its part.
+        m = manifest(heap=20, filter_heap=15, filter_start=4, part_heaps=(20, 4, 15))
+        limit = lambda g: "DOTNET_GCHeapHardLimit=0x%X" % (g << 30)
+        for filt, took, lim in (("FullyQualifiedName~.World.One", 5, 4),
+                                ("FullyQualifiedName~.Mod.Tests.WalkA.One", 21, 20),
+                                ("FullyQualifiedName~Walk", 21, 20),
+                                ("FullyQualifiedName~.World.One|FullyQualifiedName~.WalkB.One", 21, 20),
+                                ("FullyQualifiedName~.World.One|FullyQualifiedName~.Other.", 21, 20),
+                                ("FullyQualifiedName!~.World.One", 21, 20),
+                                ("FullyQualifiedName~.World.One&FullyQualifiedName!~.Two", 21, 20)):
+            out, _, _, _ = run_pwsh("", {"EXMOD_HEAVY": "1"}, args="'-Filter', '%s'" % filt, manifest=m)
+            self.assertRegex(out, r"memory: 1\.22/A\.Tests took %d GiB of 54" % took, filt + "\n" + out)
+            self.assertEqual([limit(lim)], [a[a.index("-e") + 1] for a in RUNS], filt)
+
+    def test_a_heavy_filtered_run_of_a_part_heavier_than_the_filter_share_books_that_part_not_the_whole_heap(self):
+        # Fails when the booked heap is the assembly's (21) or the filter share (5) instead of the reached part's 9.
+        m = manifest(heap=20, filter_heap=15, filter_start=4, part_heaps=(20, 9, 15))
+        out, _, _, _ = run_pwsh("", {"EXMOD_HEAVY": "1"}, args="'-Filter', 'FullyQualifiedName~.World.One'", manifest=m)
+        self.assertRegex(out, r"memory: 1\.22/A\.Tests took 10 GiB of 54")
+        self.assertEqual(["DOTNET_GCHeapHardLimit=0x%X" % (9 << 30)], [a[a.index("-e") + 1] for a in RUNS])
+
+    def test_an_unfiltered_heavy_run_still_books_each_part_its_own_heap(self):
+        # Fails when the heavy reach rule is applied to a run with no filter.
+        m = manifest(heap=20, filter_heap=15, filter_start=4, part_heaps=(20, 4, 15))
+        out, _, _, _ = run_pwsh("", {"EXMOD_HEAVY": "1", "EXMOD_MEMORY_GB": "60"}, manifest=m)
+        self.assertIn("(walks 21, rest 16, worlds 5)", out)
+
     def test_an_out_of_memory_under_the_filter_limit_names_the_heavy_run_and_other_failures_do_not(self):
         # Fails when the hint is added to every failure: the plain failure then carries it too.
         args = "'-Filter', 'FullyQualifiedName~.Other.'"
