@@ -46,7 +46,7 @@ public sealed partial class CastGen : IGenerator {
     if (spec.ContainsKey("blank"))
       RunBlank(ctx, Spec.ReadBlank(spec), text, acc);
     else if (spec.ContainsKey("machine"))
-      RunMachine(ctx, Spec.ReadMachine(spec), text, acc);
+      RunMachine(ctx, Spec.ReadMachine(spec), spec, acc);
     else
       throw new SpecException(
         "castgen: an entry is a blank file (\"blank\") or a machine file (\"machine\")"
@@ -56,6 +56,7 @@ public sealed partial class CastGen : IGenerator {
       [.. acc.Questions.DistinctBy(q => (q.Feature, q.Text))]
     ) {
       Redraws = acc.Redraws,
+      Inputs = [.. acc.Inputs.Values],
     };
   }
 
@@ -63,10 +64,49 @@ public sealed partial class CastGen : IGenerator {
     public List<GenOutput> Outputs { get; } = [];
     public List<Question> Questions { get; } = [];
     public List<string> Redraws { get; } = [];
+    public Dictionary<string, GenInput> Inputs { get; } = [];
 
     public IReadOnlyList<GenOutput> Worked =>
       [.. Outputs.Where(o => o.Kinds.Contains("worked"))];
   }
+
+  private static string FormName(string code) => code + "-form";
+
+  private static void AddForm(
+    Acc acc,
+    string code,
+    IEnumerable<Leaf> cast,
+    PartRecord from,
+    IReadOnlyList<string> cutFaces
+  ) {
+    var rec = new PartRecord { Shape = FormName(code) + ".json" };
+    foreach (KeyValuePair<string, ElementPart> kv in from.Elements)
+      rec.Elements[kv.Key] = kv.Value;
+    foreach (KeyValuePair<string, Feature> kv in from.Features)
+      rec.Features[kv.Key] = kv.Value;
+    if (cutFaces.Count > 0) {
+      var step = new Step { Id = "cut" };
+      step.Faces.AddRange(cutFaces);
+      rec.Steps.Add(step);
+    }
+    List<Leaf> leaves = [.. cast];
+    foreach (Leaf l in leaves)
+      rec.Elements[l.Name] = new ElementPart {
+        Stage = "cast",
+        Role = l.Role ?? "cast",
+      };
+    acc.Inputs.TryAdd(
+      FormName(code),
+      new GenInput(FormName(code), Flush.ShapeOf(leaves), rec)
+    );
+  }
+
+  private static string EntryText(JObject machine, JToken entry) =>
+    new JObject {
+      ["source"] = machine["source"]?.DeepClone(),
+      ["allowance"] = machine["allowance"]?.DeepClone(),
+      ["entry"] = entry.DeepClone(),
+    }.ToString(Newtonsoft.Json.Formatting.None);
 
   private sealed record Casting(
     string Code,
@@ -124,7 +164,7 @@ public sealed partial class CastGen : IGenerator {
   private void RunMachine(
     GenContext ctx,
     MachineSpec spec,
-    string text,
+    JObject file,
     Acc acc
   ) {
     if (spec.Joined.Count > 0)
@@ -143,6 +183,7 @@ public sealed partial class CastGen : IGenerator {
         acc.Questions.AddRange(blank.Questions);
         continue;
       }
+      AddForm(acc, blank.Spec.Blank, blank.Cast, blank.Record, blank.CutFaces);
       WorkedResult made = Worked.ForUser(ctx, spec, user, blank, acc.Worked);
       acc.Redraws.AddRange(made.Redraws);
       acc.Questions.AddRange(made.Questions);
@@ -151,9 +192,13 @@ public sealed partial class CastGen : IGenerator {
           $"{user.Worked.Item}: {string.Join("; ", made.Failures)}"
         );
       acc.Outputs.AddRange(made.Outputs);
+      foreach (GenInput i in made.Inputs)
+        acc.Inputs.TryAdd(i.Name, i);
     }
 
-    foreach (CastingSpec c in spec.Castings) {
+    for (int i = 0; i < spec.Castings.Count; i++) {
+      CastingSpec c = spec.Castings[i];
+      string entry = EntryText(file, file["castings"]![i]!);
       CastSetResult set = CastSet.Of(ctx, rs, c.Groups, c.Cores);
       acc.Questions.AddRange(set.Questions);
       if (set.Questions.Count > 0)
@@ -185,7 +230,7 @@ public sealed partial class CastGen : IGenerator {
         LieOf(c.Station, c.Lie, c.Groups, c.Item),
         c.Parting,
         c.Feeds,
-        $"{c.Item}\n{text}",
+        entry,
         rs.ShapeSha,
         rs.Record.Write()
       );
@@ -239,7 +284,7 @@ public sealed partial class CastGen : IGenerator {
             LieOf(s.Station, null, s.Groups, s.Item),
             null,
             null,
-            text,
+            EntryText(file, file["set"]!),
             rs.ShapeSha,
             rs.Record.Write()
           ),
@@ -281,6 +326,11 @@ public sealed partial class CastGen : IGenerator {
   private static void Cast(GenContext ctx, Casting c, Acc acc) {
     var rec = new PartRecord { Shape = c.Code + ".json", Owner = "generated" };
     rec.Kinds.Add("casting");
+    rec.Carried["source"] = new JObject {
+      ["input"] = FormName(c.Code),
+      ["allowance"] = c.Allowance,
+    };
+    AddForm(acc, c.Code, c.Cast, c.Record, c.CutFaces);
     foreach (KeyValuePair<string, Feature> kv in c.Record.Features)
       rec.Features[kv.Key] = kv.Value;
     rec.Steps.AddRange(c.Record.Steps);
@@ -367,6 +417,17 @@ public sealed partial class CastGen : IGenerator {
           ? $"drysandcore-{c.Code}"
           : $"drysandcore-{c.Code}-{h.Feature}";
       GenOutput core = Cores.Make(ctx, code, c.Code, h, c.SpecText);
+      var cored = new PartRecord { Shape = code + "-source.json" };
+      cored.Features[h.Feature] = new Feature { Origin = "cored" };
+      foreach (Leaf l in h.Elements) {
+        cored.Features[h.Feature].Elements.Add(l.Name);
+        cored.Elements[l.Name] = new ElementPart { Stage = "cast" };
+      }
+      acc.Inputs.TryAdd(
+        code + "-source",
+        new GenInput(code + "-source", Flush.ShapeOf(h.Elements), cored)
+      );
+      ((JObject)core.Record.Carried["core"]!)["source"] = code + "-source";
       cores.Add(core);
       acc.Outputs.Add(core);
       acc.Outputs.Add(
@@ -475,6 +536,9 @@ public sealed partial class CastGen : IGenerator {
       ),
       c.SpecText
     );
+    filling.Filling.Record.Carried["draw"] = new JObject {
+      ["parting"] = closed ? st.Parting : st.SandTo[1] - (st.RunnerDepth ?? 0),
+    };
     acc.Outputs.Add(filling.Filling);
     if (filling.Cope != null)
       acc.Outputs.Add(filling.Cope);

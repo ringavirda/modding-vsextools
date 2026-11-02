@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using ExpandedLib.Shapes.Core;
+using Newtonsoft.Json.Linq;
 
 namespace ExpandedLib.Shapes.Ops.Tests;
 
@@ -132,10 +133,10 @@ internal sealed class Workspace : IDisposable {
     return path;
   }
 
-  public static string User(int count = 1) =>
+  public static string User(int count = 1, string item = "planer-bed") =>
     $$"""
       { "blank": "castbed", "groups": ["Root"], "count": {{count}},
-        "worked": { "item": "planer-bed", "from": "castbed",
+        "worked": { "item": "{{item}}", "from": "castbed",
                     "steps": [ { "step": "plane", "cuts": ["ways"], "features": ["vways"] } ] } }
       """;
 
@@ -164,6 +165,13 @@ internal sealed class Workspace : IDisposable {
     string spec,
     params string[] more
   ) => Run(["gen", spec, "--root", Out, "--shapes", Shapes, .. more]);
+
+  /// <summary>The input hash of each output path in the provenance log under <paramref name="root"/>.</summary>
+  public static Dictionary<string, string> InputHashes(string root) =>
+    File.ReadAllLines(Path.Combine(root, "provenance.jsonl"))
+      .Where(l => l.Length > 0)
+      .Select(l => JObject.Parse(l))
+      .ToDictionary(o => (string)o["path"]!, o => (string)o["inputHash"]!);
 
   public string Tree() =>
     string.Join(

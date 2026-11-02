@@ -37,6 +37,13 @@ public sealed record GenOutput(
   string InputHash
 );
 
+/// <summary>A drawing a generator read, kept so the gates of its outputs can read it: the cast form a casting was
+/// made from, a blank's form, a core's cored feature.</summary>
+/// <param name="Name">The input's name; an output's record slot names it.</param>
+/// <param name="Shape">The drawing.</param>
+/// <param name="Record">The drawing's record, the tags and features the gates read.</param>
+public sealed record GenInput(string Name, Shape Shape, PartRecord Record);
+
 /// <summary>What a generator run returns. An output named by a question is absent from
 /// <see cref="Outputs"/>.</summary>
 /// <param name="Outputs">The outputs written.</param>
@@ -47,6 +54,9 @@ public sealed record GenResult(
 ) {
   /// <summary>One <c>redraw: ...</c> row per machine drawing that differs from its blank; empty when none.</summary>
   public IReadOnlyList<string> Redraws { get; init; } = [];
+
+  /// <summary>The drawings the outputs' gates read, one per name; empty when none.</summary>
+  public IReadOnlyList<GenInput> Inputs { get; init; } = [];
 }
 
 /// <summary>A generator: pure over its context and spec, no file I/O.</summary>

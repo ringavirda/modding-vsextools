@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using ExpandedLib.Shapes.Checks;
 using ExpandedLib.Shapes.Core;
+using Newtonsoft.Json.Linq;
 
 namespace ExpandedLib.Shapes.Generators;
 
@@ -219,6 +220,10 @@ public static class Patterns {
   ) {
     var rec = new PartRecord { Shape = item + ".json", Owner = "generated" };
     rec.Kinds.Add("pattern");
+    if (leaves.Count > 0)
+      rec.Carried["draw"] = new JObject {
+        ["parting"] = parting ?? leaves.Max(l => l.Box.Hi.Y),
+      };
     foreach (Leaf l in leaves)
       rec.Elements[l.Name] = new ElementPart {
         Stage = "cast",

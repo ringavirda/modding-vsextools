@@ -66,6 +66,8 @@ internal static class ImportCommand {
     );
     Directory.CreateDirectory(outDir);
     string recordPath = Path.Combine(outDir, Workspace.RecordFileOf(name));
+    if (File.Exists(recordPath))
+      sk = Skeleton.Merge(sk, PartRecord.ReadFile(recordPath));
     sk.Record.WriteFile(recordPath);
     output.WriteLine(
       $"record {Workspace.Relative(outDir, recordPath)}: {sk.Record.Elements.Count} elements, {sk.Record.Features.Count} features"

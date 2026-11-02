@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using ExpandedLib.Shapes.Checks;
 using ExpandedLib.Shapes.Core;
+using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
 
 namespace ExpandedLib.Shapes.Generators;
@@ -19,7 +20,10 @@ public sealed record WorkedResult(
   IReadOnlyList<Question> Questions,
   IReadOnlyList<string> Redraws,
   IReadOnlyList<string> Failures
-);
+) {
+  /// <summary>The user's placed form, the drawing blankmatch ran on; empty when nothing was made.</summary>
+  public IReadOnlyList<GenInput> Inputs { get; init; } = [];
+}
 
 /// <summary>Worked items: the blank's cast form with its allowance off, the faces its steps cut
 /// finished and its worked features cut in.</summary>
@@ -116,7 +120,13 @@ public static partial class Worked {
       rs.ShapeSha,
       rs.Record.Write()
     );
-    return new WorkedResult([output], [], redraws, []);
+    string placedName = item + "-placed";
+    PartRecord placedRecord = PartRecord.Read(rec.Write());
+    placedRecord.Carried["blank"] = blank.Spec.Blank;
+    ((JObject)output.Record.Carried["blankform"]!)["placed"] = placedName;
+    return new WorkedResult([output], [], redraws, []) {
+      Inputs = [new GenInput(placedName, Flush.ShapeOf(placed), placedRecord)],
+    };
   }
 
   /// <summary>A worked item the blank file lists itself: the same steps with no user, so its steps name only
@@ -210,6 +220,10 @@ public static partial class Worked {
     };
     rec.Kinds.AddRange(["worked", "item"]);
     rec.Carried["blank"] = blank.Spec.Blank;
+    rec.Carried["blankform"] = new JObject {
+      ["input"] = blank.Spec.Blank + "-form",
+      ["cutFeatures"] = new JArray(blank.CutFeatures),
+    };
 
     List<Leaf> items = Start(blank, spec, earlier);
     var taken = new HashSet<string>(

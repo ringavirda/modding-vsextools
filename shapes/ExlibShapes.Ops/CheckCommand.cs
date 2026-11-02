@@ -40,16 +40,10 @@ internal static class CheckCommand {
       a.Option("--settings"),
       Path.GetDirectoryName(Path.GetFullPath(files[0]))!
     );
-    IReadOnlyList<JobResult> results = Gates(
-      files,
-      settings,
-      a.Option("--source"),
-      a.Option("--cache"),
-      out IReadOnlyList<string> skipped
+    return Report(
+      Gates(files, settings, a.Option("--source"), a.Option("--cache")),
+      output
     );
-    foreach (string line in skipped)
-      output.WriteLine("SKIP " + line);
-    return Report(results, output);
   }
 
   public static Outcome Report(
@@ -86,38 +80,36 @@ internal static class CheckCommand {
     );
   }
 
-  /// <summary>The gates of every shape in <paramref name="files"/>, run in parallel. <paramref name="skipped"/> lists the
-  /// gates not run because an input they need is in no record.</summary>
+  /// <summary>The gates of every shape in <paramref name="files"/>, run in parallel. A gate takes its inputs from the
+  /// record's slots (<c>source</c>, <c>blankform</c>, <c>draw</c>, <c>core.source</c>) and the generator's
+  /// <c>inputs</c> folder beside <c>provenance.jsonl</c>; <paramref name="sourcePath"/> replaces the source drawing.</summary>
   /// <exception cref="StaleOutputException">An output was made by another generator version.</exception>
   /// <exception cref="CheckUsageException">A gate lacks an input.</exception>
+  /// <exception cref="CliUsageException">A record names an input that is not there.</exception>
   public static IReadOnlyList<JobResult> Gates(
     IReadOnlyList<string> files,
     Settings settings,
     string? sourcePath,
-    string? cacheDir,
-    out IReadOnlyList<string> skipped
+    string? cacheDir
   ) {
     Profile profile = Selection.ParseProfile(settings.LintProfile);
     string version = new CastGen().Version;
     var jobs = new List<CheckJob>();
-    var skips = new List<string>();
     foreach (string file in files) {
       string full = Path.GetFullPath(file);
       CheckInput input = InputOf(full, settings, sourcePath);
       Func<string?>? stale = StaleOf(full, version);
       foreach (ICheck c in Selection.For(input.Record!.Kinds, profile))
-        if (c.Id == "draw")
-          skips.Add(
-            $"draw {full}: needs the parting height, which no record holds"
+        if (Selection.Applies(c, input))
+          jobs.Add(
+            new CheckJob(
+              full,
+              c,
+              c.Id == "blankmatch" ? PlacedFor(input, full) : input,
+              stale
+            )
           );
-        else if (c.Id is "allowance" or "blankmatch" && input.Source == null)
-          skips.Add(
-            $"{c.Id} {full}: needs the source drawing, pass --source SHAPE"
-          );
-        else if (Selection.Applies(c, input))
-          jobs.Add(new CheckJob(full, c, input, stale));
     }
-    skipped = skips;
     var cache = new ResultCache(ResultCache.DefaultDir(files[0], cacheDir));
     return new CheckRunner(Slots.Shared(), cache).Run(jobs);
   }
@@ -128,7 +120,8 @@ internal static class CheckCommand {
     return Directory
       .EnumerateFiles(path, "*.json", SearchOption.AllDirectories)
       .Where(f =>
-        !f.EndsWith(".part.json", StringComparison.Ordinal)
+        !Path.GetRelativePath(path, f).StartsWith("inputs" + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+        && !f.EndsWith(".part.json", StringComparison.Ordinal)
         && File.Exists(Workspace.RecordFileOf(f))
       )
       .Order(StringComparer.Ordinal);
@@ -169,6 +162,8 @@ internal static class CheckCommand {
       string? path = SiblingPath(dir, item);
       return path == null ? null : Reader.ReadFile(path);
     }
+    (Shape Shape, PartRecord Record)? Input(string? name) =>
+      ReadInput(file, name);
     Shape? cast = null,
       pattern = null,
       pair = null;
@@ -184,17 +179,47 @@ internal static class CheckCommand {
           coreRecords.Add(PartRecord.ReadFile(Workspace.RecordFileOf(p)));
         }
     }
-    Shape? source = sourcePath == null ? null : Reader.ReadFile(sourcePath);
-    PartRecord? sourceRecord =
-      sourcePath != null && File.Exists(Workspace.RecordFileOf(sourcePath))
+    if (
+      record.Carried["corebox"] is JObject box
+      && SiblingPath(dir, (string?)box["core"]) is { } corePath
+    ) {
+      cores.Add(Reader.ReadFile(corePath));
+      coreRecords.Add(PartRecord.ReadFile(Workspace.RecordFileOf(corePath)));
+    }
+
+    Shape? source = null;
+    PartRecord? sourceRecord = null;
+    double allowance = new CheckInput(null).Allowance;
+    IReadOnlyList<string>? cutFaces = null;
+    if (record.Carried["source"] is JObject src) {
+      if (Input((string?)src["input"]) is { } got)
+        (source, sourceRecord) = got;
+      allowance = (double?)src["allowance"] ?? allowance;
+    } else if (record.Carried["blankform"] is JObject form) {
+      if (Input((string?)form["input"]) is { } got)
+        (source, sourceRecord) = got;
+      cutFaces = [.. (form["cutFeatures"] as JArray ?? []).Select(t => (string)t!)];
+    } else if (
+      record.Carried["core"] is JObject core
+      && Input((string?)core["source"]) is { } fed
+    )
+      (source, sourceRecord) = fed;
+    if (sourcePath != null) {
+      source = Reader.ReadFile(sourcePath);
+      sourceRecord = File.Exists(Workspace.RecordFileOf(sourcePath))
         ? PartRecord.ReadFile(Workspace.RecordFileOf(sourcePath))
         : null;
+    }
+    double? parting = (double?)(record.Carried["draw"] as JObject)?["parting"];
     return new CheckInput(
       Reader.ReadFile(file),
       Record: record,
       Settings: settings,
       Source: source,
       SourceRecord: sourceRecord,
+      Allowance: allowance,
+      Parting: parting,
+      CutFaces: cutFaces,
       Cast: cast,
       Pattern: pattern,
       Pair: pair,
@@ -202,6 +227,37 @@ internal static class CheckCommand {
       CoreRecords: coreRecords.Count > 0 ? coreRecords : null
     );
   }
+
+  private static (Shape Shape, PartRecord Record)? ReadInput(
+    string file,
+    string? name
+  ) {
+    if (string.IsNullOrEmpty(name))
+      return null;
+    string dir = Path.GetDirectoryName(file)!;
+    string? provenance = Workspace.FindUp(dir, "provenance.jsonl");
+    string path = Path.Combine(
+      provenance == null ? dir : Path.GetDirectoryName(provenance)!,
+      "inputs",
+      name + ".json"
+    );
+    if (!File.Exists(path) || !File.Exists(Workspace.RecordFileOf(path)))
+      throw new CliUsageException(
+        $"{file}: its input {name} is not in {Path.GetDirectoryName(path)}; run gen again"
+      );
+    return (
+      Reader.ReadFile(path),
+      PartRecord.ReadFile(Workspace.RecordFileOf(path))
+    );
+  }
+
+  private static CheckInput PlacedFor(CheckInput input, string file) =>
+    ReadInput(
+      file,
+      (string?)(input.Record!.Carried["blankform"] as JObject)?["placed"]
+    ) is { } placed
+      ? input with { Shape = placed.Shape, Record = placed.Record }
+      : input;
 
   private static string? SiblingPath(string dir, string? item) {
     if (string.IsNullOrEmpty(item))

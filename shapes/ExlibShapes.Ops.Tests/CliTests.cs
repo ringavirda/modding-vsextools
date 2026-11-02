@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using ExpandedLib.Shapes.Core;
@@ -285,27 +286,129 @@ public class CliTests {
     Assert.True(exit == 1, output + err);
     Assert.Contains("PASS impression", output);
     Assert.Contains("FAIL corefit", output);
-    Assert.Contains("SKIP draw", output);
+    Assert.DoesNotContain("SKIP", output);
     Assert.DoesNotContain(", cached", output);
     Assert.Contains(", cached", second);
   }
 
+  private (int Exit, string Out, string Err) Check(Workspace w, string path) =>
+    w.Run(
+      "check",
+      path,
+      "--settings",
+      w.SettingsFile,
+      "--cache",
+      Path.Combine(w.Dir, "cache")
+    );
+
   [Fact]
-  public void Cli_check_skips_the_gates_that_need_a_source_and_says_so() {
+  public void Cli_check_runs_allowance_draw_and_blankmatch_from_the_outputs_own_inputs() {
+    using var w = new Workspace();
+    w.Gen(w.MachineSpec(Workspace.Casting(), Workspace.User()));
+    string items = Path.Combine(w.Out, "items");
+
+    (_, string cast, _) = Check(w, Path.Combine(items, "cast-planer-bed-proposed.json"));
+    (_, string pattern, _) = Check(w, Path.Combine(items, "pattern-cast-planer-bed-proposed.json"));
+    (_, string worked, _) = Check(w, Path.Combine(items, "planer-bed-proposed.json"));
+
+    Assert.Contains("PASS allowance", cast);
+    Assert.Contains("PASS draw", pattern);
+    Assert.Contains("PASS blankmatch", worked);
+    Assert.DoesNotContain("SKIP", cast + pattern + worked);
+  }
+
+  [Fact]
+  public void Cli_check_exits_2_when_a_gate_has_no_input() {
+    using var w = new Workspace();
+    w.Gen(w.MachineSpec(Workspace.Casting()));
+    Directory.Delete(Path.Combine(w.Out, "inputs"), true);
+
+    (int exit, _, string err) = Check(
+      w,
+      Path.Combine(w.Out, "items", "cast-planer-bed-proposed.json")
+    );
+
+    Assert.Equal(2, exit);
+    Assert.Contains("run gen again", err);
+  }
+
+  [Fact]
+  public void Cli_check_reads_a_core_and_a_core_box_from_a_gen_output_directory() {
     using var w = new Workspace();
     w.Gen(w.MachineSpec(Workspace.Casting()));
 
-    (int exit, string output, string err) = w.Run(
-      "check",
-      Path.Combine(w.Out, "items", "cast-planer-bed-proposed.json"),
-      "--settings",
-      w.SettingsFile
-    );
+    (int exit, string output, string err) = Check(w, Path.Combine(w.Out, "items"));
 
-    Assert.True(exit == 0, output + err);
-    Assert.Contains("SKIP allowance", output);
-    Assert.Contains("pass --source SHAPE", output);
-    Assert.Contains("PASS castonly", output);
+    Assert.NotEqual(2, exit);
+    Assert.Contains(
+      "PASS corefit " + Path.Combine(w.Out, "items", "drysandcore-cast-planer-bed-proposed.json"),
+      output
+    );
+    Assert.Contains(
+      "PASS corefit " + Path.Combine(w.Out, "items", "corebox-cast-planer-bed-proposed.json"),
+      output
+    );
+    Assert.DoesNotContain("SKIP", output);
+    Assert.DoesNotContain("inputs", output);
+    Assert.DoesNotContain("none given", err);
+  }
+
+  [Fact]
+  public void Adding_a_user_leaves_every_other_output_hash_unchanged() {
+    using var w = new Workspace();
+    string spec = w.MachineSpec(Workspace.Casting(), Workspace.User());
+    w.Gen(spec);
+    Dictionary<string, string> before = Workspace.InputHashes(w.Out);
+
+    string more = w.MachineSpec(
+      Workspace.Casting(),
+      Workspace.User() + ", " + Workspace.User(1, "planer-bed2")
+    );
+    string root2 = Path.Combine(w.Dir, "out2");
+    w.Run("gen", more, "--root", root2, "--shapes", w.Shapes);
+    Dictionary<string, string> after = Workspace.InputHashes(root2);
+
+    Assert.True(before.Count >= 6);
+    Assert.Contains("items/planer-bed2-proposed.json", after.Keys);
+    foreach ((string path, string hash) in before)
+      Assert.Equal(hash, after[path]);
+  }
+
+  [Fact]
+  public void Editing_a_casting_changes_the_hash_of_its_outputs_only() {
+    using var w = new Workspace();
+    w.Gen(
+      w.MachineSpec(
+        Workspace.Casting() + ", " + Workspace.Casting("[\"Root/Base\"]", "cast-planer-base"),
+        Workspace.User()
+      )
+    );
+    Dictionary<string, string> before = Workspace.InputHashes(w.Out);
+
+    string root2 = Path.Combine(w.Dir, "out2");
+    w.Run(
+      "gen",
+      w.MachineSpec(
+        Workspace.Casting().Replace("\"print\": 2", "\"print\": 3")
+          + ", "
+          + Workspace.Casting("[\"Root/Base\"]", "cast-planer-base"),
+        Workspace.User()
+      ),
+      "--root",
+      root2,
+      "--shapes",
+      w.Shapes
+    );
+    Dictionary<string, string> after = Workspace.InputHashes(root2);
+
+    Assert.NotEqual(
+      before["items/cast-planer-bed-proposed.json"],
+      after["items/cast-planer-bed-proposed.json"]
+    );
+    Assert.Equal(
+      before["items/cast-planer-base-proposed.json"],
+      after["items/cast-planer-base-proposed.json"]
+    );
   }
 
   [Fact]

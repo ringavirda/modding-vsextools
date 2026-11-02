@@ -125,6 +125,52 @@ internal static class Skeleton {
     return new SkeletonResult(record, questions);
   }
 
+  /// <summary>Carries what an earlier record holds into a fresh skeleton. An element the earlier record names keeps its
+  /// entry. A feature the earlier record holds without <c>unconfirmed</c> is kept as it is and asks nothing. An
+  /// <c>unconfirmed</c> feature takes the origin of an earlier answer whose <c>featureSha</c> is the question's now, loses
+  /// <c>unconfirmed</c> and asks nothing; an answer whose sha differs is dropped and the feature asks again. Features,
+  /// steps, answers and record slots the skeleton has no part in are kept; the owner and the answers are the earlier
+  /// record's.</summary>
+  /// <param name="fresh">The skeleton just built.</param>
+  /// <param name="earlier">The record already on disk.</param>
+  public static SkeletonResult Merge(SkeletonResult fresh, PartRecord earlier) {
+    PartRecord record = fresh.Record;
+    var questions = new List<StoredQuestion>();
+    var stale = new HashSet<string>(StringComparer.Ordinal);
+    foreach (StoredQuestion q in fresh.Questions) {
+      Answer? answer = earlier.Answers.FirstOrDefault(a =>
+        a.Feature == q.Feature
+      );
+      Feature f = record.Features[q.Feature];
+      if (
+        earlier.Features.TryGetValue(q.Feature, out Feature? old)
+        && !old.Unknown.ContainsKey("unconfirmed")
+      )
+        record.Features[q.Feature] = old;
+      else if (answer != null && answer.FeatureSha == q.FeatureSha) {
+        f.Origin = answer.Text;
+        f.Unknown.Remove("unconfirmed");
+      } else {
+        if (answer != null)
+          stale.Add(q.Feature);
+        questions.Add(q);
+      }
+    }
+    foreach (KeyValuePair<string, ElementPart> kv in earlier.Elements)
+      if (record.Elements.ContainsKey(kv.Key))
+        record.Elements[kv.Key] = kv.Value;
+    foreach (KeyValuePair<string, Feature> kv in earlier.Features)
+      record.Features.TryAdd(kv.Key, kv.Value);
+    if (record.Steps.Count == 0)
+      record.Steps.AddRange(earlier.Steps);
+    record.Answers.AddRange(earlier.Answers.Where(a => !stale.Contains(a.Feature)));
+    foreach (JProperty p in earlier.Carried.Properties())
+      if (p.Name != "import")
+        record.Carried[p.Name] = p.Value;
+    record.Owner = earlier.Owner ?? record.Owner;
+    return new SkeletonResult(record, questions);
+  }
+
   private sealed class GroupFeature {
     public List<string> Paths { get; } = [];
     public List<string> Elements { get; } = [];

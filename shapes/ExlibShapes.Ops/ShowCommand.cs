@@ -119,8 +119,7 @@ internal static class ShowCommand {
             [shapePath],
             settings,
             a.Option("--source"),
-            a.Option("--cache"),
-            out _
+            a.Option("--cache")
           );
           lines.Add(
             $"gates: {r.Count(x => x.Result.Verdict == Verdict.Pass)} pass, {r.Count(x => x.Result.Verdict == Verdict.Fail)} fail, {r.Count(x => x.Result.Verdict == Verdict.Question)} question"

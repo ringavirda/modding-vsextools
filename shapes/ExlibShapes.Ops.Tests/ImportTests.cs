@@ -239,6 +239,82 @@ public class ImportTests : IDisposable {
     );
   }
 
+  private (int Exit, string Out) ImportWithLane(string outDir, string python) {
+    (int exit, string output, string err) = Run(
+      "import",
+      LatheDrawing(),
+      "--lane",
+      FakeLane(),
+      "--module",
+      "lathe",
+      "--out",
+      outDir,
+      "--python",
+      python
+    );
+    return (exit, output + err);
+  }
+
+  [SkippableFact]
+  public void A_second_import_applies_the_stored_answer_and_asks_nothing() {
+    string? python = Python();
+    Skip.If(python == null, "no python3");
+    string outDir = Path.Combine(dir, "out");
+    ImportWithLane(outDir, python!);
+    Run("answer", "lathe.json", "Bed", "planed", "--root", outDir);
+
+    (int exit, string output) = ImportWithLane(outDir, python!);
+
+    Assert.True(exit == 0, output);
+    Assert.DoesNotContain("Question:", output);
+    PartRecord r = PartRecord.ReadFile(Path.Combine(outDir, "lathe.part.json"));
+    Assert.Equal("planed", r.Features["Bed"].Origin);
+    Assert.False(r.Features["Bed"].Unknown.ContainsKey("unconfirmed"));
+    Assert.Equal("planed", r.Answers.Single().Text);
+  }
+
+  [SkippableFact]
+  public void A_second_import_asks_again_when_the_stored_answer_is_for_other_elements() {
+    string? python = Python();
+    Skip.If(python == null, "no python3");
+    string outDir = Path.Combine(dir, "out");
+    ImportWithLane(outDir, python!);
+    Run("answer", "lathe.json", "Bed", "planed", "--root", outDir);
+    string recordPath = Path.Combine(outDir, "lathe.part.json");
+    PartRecord r = PartRecord.ReadFile(recordPath);
+    r.Answers.Single().FeatureSha = "0000";
+    r.WriteFile(recordPath);
+
+    (int exit, string output) = ImportWithLane(outDir, python!);
+
+    Assert.Equal(3, exit);
+    Assert.Contains("Question: Bed:", output);
+    r = PartRecord.ReadFile(recordPath);
+    Assert.Empty(r.Answers);
+    Assert.Null(r.Features["Bed"].Origin);
+  }
+
+  [SkippableFact]
+  public void A_second_import_keeps_what_import_did_not_write() {
+    string? python = Python();
+    Skip.If(python == null, "no python3");
+    string outDir = Path.Combine(dir, "out");
+    ImportWithLane(outDir, python!);
+    string recordPath = Path.Combine(outDir, "lathe.part.json");
+    PartRecord r = PartRecord.ReadFile(recordPath);
+    r.Elements["Way1"].Stage = "worked";
+    r.Steps.Add(new Step { Id = "plane" });
+    r.Carried["blank"] = "castbed";
+    r.WriteFile(recordPath);
+
+    ImportWithLane(outDir, python!);
+
+    r = PartRecord.ReadFile(recordPath);
+    Assert.Equal("worked", r.Elements["Way1"].Stage);
+    Assert.Equal("plane", r.Steps.Single().Id);
+    Assert.Equal("castbed", (string?)r.Carried["blank"]);
+  }
+
   [SkippableFact]
   public void Import_writes_a_machine_file_entry_per_lane_kind_and_the_cross_slide() {
     string? python = Python();
