@@ -15,7 +15,7 @@ namespace ExpandedLib.Shapes.Checks;
 /// is read as the 1/32 lattice cells whose centre lies inside it; needs <see cref="CheckInput.Parting"/>.
 /// </summary>
 public sealed class Draw : ICheck {
-  private const double Step = 1.0 / 32;
+  internal const double Step = 1.0 / 32;
   private const double Eps = 1e-9;
 
   /// <inheritdoc />
@@ -80,13 +80,13 @@ public sealed class Draw : ICheck {
     return CheckResult.Of(Id, enumerated, faults, lines);
   }
 
-  private static (int, int) Span(double[] breaks, double lo, double hi) =>
+  internal static (int, int) Span(double[] breaks, double lo, double hi) =>
     (
       Array.BinarySearch(breaks, Math.Round(lo, 9)),
       Array.BinarySearch(breaks, Math.Round(hi, 9))
     );
 
-  private static double[] Breaks(List<Box> boxes, int axis) =>
+  internal static double[] Breaks(List<Box> boxes, int axis) =>
     [
       .. boxes
         .SelectMany(b => new[] { b.Lo[axis], b.Hi[axis] })
@@ -98,7 +98,7 @@ public sealed class Draw : ICheck {
   /// <summary>The occupied samples of one column on one side of the parting, and how many of them run unbroken
   /// from it. The drag's samples are at parting - n/32 for n of 1 and on, the cope's at parting + n/32 for n of 0
   /// and on.</summary>
-  private static (int Total, int Run) Column(
+  internal static (int Total, int Run) Column(
     List<Box> over,
     double parting,
     int dir

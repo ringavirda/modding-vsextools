@@ -353,16 +353,68 @@ $ExmodHostOverheadGb = 1
 # GiB a test unit with no `testMemory` figure takes, run under no limit.
 $ExmodUnlimitedTestShareGb = 4
 
+# The most GiB of heap a `-Filter` run can need under EXMOD_HEAVY=1: the largest `heapGb` among the partition parts of
+# $Project whose classes $Filter can reach, a part with no `heapGb` counting as the assembly's. $Filter is `|`-joined
+# `FullyQualifiedName~<value>` or `FullyQualifiedName=<value>` terms. A term reaches only the first declared part that
+# one of its own terms is contained in (`~` part term: the value contains the part's value; `=` part term: the values are
+# equal), as every name it matches then also matches that part; any other term reaches every part, the complement
+# included. Returns $null, meaning the assembly's whole heap, when $Project has no partitions or testMemory figure, or
+# when $Filter has a term of another property, a negation, `&` or parentheses, or is empty.
+function Get-ExmodFilterReachGb([string]$Project, [string]$Filter) {
+  $mem = Get-ExmodTestMemory $Project
+  if (-not $mem -or -not $Filter) { return $null }
+  try { $partitions = Get-ExmodPartitions $Project } catch { return $null }
+  if (-not $partitions) { return $null }
+  $declared = @($partitions.Parts | Select-Object -SkipLast 1)
+  $terms = @()
+  foreach ($t in ($Filter -split '\|')) {
+    if ($t -notmatch '^\s*FullyQualifiedName\s*([~=])\s*([^()&|!~=]+?)\s*$') { return $null }
+    $terms += [pscustomobject]@{ Op = $Matches[1]; Value = $Matches[2] }
+  }
+  $reached = [System.Collections.Generic.HashSet[int]]::new()
+  foreach ($term in $terms) {
+    $owner = -1
+    for ($i = 0; $i -lt $declared.Count -and $owner -lt 0; $i++) {
+      foreach ($pt in ($declared[$i].Filter -split '\|')) {
+        if ($pt -notmatch '^\s*FullyQualifiedName\s*([~=])\s*(.+?)\s*$') { continue }
+        $claims = if ($Matches[1] -eq '~') { $term.Value.Contains($Matches[2]) } else { $term.Op -eq '=' -and $term.Value -ceq $Matches[2] }
+        if ($claims) { $owner = $i; break }
+      }
+    }
+    if ($owner -ge 0) { [void]$reached.Add($owner) }
+    else { return $null }
+  }
+  $most = 0
+  foreach ($i in $reached) {
+    $h = if ($null -ne $declared[$i].HeapGb) { [int]$declared[$i].HeapGb } else { $mem.HeapGb }
+    if ($h -gt $most) { $most = $h }
+  }
+  return $most
+}
+
 # The memory a test unit takes: { ShareGb; LimitGb; FilterLimitGb; HeavyGb; RetryLimitGb; RetryShareGb }. ShareGb is the whole GiB taken
 # from the budget; LimitGb the GC heap limit the host runs under, or $null for none; FilterLimitGb and HeavyGb are set only
 # when the run is under the filter limit, as that limit and as the limit EXMOD_HEAVY=1 would run it under. RetryLimitGb
 # and RetryShareGb are set only when the run starts under `filterStartGb`: the filter limit it reruns under after an
-# OutOfMemoryException and that rerun's share.
+# OutOfMemoryException and that rerun's share. Under EXMOD_HEAVY=1 a filtered run takes the largest `heapGb` of the
+# partition parts its filter can reach (Get-ExmodFilterReachGb), or the filter share when that is no more than the
+# start limit; a filter that cannot be shown to miss a heavier part takes the assembly's whole heap.
 # $Project: the test assembly. $PartHeapGb: the partition's own `heapGb`, or $null. $Filtered: the run has -Filter.
-function Get-ExmodTestShare([string]$Project, $PartHeapGb, [bool]$Filtered) {
+# $Filter: the run's -Filter expression, or $null.
+function Get-ExmodTestShare([string]$Project, $PartHeapGb, [bool]$Filtered, [string]$Filter = $null) {
   $mem = Get-ExmodTestMemory $Project
   $heap = if ($null -ne $PartHeapGb) { [int]$PartHeapGb } elseif ($mem) { $mem.HeapGb } else { $null }
-  if ($Filtered -and $mem -and $null -ne $mem.FilterHeapGb -and $env:EXMOD_HEAVY -ne '1') {
+  $useFilterLimit = $Filtered -and $mem -and $null -ne $mem.FilterHeapGb
+  if ($useFilterLimit -and $env:EXMOD_HEAVY -eq '1') {
+    $start = if ($null -ne $mem.FilterStartGb) { $mem.FilterStartGb } else { $mem.FilterHeapGb }
+    $reach = Get-ExmodFilterReachGb $Project $Filter
+    if ($null -ne $reach -and $reach -le $start) { $useFilterLimit = $true }
+    else {
+      $useFilterLimit = $false
+      if ($null -ne $reach) { $heap = $reach }
+    }
+  }
+  if ($useFilterLimit) {
     $start = if ($null -ne $mem.FilterStartGb) { $mem.FilterStartGb } else { $mem.FilterHeapGb }
     $retry = if ($start -ne $mem.FilterHeapGb) { $mem.FilterHeapGb } else { $null }
     return [pscustomobject]@{ ShareGb = $start + $ExmodHostOverheadGb; LimitGb = $start; FilterLimitGb = $start; HeavyGb = $heap; RetryLimitGb = $retry; RetryShareGb = $(if ($retry) { $retry + $ExmodHostOverheadGb }) }
@@ -644,7 +696,7 @@ function Invoke-Test([string[]]$Argv) {
   $units = foreach ($item in $built) {
     $partitions = if ($filter) { $null } else { Get-ExmodPartitions $item.Project }
     if (-not $partitions) {
-      $share = Get-ExmodTestShare $item.Project $null ([bool]$filter)
+      $share = Get-ExmodTestShare $item.Project $null ([bool]$filter) $filter
       $item | Select-Object * |
         Add-Member -NotePropertyName Share -NotePropertyValue $share -PassThru -Force
       continue

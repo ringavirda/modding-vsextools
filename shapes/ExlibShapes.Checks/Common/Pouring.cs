@@ -15,6 +15,7 @@ namespace ExpandedLib.Shapes.Checks;
 /// <param name="Bedded">Whether a group named <c>Bedded</c> is above it.</param>
 /// <param name="CoreGroup">The name of the <c>Core&lt;i&gt;</c> group above it, null when none.</param>
 /// <param name="Solid">The boxes that make up the leaf: <paramref name="Box"/> itself when aligned, else its lattice cells.</param>
+/// <param name="Turned">The area of the leaf's faces that are not axis-aligned, in vx2.</param>
 internal sealed record FillingLeaf(
   Node Node,
   Box Box,
@@ -23,7 +24,8 @@ internal sealed record FillingLeaf(
   bool Level,
   bool Bedded = false,
   string? CoreGroup = null,
-  IReadOnlyList<Box>? Solid = null
+  IReadOnlyList<Box>? Solid = null,
+  double Turned = 0
 ) {
   /// <summary>The boxes that make up the leaf.</summary>
   public IReadOnlyList<Box> Cells => Solid ?? [Box];
@@ -56,6 +58,10 @@ internal sealed class Pouring {
 
   /// <summary>Where the flood starts: the first inlet cut, else the drop.</summary>
   public required Box Seed { get; init; }
+
+  /// <summary>The area of the faces of the cast, the pattern elements a feed names and the cores that are not
+  /// axis-aligned, in vx2: where the metal and the sand are read on different lattices.</summary>
+  public required double Turned { get; init; }
 
   public double Top => Station.SandTo[1];
 
@@ -117,7 +123,8 @@ internal sealed class Pouring {
           level,
           bedded,
           coreGroup,
-          solid
+          solid,
+          Lattice.TurnedArea(world, leaf.Size)
         )
       );
     }
@@ -170,12 +177,20 @@ internal sealed class Pouring {
     var placedCast = new List<List<Box>>();
     var castFrames = new Frames(cast);
     List<Node> castLeaves = [.. new Tree(cast).Leaves];
-    foreach (Mat4d at in pour.Pieces)
+    double turned = RoleLeaves(leaves, "core").Sum(l => l.Turned);
+    if (pour.Closed)
+      turned += RoleLeaves(Leaves(input.Pair!, input, settings, lat), "core")
+        .Sum(l => l.Turned);
+    foreach (Mat4d at in pour.Pieces) {
+      turned += castLeaves.Sum(l =>
+        Lattice.TurnedArea(at * castFrames.Mat(l), l.Size)
+      );
       placedCast.Add([
         .. castLeaves.SelectMany(l =>
           lat.Solid(at * castFrames.Mat(l), l.Size)
         ),
       ]);
+    }
     var feeds = new List<(Feed, List<Box>)>();
     Tree? pattern = null;
     Frames? patternFrames = null;
@@ -205,8 +220,10 @@ internal sealed class Pouring {
               Sweep.GlobMatches(Tree.Bare(n.Path), g)
               || Sweep.GlobMatches(n.Name, g)
             )
-          )
+          ) {
             boxes.AddRange(lat.Solid(at * patternFrames.Mat(n), n.Size));
+            turned += Lattice.TurnedArea(at * patternFrames.Mat(n), n.Size);
+          }
       }
       feeds.Add((f, boxes));
     }
@@ -236,6 +253,7 @@ internal sealed class Pouring {
       Feeds = feeds,
       Cuts = cuts,
       Seed = seed,
+      Turned = turned,
     };
   }
 
@@ -258,6 +276,11 @@ internal sealed class Pouring {
         .Where(l => l.Role == "sand" && !l.Level)
         .SelectMany(l => l.Cells),
     ];
+
+  private static IEnumerable<FillingLeaf> RoleLeaves(
+    List<FillingLeaf> leaves,
+    string role
+  ) => leaves.Where(l => l.Role == role);
 
   private static List<Box> RoleOf(List<FillingLeaf> leaves, string role) =>
     [.. leaves.Where(l => l.Role == role).SelectMany(l => l.Cells)];
