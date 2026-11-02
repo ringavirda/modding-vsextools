@@ -11,7 +11,9 @@ using Xunit;
 namespace ExpandedLib.Shapes.Tests;
 
 /// <summary>Covers the scene reader and the plain corner views of <c>fixtures/scene/demo.scene.json</c>,
-/// compared against <c>expected/scene/</c>.</summary>
+/// compared against <c>expected/scene/</c>. Runs in <see cref="ConsoleCapture"/>, alone, because one fact swaps
+/// <see cref="Console.Out"/> and any test printing meanwhile would land in its capture.</summary>
+[Collection(ConsoleCapture.Name)]
 public class SceneTests : IDisposable {
   private static readonly string[] Corners = ["ne", "nw", "se", "sw"];
 
