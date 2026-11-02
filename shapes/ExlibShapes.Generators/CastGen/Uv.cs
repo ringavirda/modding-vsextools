@@ -123,11 +123,7 @@ public static class Uvs {
     IReadOnlyList<Leaf> leaves
   ) {
     var shape = new Shape();
-    foreach (Leaf l in leaves) {
-      Element e = Select.Clone(l.Element, false);
-      e.Name = l.Name;
-      shape.Elements.Add(e);
-    }
+    Element[] nested = Nest(leaves, shape);
     var tree = new Tree(shape);
     var frames = new Frames(shape);
     Func<string, bool> isWood = k =>
@@ -135,7 +131,7 @@ public static class Uvs {
       && t.Class == TextureClass.Wood;
     foreach (
       RoundRun run in RoundRuns
-        .Find(tree, frames, nested: false)
+        .Find(tree, frames)
         .OrderByDescending(r => r.Faces.Count)
     ) {
       string[] keys = [.. run.Faces.Select(f => f.Quad.Texture).Distinct()];
@@ -181,7 +177,128 @@ public static class Uvs {
           face.Rotation = 90 * spin;
       }
     }
-    return [.. leaves.Zip(shape.Elements, (l, e) => l with { Element = e })];
+    return
+    [
+      .. leaves.Zip(
+        nested,
+        (l, n) =>
+        {
+          Element e = Select.Clone(l.Element, false);
+          e.Faces.Clear();
+          e.Faces.AddRange(n.Faces);
+          return l with { Element = e };
+        }
+      ),
+    ];
+  }
+
+  /// <summary>Puts each leaf in <paramref name="shape"/>, under the leaf of its source parent when exactly one leaf
+  /// has that source path and the leaf's world matrix is kept by the move, so a parent with chamfer children is
+  /// seen as the octagon it was drawn as. Returns each leaf's element in the shape, in leaf order.</summary>
+  private static Element[] Nest(IReadOnlyList<Leaf> leaves, Shape shape) {
+    Mat4d[] world = [.. leaves.Select(l => Engine.Local(l.Element))];
+    var nested = new Element[leaves.Count];
+    var parent = new int[leaves.Count];
+    for (int i = 0; i < leaves.Count; i++) {
+      nested[i] = Select.Clone(leaves[i].Element, false);
+      nested[i].Name = leaves[i].Name;
+      parent[i] = -1;
+    }
+    for (int i = 0; i < leaves.Count; i++) {
+      string path = leaves[i].SourcePath;
+      int cut = path.LastIndexOf('/');
+      if (cut < 0)
+        continue;
+      int[] up =
+      [
+        .. Enumerable
+          .Range(0, leaves.Count)
+          .Where(j => leaves[j].SourcePath == path[..cut]),
+      ];
+      if (up.Length != 1 || up[0] == i)
+        continue;
+      try {
+        Element child = Select.Flatten(
+          leaves[i].Element,
+          Inverse(world[up[0]]) * world[i],
+          path
+        );
+        child.Name = leaves[i].Name;
+        AboutCorner(child, Engine.Size(leaves[up[0]].Element));
+        Mat4d got = world[up[0]] * Engine.Local(child);
+        if (
+          Enumerable
+            .Range(0, 16)
+            .Any(k =>
+              Math.Abs(got[k / 4, k % 4] - world[i][k / 4, k % 4]) > 1e-7
+            )
+        )
+          continue;
+        nested[i] = child;
+        parent[i] = up[0];
+      } catch (CastGenException) { }
+    }
+    for (int i = 0; i < leaves.Count; i++)
+      if (parent[i] < 0)
+        shape.Elements.Add(nested[i]);
+      else
+        nested[parent[i]].Children.Add(nested[i]);
+    return nested;
+  }
+
+  /// <summary>Re-expresses a child turned about one axis as turning about the nearest outer corner of its parent's
+  /// cross section, which gives the same world matrix, so a chamfer turned about its parent's corner reads as one.</summary>
+  private static void AboutCorner(Element child, Vec3 parentSize) {
+    double[] deg =
+    [
+      child.RotationX ?? 0,
+      child.RotationY ?? 0,
+      child.RotationZ ?? 0,
+    ];
+    if (deg.Count(d => d != 0) != 1)
+      return;
+    int axis = Array.FindIndex(deg, d => d != 0);
+    int a = (axis + 1) % 3,
+      b = (axis + 2) % 3;
+    double[] from = child.From!;
+    double[] pivot = [.. from];
+    pivot[a] =
+      Math.Abs(from[a]) <= Math.Abs(from[a] - parentSize[a])
+        ? 0
+        : parentSize[a];
+    pivot[b] =
+      Math.Abs(from[b]) <= Math.Abs(from[b] - parentSize[b])
+        ? 0
+        : parentSize[b];
+    Vec3 o = Vec3.From(pivot, Vec3.Zero);
+    Vec3 f =
+      o
+      + Mat4d
+        .RotateByXyz(-deg[0], -deg[1], -deg[2])
+        .MulLinear(Vec3.From(from, Vec3.Zero) - o);
+    Vec3 size = Engine.Size(child);
+    child.From = f.ToArray();
+    child.To = (f + size).ToArray();
+    child.RotationOrigin = pivot;
+  }
+
+  private static Mat4d Inverse(Mat4d m) {
+    var inv = new double[16];
+    for (int j = 0; j < 3; j++) {
+      double s2 = 0;
+      for (int i = 0; i < 3; i++)
+        s2 += m[i, j] * m[i, j];
+      for (int i = 0; i < 3; i++)
+        inv[j * 4 + i] = m[i, j] / s2;
+    }
+    for (int j = 0; j < 3; j++)
+      inv[j * 4 + 3] = -(
+        inv[j * 4] * m[0, 3]
+        + inv[j * 4 + 1] * m[1, 3]
+        + inv[j * 4 + 2] * m[2, 3]
+      );
+    inv[15] = 1;
+    return Mat4d.FromRows(inv);
   }
 
   private sealed record Row(Vec3[] Pts, Vec3 Normal, Vec3 W, Vec3 H);

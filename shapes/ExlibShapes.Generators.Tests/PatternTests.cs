@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using ExpandedLib.Shapes.Checks;
 using ExpandedLib.Shapes.Core;
@@ -109,6 +110,7 @@ public class PatternTests {
       Lug
     );
 
+    Assert.NotEmpty(r.Loose);
     foreach (GenOutput o in r.Loose.Prepend(r.Pattern)) {
       CheckResult role = Roles(o);
       Assert.Equal(0, role.ExitCode);
@@ -146,6 +148,7 @@ public class PatternTests {
     Assert.Equal(8, drag.Children[0].To![1]);
     Assert.Equal(8, cope.Children[0].From![1]);
     Assert.Equal(0, Draws(r.Pattern, 8).ExitCode);
+    Assert.Equal(0, Roles(r.Pattern).ExitCode);
   }
 
   [Fact]
@@ -173,5 +176,25 @@ public class PatternTests {
     PatternResult r = Make(null, null, Bx("Bed", "[0, 2, 0]", "[40, 4, 8]"));
 
     Assert.Equal(["Bed", "Bed_s2", "Bed_s3"], Names(r.Pattern));
+    Assert.Equal(0, Draws(r.Pattern, 4).ExitCode);
+    Assert.Equal(0, Roles(r.Pattern).ExitCode);
+  }
+
+  [Fact]
+  public void The_input_hash_is_the_same_in_every_culture() {
+    PatternPrint[] prints =
+    [
+      new PatternPrint("P", [1.5, 4, 1.5], [2.5, 5, 2.5]),
+    ];
+    CultureInfo was = CultureInfo.CurrentCulture;
+    try {
+      CultureInfo.CurrentCulture = new CultureInfo("en-US");
+      string en = Make(2.5, prints, Base).Pattern.InputHash;
+      CultureInfo.CurrentCulture = new CultureInfo("uk-UA");
+      string uk = Make(2.5, prints, Base).Pattern.InputHash;
+      Assert.Equal(en, uk);
+    } finally {
+      CultureInfo.CurrentCulture = was;
+    }
   }
 }

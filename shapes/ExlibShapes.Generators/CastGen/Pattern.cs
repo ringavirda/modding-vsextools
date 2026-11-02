@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -247,6 +248,9 @@ public static partial class Patterns {
     return e;
   }
 
+  private static string Invariant(double v) =>
+    v.ToString(CultureInfo.InvariantCulture);
+
   private static string HashOf(
     string spec,
     IReadOnlyList<Leaf> cast,
@@ -257,9 +261,14 @@ public static partial class Patterns {
     var sb = new StringBuilder(CanonicalWriter.Write(Flush.ShapeOf(cast)));
     foreach (PatternPrint p in prints)
       sb.Append(
-        $"\n{p.Name} {string.Join(",", p.From)} {string.Join(",", p.To)}"
+        string.Create(
+          CultureInfo.InvariantCulture,
+          $"\n{p.Name} {string.Join(",", p.From.Select(Invariant))} {string.Join(",", p.To.Select(Invariant))}"
+        )
       );
-    sb.Append($"\nparting {parting}");
+    sb.Append(
+      string.Create(CultureInfo.InvariantCulture, $"\nparting {parting}")
+    );
     return Provenance.InputHash(
       spec,
       "",

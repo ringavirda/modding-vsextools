@@ -129,4 +129,72 @@ public class UvTests {
     Assert.Equal(2, after.Enumerated);
     Assert.Equal(0, after.ExitCode);
   }
+
+  [Fact]
+  public void An_octagon_drawn_as_a_parent_with_chamfer_children_runs_on() {
+    string Chamfer(
+      string name,
+      string from,
+      string to,
+      string origin,
+      int turn
+    ) =>
+      Cube(
+        name,
+        from,
+        to,
+        "cast-iron1",
+        $"\"rotationOrigin\": {origin}, \"rotationY\": {turn},"
+      );
+    string bar = $$"""
+      { "name": "Bar", "from": [0, 0, 0], "to": [4, 6, 2],
+        "faces": { {{Faces("cast-iron1")}} },
+        "children": [
+          {{Cube("X", "[1, 0.01, -1]", "[3, 6.01, 3]")}},
+          {{Chamfer(
+        "C0",
+        "[0, -0.01, 0]",
+        "[1.4142, 5.99, 1]",
+        "[0, -0.01, 0]",
+        45
+      )}},
+          {{Chamfer(
+        "C1",
+        "[2.5858, -0.01, 0]",
+        "[4, 5.99, 1]",
+        "[4, -0.01, 0]",
+        -45
+      )}},
+          {{Chamfer(
+        "C2",
+        "[0, -0.01, 1]",
+        "[1.4142, 5.99, 2]",
+        "[0, -0.01, 2]",
+        -45
+      )}},
+          {{Chamfer(
+        "C3",
+        "[2.5858, -0.01, 1]",
+        "[4, 5.99, 2]",
+        "[4, -0.01, 2]",
+        45
+      )}}
+        ] }
+      """;
+    List<Leaf> assigned = Uvs.Assign(
+      Ctx(),
+      "shaft",
+      Select.Groups(Reader.Read($$"""{ "elements": [ {{bar}} ] }"""), ["Bar"])
+    );
+
+    List<Leaf> rolled = Uvs.Unroll(Ctx(), "shaft", assigned);
+
+    Assert.Equal(6, rolled.Count);
+    Assert.Contains(
+      assigned.Zip(rolled),
+      p =>
+        p.First.Element.Faces.Zip(p.Second.Element.Faces)
+          .Any(f => !f.First.Value.Uv!.SequenceEqual(f.Second.Value.Uv!))
+    );
+  }
 }

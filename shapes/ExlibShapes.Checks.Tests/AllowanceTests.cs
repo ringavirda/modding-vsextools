@@ -254,6 +254,30 @@ public class AllowanceTests {
         )
         .Lines
     );
+
+    Shape stray = Fixtures.Edited(
+      "cast-ok.json",
+      raw => {
+        JObject cap = (JObject)CastFixtures.Find(raw, "Lug").DeepClone();
+        cap["name"] = "Lug_cap";
+        CastFixtures.Move(cap, "from", 0, 0);
+        CastFixtures.Move(cap, "to", 0, 2);
+        CastFixtures.Move(cap, "from", 1, 4);
+        CastFixtures.Move(cap, "to", 1, 4.125);
+        ((JArray)raw["elements"]![0]!["children"]!).Add(cap);
+      }
+    );
+    Assert.Contains(
+      "Lug_cap: cap not 0.125 thick beside Lug/up, or on a face a step cuts",
+      Check
+        .Run(
+          Moved(
+            stray,
+            new FlushMove("Lug_cap", "cap", "up", 0.125, null, "Lug")
+          )
+        )
+        .Lines
+    );
   }
 
   [Fact]

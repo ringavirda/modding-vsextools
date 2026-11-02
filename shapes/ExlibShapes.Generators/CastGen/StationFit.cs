@@ -10,7 +10,7 @@ namespace ExpandedLib.Shapes.Generators;
 /// <param name="Station">The station's name in the settings.</param>
 /// <param name="Room">The x, y and z a piece may take: the sand less the margin to the walls and floor, and to the
 /// roof of a station with a parting.</param>
-/// <param name="Over">By how much the largest piece's extent passes <paramref name="Room"/> on each axis; 0 where it
+/// <param name="Over">By how much the pieces' joint extent passes <paramref name="Room"/> on each axis; 0 where it
 /// fits.</param>
 public sealed record StationRow(
   string Station,
@@ -38,10 +38,10 @@ public sealed record FitReport(
 public static class StationFit {
   private const double Eps = 1e-9;
 
-  /// <summary>Fits a casting to every station. Each piece (a group entry's leaves) is read at its bounds in the
-  /// flask frame; a station holds it when its extent is within the room on every axis. Placed at
-  /// <paramref name="station"/>, each piece also keeps the station's margin from the sand walls, the floor, the roof
-  /// of a station with a parting and from every other piece. A casting no station holds fails with its overflow, the
+  /// <summary>Fits a casting to every station. Each piece (a group entry's leaves) is read in the flask frame; a
+  /// station holds the casting when the extent of all the pieces together is within the room on every axis. Placed at
+  /// <paramref name="station"/>, each piece also keeps the station's margin from the sand walls, the floor and the
+  /// roof of a station with a parting, and each leaf the margin from the leaves of every other piece. A casting no station holds fails with its overflow, the
   /// nearest station (the least total overflow, the first by name on a tie) and the planes that would cut it to fit.</summary>
   /// <param name="settings">The settings whose stations are read.</param>
   /// <param name="item">The casting's item name.</param>
@@ -70,8 +70,8 @@ public static class StationFit {
     var extent = new double[3];
     var lo = new double[3];
     for (int a = 0; a < 3; a++) {
-      extent[a] = bounds.Max(b => b.Hi[a] - b.Lo[a]);
       lo[a] = bounds.Min(b => b.Lo[a]);
+      extent[a] = bounds.Max(b => b.Hi[a]) - lo[a];
     }
 
     var rows = new List<StationRow>();
@@ -107,7 +107,7 @@ public static class StationFit {
     }
     if (station != null)
       failures.AddRange(
-        Placed(item, settings.Stations[station], station, bounds)
+        Placed(item, settings.Stations[station], station, bounds, pieces)
       );
     return new FitReport(item, rows, table, failures);
   }
@@ -125,7 +125,8 @@ public static class StationFit {
     string item,
     Station s,
     string name,
-    List<Box> bounds
+    List<Box> bounds,
+    IReadOnlyList<IReadOnlyList<Leaf>> pieces
   ) {
     var lines = new List<string>();
     for (int k = 0; k < bounds.Count; k++) {
@@ -151,14 +152,9 @@ public static class StationFit {
     }
     for (int a = 0; a < bounds.Count; a++)
       for (int c = a + 1; c < bounds.Count; c++) {
-        double gap = Enumerable
-          .Range(0, 3)
-          .Max(i =>
-            Math.Max(
-              bounds[a].Lo[i] - bounds[c].Hi[i],
-              bounds[c].Lo[i] - bounds[a].Hi[i]
-            )
-          );
+        double gap = pieces[a]
+          .SelectMany(x => pieces[c].Select(y => Gap(x.Box, y.Box)))
+          .Min();
         if (gap < s.Margin - Eps)
           lines.Add(
             $"{item}: Piece{a + 1} and Piece{c + 1} {Fmt.G(Round(gap))} apart at {name}, margin {Fmt.G(s.Margin)}"
@@ -166,6 +162,11 @@ public static class StationFit {
       }
     return lines;
   }
+
+  private static double Gap(Box a, Box b) =>
+    Enumerable
+      .Range(0, 3)
+      .Max(i => Math.Max(a.Lo[i] - b.Hi[i], b.Lo[i] - a.Hi[i]));
 
   private static string SplitLines(
     StationRow near,

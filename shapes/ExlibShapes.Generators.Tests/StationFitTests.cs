@@ -107,6 +107,40 @@ public class StationFitTests {
   }
 
   [Fact]
+  public void A_piece_nested_in_another_pieces_corner_keeps_the_margin_by_leaf() {
+    IReadOnlyList<Leaf> ell = Leaves(
+      Bx("Flat", "[5, 3, -10]", "[15, 4, 0]"),
+      Bx("Upright", "[5, 4, -10]", "[6, 10, 0]")
+    );
+
+    FitReport r = Run("floor", ell, Piece("[8, 5, -8]", "[10, 7, -2]", "B"));
+
+    Assert.Empty(r.Failures);
+    FitReport close = Run(
+      "floor",
+      ell,
+      Piece("[8, 4.5, -8]", "[10, 7, -2]", "B")
+    );
+    Assert.Equal(
+      "castthing: Piece1 and Piece2 0.5 apart at floor, margin 1",
+      Assert.Single(close.Failures)
+    );
+  }
+
+  [Fact]
+  public void Pieces_that_fit_apart_but_not_together_fit_no_flask_row() {
+    FitReport r = Run(
+      null,
+      Piece("[0, 3, -10]", "[20, 7, 0]", "A"),
+      Piece("[22, 3, -10]", "[42, 7, 0]", "B")
+    );
+
+    StationRow floor = Assert.Single(r.Rows, x => x.Station == "floor");
+    Assert.False(floor.Fits);
+    Assert.Equal(16, floor.Over[0]);
+  }
+
+  [Fact]
   public void A_station_missing_from_the_settings_is_refused() {
     Assert.Throws<CastGenException>(() =>
       Run("dock", Piece("[5, 3, -10]", "[15, 7, 0]"))

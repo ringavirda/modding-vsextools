@@ -118,7 +118,8 @@ public sealed class Allowance : ICheck {
           lines.Add($"{name}: not in the source");
         else if (
           cuts.GetValueOrDefault(cap.Of ?? "")?.Contains(cap.Face) == true
-          || !CapFits(got, cap)
+          || !item.TryGetValue(cap.Of ?? "", out Box of)
+          || !CapFits(got, cap, of)
         )
           lines.Add(
             $"{name}: cap not {Fmt.G(cap.Distance)} thick beside {cap.Of}/{cap.Face}, or on a face a step cuts"
@@ -231,13 +232,24 @@ public sealed class Allowance : ICheck {
       )
     );
 
-  private static bool CapFits(Box b, FlushMove cap) {
+  private static bool CapFits(Box b, FlushMove cap, Box of) {
     int axis = cap.Face switch {
       "east" or "west" => 0,
       "up" or "down" => 1,
       _ => 2,
     };
-    return Math.Abs(b.Hi[axis] - b.Lo[axis] - cap.Distance) <= Tol;
+    bool hi = cap.Face is "east" or "up" or "south";
+    double plane = hi ? of.Hi[axis] : of.Lo[axis];
+    double start = hi ? b.Lo[axis] : b.Hi[axis];
+    if (
+      Math.Abs(b.Hi[axis] - b.Lo[axis] - cap.Distance) > Tol
+      || Math.Abs(start - plane) > Tol
+    )
+      return false;
+    return Enumerable
+      .Range(0, 3)
+      .Where(i => i != axis)
+      .All(i => b.Lo[i] >= of.Lo[i] - Tol && b.Hi[i] <= of.Hi[i] + Tol);
   }
 
   private static bool Near(Box a, Box b) =>
