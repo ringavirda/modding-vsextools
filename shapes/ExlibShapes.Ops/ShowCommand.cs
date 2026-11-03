@@ -65,7 +65,9 @@ internal static class ShowCommand {
     );
     lines.Add($"own castings: {m.Castings.Count}");
     foreach (CastingSpec c in m.Castings)
-      lines.Add($"  {c.Item} x{c.Count}, station {c.Station ?? "none"}");
+      lines.Add(
+        $"  {c.Item} x{c.Count} ({c.PerPour} a pour), station {c.Station ?? "none"}"
+      );
     lines.Add($"blank users: {m.Users.Count}");
     foreach (UserSpec u in m.Users)
       lines.Add($"  {u.Worked.Item} on blank {u.Blank} x{u.Count}");

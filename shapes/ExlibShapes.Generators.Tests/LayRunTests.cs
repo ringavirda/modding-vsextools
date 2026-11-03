@@ -143,6 +143,11 @@ public class JoinedRunTests {
       LayFx.Named(bed, "Seat").Faces.Single(kv => kv.Key == "up").Value.Texture
     );
     Assert.Equal("worked", bed.Record.Elements["Holes"].Stage);
+    Assert.Equal(["Holes/up"], bed.Record.Steps[1].Faces);
+    Assert.Equal(
+      "#cast-iron-turned1",
+      LayFx.Named(bed, "Holes").Faces.Single(kv => kv.Key == "up").Value.Texture
+    );
     Box bounds = BlankResult
       .Union(
         bed.Shape.Elements.Select(e => new Box(
@@ -192,7 +197,7 @@ public class PourRunTests {
 
   private static string Casting(int count, string station, string extra = "") =>
     $$"""
-      { "item": "cast-bed-bit", "source": { "groups": ["Root/Bit"] }, "count": {{count}},
+      { "item": "cast-bed-bit", "source": { "groups": ["Root/Bit"] }, "perPour": {{count}},
         "station": "{{station}}", "lie": {{LayFx.Floor}} {{extra}} }
       """;
 
@@ -213,6 +218,10 @@ public class PourRunTests {
     new Feeding(),
     new Pit(),
     new Parting(),
+    new Draw(),
+    new Role(),
+    new Split(),
+    new Facecheck(),
   ];
 
   private static List<string> Failing(GenResult r) {
@@ -222,13 +231,17 @@ public class PourRunTests {
       Record: filling.Record,
       Settings: Fx.Settings,
       Cast: r.Outputs.Single(o => o.Name == "cast-bed-bit").Shape,
-      Pattern: r.Outputs.Single(o => o.Name == "pattern-cast-bed-bit").Shape
+      Pattern: r.Outputs.Single(o => o.Name == "pattern-cast-bed-bit").Shape,
+      Parting: (double?)filling.Record.Carried["draw"]?["parting"]
     );
+    CheckInput drawn = input with {
+      Shape = r.Inputs.Single(i => i.Name == "cast-bed-bit-draw").Shape,
+    };
     return
     [
       .. Gates
         .Where(g => Selection.Applies(g, input))
-        .Select(g => (g, res: g.Run(input)))
+        .Select(g => (g, res: g.Run(g.Id == "draw" ? drawn : input)))
         .Where(x => x.res.ExitCode != 0)
         .Select(x => $"{x.g.Id}: {string.Join(" | ", x.res.Lines.Take(4))}"),
     ];
@@ -247,6 +260,19 @@ public class PourRunTests {
     Assert.Empty(Failing(r));
     GenInput draw = Assert.Single(r.Inputs, i => i.Name == "cast-bed-bit-draw");
     Assert.Equal(2, draw.Shape.Elements.Count);
+  }
+
+  [Fact]
+  public void A_count_is_the_bill_and_lays_one_piece() {
+    GenResult r = Run(
+      $$"""
+      { "item": "cast-bed-bit", "source": { "groups": ["Root/Bit"] }, "count": 4,
+        "station": "floor", "lie": {{LayFx.Floor}} }
+      """
+    );
+
+    GenOutput filling = r.Outputs.Single(o => o.Kinds.Contains("filling"));
+    Assert.Single((JArray)filling.Record.Carried["pour"]!["pieces"]!);
   }
 
   [Fact]

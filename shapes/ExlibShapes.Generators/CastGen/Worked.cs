@@ -396,7 +396,7 @@ public static partial class Worked {
         var feature = new Feature { Origin = uf.Origin, Step = step.Step };
         feature.Faces.AddRange(uf.Faces);
         foreach (Leaf l in made)
-          items = Carve(items, l.Box, taken, rec);
+          items = Carve(items, l.Box, taken, rec, recStep);
         foreach (Leaf l in made) {
           Element e = Select.Clone(l.Element, false);
           foreach (KeyValuePair<string, Face> kv in e.Faces)
@@ -475,7 +475,8 @@ public static partial class Worked {
     List<Leaf> items,
     Box cut,
     ISet<string> taken,
-    PartRecord rec
+    PartRecord rec,
+    Step current
   ) {
     var outp = new List<Leaf>();
     foreach (Leaf l in items) {
@@ -518,6 +519,8 @@ public static partial class Worked {
         if (!first)
           for (int i = 2; !taken.Add(name = $"{l.Name}_c{i}"); i++) { }
         first = false;
+        if (name != l.Name)
+          Rename(rec, current, l.Name, name);
         rec.Elements[name] = new ElementPart {
           Stage = l.Stage ?? "cast",
           Role = l.Role ?? "cast",
@@ -528,6 +531,25 @@ public static partial class Worked {
         rec.Elements.Remove(l.Name);
     }
     return outp;
+  }
+
+  private static void Rename(
+    PartRecord rec,
+    Step current,
+    string from,
+    string to
+  ) {
+    void Add(List<string> faces) {
+      foreach (string f in faces.Where(f => f.StartsWith(from + "/")).ToList()) {
+        string added = to + f[from.Length..];
+        if (!faces.Contains(added))
+          faces.Add(added);
+      }
+    }
+    foreach (Step s in rec.Steps.Append(current))
+      Add(s.Faces);
+    foreach (Feature f in rec.Features.Values)
+      Add(f.Faces);
   }
 
   private static List<Leaf> Start(

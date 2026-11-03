@@ -44,20 +44,6 @@ public static class Staleness {
     return null;
   }
 
-  /// <summary>The canonical text of the entry of <c>users</c> whose <c>worked.item</c> is
-  /// <paramref name="item"/>: the text a user's worked item hashes as its spec entry, so adding or editing another
-  /// user changes nothing here.</summary>
-  /// <exception cref="ArgumentException">The machine file has no such user.</exception>
-  public static string UserEntryText(JObject machineFile, string item) {
-    JToken? entry = (machineFile["users"] as JArray)?.FirstOrDefault(u =>
-      (string?)u["worked"]?["item"] == item
-    );
-    return Canonical(
-      entry
-        ?? throw new ArgumentException($"no user '{item}' in the machine file")
-    );
-  }
-
   /// <summary>Compact JSON with every object's keys in ordinal order.</summary>
   public static string Canonical(JToken token) =>
     JsonConvert.SerializeObject(Sorted(token), Formatting.None);

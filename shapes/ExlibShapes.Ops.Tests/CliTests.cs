@@ -124,7 +124,7 @@ public class CliTests {
     (int exit, string output, _) = w.Run("show", spec);
 
     Assert.Equal(0, exit);
-    Assert.Contains("cast-planer-bed x1, station floor", output);
+    Assert.Contains("cast-planer-bed x1 (1 a pour), station floor", output);
     Assert.Contains("planer-bed on blank castbed x2", output);
     Assert.Contains("set: planer-set, station small", output);
     Assert.Contains("  castbearingblock x4", output);
@@ -440,14 +440,14 @@ public class CliTests {
   [Fact]
   public void Cli_check_reads_a_core_and_a_core_box_from_a_gen_output_directory() {
     using var w = new Workspace();
-    w.Gen(w.MachineSpec(Workspace.Casting()));
+    w.Gen(w.MachineSpec(Workspace.Casting(), Workspace.User()));
 
     (int exit, string output, string err) = Check(
       w,
       Path.Combine(w.Out, "items")
     );
 
-    Assert.NotEqual(2, exit);
+    Assert.True(exit == 0, output + err);
     Assert.Contains(
       "PASS corefit "
         + Path.Combine(

@@ -171,6 +171,7 @@ public class ImportTests : IDisposable {
     );
     Put("exmods/mods/iiex/assets/iiex/shapes/forming/lathe.json", Drawing());
     Put("exmods/mods/iiex/assets/iiex/shapes/forming/bed.json", Drawing());
+    Put("exmods/mods/iiex/assets/iiex/config/machinekinds/lathe.json", "{}");
 
     (int exit, string output, _) = Run(
       "import",

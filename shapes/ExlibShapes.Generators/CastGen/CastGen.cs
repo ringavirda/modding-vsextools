@@ -35,7 +35,7 @@ public sealed partial class CastGen : IGenerator {
   /// same products as a blank, its own worked items included. A casting whose cast set holds an untagged feature, a
   /// joined entry whose sections do, or a user whose placement is out of its blank's band, returns its question and
   /// none of its outputs; every other product is still made. An open pour holds <c>perPour</c> pieces of a blank, or
-  /// <c>count</c> of a machine's casting, in a column away from the drop in the flask's -z, each a station margin
+  /// <c>perPour</c> of a machine's casting, in a column away from the drop in the flask's -z, each a station margin
   /// of sand twice over the last's end; the pour's order is <c>south</c>. The groups of a kit each lie by their own
   /// <c>lie</c> (else the casting's), their offsets relative to the first group's.</summary>
   /// <param name="ctx">The context. A machine file's users need <see cref="GenContext.Blank"/>.</param>
@@ -249,7 +249,7 @@ public sealed partial class CastGen : IGenerator {
         c.Station,
         LiesOf(c.Station, c.Lie, c.Groups, c.Item),
         set.GroupEnds,
-        c.Count,
+        c.PerPour,
         c.Parting,
         c.Feeds,
         entry,

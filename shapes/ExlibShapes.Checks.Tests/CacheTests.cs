@@ -153,35 +153,6 @@ public class CacheTests {
     };
 
   [Fact]
-  public void Adding_a_user_leaves_other_outputs_fresh() {
-    using var dir = new TempDir();
-    JObject before = Machine("one", "two");
-    string hash(JObject m, string item) =>
-      Provenance.InputHash(
-        Staleness.UserEntryText(m, item),
-        "shape",
-        "record",
-        "settings"
-      );
-    var p = new Provenance(dir.Sub("provenance.jsonl"));
-    p.Append(new("items/one.json", "00", "castgen", "v1", hash(before, "one")));
-    p.Append(new("items/two.json", "00", "castgen", "v1", hash(before, "two")));
-
-    JObject after = Machine("one", "two", "three");
-    after["machine"] = "planer-renamed";
-
-    Assert.Null(
-      Staleness.Reason(p, "items/one.json", "castgen", "v1", hash(after, "one"))
-    );
-    Assert.Null(
-      Staleness.Reason(p, "items/two.json", "castgen", "v1", hash(after, "two"))
-    );
-    Assert.Throws<ArgumentException>(() =>
-      Staleness.UserEntryText(before, "three")
-    );
-  }
-
-  [Fact]
   public void A_stale_output_is_refused_before_any_check() {
     using var dir = new TempDir();
     var check = new CountingCheck();

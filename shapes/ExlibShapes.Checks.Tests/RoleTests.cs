@@ -211,12 +211,20 @@ public class RoleTests {
       );
 
     CheckResult cut = Check.Run(
-      Input(CastFixtures.CastRecord + "," + CastFixtures.PlaneWay)
+      Input(
+        CastFixtures.CastRecord.Replace("casting", "worked")
+          + ","
+          + CastFixtures.PlaneWay
+      )
     );
     CheckResult uncut = Check.Run(Input(CastFixtures.CastRecord));
+    CheckResult cast = Check.Run(
+      Input(CastFixtures.CastRecord + "," + CastFixtures.PlaneWay)
+    );
 
     Assert.Equal(0, cut.ExitCode);
     Assert.Equal(1, uncut.ExitCode);
+    Assert.Equal(1, cast.ExitCode);
     Assert.Contains(
       "Way up: texture 'cast-iron-turned1', the cast role takes 'cast-iron1'",
       uncut.Lines.Single(l => l.Contains("Way up"))

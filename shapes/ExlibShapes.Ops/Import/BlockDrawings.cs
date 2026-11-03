@@ -70,12 +70,23 @@ internal static class BlockDrawings {
       if (name.EndsWith(".part.json", StringComparison.Ordinal))
         continue;
       string kind = KindOf(file);
-      if (Stem(file) == stem || (kind == "shipped" && Stem(file) == folder))
+      if (
+        Stem(file) == stem
+        || (kind == "shipped" && Stem(file) == folder && InShapes(file))
+      )
         found.Add(new BlockDrawing(kind, file));
     }
     foreach (string sub in Directory.EnumerateDirectories(dir))
       if (!Skipped.Contains(Path.GetFileName(sub)))
         Walk(sub, stem, folder, found);
+  }
+
+  private static bool InShapes(string file) {
+    string[] parts = file.Split(Path.DirectorySeparatorChar);
+    for (int i = 0; i + 2 < parts.Length; i++)
+      if (parts[i] == "assets" && parts[i + 2] == "shapes")
+        return true;
+    return false;
   }
 
   private static string KindOf(string file) {

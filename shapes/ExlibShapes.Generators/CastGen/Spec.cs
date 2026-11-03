@@ -135,6 +135,8 @@ public sealed record JoinedSpec(
 );
 
 /// <summary>A machine's own casting (a kit when it has several group entries).</summary>
+/// <param name="Count">How many the machine uses; the bill, not the pour.</param>
+/// <param name="PerPour">How many pieces one pour lays, at least 1.</param>
 public sealed record CastingSpec(
   string Item,
   IReadOnlyList<GroupSpec> Groups,
@@ -146,6 +148,7 @@ public sealed record CastingSpec(
   IReadOnlyList<WorkedSpec> Worked,
   JToken? Group,
   int Count,
+  int PerPour,
   double Allowance,
   string? Route
 );
@@ -394,6 +397,7 @@ public static class Spec {
       ReadWorkedList(r.Array("worked")),
       r.Raw("group"),
       (int)(r.Number("count") ?? 1),
+      (int)(r.Number("perPour") ?? 1),
       r.Number("allowance") ?? allowance,
       r.OptText("route") ?? route
     );
