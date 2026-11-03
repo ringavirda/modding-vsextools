@@ -20,7 +20,8 @@ public class CastSetTests {
 
   private static string Record(
     string hole = DefaultHole,
-    string capEntry = DefaultCap
+    string capEntry = DefaultCap,
+    string seatStage = "worked"
   ) =>
     $$"""
       { "schema": 1, "shape": "d.json", "kinds": ["casting"],
@@ -28,7 +29,7 @@ public class CastSetTests {
           "Body": { "stage": "cast", "role": "cast" },
           {{capEntry}}
           "Bolt1": { "stage": "fastener", "role": "fastener" },
-          "Seat": { "stage": "cast", "role": "cast" },
+          "Seat": { "stage": "{{seatStage}}", "role": "cast" },
           "Hole": { "stage": "cast", "role": "cast" },
           "Cav": { "stage": "cast", "role": "cast" }
         },
@@ -112,6 +113,14 @@ public class CastSetTests {
 
     Assert.DoesNotContain(r.Cast, l => l.Name == "Seat");
     Assert.Equal("Seat", Assert.Single(r.Worked).Name);
+  }
+
+  [Fact]
+  public void A_cast_element_of_a_planed_feature_stays_in_the_cast_set() {
+    CastSetResult r = Run(Record(seatStage: "cast"));
+
+    Assert.Contains(r.Cast, l => l.Name == "Seat" && l.Role == "cast");
+    Assert.Empty(r.Worked);
   }
 
   [Fact]

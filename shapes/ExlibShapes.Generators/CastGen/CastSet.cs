@@ -209,7 +209,11 @@ public static class CastSet {
           drilled.Add(fid!);
         continue;
       }
-      if (origin != null && WorkedOrigins.Contains(origin)) {
+      if (
+        origin != null
+        && WorkedOrigins.Contains(origin)
+        && ep?.Stage != "cast"
+      ) {
         outp.Worked.Add(leaf with { Stage = "worked", Role = ep?.Role });
         continue;
       }

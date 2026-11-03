@@ -209,6 +209,30 @@ public class ImportTests : IDisposable {
     Assert.Equal("stages", (string?)r.Carried["import"]!["unconfirmed"]![0]);
   }
 
+  [Fact]
+  public void An_element_drawn_only_in_a_non_iron_texture_is_not_cast() {
+    string drawing = Put(
+      "drawings/bush.json",
+      $$"""
+      { "textures": { "iron5": "block/metal/sheet-plain/iron5", "cast-iron1": "//host/materials/cast-iron1", "brass": "block/metal/plate/brass" },
+        "elements": [ {{Group(
+          "Root",
+          Cube("Body", "cast-iron1", "[0, 0, 0]", "[4, 4, 4]"),
+          Cube("Bush", "brass", "[1, 1, 1]", "[2, 2, 2]")
+        )}} ] }
+      """
+    );
+    string outDir = Path.Combine(dir, "out");
+
+    (int exit, _, _) = Run("import", drawing, "--out", outDir);
+
+    Assert.Equal(0, exit);
+    PartRecord r = PartRecord.ReadFile(Path.Combine(outDir, "bush.part.json"));
+    Assert.Equal("assembled", r.Elements["Bush"].Stage);
+    Assert.Equal("cast", r.Elements["Body"].Stage);
+    Assert.Equal("cast", r.Elements["Root"].Stage);
+  }
+
   [SkippableFact]
   public void Import_asks_one_question_per_drawing_group_and_confirms_a_bore_from_the_tables() {
     string? python = Python();

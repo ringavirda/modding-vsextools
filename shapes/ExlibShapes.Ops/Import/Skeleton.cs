@@ -59,7 +59,10 @@ internal static class Skeleton {
     foreach (PathedElement pe in all)
       if (pe.Element.Name is { } name)
         record.Elements[name] = new ElementPart {
-          Stage = IsFastener(pe, all, iron5) ? "fastener" : "cast",
+          Stage =
+            IsFastener(pe, all, iron5) ? "fastener"
+            : IsNotIron(shape, pe, all) ? "assembled"
+            : "cast",
         };
 
     var questions = new List<StoredQuestion>();
@@ -192,6 +195,35 @@ internal static class Skeleton {
 
   private static bool Drawn(Element e) =>
     e.Faces.Any(f => f.Value.Enabled != false);
+
+  private static bool IsNotIron(
+    Shape shape,
+    PathedElement pe,
+    List<PathedElement> all
+  ) {
+    string prefix = pe.Path + "/";
+    bool any = false;
+    foreach (PathedElement q in all) {
+      if (
+        q.Path != pe.Path
+        && !q.Path.StartsWith(prefix, StringComparison.Ordinal)
+      )
+        continue;
+      foreach (KeyValuePair<string, Face> f in q.Element.Faces) {
+        if (f.Value.Enabled == false)
+          continue;
+        any = true;
+        string code = (f.Value.Texture ?? "").TrimStart('#');
+        if (
+          shape.Textures.Any(t =>
+            t.Key == code && t.Value.Contains("iron", StringComparison.Ordinal)
+          )
+        )
+          return false;
+      }
+    }
+    return any;
+  }
 
   private static bool IsFastener(
     PathedElement pe,
