@@ -145,6 +145,39 @@ public class FillingTests(ITestOutputHelper output) {
   }
 
   [Fact]
+  public void A_runner_leg_ends_in_the_metal_of_a_piece_turned_in_plan() {
+    Element e = Reader
+      .Read(
+        """
+        { "elements": [ { "name": "Slab", "from": [-6, 0, -1.5], "to": [6, 4, 1.5], "rotationY": 40, "rotationOrigin": [0, 0, 0],
+          "faces": { "up": { "texture": "#c" } } } ] }
+        """
+      )
+      .Elements[0];
+    List<Leaf> slab = [new Leaf("Slab", "Slab", "Slab", e, "cast", "cast")];
+    Mat4d at = At(13, 10, -3);
+    PourRequest r = Request("floor", slab, [at]);
+
+    FillingResult f = Make(r);
+
+    Assert.Empty(Failing(f, r));
+    Occupancy metal = Occupancy.Of(slab, at);
+    Box end = f.Feeds.Single(x => x.Kind == "runner").Boxes.Last();
+    Box mb = metal.Bounds;
+    double cx = (mb.Lo.X + mb.Hi.X) / 2,
+      cz = (mb.Lo.Z + mb.Hi.Z) / 2;
+    double y = (end.Lo.Y + end.Hi.Y) / 2;
+    Vec3 tip = new Vec3[]
+    {
+      new(end.Lo.X, y, (end.Lo.Z + end.Hi.Z) / 2),
+      new(end.Hi.X, y, (end.Lo.Z + end.Hi.Z) / 2),
+      new((end.Lo.X + end.Hi.X) / 2, y, end.Lo.Z),
+      new((end.Lo.X + end.Hi.X) / 2, y, end.Hi.Z),
+    }.MinBy(p => Math.Abs(p.X - cx) + Math.Abs(p.Z - cz));
+    Assert.Contains(metal.Prisms, p => p.Contains(tip));
+  }
+
+  [Fact]
   public void A_drop_over_the_piece_lays_no_runner() {
     PourRequest r = Request("floor", Block(6, 4, 6), [At(13, 10, 4)]);
 

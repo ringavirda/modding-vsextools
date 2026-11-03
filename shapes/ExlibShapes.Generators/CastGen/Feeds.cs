@@ -56,6 +56,9 @@ internal static class Feeds {
   /// <param name="fill">The fill order, <c>chain</c>, <c>pairs</c> or <c>rows</c>.</param>
   /// <param name="pieces">The metal of each piece in the filling's space, its head included.</param>
   /// <param name="risers">The kind and the point on the cast's top of each riser, in the filling's space.</param>
+  /// <param name="solids">The occupancy of each piece's metal, head included; a runner or gate leg that ends at a
+  /// piece ends <c>Past</c> inside the first of its metal the leg's own line meets. Null ends it <c>Past</c> inside
+  /// the plan rectangle of the piece's boxes.</param>
   /// <exception cref="CastGenException">The station lacks a runner depth, a gate width, a drop, a sprue, a parting
   /// or a riser's section; a piece has
   /// no metal in the runner's depth; no route keeps the margin.</exception>
@@ -65,7 +68,8 @@ internal static class Feeds {
     bool closed,
     string fill,
     IReadOnlyList<IReadOnlyList<Box>> pieces,
-    IReadOnlyList<(string Kind, Vec3 Top)> risers
+    IReadOnlyList<(string Kind, Vec3 Top)> risers,
+    IReadOnlyList<Occupancy>? solids = null
   ) {
     double top = station.SandTo[1];
     double depth =
@@ -149,9 +153,10 @@ internal static class Feeds {
       double pastA,
       Rect b,
       double w,
-      Func<Box, bool> clear
+      Func<Box, bool> clear,
+      Occupancy? solid = null
     ) =>
-      Route(a, pastA, b, w, y0, y1, clear)
+      Route(a, pastA, b, w, y0, y1, clear, solid)
       ?? throw new CastGenException(
         $"{item}: no {what} reaches Piece{piece} and keeps the margin {Fmt.G(margin)} from the others"
       );
@@ -177,7 +182,8 @@ internal static class Feeds {
         pastSource,
         feet[0],
         source.X1 - source.X0,
-        b => Clear(b, 0)
+        b => Clear(b, 0),
+        solids?[0]
       );
       feeds.Add(new FeedLaid("Runner1", "runner", run, [], null));
       main = Rect.Of(run);
@@ -192,7 +198,8 @@ internal static class Feeds {
         Past,
         feet[k],
         across,
-        b => Clear(b, from >= 0 ? [k, from] : [k])
+        b => Clear(b, from >= 0 ? [k, from] : [k]),
+        solids?[k]
       );
       if (gate.Count > 0)
         feeds.Add(new FeedLaid($"Gate{k + 1}", "gate", gate, [], k + 1));
@@ -253,7 +260,8 @@ internal static class Feeds {
     double w,
     double y0,
     double y1,
-    Func<Box, bool> clear
+    Func<Box, bool> clear,
+    Occupancy? solid
   ) {
     if (a.Overlaps(b))
       return [];
@@ -264,11 +272,21 @@ internal static class Feeds {
       oz1 = Math.Min(a.Z1, b.Z1);
     if (ox1 - ox0 >= w - Eps)
       tries.Add([
-        LegZ((ox0 + ox1) / 2, w, a, pastA, b, b.Z1 <= a.Z0 + Eps, y0, y1),
+        MeetZ(
+          LegZ((ox0 + ox1) / 2, w, a, pastA, b, b.Z1 <= a.Z0 + Eps, y0, y1),
+          b.Z1 <= a.Z0 + Eps,
+          b,
+          solid
+        ),
       ]);
     if (oz1 - oz0 >= w - Eps)
       tries.Add([
-        LegX((oz0 + oz1) / 2, w, a, pastA, b, b.X1 <= a.X0 + Eps, y0, y1),
+        MeetX(
+          LegX((oz0 + oz1) / 2, w, a, pastA, b, b.X1 <= a.X0 + Eps, y0, y1),
+          b.X1 <= a.X0 + Eps,
+          b,
+          solid
+        ),
       ]);
 
     double cx = a.CentreX,
@@ -276,13 +294,93 @@ internal static class Feeds {
     bool south = b.CentreZ <= a.Z0 + Eps;
     bool west = b.CentreX <= a.X0 + Eps;
     Box zFirst = LegZTo(cx, w, a, pastA, b.CentreZ, south, y0, y1);
-    Box xAfter = LegXTo(b.CentreZ, w, cx, b, b.X1 <= cx + Eps, y0, y1);
+    Box xAfter = MeetX(
+      LegXTo(b.CentreZ, w, cx, b, b.X1 <= cx + Eps, y0, y1),
+      b.X1 <= cx + Eps,
+      b,
+      solid
+    );
     tries.Add([zFirst, xAfter]);
     Box xFirst = LegXTo2(cz, w, a, pastA, b.CentreX, west, y0, y1);
-    Box zAfter = LegZFrom(b.CentreX, w, cz, b, b.Z1 <= cz + Eps, y0, y1);
+    Box zAfter = MeetZ(
+      LegZFrom(b.CentreX, w, cz, b, b.Z1 <= cz + Eps, y0, y1),
+      b.Z1 <= cz + Eps,
+      b,
+      solid
+    );
     tries.Add([xFirst, zAfter]);
     return tries.FirstOrDefault(t => t.All(clear));
   }
+
+  private const double Step = 1.0 / 16;
+
+  private static Box MeetX(Box leg, bool towardLow, Rect b, Occupancy? solid) {
+    if (solid == null)
+      return leg;
+    double z = (leg.Lo.Z + leg.Hi.Z) / 2;
+    double? hit = Meet(
+      solid,
+      leg.Lo.Y,
+      leg.Hi.Y,
+      towardLow ? leg.Hi.X : leg.Lo.X,
+      towardLow ? b.X0 : b.X1,
+      x => new Vec3(x, 0, z)
+    );
+    if (hit == null)
+      return leg;
+    return towardLow
+      ? new Box(new Vec3(hit.Value - Past, leg.Lo.Y, leg.Lo.Z), leg.Hi)
+      : new Box(leg.Lo, new Vec3(hit.Value + Past, leg.Hi.Y, leg.Hi.Z));
+  }
+
+  private static Box MeetZ(Box leg, bool towardLow, Rect b, Occupancy? solid) {
+    if (solid == null)
+      return leg;
+    double x = (leg.Lo.X + leg.Hi.X) / 2;
+    double? hit = Meet(
+      solid,
+      leg.Lo.Y,
+      leg.Hi.Y,
+      towardLow ? leg.Hi.Z : leg.Lo.Z,
+      towardLow ? b.Z0 : b.Z1,
+      z => new Vec3(x, 0, z)
+    );
+    if (hit == null)
+      return leg;
+    return towardLow
+      ? new Box(new Vec3(leg.Lo.X, leg.Lo.Y, hit.Value - Past), leg.Hi)
+      : new Box(leg.Lo, new Vec3(leg.Hi.X, leg.Hi.Y, hit.Value + Past));
+  }
+
+  /// <summary>Where, scanning from <paramref name="from"/> to <paramref name="to"/>, the line first holds metal at
+  /// one of three heights in the band; null when it never does.</summary>
+  private static double? Meet(
+    Occupancy solid,
+    double y0,
+    double y1,
+    double from,
+    double to,
+    Func<double, Vec3> at
+  ) {
+    int n = (int)Math.Ceiling(Math.Abs(to - from) / Step);
+    for (int i = 0; i <= n; i++) {
+      double t = from + (to - from) * i / Math.Max(n, 1);
+      foreach (double f in new[] { 0.25, 0.5, 0.75 }) {
+        Vec3 p = at(t) with { Y = y0 + (y1 - y0) * f };
+        if (
+          solid.Boxes.Any(b => Inside(b, p))
+          || solid.Prisms.Any(pr => pr.Contains(p))
+        )
+          return t;
+      }
+    }
+    return null;
+  }
+
+  private static bool Inside(Box b, Vec3 p) =>
+    Enumerable
+      .Range(0, 3)
+      .All(i => p[i] >= b.Lo[i] - Eps && p[i] <= b.Hi[i] + Eps);
 
   private static Box LegZ(
     double cx,

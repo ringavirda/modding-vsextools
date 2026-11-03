@@ -53,6 +53,11 @@ public sealed class Allowance : ICheck {
       n => n.Name,
       n => !Tags.LeftOutOfCast(Tags.Of(record, n))
     );
+    Dictionary<string, List<(Mat4d Mat, Vec3 Size)>> castLeaves = Leaves(
+      tree,
+      n => n.Name,
+      n => !Tags.LeftOutOfCast(Tags.Of(record, n))
+    );
     Dictionary<string, Box> item = Boxes(
       new Tree(input.Shape),
       n => Tags.Unsplit(n.Name)
@@ -106,14 +111,16 @@ public sealed class Allowance : ICheck {
     var absorbed = moves
       .Where(m => m.Rule == "merge")
       .ToDictionary(m => m.Element, m => m.Into ?? "");
-    foreach ((string name, Box want) in cast) {
+    foreach (string name in cast.Keys) {
       List<string> faces = cuts.GetValueOrDefault(name) ?? [];
       if (absorbed.ContainsKey(name)) {
         if (faces.Count > 0)
           lines.Add($"{name}: a merge on an element a step cuts");
         continue;
       }
-      Box out_ = Moved(want, faces, input.Allowance);
+      List<(Mat4d Mat, Vec3 Size)> grown = castLeaves[name];
+      foreach (string face in faces)
+        grown = Pushed(grown, face, input.Allowance);
       foreach (
         FlushMove m in moves.Where(m =>
           m.Rule is not ("merge" or "cap") && m.Element == name
@@ -122,8 +129,9 @@ public sealed class Allowance : ICheck {
         if (faces.Contains(m.Face))
           lines.Add($"{name}/{m.Face}: a {m.Rule} move on a face a step cuts");
         else
-          out_ = Shifted(out_, m.Face, m.Distance);
+          grown = Pushed(grown, m.Face, m.Distance);
       }
+      Box out_ = WorldOf(grown);
       foreach (
         FlushMove m in moves.Where(m => m.Rule == "merge" && m.Into == name)
       ) {
@@ -202,64 +210,53 @@ public sealed class Allowance : ICheck {
     return boxes;
   }
 
-  private static Box Moved(Box b, List<string> faces, double a) {
-    double[] lo = b.Lo.ToArray(),
-      hi = b.Hi.ToArray();
-    foreach (string face in faces)
-      switch (face) {
-        case "east":
-          hi[0] += a;
-          break;
-        case "west":
-          lo[0] -= a;
-          break;
-        case "up":
-          hi[1] += a;
-          break;
-        case "down":
-          lo[1] -= a;
-          break;
-        case "south":
-          hi[2] += a;
-          break;
-        default:
-          lo[2] -= a;
-          break;
-      }
-    return new Box(
-      new Vec3(lo[0], lo[1], lo[2]),
-      new Vec3(hi[0], hi[1], hi[2])
-    );
+  private static Dictionary<string, List<(Mat4d Mat, Vec3 Size)>> Leaves(
+    Tree tree,
+    Func<Node, string> key,
+    Func<Node, bool> keep
+  ) {
+    var frames = new Frames(tree.Shape);
+    var leaves = new Dictionary<string, List<(Mat4d, Vec3)>>();
+    foreach (Node n in tree.Leaves.Where(keep)) {
+      string k = key(n);
+      if (!leaves.TryGetValue(k, out List<(Mat4d, Vec3)>? list))
+        leaves[k] = list = [];
+      list.Add((frames.Mat(n), n.Size));
+    }
+    return leaves;
   }
 
-  private static Box Shifted(Box b, string face, double d) {
-    double[] lo = b.Lo.ToArray(),
-      hi = b.Hi.ToArray();
-    switch (face) {
-      case "east":
-        hi[0] += d;
-        break;
-      case "west":
-        lo[0] -= d;
-        break;
-      case "up":
-        hi[1] += d;
-        break;
-      case "down":
-        lo[1] -= d;
-        break;
-      case "south":
-        hi[2] += d;
-        break;
-      default:
-        lo[2] -= d;
-        break;
-    }
-    return new Box(
-      new Vec3(lo[0], lo[1], lo[2]),
-      new Vec3(hi[0], hi[1], hi[2])
-    );
+  private static List<(Mat4d Mat, Vec3 Size)> Pushed(
+    List<(Mat4d Mat, Vec3 Size)> leaves,
+    string face,
+    double d
+  ) {
+    (int axis, bool hi) = face switch {
+      "east" => (0, true),
+      "west" => (0, false),
+      "up" => (1, true),
+      "down" => (1, false),
+      "south" => (2, true),
+      _ => (2, false),
+    };
+    double[] shift = [0, 0, 0],
+      grow = [0, 0, 0];
+    grow[axis] = d;
+    if (!hi)
+      shift[axis] = -d;
+    return
+    [
+      .. leaves.Select(l =>
+        (
+          l.Mat * Mat4d.Translate(shift[0], shift[1], shift[2]),
+          new Vec3(l.Size.X + grow[0], l.Size.Y + grow[1], l.Size.Z + grow[2])
+        )
+      ),
+    ];
   }
+
+  private static Box WorldOf(List<(Mat4d Mat, Vec3 Size)> leaves) =>
+    leaves.Select(l => WorldBox.Of(l.Mat, l.Size)).Aggregate(Union);
 
   private static Box Union(Box a, Box b) =>
     new(

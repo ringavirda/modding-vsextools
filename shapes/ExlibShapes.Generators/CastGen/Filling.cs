@@ -132,7 +132,23 @@ public static class Fillings {
           r.Pieces[ask.Piece - 1].Mul(new Vec3(ask.At[0], ask.At[1], ask.At[2]))
         )
       );
-    List<FeedLaid> feeds = Feeds.Lay(name, st, r.Closed, r.Fill, metal, risers);
+    List<Occupancy> solids = [];
+    for (int k = 0; k < cast.Count; k++) {
+      var pieceMetal = new Occupancy();
+      pieceMetal.Add(cast[k]);
+      if (k < heads.Count)
+        pieceMetal.Add(heads[k]);
+      solids.Add(pieceMetal);
+    }
+    List<FeedLaid> feeds = Feeds.Lay(
+      name,
+      st,
+      r.Closed,
+      r.Fill,
+      metal,
+      risers,
+      solids
+    );
 
     var all = new Occupancy();
     foreach (Occupancy c in cast)

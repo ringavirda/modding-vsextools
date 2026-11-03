@@ -492,6 +492,48 @@ public class CastGenRunTests {
     Assert.Equal(0, got.ExitCode);
   }
 
+  [Fact]
+  public void A_cut_face_of_a_leaf_turned_about_x_is_grown_along_its_own_normal_and_the_item_checks() {
+    const string tilted = """
+      { "elements": [ { "name": "Root", "from": [0, 0, 0], "to": [1, 1, 1], "children": [
+        { "name": "Tilt", "from": [2, 2, 2], "to": [14, 6, 10], "rotationX": -15, "rotationOrigin": [8, 2, 6],
+          "faces": { "north": { "texture": "#cast-iron1" }, "south": { "texture": "#cast-iron1" }, "up": { "texture": "#cast-iron1" } } }
+      ] } ] }
+      """;
+    const string tiltRecord = """
+      { "schema": 1,
+        "elements": { "Tilt": { "stage": "cast", "role": "cast" } },
+        "features": { "face": { "elements": ["Tilt"], "origin": "planed", "faces": ["Tilt/south"], "step": "plane" } },
+        "steps": [ { "id": "plane", "faces": ["Tilt/south"] } ] }
+      """;
+    JObject spec = MachineEntry(
+      Casting(
+        "floor",
+        FloorLie,
+        """, "worked": [ { "item": "tilt-planed", "steps": [ { "step": "plane", "cuts": ["face"] } ] } ]"""
+      )
+    );
+    GenContext ctx = Ctx(tilted, record: tiltRecord);
+
+    GenResult r = Run(ctx, spec);
+
+    GenOutput item = r.Outputs.Single(o => o.Name == "cast-planer-bed");
+    Element tilt = item
+      .Shape.Elements.SelectMany(Flat)
+      .Single(e => e.Name == "Tilt");
+    Assert.Equal(8.125, tilt.To![2] - tilt.From![2], 4);
+    ResolvedSource src = ctx.Resolve("m.json", "0000000");
+    CheckResult got = new Allowance().Run(
+      new CheckInput(
+        item.Shape,
+        Record: item.Record,
+        Source: src.Shape,
+        SourceRecord: src.Record
+      )
+    );
+    Assert.Equal(0, got.ExitCode);
+  }
+
   private static IEnumerable<Element> Flat(Element e) =>
     e.Children.Count == 0 ? [e] : e.Children.SelectMany(Flat);
 
