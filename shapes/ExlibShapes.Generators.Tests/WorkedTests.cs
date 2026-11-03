@@ -152,6 +152,26 @@ public class WorkedTests {
   }
 
   [Fact]
+  public void An_assembled_element_is_outside_the_user_s_section() {
+    string cutter = ",\n" + Cube("Cutter", "[4, 6, 4]", "[8, 12, 8]");
+
+    WorkedResult r = Run(
+      Drawing("[16, 4, 16]", cutter),
+      UserRecord(
+        extra: ", \"Cutter\": { \"stage\": \"assembled\", \"role\": \"cast\" }"
+      )
+    );
+
+    Assert.Single(r.Outputs);
+    Assert.Empty(r.Questions);
+    Assert.Empty(r.Redraws);
+    Assert.DoesNotContain(
+      r.Inputs[0].Shape.Elements.SelectMany(e => e.Children),
+      e => e.Name == "Cutter"
+    );
+  }
+
+  [Fact]
   public void Redraw_row_names_the_difference() {
     WorkedResult r = Run(Drawing("[16, 6, 16]"), UserRecord());
 

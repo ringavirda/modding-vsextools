@@ -11,12 +11,14 @@ namespace ExpandedLib.Shapes.Checks;
 /// column; y is sampled every 1/32 voxel, the drag's from the sample under the parting down and the cope's from the
 /// parting up, a leaf holding a sample on [lo, hi). No gap is bridged: a gap the sand step leaves counts as a
 /// failure. One summary line per half (<c>Drag: N columns occupied, M not unbroken from the parting</c>, ending
-/// <c>  FAIL</c> when M is not 0) and one <c>  Drag x A..B z C..D: first gap at y Y</c> per broken column. A turned leaf
+/// <c>  FAIL</c> when M is not 0) and one <c>  Drag x A..B z C..D: first gap at y Y</c> per broken column. A column may
+/// start up to 0.05 voxel (the drawing tolerance) away from the parting. A turned leaf
 /// is read as the 1/32 lattice cells whose centre lies inside it; needs <see cref="CheckInput.Parting"/>.
 /// </summary>
 public sealed class Draw : ICheck {
   internal const double Step = 1.0 / 32;
   private const double Eps = 1e-9;
+  private const int Slack = (int)(0.05 / Step);
 
   /// <inheritdoc />
   public string Id => "draw";
@@ -133,7 +135,7 @@ public sealed class Draw : ICheck {
         continue;
       int from = Math.Max(lo, end + 1);
       total += hi - from + 1;
-      if (alive && lo <= end + 1)
+      if (alive && lo <= end + 1 + (end < first ? Slack : 0))
         run += hi - from + 1;
       else
         alive = false;

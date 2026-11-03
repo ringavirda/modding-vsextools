@@ -88,6 +88,22 @@ public class DrawTests {
     Assert.Equal(1, Check.Run(Pattern(lifted)).ExitCode);
   }
 
+  [Theory]
+  [InlineData(8.03125, 0)]
+  [InlineData(8.0625, 1)]
+  public void A_column_may_start_within_the_drawing_tolerance_of_the_parting(
+    double from,
+    int exit
+  ) {
+    Shape stagger = Fixtures.Edited(
+      "pattern-ok.json",
+      raw =>
+        CastFixtures.Move(CastFixtures.Find(raw, "CopeBody"), "from", 1, from)
+    );
+
+    Assert.Equal(exit, Check.Run(Pattern(stagger)).ExitCode);
+  }
+
   [Fact]
   public void A_step_in_the_drag_is_not_a_gap() {
     CheckResult r = Check.Run(Pattern(Fixtures.Shape("pattern-step.json")));

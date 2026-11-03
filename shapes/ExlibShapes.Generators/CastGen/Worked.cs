@@ -33,8 +33,8 @@ public static partial class Worked {
   [GeneratedRegex(@"^[xyz]: spans ")]
   private static partial Regex Band();
 
-  /// <summary>The worked item of one user of a blank. The user's drawn section, placed by its <c>at</c> in the
-  /// blank's frame, first passes <c>blankmatch</c>; the item is then the blank's cast form (or the earlier
+  /// <summary>The worked item of one user of a blank. The user's drawn section, less its <c>assembled</c>
+  /// elements, placed by its <c>at</c> in the blank's frame, first passes <c>blankmatch</c>; the item is then the blank's cast form (or the earlier
   /// worked item <c>from</c> names) with each step's cut faces and worked features in that step's finished
   /// role, uv assigned and round runs unrolled. A step's machine is the spec's, else the first of its row in the
   /// settings; the record's step keeps it and the row's hand route.</summary>
@@ -301,6 +301,15 @@ public static partial class Worked {
       new HashSet<string>(StringComparer.Ordinal),
       true
     );
+    leaves =
+    [
+      .. leaves.Where(l =>
+        !(
+          rs.Record.Elements.TryGetValue(l.SourceName, out ElementPart? ep)
+          && ep.Stage == "assembled"
+        )
+      ),
+    ];
     if (user.Window != null)
       leaves = Select.Window(leaves, user.Window);
     if (user.At == null)
