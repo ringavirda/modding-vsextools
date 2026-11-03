@@ -127,7 +127,56 @@ public class BlankTests {
     BlankResult b = Blank.Build(Fx.Ctx(form, record), Spec());
 
     Assert.Equal(["bed"], b.CutFeatures);
-    Assert.Equal(["Pile/up"], b.CutFaces);
+    Assert.Equal(["PB/up"], b.CutFaces);
+  }
+
+  [Fact]
+  public void A_group_face_reaches_a_blank_only_where_its_leaves_lie_on_the_whole_groups_bound() {
+    string form = $$"""
+      { "elements": [ { "name": "Root", "from": [0, 0, 0], "to": [1, 1, 1], "children": [
+        { "name": "Ram", "from": [0, 0, 0], "to": [0, 0, 0], "children": [
+          {{Fx.Cube("Lug", "[0, 0, 0]", "[16, 4, 16]")}},
+          {{Fx.Cube("Body", "[40, 0, 0]", "[56, 4, 16]")}}
+        ] }
+      ] } ] }
+      """;
+    const string record = """
+      { "schema": 1,
+        "elements": { "Lug": { "stage": "cast" }, "Body": { "stage": "cast" } },
+        "features": {
+          "ram": { "elements": ["Ram"], "origin": "planed", "faces": ["Ram/east", "Ram/up"] } } }
+      """;
+
+    BlankResult b = Blank.Build(Fx.Ctx(form, record), Spec());
+
+    Assert.Equal(["Lug/up"], b.CutFaces);
+  }
+
+  [Fact]
+  public void A_face_of_a_drawn_element_the_blank_does_not_take_reaches_none_of_its_children() {
+    string form = $$"""
+      { "elements": [ { "name": "Root", "from": [0, 0, 0], "to": [1, 1, 1], "children": [
+        {{Fx.Cube(
+        "Slide",
+        "[40, 0, 0]",
+        "[56, 4, 16]",
+        "\"children\": [ "
+          + Fx.Cube("Clapper", "[-40, 0, 0]", "[-24, 4, 16]")
+          + " ],"
+      )}}
+      ] } ] }
+      """;
+    const string record = """
+      { "schema": 1,
+        "elements": { "Slide": { "stage": "cast" }, "Clapper": { "stage": "cast" } },
+        "features": {
+          "slide": { "elements": ["Slide"], "origin": "planed", "faces": ["Slide/west", "Slide/up"] } } }
+      """;
+
+    BlankResult b = Blank.Build(Fx.Ctx(form, record), Spec());
+
+    Assert.Empty(b.CutFeatures);
+    Assert.Empty(b.CutFaces);
   }
 
   [Fact]

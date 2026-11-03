@@ -115,10 +115,11 @@ public static class Blank {
       Stretch(res.Cast, s, spec.Size[s.Axis]);
 
     List<Leaf> inCast = [.. set.Cast.Concat(set.Worked)];
+    List<Leaf> drawing = Allowances.Drawing(rs.Shape);
     IEnumerable<string> cut =
       spec.CutFaces
       ?? rs.Record.Features.Where(kv =>
-          kv.Value.Elements.Any(el => Allowances.Names(inCast, el))
+          kv.Value.Elements.Any(el => Allowances.Names(drawing, inCast, el))
           && (
             kv.Value.Origin is "planed" or "turned" or "bored" or "filed"
               ? kv.Value.Faces.Count > 0
@@ -132,10 +133,13 @@ public static class Blank {
           $"blank \"{spec.Blank}\": cut feature \"{id}\" is not in the record"
         );
       res.CutFeatures.Add(id);
+      List<string> faces = Allowances.Expand(drawing, f.Faces);
       res.CutFaces.AddRange(
         spec.CutFaces == null
-          ? f.Faces.Where(x => Allowances.Names(inCast, x[..x.IndexOf('/')]))
-          : f.Faces
+          ? faces.Where(x =>
+            inCast.Any(l => l.SourceName == x[..x.IndexOf('/')])
+          )
+          : faces
       );
     }
     res.TagCast();

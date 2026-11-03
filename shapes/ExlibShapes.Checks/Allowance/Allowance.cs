@@ -13,7 +13,8 @@ namespace ExpandedLib.Shapes.Checks;
 /// One line per fault: <c>NAME: missing from the item</c>, <c>NAME: not in the source</c>,
 /// <c>NAME: box [..] against [..], the source plus the allowance on [faces]</c>, or
 /// <c>NAME/FACE: not a face of a cast element in the source</c>. A step face naming a group moves the faces of the
-/// group's leaves that lie on its bounding face in that direction; a group none of whose leaves does is
+/// group's leaves that lie on its bounding face in that direction, every stave of a round run that reaches it with
+/// them; a group none of whose leaves does is
 /// <c>NAME/FACE: no leaf of the group lies on its bounding face</c>. Needs the source shape, its record and the item.
 /// The item's record (<see cref="CheckInput.Record"/>) may carry <see cref="FlushMoves"/>: a recorded move of a face
 /// no step cuts, a merge of two elements no step cuts or a cap beside a face no step cuts explains the difference
@@ -59,6 +60,7 @@ public sealed class Allowance : ICheck {
     var cuts = new Dictionary<string, List<string>>();
     var lines = new List<string>();
     var frames = new Frames(source);
+    List<StaveRun> runs = StaveRuns.Find(tree, frames);
     foreach (string spec in record.Steps.SelectMany(s => s.Faces)) {
       int cut = spec.LastIndexOf('/');
       string name = cut < 0 ? spec : spec[..cut];
@@ -88,7 +90,11 @@ public sealed class Allowance : ICheck {
             (frames.Mat(n), WorldBox.Of(frames.Mat(n), n.Size))
           ),
         ],
-        face
+        face,
+        [
+          .. runs.Select(r => r.Members.Select(m => group.IndexOf(m)).ToList())
+            .Where(r => r.All(i => i >= 0)),
+        ]
       );
       if (outer.Count == 0)
         lines.Add($"{spec}: no leaf of the group lies on its bounding face");

@@ -91,7 +91,7 @@ public sealed partial class CastGen : IGenerator {
       rec.Features[kv.Key] = kv.Value;
     if (cutFaces.Count > 0) {
       var step = new Step { Id = "cut" };
-      step.Faces.AddRange(Allowances.Expand(leaves, cutFaces));
+      step.Faces.AddRange(cutFaces);
       rec.Steps.Add(step);
     }
     foreach (Leaf l in leaves)
@@ -242,6 +242,7 @@ public sealed partial class CastGen : IGenerator {
         cut.Add(id);
         cutFaces.AddRange(f.Faces);
       }
+      cutFaces = Allowances.Expand(Allowances.Drawing(rs.Shape), cutFaces);
       var casting = new Casting(
         c.Item,
         set.Cast,
@@ -372,10 +373,7 @@ public sealed partial class CastGen : IGenerator {
     List<Leaf> leaves = Flush
       .Resolve(
         allowed,
-        new HashSet<string>(
-          Allowances.Expand(c.Cast, c.CutFaces),
-          StringComparer.Ordinal
-        ),
+        new HashSet<string>(c.CutFaces, StringComparer.Ordinal),
         c.Allowance,
         true,
         c.Pins,

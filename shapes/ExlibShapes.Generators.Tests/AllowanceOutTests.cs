@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using ExpandedLib.Shapes.Core;
@@ -72,9 +73,10 @@ public class AllowanceOutTests {
 
   [Fact]
   public void A_group_face_moves_only_the_leaves_on_the_groups_bounding_face() {
+    List<Leaf> pile = Pile();
     List<Leaf> got = Allowances.Out(
-      Pile(),
-      ["Pile/east", "Pile/west", "A/west"],
+      pile,
+      Allowances.Expand(pile, ["Pile/east", "Pile/west", "A/west"]),
       0.5
     );
     Assert.Equal(
@@ -99,9 +101,10 @@ public class AllowanceOutTests {
       ] }
       """
     );
+    List<Leaf> hub = Select.Groups(shape, ["Hub"]);
     List<Leaf> got = Allowances.Out(
-      Select.Groups(shape, ["Hub"]),
-      ["Hub/up"],
+      hub,
+      Allowances.Expand(hub, ["Hub/up"]),
       0.5
     );
     Assert.Equal(
@@ -135,28 +138,46 @@ public class AllowanceOutTests {
     );
   }
 
+  private static string Stave(int k) {
+    string F(double v) =>
+      v.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    double x0 = 0.01 * (k % 4);
+    return $$"""
+      { "name": "Stave{{k}}", "from": [{{F(x0)}}, 5, -0.255], "to": [{{F(
+        x0 + 1 - 0.02 * (k % 4)
+      )}}, 5.3, 0.255], "rotationX": {{F(
+        -90 + 22.5 * k
+      )}}, "rotationOrigin": [0, 4, 0], "faces": { "up": { "texture": "#c" } } }
+      """;
+  }
+
   [Fact]
-  public void A_group_face_takes_a_leaf_a_drawing_stagger_short_of_the_bound_and_not_one_further_in() {
+  public void A_group_face_takes_every_stave_of_a_run_that_reaches_the_bound_and_not_a_lone_leaf_short_of_it() {
     Shape shape = Reader.Read(
       $$"""
       { "elements": [ { "name": "Run", "from": [0, 0, 0], "to": [0, 0, 0], "children": [
-        {{Cell("Edge", "[0, 0, 0]", "[4, 4, 4]")}},
-        {{Cell("Stagger", "[0.02, 0, 4]", "[3.98, 4, 8]")}},
-        {{Cell("Inner", "[0.2, 0, 8]", "[3.8, 4, 12]")}}
+        {{string.Join(",", Enumerable.Range(0, 9).Select(Stave))}},
+        {{Cell("Short", "[0.02, 10, 10]", "[1, 11, 11]")}}
       ] } ] }
       """
     );
+
+    List<string> got = Allowances.Expand(
+      [.. Select.Groups(shape, ["Run"])],
+      ["Run/west"]
+    );
+
     Assert.Equal(
-      ["Edge/west", "Stagger/west"],
-      Allowances.Expand([.. Select.Groups(shape, ["Run"])], ["Run/west"])
+      [.. Enumerable.Range(0, 9).Select(k => $"Stave{k}/west")],
+      got.OrderBy(f => f, StringComparer.Ordinal)
     );
   }
 
   [Fact]
   public void Names_finds_a_leaf_or_a_group_and_nothing_else() {
     List<Leaf> pile = Pile();
-    Assert.True(Allowances.Names(pile, "A"));
-    Assert.True(Allowances.Names(pile, "Pile"));
-    Assert.False(Allowances.Names(pile, "Ghost"));
+    Assert.True(Allowances.Names(pile, pile, "A"));
+    Assert.True(Allowances.Names(pile, pile, "Pile"));
+    Assert.False(Allowances.Names(pile, pile, "Ghost"));
   }
 }
