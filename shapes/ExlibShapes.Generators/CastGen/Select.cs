@@ -50,14 +50,17 @@ public static class Select {
   /// <param name="placement">Applied to every world matrix; null is none.</param>
   /// <param name="taken">Names already used by the caller's other selections; a repeated name
   /// gets <c>_2</c>, <c>_3</c>; the names used here are added.</param>
+  /// <param name="solid">The leaves are cast metal: a drawn element flat on one or two axes is refused.
+  /// An element zero on every axis is a pivot and is never a leaf.</param>
   /// <exception cref="CastGenException">A group is not in the drawing, an element is unnamed, or a
-  /// world matrix is not a rotation and positive scale.</exception>
+  /// world matrix is not a rotation and positive scale, or <paramref name="solid"/> and an element is flat.</exception>
   /// <exception cref="SpecException">An <see cref="Alone"/> path names no element.</exception>
   public static List<Leaf> Groups(
     Shape shape,
     IReadOnlyList<string> groups,
     Mat4d? placement = null,
-    ISet<string>? taken = null
+    ISet<string>? taken = null,
+    bool solid = false
   ) {
     taken ??= new HashSet<string>(StringComparer.Ordinal);
     Mat4d place = placement ?? Mat4d.Identity;
@@ -82,6 +85,10 @@ public static class Select {
         string source =
           pe.Element.Name
           ?? throw new CastGenException($"{pe.Path}: element has no name");
+        if (solid && Flat(pe.Element))
+          throw new CastGenException(
+            $"{pe.Path}: element is flat on one or two axes and holds no metal"
+          );
         outp.Add(
           new Leaf(
             Unique(source, taken),
@@ -100,7 +107,12 @@ public static class Select {
   }
 
   private static bool Drawn(Element e) =>
-    e.Faces.Any(f => f.Value.Enabled != false);
+    e.Faces.Any(f => f.Value.Enabled != false) && !Extents(e).All(x => x == 0);
+
+  private static bool Flat(Element e) => Extents(e).Any(x => x == 0);
+
+  private static IEnumerable<double> Extents(Element e) =>
+    Enumerable.Range(0, 3).Select(a => e.To![a] - e.From![a]);
 
   private static string Unique(string name, ISet<string> taken) {
     string n = name;

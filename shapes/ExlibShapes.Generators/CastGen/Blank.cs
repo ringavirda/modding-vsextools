@@ -146,17 +146,30 @@ public static class Blank {
     double d = size - (u.Value.Hi[a] - u.Value.Lo[a]);
     for (int i = 0; i < cast.Count; i++) {
       Leaf l = cast[i];
-      if (!l.AxisAligned)
-        throw new CastGenException(
-          $"{l.SourcePath}: a rotated element cannot be stretched"
-        );
       Element e = Select.Clone(l.Element, true);
+      if (!l.AxisAligned) {
+        Box b = l.Box;
+        if (b.Hi[a] <= s.Plane + Eps)
+          continue;
+        if (b.Lo[a] < s.Plane - Eps)
+          throw new CastGenException(
+            $"{l.SourcePath}: a rotated element across the stretch plane cannot be stretched"
+          );
+        var origin = (double[])e.RotationOrigin!.Clone();
+        origin[a] += d;
+        e.RotationOrigin = origin;
+      }
       var from = (double[])e.From!.Clone();
       var to = (double[])e.To!.Clone();
-      if (from[a] > s.Plane + Eps)
+      if (!l.AxisAligned) {
         from[a] += d;
-      if (to[a] > s.Plane + Eps)
         to[a] += d;
+      } else {
+        if (from[a] > s.Plane + Eps)
+          from[a] += d;
+        if (to[a] > s.Plane + Eps)
+          to[a] += d;
+      }
       e.From = from;
       e.To = to;
       cast[i] = l with { Element = e };

@@ -332,4 +332,66 @@ public class FlushTests {
     Assert.NotEmpty(r.Moves);
     Assert.Equal(0, Pairs(r.Leaves));
   }
+
+  private static List<Leaf> Cast(string json, params string[] groups) =>
+    [
+      .. Select
+        .Groups(Reader.Read(json), groups, null, null, true)
+        .Select(l => l with { Stage = "cast", Role = "cast" }),
+    ];
+
+  [Fact]
+  public void A_pivot_is_not_a_leaf() {
+    string json = $$"""
+      { "elements": [ { "name": "Root", "from": [0, 0, 0], "to": [1, 1, 1], "children": [
+        { "name": "Pivot", "from": [2, 2, 2], "to": [2, 2, 2], {{Fx.Faces}},
+          "children": [
+            {{Fx.Cube("A", "[0, 0, 0]", "[8, 4, 8]")}},
+            {{Fx.Cube("B", "[4, 1, 2]", "[12, 4, 6]")}}
+          ] }
+      ] } ] }
+      """;
+
+    List<Leaf> leaves = Cast(json, "Root");
+    FlushResult r = Run(leaves);
+
+    Assert.Equal(["A", "B"], leaves.Select(l => l.Name));
+    Assert.Equal(0, Pairs(r.Leaves));
+  }
+
+  [Fact]
+  public void A_flat_element_in_a_cast_set_is_refused() {
+    string json = $$"""
+      { "elements": [ {{Fx.Cube("Sheet", "[0, 0, 0]", "[8, 0, 8]")}} ] }
+      """;
+
+    CastGenException e = Assert.Throws<CastGenException>(() =>
+      Cast(json, "Sheet")
+    );
+    Assert.Contains("Sheet", e.Message);
+  }
+
+  [Fact]
+  public void Ring_stave_end_staggers() {
+    string json = $$"""
+      { "elements": [
+        {{Fx.Cube("A", "[0, 0, 0]", "[8, 4, 8]")}},
+        {{Fx.Cube(
+        "B",
+        "[2, 1, 2]",
+        "[6, 4, 6]",
+        "\"rotationY\": 22.5, \"rotationOrigin\": [4, 1, 4],"
+      )}}
+      ] }
+      """;
+
+    FlushResult r = Run(
+      Cast(json, "A", "B"),
+      pins: [new FlushPin("A", "B", "stagger")]
+    );
+
+    FlushMove move = Assert.Single(r.Moves);
+    Assert.Equal("stagger", move.Rule);
+    Assert.Equal(0, Pairs(r.Leaves));
+  }
 }

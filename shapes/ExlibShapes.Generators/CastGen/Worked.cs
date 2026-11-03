@@ -188,7 +188,8 @@ public static partial class Worked {
         rs.Shape,
         user.Groups,
         null,
-        new HashSet<string>(StringComparer.Ordinal)
+        new HashSet<string>(StringComparer.Ordinal),
+        true
       );
       placed.AddRange(
         user.Window == null ? leaves : Select.Window(leaves, user.Window)
@@ -291,7 +292,8 @@ public static partial class Worked {
       rs.Shape,
       user.Groups,
       null,
-      new HashSet<string>(StringComparer.Ordinal)
+      new HashSet<string>(StringComparer.Ordinal),
+      true
     );
     if (user.Window != null)
       leaves = Select.Window(leaves, user.Window);

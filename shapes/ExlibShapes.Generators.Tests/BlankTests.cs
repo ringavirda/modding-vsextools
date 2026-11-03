@@ -106,4 +106,39 @@ public class BlankTests {
     Assert.Equal("ends", Assert.Single(b.Questions).Feature);
     Assert.Empty(b.Cast);
   }
+
+  [Fact]
+  public void Stretch_moves_a_ring_past_the_plane() {
+    string form = $$"""
+      { "elements": [ { "name": "Root", "from": [0, 0, 0], "to": [1, 1, 1], "children": [
+        {{Fx.Cube("Plate", "[0, 0, 0]", "[16, 4, 16]")}},
+        {{Fx.Cube(
+        "Ring",
+        "[4, 4, 4]",
+        "[8, 6, 8]",
+        "\"rotationY\": 22.5, \"rotationOrigin\": [6, 4, 6],"
+      )}}
+      ] } ] }
+      """;
+    const string record = """
+      { "schema": 1, "elements": { "Plate": { "stage": "cast" }, "Ring": { "stage": "cast" } } }
+      """;
+    BlankSpec spec = ExpandedLib.Shapes.Generators.Spec.ReadBlank(
+      JObject.Parse(
+        """
+        { "blank": "ringplate", "size": [16, 10, 16],
+          "form": { "shape": "d.json", "sha": "0000000", "groups": ["Root"],
+                    "stretch": [ { "axis": "y", "plane": 2.0 } ] } }
+        """
+      )
+    );
+
+    BlankResult b = Blank.Build(Fx.Ctx(form, record), spec);
+
+    Fx.Near(8, b.Cast.Single(l => l.Name == "Plate").Box.Hi.Y);
+    Leaf ring = b.Cast.Single(l => l.Name == "Ring");
+    Fx.Near(8, ring.Box.Lo.Y);
+    Fx.Near(10, ring.Box.Hi.Y);
+    Assert.Equal(22.5, ring.Element.RotationY);
+  }
 }

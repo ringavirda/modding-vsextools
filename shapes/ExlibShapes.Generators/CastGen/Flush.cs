@@ -225,7 +225,15 @@ public static class Flush {
   ) {
     string fa = FaceOn(pair, a),
       fb = FaceOn(pair, b);
-    if (!RightAngled(a) || !RightAngled(b))
+    bool square = RightAngled(a) && RightAngled(b);
+    if (
+      !square
+      && (
+        rule is "merge" or "trim" or "cap"
+        || !FaceNormal(a, fa)
+        || !FaceNormal(b, fb)
+      )
+    )
       yield break;
     bool plain = a.AxisAligned && b.AxisAligned && fa == fb;
     string face = fa;
@@ -285,6 +293,19 @@ public static class Flush {
     new[] { l.Element.RotationX, l.Element.RotationY, l.Element.RotationZ }.All(
       r => Math.Abs((r ?? 0) % 90) < 1e-6
     );
+
+  private static bool FaceNormal(Leaf l, string face) {
+    if (RightAngled(l))
+      return true;
+    double?[] r =
+    [
+      l.Element.RotationX,
+      l.Element.RotationY,
+      l.Element.RotationZ,
+    ];
+    int[] turned = [.. Enumerable.Range(0, 3).Where(i => (r[i] ?? 0) != 0)];
+    return turned.Length == 1 && turned[0] == FaceAxes.Of(face).Axis;
+  }
 
   private static bool WorldHi(Leaf l, string face) {
     (int axis, bool hi) = FaceAxes.Of(face);

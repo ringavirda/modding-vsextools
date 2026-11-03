@@ -95,7 +95,13 @@ public static class CastSet {
     var outp = new CastSetResult();
     foreach (GroupSpec part in parts) {
       Mat4d place = (part.At ?? Placement.None).Matrix;
-      List<Leaf> leaves = Select.Groups(src.Shape, part.Groups, place, taken);
+      List<Leaf> leaves = Select.Groups(
+        src.Shape,
+        part.Groups,
+        place,
+        taken,
+        true
+      );
       if (window != null)
         leaves = Select.Window(leaves, window);
       outp.Add(Classify(ctx, src, leaves, place, cores, taken));
