@@ -31,16 +31,19 @@ public sealed partial class CastGen : IGenerator {
 
   /// <summary>Runs a blank file or a machine file. A blank file gives its cast item, pattern and loose pieces,
   /// filling (and cope of a closed pour) at its station, cores and core boxes and the worked items it lists. A machine
-  /// file gives each user's worked item, and for each own casting and the set the same products as a blank, its own
-  /// worked items included. A casting whose cast set holds an untagged feature, or a user whose placement is out of
-  /// its blank's band, returns its question and none of its outputs; every other product is still made. A pour holds
-  /// one piece: <c>perPour</c> and <c>count</c> do not lay more.</summary>
+  /// file gives each user's worked item, each joined entry's worked item, and for each own casting and the set the
+  /// same products as a blank, its own worked items included. A casting whose cast set holds an untagged feature, a
+  /// joined entry whose sections do, or a user whose placement is out of its blank's band, returns its question and
+  /// none of its outputs; every other product is still made. An open pour holds <c>perPour</c> pieces of a blank, or
+  /// <c>count</c> of a machine's casting, in a column away from the drop in the flask's -z, each a station margin
+  /// of sand twice over the last's end; the pour's order is <c>south</c>. The groups of a kit each lie by their own
+  /// <c>lie</c> (else the casting's), their offsets relative to the first group's.</summary>
   /// <param name="ctx">The context. A machine file's users need <see cref="GenContext.Blank"/>.</param>
   /// <param name="spec">The blank file (it has <c>blank</c>) or machine file (it has <c>machine</c>) as written.</param>
   /// <exception cref="SpecException">The entry is malformed.</exception>
   /// <exception cref="CastGenException">An input cannot make its output: a user fails its blank, a casting fits no
-  /// station, the lies of a kit's groups differ, a closed pour or a head is on a lie that turns y, a joined entry is
-  /// given.</exception>
+  /// station, a closed pour or a head is on a lie that turns y, a closed pour holds more than one piece, a pour of
+  /// several pieces or a kit whose groups lie differently has cores.</exception>
   public GenResult Run(GenContext ctx, JObject spec) {
     var acc = new Acc();
     string text = spec.ToString(Newtonsoft.Json.Formatting.None);
@@ -118,7 +121,9 @@ public sealed partial class CastGen : IGenerator {
     double Allowance,
     IReadOnlyList<FlushPin> Pins,
     string? Station,
-    LieSpec? Lie,
+    IReadOnlyList<LieSpec>? Lies,
+    IReadOnlyList<int> GroupEnds,
+    int Pieces,
     JToken? Parting,
     JToken? Feeds,
     string SpecText,
@@ -149,7 +154,9 @@ public sealed partial class CastGen : IGenerator {
         spec.Allowance,
         Flush.Pins(pinned),
         spec.Station,
-        LieOf(spec.Station, spec.Lie, [], spec.Blank),
+        LiesOf(spec.Station, spec.Lie, [], spec.Blank),
+        [],
+        spec.PerPour,
         spec.Parting,
         spec.Feeds,
         text,
@@ -168,10 +175,6 @@ public sealed partial class CastGen : IGenerator {
     JObject file,
     Acc acc
   ) {
-    if (spec.Joined.Count > 0)
-      throw new CastGenException(
-        $"machine \"{spec.Machine}\": joined items are not built by the composer ({spec.Joined[0].Item})"
-      );
     ResolvedSource rs = ctx.Resolve(spec.Source.Shape, spec.Source.Sha);
     var blanks = new Dictionary<string, BlankResult>(StringComparer.Ordinal);
     foreach (UserSpec user in spec.Users) {
@@ -192,6 +195,22 @@ public sealed partial class CastGen : IGenerator {
         throw new CastGenException(
           $"{user.Worked.Item}: {string.Join("; ", made.Failures)}"
         );
+      acc.Outputs.AddRange(made.Outputs);
+      foreach (GenInput i in made.Inputs)
+        acc.Inputs.TryAdd(i.Name, i);
+    }
+
+    foreach (JoinedSpec j in spec.Joined) {
+      JoinedResult joined = CastSet.Joined(ctx, spec, j);
+      acc.Questions.AddRange(joined.Questions);
+      if (joined.Questions.Count > 0)
+        continue;
+      WorkedResult made = Worked.ForJoined(ctx, spec, joined);
+      var form = new PartRecord();
+      foreach (KeyValuePair<string, Feature> kv in rs.Record.Features)
+        form.Features[kv.Key] = kv.Value;
+      form.Steps.AddRange(rs.Record.Steps);
+      AddForm(acc, j.Item, joined.Cast, form, []);
       acc.Outputs.AddRange(made.Outputs);
       foreach (GenInput i in made.Inputs)
         acc.Inputs.TryAdd(i.Name, i);
@@ -228,7 +247,9 @@ public sealed partial class CastGen : IGenerator {
         c.Allowance,
         Flush.Pins(rs.Record),
         c.Station,
-        LieOf(c.Station, c.Lie, c.Groups, c.Item),
+        LiesOf(c.Station, c.Lie, c.Groups, c.Item),
+        set.GroupEnds,
+        c.Count,
         c.Parting,
         c.Feeds,
         entry,
@@ -282,7 +303,9 @@ public sealed partial class CastGen : IGenerator {
             spec.Allowance,
             Flush.Pins(rs.Record),
             s.Station,
-            LieOf(s.Station, null, s.Groups, s.Item),
+            LiesOf(s.Station, null, s.Groups, s.Item),
+            set.GroupEnds,
+            1,
             null,
             null,
             EntryText(file, file["set"]!),
@@ -302,7 +325,7 @@ public sealed partial class CastGen : IGenerator {
     return rec;
   }
 
-  private static LieSpec? LieOf(
+  private static IReadOnlyList<LieSpec>? LiesOf(
     string? station,
     JToken? entry,
     IReadOnlyList<GroupSpec> groups,
@@ -310,18 +333,12 @@ public sealed partial class CastGen : IGenerator {
   ) {
     if (station == null && entry == null && groups.All(g => g.Lie == null))
       return null;
-    List<LieSpec> lies =
+    return
     [
       .. groups.Count == 0
         ? [Lies.Read(entry, where)]
         : groups.Select(g => Lies.Of(g, entry, where)),
     ];
-    foreach (LieSpec l in lies.Skip(1))
-      if (!l.Axes.SequenceEqual(lies[0].Axes))
-        throw new CastGenException(
-          $"{where}: the groups of a casting share one lie in M1"
-        );
-    return lies[0];
   }
 
   private static void Cast(GenContext ctx, Casting c, Acc acc) {
@@ -350,16 +367,19 @@ public sealed partial class CastGen : IGenerator {
       .Leaves.ToList();
     leaves = Splits.Apply(leaves);
 
-    LieSpec lie = c.Lie ?? Identity;
-    Mat4d at = Mat4d.Translate(
-      lie.Axes[0].Offset,
-      lie.Axes[1].Offset,
-      lie.Axes[2].Offset
-    );
-    List<Leaf> turned = Lies.Apply(
-      leaves,
-      new LieSpec(lie.Axes.Select(a => a with { Offset = 0 }).ToList())
-    );
+    IReadOnlyList<LieSpec> lies = c.Lies ?? [Identity];
+    LieSpec lie = lies[0];
+    bool oneLie = lies.All(l => l.Axes.SequenceEqual(lie.Axes));
+    if (!oneLie && c.Cores.Count > 0)
+      throw new CastGenException(
+        $"{c.Code}: the groups of a casting with cores share one lie"
+      );
+    List<Leaf> turned = oneLie
+      ? Lies.Apply(
+        leaves,
+        new LieSpec(lie.Axes.Select(a => a with { Offset = 0 }).ToList())
+      )
+      : TurnedByGroup(c, leaves, lies);
 
     Station? st = null;
     if (
@@ -369,19 +389,46 @@ public sealed partial class CastGen : IGenerator {
       throw new CastGenException(
         $"{c.Code}: station \"{c.Station}\" is not in the settings"
       );
+    int pieces = st == null ? 1 : Math.Max(1, c.Pieces);
+    double step = 0;
+    if (pieces > 1) {
+      if (c.Cores.Count > 0)
+        throw new CastGenException(
+          $"{c.Code}: a pour of {pieces} pieces has cores, which are seated for one piece"
+        );
+      Box room = BlankResult.Union(turned.Select(l => l.Box))!.Value;
+      step = room.Hi.Z - room.Lo.Z + 2 * st!.Margin;
+    }
+    List<Mat4d> at =
+    [
+      .. Enumerable
+        .Range(0, pieces)
+        .Select(k =>
+          Mat4d.Translate(
+            lie.Axes[0].Offset,
+            lie.Axes[1].Offset,
+            lie.Axes[2].Offset - k * step
+          )
+        ),
+    ];
     if (st != null) {
       FitReport fit = StationFit.Run(
         ctx.Settings,
         c.Code,
         [
-          Lies.Apply(
-            turned,
-            new LieSpec([
-              new(0, 1, lie.Axes[0].Offset),
-              new(1, 1, lie.Axes[1].Offset),
-              new(2, 1, lie.Axes[2].Offset),
-            ])
-          ),
+          .. Enumerable
+            .Range(0, pieces)
+            .Select(k =>
+              (IReadOnlyList<Leaf>)
+                Lies.Apply(
+                  turned,
+                  new LieSpec([
+                    new(0, 1, lie.Axes[0].Offset),
+                    new(1, 1, lie.Axes[1].Offset),
+                    new(2, 1, lie.Axes[2].Offset - k * step),
+                  ])
+                )
+            ),
         ],
         c.Station
       );
@@ -391,7 +438,7 @@ public sealed partial class CastGen : IGenerator {
         throw new CastGenException(string.Join("; ", fit.Failures));
     }
     bool closed = st?.Parting != null;
-    bool keepsY = lie.Axes[1] is { Item: 1, Sign: 1 };
+    bool keepsY = lies.All(l => l.Axes[1] is { Item: 1, Sign: 1 });
     if (st != null && (closed || st.HeadHeight != null) && !keepsY)
       throw new CastGenException(
         $"{c.Code}: station \"{c.Station}\" parts or feeds along y, so its lie keeps the item's y"
@@ -528,11 +575,11 @@ public sealed partial class CastGen : IGenerator {
         c.Code,
         pattern.Pattern.Name,
         turned,
-        [at],
+        at,
         pattern.Pattern.Shape,
         seats,
         "chain",
-        "one",
+        pieces > 1 ? "south" : "one",
         Risers(c.Code, c.Feeds)
       ),
       c.SpecText
@@ -559,25 +606,64 @@ public sealed partial class CastGen : IGenerator {
       acc.Outputs.Add(filling.Cope);
   }
 
-  private static Shape Placed(Shape pattern, Mat4d at) {
-    Vec3 d = at.Mul(Vec3.Zero);
+  private static Shape Placed(Shape pattern, IReadOnlyList<Mat4d> pieces) {
     var shape = new Shape();
-    foreach (Element src in pattern.Elements) {
-      Element e = Select.Clone(src, false);
-      e.From = [e.From![0] + d.X, e.From[1] + d.Y, e.From[2] + d.Z];
-      e.To = [e.To![0] + d.X, e.To[1] + d.Y, e.To[2] + d.Z];
-      if (e.RotationOrigin != null)
-        e.RotationOrigin =
-        [
-          e.RotationOrigin[0] + d.X,
-          e.RotationOrigin[1] + d.Y,
-          e.RotationOrigin[2] + d.Z,
-        ];
-      shape.Elements.Add(e);
+    for (int k = 0; k < pieces.Count; k++) {
+      Vec3 d = pieces[k].Mul(Vec3.Zero);
+      foreach (Element src in pattern.Elements) {
+        Element e = Select.Clone(src, false);
+        if (k > 0)
+          e.Name = $"{e.Name}_piece{k + 1}";
+        e.From = [e.From![0] + d.X, e.From[1] + d.Y, e.From[2] + d.Z];
+        e.To = [e.To![0] + d.X, e.To[1] + d.Y, e.To[2] + d.Z];
+        if (e.RotationOrigin != null)
+          e.RotationOrigin =
+          [
+            e.RotationOrigin[0] + d.X,
+            e.RotationOrigin[1] + d.Y,
+            e.RotationOrigin[2] + d.Z,
+          ];
+        shape.Elements.Add(e);
+      }
     }
     foreach (var t in pattern.Textures)
       shape.Textures.Add(t);
     return shape;
+  }
+
+  private static List<Leaf> TurnedByGroup(
+    Casting c,
+    IReadOnlyList<Leaf> leaves,
+    IReadOnlyList<LieSpec> lies
+  ) {
+    var groupOf = new Dictionary<string, int>(StringComparer.Ordinal);
+    int g = 0;
+    for (int i = 0; i < c.Cast.Count; i++) {
+      while (i >= c.GroupEnds[g])
+        g++;
+      groupOf.TryAdd(c.Cast[i].SourcePath, g);
+    }
+    return
+    [
+      .. leaves.Select(l =>
+      {
+        int k = groupOf.TryGetValue(l.SourcePath, out int found)
+          ? found
+          : throw new CastGenException(
+            $"{c.Code}: {l.Name} belongs to no group of the casting"
+          );
+        LieSpec own = lies[k];
+        return Lies.Apply(
+            [l],
+            new LieSpec([
+              .. own.Axes.Select(
+                (a, f) => a with { Offset = a.Offset - lies[0].Axes[f].Offset }
+              ),
+            ])
+          )
+          .Single();
+      }),
+    ];
   }
 
   private static readonly LieSpec Identity = new([

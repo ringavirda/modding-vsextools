@@ -68,6 +68,16 @@ public static partial class Worked {
 
     PartRecord rec = PartRecord.Read(rs.Record.Write());
     rec.Answers.AddRange(ctx.Answers);
+    foreach (
+      string name in rec
+        .Features.Where(kv =>
+          kv.Value.Origin is not (null or "cast" or "cored")
+          && !placed.Any(l => kv.Value.Elements.Contains(l.SourceName))
+        )
+        .Select(kv => kv.Key)
+        .ToList()
+    )
+      rec.Features.Remove(name);
     CheckResult match = new Blankmatch().Run(
       new CheckInput(
         Flush.ShapeOf(placed),
@@ -153,6 +163,83 @@ public static partial class Worked {
       "",
       blank.Record.Write()
     );
+
+  /// <summary>The worked item of a joined entry: the sections' cast elements in the machine drawing's frame, with
+  /// each step's features (the machine record's) carved in and finished, and the faces its cuts name finished.
+  /// There is no blank to match: the sections are matched as users.</summary>
+  /// <param name="ctx">The context.</param>
+  /// <param name="machine">The machine file.</param>
+  /// <param name="joined">The assembled sections.</param>
+  /// <exception cref="CastGenException">A step or feature names nothing, or a step's machine is outside its row.</exception>
+  public static WorkedResult ForJoined(
+    GenContext ctx,
+    MachineSpec machine,
+    JoinedResult joined
+  ) {
+    ResolvedSource rs = ctx.Resolve(machine.Source.Shape, machine.Source.Sha);
+    List<Leaf> placed = [];
+    foreach (string from in joined.Sections) {
+      UserSpec user = machine.Users.First(u => u.Worked.Item == from);
+      List<Leaf> leaves = Select.Groups(
+        rs.Shape,
+        user.Groups,
+        null,
+        new HashSet<string>(StringComparer.Ordinal)
+      );
+      placed.AddRange(
+        user.Window == null ? leaves : Select.Window(leaves, user.Window)
+      );
+    }
+
+    var blank = new BlankResult {
+      Spec = new BlankSpec(
+        joined.Item,
+        [0, 0, 0],
+        1,
+        new FormSpec(null, machine.Source, null, []),
+        [],
+        null,
+        null,
+        null,
+        [],
+        null,
+        [],
+        machine.Allowance,
+        machine.Route
+      ),
+    };
+    blank.Cast.AddRange(joined.Cast);
+    blank.TagCast();
+    foreach (KeyValuePair<string, Feature> kv in rs.Record.Features)
+      blank.Record.Features[kv.Key] = kv.Value;
+    blank.Record.Steps.AddRange(rs.Record.Steps);
+
+    string spec = JsonConvert.SerializeObject(
+      new {
+        joined = machine.Joined.First(j => j.Item == joined.Item),
+        users = joined.Sections.Select(f =>
+          machine.Users.First(u => u.Worked.Item == f)
+        ),
+      }
+    );
+    GenOutput output = Make(
+      ctx,
+      blank,
+      new WorkedSpec(joined.Item, null, joined.Steps),
+      null,
+      new UserPart(rs.Record, placed),
+      spec,
+      rs.ShapeSha,
+      rs.Record.Write()
+    );
+    string placedName = joined.Item + "-placed";
+    PartRecord placedRecord = PartRecord.Read(rs.Record.Write());
+    placedRecord.Carried["blank"] = joined.Item;
+    ((JObject)output.Record.Carried["blankform"]!)["placed"] = placedName;
+    return new WorkedResult([output], [], [], []) {
+      Inputs = [new GenInput(placedName, Flush.ShapeOf(placed), placedRecord)],
+    };
+  }
 
   private sealed record UserPart(PartRecord Record, List<Leaf> Placed);
 

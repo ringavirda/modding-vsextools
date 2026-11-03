@@ -32,6 +32,10 @@ public sealed class CastSetResult {
   /// <summary>Eye calls left open.</summary>
   public List<Question> Questions { get; } = [];
 
+  /// <summary>For each group entry in turn, the count of <see cref="Cast"/> leaves up to and including that
+  /// entry's; empty when a question is open.</summary>
+  public List<int> GroupEnds { get; } = [];
+
   internal void Add(CastSetResult o) {
     Cast.AddRange(o.Cast);
     Worked.AddRange(o.Worked);
@@ -50,7 +54,10 @@ public sealed record JoinedResult(
   IReadOnlyList<string> Sections,
   IReadOnlyList<Leaf> Cast,
   IReadOnlyList<StepSpec> Steps
-);
+) {
+  /// <summary>The eye calls left open by the sections' cast sets; when present <see cref="Cast"/> is empty.</summary>
+  public IReadOnlyList<Question> Questions { get; init; } = [];
+}
 
 /// <summary>Step 2: the cast set from the part record's tags alone.</summary>
 public static class CastSet {
@@ -92,6 +99,7 @@ public static class CastSet {
       if (window != null)
         leaves = Select.Window(leaves, window);
       outp.Add(Classify(ctx, src, leaves, place, cores, taken));
+      outp.GroupEnds.Add(outp.Cast.Count);
     }
     foreach (CoreSpec c in cores)
       if (!src.Record.Features.ContainsKey(c.Feature))
@@ -102,6 +110,7 @@ public static class CastSet {
       outp.Cast.Clear();
       outp.Worked.Clear();
       outp.Cores.Clear();
+      outp.GroupEnds.Clear();
     }
     return outp;
   }
@@ -138,6 +147,7 @@ public static class CastSet {
     JoinedSpec joined
   ) {
     var cast = new List<Leaf>();
+    var questions = new List<Question>();
     var taken = new HashSet<string>(StringComparer.Ordinal);
     foreach (string from in joined.From) {
       UserSpec user =
@@ -145,14 +155,20 @@ public static class CastSet {
         ?? throw new CastGenException(
           $"joined \"{joined.Item}\": no user makes \"{from}\""
         );
-      foreach (Leaf l in Section(ctx, machine.Source, user).Cast) {
+      CastSetResult section = Section(ctx, machine.Source, user);
+      questions.AddRange(section.Questions);
+      foreach (Leaf l in section.Cast) {
         string n = l.Name;
         for (int i = 2; !taken.Add(n); i++)
           n = $"{l.Name}_{i}";
         cast.Add(l with { Name = n });
       }
     }
-    return new JoinedResult(joined.Item, joined.From, cast, joined.Steps);
+    if (questions.Count > 0)
+      cast.Clear();
+    return new JoinedResult(joined.Item, joined.From, cast, joined.Steps) {
+      Questions = questions,
+    };
   }
 
   private static CastSetResult Classify(
