@@ -178,6 +178,15 @@ public static class Select {
     return e;
   }
 
+  /// <summary>A deep copy of <paramref name="src"/> with its children, recursively; with
+  /// <paramref name="dropUv"/> every explicit uv rectangle is left out.</summary>
+  public static Element CloneTree(Element src, bool dropUv) {
+    Element e = Clone(src, dropUv);
+    foreach (Element child in src.Children)
+      e.Children.Add(CloneTree(child, dropUv));
+    return e;
+  }
+
   /// <summary>An element whose own transform is <paramref name="world"/>: its near corner at
   /// the world position of the original's, rotated about it, any scale folded into its size.</summary>
   /// <exception cref="CastGenException">The matrix has a shear or a mirror.</exception>

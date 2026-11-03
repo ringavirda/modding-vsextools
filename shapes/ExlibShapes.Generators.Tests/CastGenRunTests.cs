@@ -53,13 +53,20 @@ public class CastGenRunTests {
     "[8, 4, 8]"
   );
 
-  private static GenContext Ctx(string drawing = "", string form = "") =>
+  private static GenContext Ctx(
+    string drawing = "",
+    string form = "",
+    string record = ""
+  ) =>
     new(
       Fx.Settings,
       (shape, sha) => {
         (string s, string r) = shape switch {
           "b.json" => (form.Length > 0 ? form : FormDrawing, FormRecord),
-          "m.json" => (drawing.Length > 0 ? drawing : Drawing, Record),
+          "m.json" => (
+            drawing.Length > 0 ? drawing : Drawing,
+            record.Length > 0 ? record : Record
+          ),
           _ => throw new InvalidOperationException(shape),
         };
         return new ResolvedSource(
@@ -129,6 +136,9 @@ public class CastGenRunTests {
         $"{o.Name}|{string.Join(",", o.Kinds)}|{CanonicalWriter.Write(o.Shape)}|{o.Record.Write()}|{o.InputHash}"
       )
     );
+
+  private static double MaxX(Element e) =>
+    e.Children.Count > 0 ? e.Children.Max(MaxX) : e.To![0];
 
   [Fact]
   public void Blank_file_runs_to_its_named_outputs_with_kinds() {
@@ -281,9 +291,54 @@ public class CastGenRunTests {
     Assert.Contains(r.Outputs, o => o.Name == "longflask-filling-castbed");
     Assert.Contains(r.Outputs, o => o.Name == "longflask-cope-filling-castbed");
     GenOutput item = r.Outputs.Single(o => o.Name == "castbed");
-    Assert.All(item.Shape.Elements, e => Assert.True(e.To![0] <= 9));
+    Assert.All(item.Shape.Elements, e => Assert.True(MaxX(e) <= 9));
     GenOutput pattern = r.Outputs.Single(o => o.Name == "pattern-castbed");
-    Assert.All(pattern.Shape.Elements, e => Assert.True(e.To![0] <= 11));
+    Assert.All(pattern.Shape.Elements, e => Assert.True(MaxX(e) <= 11));
+  }
+
+  [Fact]
+  public void Cast_item_keeps_its_groups() {
+    string grouped = $$"""
+      { "elements": [ { "name": "Root", "from": [0, 0, 0], "to": [1, 1, 1], "children": [
+        { "name": "Left", "from": [0, 0, 0], "to": [0, 0, 0], "children": [
+          {{Cube("Base", "[0, 0, 0]", "[16, 4, 16]")}} ] },
+        { "name": "Right", "from": [0, 0, 0], "to": [0, 0, 0], "children": [
+          {{Cube("Cap", "[2, 4, 2]", "[14, 6, 14]")}},
+          {{Cube("Lug", "[6, 6, 6]", "[10, 8, 10]")}} ] }
+      ] } ] }
+      """;
+    const string groupedRecord = """
+      { "schema": 1, "elements": { "Base": { "stage": "cast", "role": "cast" },
+        "Cap": { "stage": "cast", "role": "cast" }, "Lug": { "stage": "cast", "role": "cast" } } }
+      """;
+    JObject spec = MachineEntry(
+      """{ "item": "cast-kit", "groups": [ { "groups": ["Root/Left"] }, { "groups": ["Root/Right"] } ] }"""
+    );
+
+    GenResult r = Run(Ctx(grouped, record: groupedRecord), spec);
+
+    Shape item = r.Outputs.Single(o => o.Name == "cast-kit").Shape;
+    Assert.Equal(["Left", "Right"], item.Elements.Select(e => e.Name));
+    Assert.Equal(["Base"], item.Elements[0].Children.Select(e => e.Name));
+    Assert.NotEmpty(item.Textures);
+    Assert.Equal(["Cap", "Lug"], item.Elements[1].Children.Select(e => e.Name));
+  }
+
+  [Fact]
+  public void Draw_input_holds_the_pattern_halves() {
+    const string plainLie =
+      """{ "x": { "axis": "x", "offset": 8 }, "y": { "axis": "y", "offset": 4 }, "z": { "axis": "z", "offset": -30 } }""";
+
+    GenResult r = Run(Ctx(), BlankEntry("long", plainLie));
+
+    Shape pattern = r.Outputs.Single(o => o.Name == "pattern-castbed").Shape;
+    Shape draw = r.Inputs.Single(i => i.Name == "castbed-draw").Shape;
+    Assert.Equal(["Drag", "Cope"], draw.Elements.Select(e => e.Name));
+    Assert.Equal(
+      pattern.Elements.Select(e => e.Children.Count),
+      draw.Elements.Select(e => e.Children.Count)
+    );
+    Assert.All(draw.Elements, e => Assert.NotEmpty(e.Children));
   }
 
   [Fact]

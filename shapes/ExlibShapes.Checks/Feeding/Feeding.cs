@@ -90,7 +90,11 @@ public sealed class Feeding : ICheck {
     var tree = new Tree(cast);
     var frames = new Frames(cast);
     List<Node> groups = tree.Roots;
-    while (groups.Count == 1 && groups[0].Children.Count > 0)
+    while (
+      groups.Count == 1
+      && groups[0].Children.Count > 0
+      && groups[0].Children.All(n => !n.IsLeaf)
+    )
       groups = groups[0].Children;
     if (groups.Count < 2)
       return 0;

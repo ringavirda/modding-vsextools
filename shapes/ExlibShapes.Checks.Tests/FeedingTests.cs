@@ -139,6 +139,19 @@ public class FeedingTests {
   }
 
   [Fact]
+  public void One_body_has_no_layout_pair() {
+    CheckInput input = StageFixtures.Closed(
+      cast: StageFixtures.CastOf(
+        StageFixtures.Box("BodyA", 0, 0, 0, 2, 4, 6, "cast-iron1"),
+        StageFixtures.Box("BodyB", 2, 0, 0, 4, 4, 6, "cast-iron1"),
+        StageFixtures.Box("BodyC", 4, 0, 0, 6, 4, 6, "cast-iron1")
+      )
+    );
+    Assert.DoesNotContain(Check.Run(input).Lines, l => l.StartsWith("layout:"));
+    Assert.Equal(0, Check.Run(input).ExitCode);
+  }
+
+  [Fact]
   public void Groups_closer_than_the_margin_name_the_gap() {
     CheckInput input = StageFixtures.Closed(cast: TwoGroups(2.5));
     Assert.Contains(

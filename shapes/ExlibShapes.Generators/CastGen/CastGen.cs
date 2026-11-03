@@ -123,6 +123,7 @@ public sealed partial class CastGen : IGenerator {
     string? Station,
     IReadOnlyList<LieSpec>? Lies,
     IReadOnlyList<int> GroupEnds,
+    IReadOnlyList<string> GroupNames,
     int Pieces,
     JToken? Parting,
     JToken? Feeds,
@@ -156,6 +157,9 @@ public sealed partial class CastGen : IGenerator {
         spec.Station,
         LiesOf(spec.Station, spec.Lie, [], spec.Blank),
         [],
+        spec.Form.Source is { Groups.Count: > 0 } drawn
+          ? [LastSegment(drawn.Groups[0])]
+          : [],
         spec.PerPour,
         spec.Parting,
         spec.Feeds,
@@ -249,6 +253,7 @@ public sealed partial class CastGen : IGenerator {
         c.Station,
         LiesOf(c.Station, c.Lie, c.Groups, c.Item),
         set.GroupEnds,
+        GroupNamesOf(c.Groups),
         c.PerPour,
         c.Parting,
         c.Feeds,
@@ -305,6 +310,7 @@ public sealed partial class CastGen : IGenerator {
             s.Station,
             LiesOf(s.Station, null, s.Groups, s.Item),
             set.GroupEnds,
+            GroupNamesOf(s.Groups),
             1,
             null,
             null,
@@ -316,6 +322,15 @@ public sealed partial class CastGen : IGenerator {
         );
     }
   }
+
+  private static IEnumerable<Element> Descend(Element e) =>
+    new[] { e }.Concat(e.Children.SelectMany(Descend));
+
+  private static string LastSegment(string path) =>
+    path[(path.LastIndexOf('/') + 1)..];
+
+  private static List<string> GroupNamesOf(IReadOnlyList<GroupSpec> groups) =>
+    [.. groups.Select(g => LastSegment(g.Groups[0]))];
 
   private static PartRecord Recorded(PartRecord source) {
     var rec = new PartRecord();
@@ -519,14 +534,31 @@ public sealed partial class CastGen : IGenerator {
         Role = l.Role ?? "cast",
       };
     var shape = new Shape();
-    foreach (Leaf l in shown) {
-      Element e = Select.Clone(l.Element, false);
-      e.Name = l.Name;
-      shape.Elements.Add(e);
+    Func<Leaf, int> groupOf = GroupOf(c);
+    foreach (
+      IGrouping<int, Leaf> grp in shown.GroupBy(groupOf).OrderBy(x => x.Key)
+    ) {
+      var members = new List<Element>();
+      foreach (Leaf l in grp) {
+        Element e = Select.Clone(l.Element, false);
+        e.Name = l.Name;
+        members.Add(e);
+      }
+      string? name =
+        c.GroupNames.Count > grp.Key ? c.GroupNames[grp.Key] : null;
+      if (name == null || members.Any(m => m.Name == name)) {
+        foreach (Element m in members)
+          shape.Elements.Add(m);
+        continue;
+      }
+      var root = new Element { Name = name };
+      root.Children.AddRange(members);
+      shape.Elements.Add(root);
     }
     foreach (
       string key in shape
-        .Elements.SelectMany(e => e.Faces)
+        .Elements.SelectMany(Descend)
+        .SelectMany(e => e.Faces)
         .Select(kv => (kv.Value.Texture ?? "").TrimStart('#'))
         .Distinct()
         .Order(StringComparer.Ordinal)
@@ -614,7 +646,7 @@ public sealed partial class CastGen : IGenerator {
     for (int k = 0; k < pieces.Count; k++) {
       Vec3 d = pieces[k].Mul(Vec3.Zero);
       foreach (Element src in pattern.Elements) {
-        Element e = Select.Clone(src, false);
+        Element e = Select.CloneTree(src, false);
         if (k > 0)
           e.Name = $"{e.Name}_piece{k + 1}";
         e.From = [e.From![0] + d.X, e.From[1] + d.Y, e.From[2] + d.Z];
@@ -634,27 +666,35 @@ public sealed partial class CastGen : IGenerator {
     return shape;
   }
 
+  private static Func<Leaf, int> GroupOf(Casting c) {
+    if (c.GroupEnds.Count == 0)
+      return _ => 0;
+    var byPath = new Dictionary<string, int>(StringComparer.Ordinal);
+    int g = 0;
+    for (int i = 0; i < c.Cast.Count; i++) {
+      while (i >= c.GroupEnds[g])
+        g++;
+      byPath.TryAdd(c.Cast[i].SourcePath, g);
+    }
+    return l =>
+      byPath.TryGetValue(l.SourcePath, out int found)
+        ? found
+        : throw new CastGenException(
+          $"{c.Code}: {l.Name} belongs to no group of the casting"
+        );
+  }
+
   private static List<Leaf> TurnedByGroup(
     Casting c,
     IReadOnlyList<Leaf> leaves,
     IReadOnlyList<LieSpec> lies
   ) {
-    var groupOf = new Dictionary<string, int>(StringComparer.Ordinal);
-    int g = 0;
-    for (int i = 0; i < c.Cast.Count; i++) {
-      while (i >= c.GroupEnds[g])
-        g++;
-      groupOf.TryAdd(c.Cast[i].SourcePath, g);
-    }
+    Func<Leaf, int> groupOf = GroupOf(c);
     return
     [
       .. leaves.Select(l =>
       {
-        int k = groupOf.TryGetValue(l.SourcePath, out int found)
-          ? found
-          : throw new CastGenException(
-            $"{c.Code}: {l.Name} belongs to no group of the casting"
-          );
+        int k = groupOf(l);
         LieSpec own = lies[k];
         return Lies.Apply(
             [l],
