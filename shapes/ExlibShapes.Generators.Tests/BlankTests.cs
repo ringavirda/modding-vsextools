@@ -19,7 +19,7 @@ public class BlankTests {
     { "schema": 1,
       "elements": {
         "Base": { "stage": "cast" }, "Top": { "stage": "cast" },
-        "Slot": { "stage": "cast" }, "Far": { "stage": "cast" } },
+        "Slot": { "stage": "worked" }, "Far": { "stage": "cast" } },
       "features": {
         "slot": { "elements": ["Slot"], "origin": "planed", "faces": ["Slot/up"], "step": "plane" },
         "ways": { "elements": ["Base"], "origin": "cast", "faces": ["Base/up", "Base/east"], "step": "plane" },
