@@ -136,6 +136,23 @@ public class AllowanceOutTests {
   }
 
   [Fact]
+  public void A_group_face_takes_a_leaf_a_drawing_stagger_short_of_the_bound_and_not_one_further_in() {
+    Shape shape = Reader.Read(
+      $$"""
+      { "elements": [ { "name": "Run", "from": [0, 0, 0], "to": [0, 0, 0], "children": [
+        {{Cell("Edge", "[0, 0, 0]", "[4, 4, 4]")}},
+        {{Cell("Stagger", "[0.02, 0, 4]", "[3.98, 4, 8]")}},
+        {{Cell("Inner", "[0.2, 0, 8]", "[3.8, 4, 12]")}}
+      ] } ] }
+      """
+    );
+    Assert.Equal(
+      ["Edge/west", "Stagger/west"],
+      Allowances.Expand([.. Select.Groups(shape, ["Run"])], ["Run/west"])
+    );
+  }
+
+  [Fact]
   public void Names_finds_a_leaf_or_a_group_and_nothing_else() {
     List<Leaf> pile = Pile();
     Assert.True(Allowances.Names(pile, "A"));

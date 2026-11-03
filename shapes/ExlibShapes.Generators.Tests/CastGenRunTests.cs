@@ -448,6 +448,50 @@ public class CastGenRunTests {
     Assert.Equal(0, got.ExitCode);
   }
 
+  [Fact]
+  public void A_group_step_face_is_written_to_the_flat_form_as_its_leaves_and_the_item_checks_against_it() {
+    string ribbed = $$"""
+      { "elements": [ { "name": "Root", "from": [0, 0, 0], "to": [0, 0, 0], "children": [
+        { "name": "Rib", "from": [0, 0, 0], "to": [0, 0, 0], "children": [
+          {{Cube("R1", "[0, 0, 0]", "[16, 4, 16]")}},
+          {{Cube("R2", "[0, 4, 0]", "[16, 6, 16]")}},
+          {{Cube("R3", "[4, 2, 4]", "[8, 6, 8]")}} ] }
+      ] } ] }
+      """;
+    const string ribRecord = """
+      { "schema": 1,
+        "elements": { "R1": { "stage": "cast", "role": "cast" }, "R2": { "stage": "cast", "role": "cast" },
+                      "R3": { "stage": "cast", "role": "cast" } },
+        "features": { "ways": { "elements": ["Rib"], "origin": "planed", "faces": ["Rib/up"], "step": "plane" } },
+        "steps": [ { "id": "plane", "faces": ["Rib/up"] } ] }
+      """;
+    JObject spec = MachineEntry(
+      Casting(
+        "floor",
+        FloorLie,
+        """, "worked": [ { "item": "rib-planed", "steps": [ { "step": "plane", "cuts": ["ways"] } ] } ]"""
+      )
+    );
+
+    GenResult r = Run(Ctx(ribbed, record: ribRecord), spec);
+
+    GenOutput item = r.Outputs.Single(o => o.Name == "cast-planer-bed");
+    GenInput form = r.Inputs.Single(i => i.Name == "cast-planer-bed-form");
+    Assert.Equal(
+      ["R2/up", "R3/up"],
+      form.Record.Steps.Single().Faces.OrderBy(f => f, StringComparer.Ordinal)
+    );
+    CheckResult got = new Allowance().Run(
+      new CheckInput(
+        item.Shape,
+        Record: item.Record,
+        Source: form.Shape,
+        SourceRecord: form.Record
+      )
+    );
+    Assert.Equal(0, got.ExitCode);
+  }
+
   private static IEnumerable<Element> Flat(Element e) =>
     e.Children.Count == 0 ? [e] : e.Children.SelectMany(Flat);
 

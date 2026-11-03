@@ -84,16 +84,16 @@ public sealed partial class CastGen : IGenerator {
     IReadOnlyList<string> cutFaces
   ) {
     var rec = new PartRecord { Shape = FormName(code) + ".json" };
+    List<Leaf> leaves = [.. cast];
     foreach (KeyValuePair<string, ElementPart> kv in from.Elements)
       rec.Elements[kv.Key] = kv.Value;
     foreach (KeyValuePair<string, Feature> kv in from.Features)
       rec.Features[kv.Key] = kv.Value;
     if (cutFaces.Count > 0) {
       var step = new Step { Id = "cut" };
-      step.Faces.AddRange(cutFaces);
+      step.Faces.AddRange(Allowances.Expand(leaves, cutFaces));
       rec.Steps.Add(step);
     }
-    List<Leaf> leaves = [.. cast];
     foreach (Leaf l in leaves)
       rec.Elements[l.Name] = new ElementPart {
         Stage = "cast",

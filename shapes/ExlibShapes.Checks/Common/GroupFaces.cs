@@ -8,11 +8,11 @@ namespace ExpandedLib.Shapes.Checks;
 /// <summary>A record face entry that names a group (<c>ScrewBoss/down</c>) read as the faces of the group's outer
 /// leaves.</summary>
 internal static class GroupFaces {
-  private const double Tol = 1e-4;
+  private const double Tol = 1.0 / 32 + 1e-4;
   private const double OnAxis = 1e-6;
 
   /// <summary>Which of <paramref name="members"/>, the leaves of one group, carry <paramref name="face"/> on the group's
-  /// bounding face: the leaf's world box ends there within 1e-4 voxel, and its own face points the same way in the
+  /// bounding face: the leaf's world box ends there within 1/32 voxel (the stagger a turned run's staves are drawn with), and its own face points the same way in the
   /// world (it turns only about that axis, never flipped), so the face is the one the entry names.</summary>
   /// <param name="members">Each leaf's world matrix and world box.</param>
   /// <param name="face">One of north, east, south, west, up, down.</param>
