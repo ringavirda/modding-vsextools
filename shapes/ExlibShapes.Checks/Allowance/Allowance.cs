@@ -12,7 +12,9 @@ namespace ExpandedLib.Shapes.Checks;
 /// source's, moved out by <see cref="CheckInput.Allowance"/> on each face a step names and nowhere else, to 1e-4.
 /// One line per fault: <c>NAME: missing from the item</c>, <c>NAME: not in the source</c>,
 /// <c>NAME: box [..] against [..], the source plus the allowance on [faces]</c>, or
-/// <c>NAME/FACE: not a face of a cast element in the source</c>. Needs the source shape, its record and the item.
+/// <c>NAME/FACE: not a face of a cast element in the source</c>. A step face naming a group moves the faces of the
+/// group's leaves that lie on its bounding face in that direction; a group none of whose leaves does is
+/// <c>NAME/FACE: no leaf of the group lies on its bounding face</c>. Needs the source shape, its record and the item.
 /// The item's record (<see cref="CheckInput.Record"/>) may carry <see cref="FlushMoves"/>: a recorded move of a face
 /// no step cuts, a merge of two elements no step cuts or a cap beside a face no step cuts explains the difference
 /// from source plus allowance, and the record's <see cref="Lays"/> move a kit group's elements to where the item lays
@@ -56,6 +58,7 @@ public sealed class Allowance : ICheck {
     );
     var cuts = new Dictionary<string, List<string>>();
     var lines = new List<string>();
+    var frames = new Frames(source);
     foreach (string spec in record.Steps.SelectMany(s => s.Faces)) {
       int cut = spec.LastIndexOf('/');
       string name = cut < 0 ? spec : spec[..cut];
@@ -64,12 +67,33 @@ public sealed class Allowance : ICheck {
         throw new CheckUsageException(
           $"{spec}: a step face is NAME/north, east, south, west, up or down"
         );
-      if (!cast.ContainsKey(name)) {
+      if (cast.ContainsKey(name)) {
+        AddCut(cuts, name, face);
+        continue;
+      }
+      List<Node> group =
+      [
+        .. tree.Leaves.Where(n =>
+          !Tags.LeftOutOfCast(Tags.Of(record, n))
+          && Refs.Matches(n.Path, "*" + name + "/")
+        ),
+      ];
+      if (group.Count == 0) {
         lines.Add($"{spec}: not a face of a cast element in the source");
         continue;
       }
-      if (!cuts.TryAdd(name, [face]))
-        cuts[name].Add(face);
+      List<int> outer = GroupFaces.OnBound(
+        [
+          .. group.Select(n =>
+            (frames.Mat(n), WorldBox.Of(frames.Mat(n), n.Size))
+          ),
+        ],
+        face
+      );
+      if (outer.Count == 0)
+        lines.Add($"{spec}: no leaf of the group lies on its bounding face");
+      foreach (int i in outer)
+        AddCut(cuts, group[i].Name, face);
     }
     List<FlushMove> moves = FlushMoves.Read(input.Record);
     Dictionary<string, Vec3> lays = Lays.Read(input.Record);
@@ -133,6 +157,15 @@ public sealed class Allowance : ICheck {
     if (!faults)
       lines.Add($"allowance: {cast.Count} elements ok");
     return CheckResult.Of(Id, cast.Count, faults, lines);
+  }
+
+  private static void AddCut(
+    Dictionary<string, List<string>> cuts,
+    string name,
+    string face
+  ) {
+    if (!cuts.TryAdd(name, [face]) && !cuts[name].Contains(face))
+      cuts[name].Add(face);
   }
 
   private static Dictionary<string, Box> Boxes(

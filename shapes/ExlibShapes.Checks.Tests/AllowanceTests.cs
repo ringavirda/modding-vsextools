@@ -163,6 +163,57 @@ public class AllowanceTests {
   }
 
   [Fact]
+  public void A_step_face_naming_a_group_moves_only_the_leaves_on_its_bounding_face() {
+    string up = """
+      "steps": [ { "id": "plane", "faces": ["Bed/up"] } ]
+      """;
+    Assert.Equal(
+      0,
+      Check.Run(Input(Fixtures.Shape("cast-ok.json"), up)).ExitCode
+    );
+    string twice = """
+      "steps": [ { "id": "plane", "faces": ["Bed/up", "Way/up"] } ]
+      """;
+    Assert.Equal(
+      0,
+      Check.Run(Input(Fixtures.Shape("cast-ok.json"), twice)).ExitCode
+    );
+    Shape lug = Fixtures.Edited(
+      "cast-source.json",
+      raw => CastFixtures.Move(CastFixtures.Find(raw, "Lug"), "to", 0, 14.125)
+    );
+    string east = """
+      "steps": [ { "id": "plane", "faces": ["Bed/east"] } ]
+      """;
+    Assert.Equal(0, Check.Run(Input(lug, east)).ExitCode);
+  }
+
+  [Fact]
+  public void A_group_face_no_leaf_carries_in_the_world_is_a_fault() {
+    Shape turned = Fixtures.Edited(
+      "cast-source.json",
+      raw => {
+        JObject way = CastFixtures.Find(raw, "Way");
+        way["rotationX"] = 90;
+        way["rotationOrigin"] = new JArray(8, 4.5, 4);
+      }
+    );
+    CheckInput input = Input(Fixtures.Shape("cast-ok.json")) with {
+      Source = turned,
+      SourceRecord = CastFixtures.Record(
+        CastFixtures.CastRecord
+          + """
+          , "steps": [ { "id": "plane", "faces": ["Bed/up"] } ]
+          """
+      ),
+    };
+    Assert.Contains(
+      "Bed/up: no leaf of the group lies on its bounding face",
+      Check.Run(input).Lines
+    );
+  }
+
+  [Fact]
   public void The_allowance_is_the_input_s() {
     Shape item = Fixtures.Edited(
       "cast-source.json",

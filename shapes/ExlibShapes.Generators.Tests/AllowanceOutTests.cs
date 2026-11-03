@@ -50,4 +50,96 @@ public class AllowanceOutTests {
       Allowances.Out(FlushFixtures.Leaves(Block), ["Block"], 0.125)
     );
   }
+
+  private static List<Leaf> Pile() {
+    Shape shape = Reader.Read(
+      $$"""
+      { "elements": [ { "name": "Pile", "from": [0, 0, 0], "to": [0, 0, 0], "children": [
+        {{Cell("A", "[0, 0, 0]", "[4, 4, 4]")}},
+        {{Cell("B", "[4, 0, 0]", "[8, 4, 4]")}},
+        {{Cell("C", "[2, 0, 0]", "[6, 4, 4]")}}
+      ] } ] }
+      """
+    );
+    return [.. Select.Groups(shape, ["Pile"])];
+  }
+
+  private static string Cell(string name, string from, string to) =>
+    $$"""{ "name": "{{name}}", "from": {{from}}, "to": {{to}}, "faces": { {{string.Join(
+      ", ",
+      new[] { "north", "east", "south", "west", "up", "down" }.Select(f => $"\"{f}\": {{ \"texture\": \"#cast-iron1\", \"uv\": [0, 0, 4, 4] }}")
+    )}} } }""";
+
+  [Fact]
+  public void A_group_face_moves_only_the_leaves_on_the_groups_bounding_face() {
+    List<Leaf> got = Allowances.Out(
+      Pile(),
+      ["Pile/east", "Pile/west", "A/west"],
+      0.5
+    );
+    Assert.Equal(
+      [-0.5, 0, 0],
+      got.Single(l => l.SourceName == "A").Element.From!
+    );
+    Assert.Equal([4, 0, 0], got.Single(l => l.SourceName == "B").Element.From!);
+    Assert.Equal([8.5, 4, 4], got.Single(l => l.SourceName == "B").Element.To!);
+    Leaf c = got.Single(l => l.SourceName == "C");
+    Assert.Equal([2, 0, 0], c.Element.From!);
+    Assert.Equal([6, 4, 4], c.Element.To!);
+  }
+
+  [Fact]
+  public void An_entry_naming_a_leaf_that_has_leaves_below_it_stays_that_leaf_s() {
+    Shape shape = Reader.Read(
+      $$"""
+      { "elements": [
+        {{Cell("Hub", "[0, 0, 0]", "[4, 4, 4]").TrimEnd('}')}}, "children": [
+          {{Cell("Cap", "[0, 4, 0]", "[4, 6, 4]")}}
+        ] }
+      ] }
+      """
+    );
+    List<Leaf> got = Allowances.Out(
+      Select.Groups(shape, ["Hub"]),
+      ["Hub/up"],
+      0.5
+    );
+    Assert.Equal(
+      [4, 4.5, 4],
+      got.Single(l => l.SourceName == "Hub").Element.To!
+    );
+    Assert.Equal([4, 6, 4], got.Single(l => l.SourceName == "Cap").Element.To!);
+  }
+
+  [Fact]
+  public void A_group_face_skips_a_leaf_that_turns_about_another_axis() {
+    Shape shape = Reader.Read(
+      $$"""
+      { "elements": [ { "name": "Pile", "from": [0, 0, 0], "to": [0, 0, 0], "children": [
+        {{Cell("A", "[0, 0, 0]", "[4, 4, 4]").TrimEnd(
+        '}'
+      )}}, "rotationX": 90, "rotationOrigin": [2, 2, 2] }
+      ] } ] }
+      """
+    );
+    Assert.Empty(
+      Allowances.Expand([.. Select.Groups(shape, ["Pile"])], ["Pile/up"])
+    );
+    Assert.Equal(
+      ["A/west"],
+      Allowances.Expand(Pile(), ["Pile/west", "A/west", "Pile/west"])
+    );
+    Assert.Equal(
+      ["A/up"],
+      Allowances.Expand([.. Select.Groups(shape, ["Pile"])], ["A/up"])
+    );
+  }
+
+  [Fact]
+  public void Names_finds_a_leaf_or_a_group_and_nothing_else() {
+    List<Leaf> pile = Pile();
+    Assert.True(Allowances.Names(pile, "A"));
+    Assert.True(Allowances.Names(pile, "Pile"));
+    Assert.False(Allowances.Names(pile, "Ghost"));
+  }
 }

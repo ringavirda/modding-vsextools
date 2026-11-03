@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ExpandedLib.Shapes.Checks;
 using ExpandedLib.Shapes.Core;
 
 namespace ExpandedLib.Shapes.Generators;
@@ -52,8 +53,8 @@ internal static class FaceAxes {
 /// <summary>Step 3: the allowance out on the faces a step cuts.</summary>
 public static class Allowances {
   /// <summary>The leaves with <paramref name="amount"/> added outward on each face
-  /// <paramref name="faces"/> names, by the drawing's element name; the moved face loses its uv.
-  /// A name no leaf carries is skipped.</summary>
+  /// <paramref name="faces"/> names, by the drawing's element name or the name of a group (see
+  /// <see cref="Expand"/>); the moved face loses its uv. A name no leaf carries and no leaf lies under is skipped.</summary>
   /// <param name="leaves">The cast set's leaves.</param>
   /// <param name="faces">Entries <c>NAME/FACE</c>, FACE one of north, east, south, west, up, down.</param>
   /// <param name="amount">The allowance in voxels.</param>
@@ -63,11 +64,10 @@ public static class Allowances {
     IEnumerable<string> faces,
     double amount
   ) {
+    List<Leaf> all = [.. leaves];
     var cuts = new Dictionary<string, List<string>>(StringComparer.Ordinal);
-    foreach (string spec in faces) {
+    foreach (string spec in Expand(all, faces)) {
       int at = spec.LastIndexOf('/');
-      if (at < 0 || !FaceAxes.Names.Contains(spec[(at + 1)..]))
-        throw new CastGenException($"\"{spec}\" is not NAME/FACE");
       string name = spec[..at];
       if (!cuts.TryGetValue(name, out List<string>? list))
         cuts[name] = list = [];
@@ -75,7 +75,7 @@ public static class Allowances {
         list.Add(spec[(at + 1)..]);
     }
     var outp = new List<Leaf>();
-    foreach (Leaf leaf in leaves) {
+    foreach (Leaf leaf in all) {
       Leaf moved = leaf;
       if (cuts.TryGetValue(leaf.SourceName, out List<string>? list))
         foreach (string face in list)
@@ -84,4 +84,59 @@ public static class Allowances {
     }
     return outp;
   }
+
+  /// <summary>Whether <paramref name="name"/> is the drawing name of one of <paramref name="leaves"/> or of a group
+  /// one of them lies under.</summary>
+  public static bool Names(IEnumerable<Leaf> leaves, string name) =>
+    leaves.Any(l => l.SourceName == name || Under(l, name));
+
+  /// <summary>The entries <paramref name="faces"/> with each one that names a group replaced by the leaf entries it
+  /// stands for. An entry naming a leaf is kept as written, whether or not other leaves lie under it; an entry
+  /// naming a group, an element no leaf carries the name of with leaves below it, becomes <c>LEAF/FACE</c> for each
+  /// leaf of the group whose face lies on the group's bounding face in that direction and turns about no other
+  /// axis. An entry naming nothing is kept; an entry that names a group no leaf of which qualifies is dropped.</summary>
+  /// <param name="leaves">The cast set's leaves.</param>
+  /// <param name="faces">Entries <c>NAME/FACE</c>.</param>
+  /// <exception cref="CastGenException">An entry is not <c>NAME/FACE</c> or names an unknown face.</exception>
+  public static List<string> Expand(
+    IReadOnlyList<Leaf> leaves,
+    IEnumerable<string> faces
+  ) {
+    var outp = new List<string>();
+    foreach (string spec in faces) {
+      int at = spec.LastIndexOf('/');
+      if (at < 0 || !FaceAxes.Names.Contains(spec[(at + 1)..]))
+        throw new CastGenException($"\"{spec}\" is not NAME/FACE");
+      string name = spec[..at],
+        face = spec[(at + 1)..];
+      List<Leaf> group = [];
+      if (!leaves.Any(l => l.SourceName == name))
+        group = [.. leaves.Where(l => Under(l, name))];
+      if (group.Count == 0) {
+        if (!outp.Contains(spec))
+          outp.Add(spec);
+        continue;
+      }
+      foreach (
+        int i in GroupFaces.OnBound(
+          [
+            .. group.Select(l =>
+            {
+              Mat4d world = Engine.Local(l.Element);
+              return (world, WorldBox.Of(world, Engine.Size(l.Element)));
+            }),
+          ],
+          face
+        )
+      ) {
+        string entry = group[i].SourceName + "/" + face;
+        if (!outp.Contains(entry))
+          outp.Add(entry);
+      }
+    }
+    return outp;
+  }
+
+  private static bool Under(Leaf leaf, string group) =>
+    leaf.SourcePath.Split('/')[..^1].Contains(group);
 }

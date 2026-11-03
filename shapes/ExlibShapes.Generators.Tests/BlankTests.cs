@@ -108,6 +108,29 @@ public class BlankTests {
   }
 
   [Fact]
+  public void A_feature_and_a_face_naming_a_group_are_a_cut_of_its_leaves() {
+    string form = $$"""
+      { "elements": [ { "name": "Root", "from": [0, 0, 0], "to": [1, 1, 1], "children": [
+        { "name": "Pile", "from": [0, 0, 0], "to": [0, 0, 0], "children": [
+          {{Fx.Cube("PA", "[0, 0, 0]", "[16, 4, 16]")}},
+          {{Fx.Cube("PB", "[0, 4, 0]", "[16, 6, 16]")}}
+        ] }
+      ] } ] }
+      """;
+    const string record = """
+      { "schema": 1,
+        "elements": { "PA": { "stage": "cast" }, "PB": { "stage": "cast" } },
+        "features": {
+          "bed": { "elements": ["Pile"], "origin": "planed", "faces": ["Pile/up"] } } }
+      """;
+
+    BlankResult b = Blank.Build(Fx.Ctx(form, record), Spec());
+
+    Assert.Equal(["bed"], b.CutFeatures);
+    Assert.Equal(["Pile/up"], b.CutFaces);
+  }
+
+  [Fact]
   public void Named_cut_features_replace_the_default_and_must_exist() {
     BlankResult b = Build(Spec("[\"ways\"]"));
 

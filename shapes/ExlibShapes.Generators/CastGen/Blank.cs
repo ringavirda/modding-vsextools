@@ -114,14 +114,11 @@ public static class Blank {
     foreach (StretchSpec s in form.Stretch)
       Stretch(res.Cast, s, spec.Size[s.Axis]);
 
-    var inCast = new HashSet<string>(
-      set.Cast.Concat(set.Worked).Select(l => l.SourceName),
-      StringComparer.Ordinal
-    );
+    List<Leaf> inCast = [.. set.Cast.Concat(set.Worked)];
     IEnumerable<string> cut =
       spec.CutFaces
       ?? rs.Record.Features.Where(kv =>
-          kv.Value.Elements.Any(inCast.Contains)
+          kv.Value.Elements.Any(el => Allowances.Names(inCast, el))
           && (
             kv.Value.Origin is "planed" or "turned" or "bored" or "filed"
               ? kv.Value.Faces.Count > 0
@@ -137,7 +134,7 @@ public static class Blank {
       res.CutFeatures.Add(id);
       res.CutFaces.AddRange(
         spec.CutFaces == null
-          ? f.Faces.Where(x => inCast.Contains(x[..x.IndexOf('/')]))
+          ? f.Faces.Where(x => Allowances.Names(inCast, x[..x.IndexOf('/')]))
           : f.Faces
       );
     }

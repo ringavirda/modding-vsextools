@@ -372,7 +372,10 @@ public sealed partial class CastGen : IGenerator {
     List<Leaf> leaves = Flush
       .Resolve(
         allowed,
-        new HashSet<string>(c.CutFaces, StringComparer.Ordinal),
+        new HashSet<string>(
+          Allowances.Expand(c.Cast, c.CutFaces),
+          StringComparer.Ordinal
+        ),
         c.Allowance,
         true,
         c.Pins,

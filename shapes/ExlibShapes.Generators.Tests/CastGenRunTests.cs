@@ -402,6 +402,56 @@ public class CastGenRunTests {
   }
 
   [Fact]
+  public void A_cut_face_naming_a_group_gets_its_allowance_and_its_coplanar_pair_is_left() {
+    string ribbed = $$"""
+      { "elements": [ { "name": "Root", "from": [0, 0, 0], "to": [0, 0, 0], "children": [
+        { "name": "Rib", "from": [0, 0, 0], "to": [0, 0, 0], "children": [
+          {{Cube("R1", "[0, 0, 0]", "[16, 4, 16]")}},
+          {{Cube("R2", "[0, 4, 0]", "[16, 6, 16]")}},
+          {{Cube("R3", "[4, 2, 4]", "[8, 6, 8]")}} ] }
+      ] } ] }
+      """;
+    const string ribRecord = """
+      { "schema": 1,
+        "elements": { "R1": { "stage": "cast", "role": "cast" }, "R2": { "stage": "cast", "role": "cast" },
+                      "R3": { "stage": "cast", "role": "cast" } },
+        "features": { "ways": { "elements": ["Rib"], "origin": "planed", "faces": ["Rib/up"], "step": "plane" } },
+        "steps": [ { "id": "plane", "faces": ["Rib/up"] } ] }
+      """;
+    JObject spec = MachineEntry(
+      Casting(
+        "floor",
+        FloorLie,
+        """, "worked": [ { "item": "rib-planed", "steps": [ { "step": "plane", "cuts": ["ways"] } ] } ]"""
+      )
+    );
+    GenContext ctx = Ctx(ribbed, record: ribRecord);
+
+    GenResult r = Run(ctx, spec);
+
+    GenOutput item = r.Outputs.Single(o => o.Name == "cast-planer-bed");
+    Dictionary<string, Element> by = item
+      .Shape.Elements.SelectMany(Flat)
+      .ToDictionary(e => e.Name!);
+    Assert.Equal(4, by["R1"].To![1], 6);
+    Assert.Equal(6.125, by["R2"].To![1], 6);
+    Assert.Equal(6.125, by["R3"].To![1], 6);
+    ResolvedSource src = ctx.Resolve("m.json", "0000000");
+    CheckResult got = new Allowance().Run(
+      new CheckInput(
+        item.Shape,
+        Record: item.Record,
+        Source: src.Shape,
+        SourceRecord: src.Record
+      )
+    );
+    Assert.Equal(0, got.ExitCode);
+  }
+
+  private static IEnumerable<Element> Flat(Element e) =>
+    e.Children.Count == 0 ? [e] : e.Children.SelectMany(Flat);
+
+  [Fact]
   public void A_group_whose_leaf_has_the_groups_name_is_still_written_as_a_group() {
     string grouped = $$"""
       { "elements": [ { "name": "Root", "from": [0, 0, 0], "to": [0, 0, 0], "children": [
