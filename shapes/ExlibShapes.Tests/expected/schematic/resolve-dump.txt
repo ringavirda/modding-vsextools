@@ -1487,7 +1487,7 @@ asbuilt -1 12 1 2 iiex:bandedbrick-corner-tier1-s shape=bandedbrickcorner.json r
 6 iiex:roofarch-flue-*-n iiex:roofarch-flue-tier1-n shape=roofarchflue.json rot=(0.0,0.0,0.0) optional=False
 7 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 8 game:brickslabs-fire-south-free game:brickslabs-fire-south-free shape=slab-south.json rot=(0.0,0.0,0.0) optional=False
-9 game:cokeovendoor-*-north game:cokeovendoor-closed-north shape=closed.json rot=(0.0,0.0,0.0) optional=False
+9 iiex:furnace-puddlingfirehole-s iiex:furnace-puddlingfirehole-s shape=puddlingfirehole.json rot=(0.0,180.0,0.0) optional=False
 10 iiex:furnace-puddlingcore-*-* iiex:furnace-puddlingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 11 iiex:furnace-puddlinghearth-n iiex:furnace-puddlinghearth-n shape=puddlinghearth.json rot=(0.0,0.0,0.0) optional=False
 12 iiex:furnace-puddlingchargedoor-n iiex:furnace-puddlingchargedoor-n shape=puddlingchargedoor.json rot=(0.0,0.0,0.0) optional=False
@@ -1506,7 +1506,7 @@ asbuilt -1 12 1 2 iiex:bandedbrick-corner-tier1-s shape=bandedbrickcorner.json r
 6 iiex:roofarch-flue-*-w iiex:roofarch-flue-tier1-w shape=roofarchflue.json rot=(0.0,90.0,0.0) optional=False
 7 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 8 game:brickslabs-fire-east-free game:brickslabs-fire-east-free shape=slab-east.json rot=(0.0,0.0,0.0) optional=False
-9 game:cokeovendoor-*-west game:cokeovendoor-closed-west shape=closed.json rot=(0.0,90.0,0.0) optional=False
+9 iiex:furnace-puddlingfirehole-e iiex:furnace-puddlingfirehole-e shape=puddlingfirehole.json rot=(0.0,270.0,0.0) optional=False
 10 iiex:furnace-puddlingcore-*-* iiex:furnace-puddlingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 11 iiex:furnace-puddlinghearth-w iiex:furnace-puddlinghearth-w shape=puddlinghearth.json rot=(0.0,90.0,0.0) optional=False
 12 iiex:furnace-puddlingchargedoor-w iiex:furnace-puddlingchargedoor-w shape=puddlingchargedoor.json rot=(0.0,90.0,0.0) optional=False
@@ -1525,7 +1525,7 @@ asbuilt -1 12 1 2 iiex:bandedbrick-corner-tier1-s shape=bandedbrickcorner.json r
 6 iiex:roofarch-flue-*-s iiex:roofarch-flue-tier1-s shape=roofarchflue.json rot=(0.0,180.0,0.0) optional=False
 7 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 8 game:brickslabs-fire-north-free game:brickslabs-fire-north-free shape=slab-north.json rot=(0.0,0.0,0.0) optional=False
-9 game:cokeovendoor-*-south game:cokeovendoor-closed-south shape=closed.json rot=(0.0,180.0,0.0) optional=False
+9 iiex:furnace-puddlingfirehole-n iiex:furnace-puddlingfirehole-n shape=puddlingfirehole.json rot=(0.0,0.0,0.0) optional=False
 10 iiex:furnace-puddlingcore-*-* iiex:furnace-puddlingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 11 iiex:furnace-puddlinghearth-s iiex:furnace-puddlinghearth-s shape=puddlinghearth.json rot=(0.0,180.0,0.0) optional=False
 12 iiex:furnace-puddlingchargedoor-s iiex:furnace-puddlingchargedoor-s shape=puddlingchargedoor.json rot=(0.0,180.0,0.0) optional=False
@@ -1544,7 +1544,7 @@ asbuilt -1 12 1 2 iiex:bandedbrick-corner-tier1-s shape=bandedbrickcorner.json r
 6 iiex:roofarch-flue-*-e iiex:roofarch-flue-tier1-e shape=roofarchflue.json rot=(0.0,270.0,0.0) optional=False
 7 game:brickslabs-fire-up-free game:brickslabs-fire-up-free shape=slab-up.json rot=(0.0,0.0,0.0) optional=False
 8 game:brickslabs-fire-west-free game:brickslabs-fire-west-free shape=slab-west.json rot=(0.0,0.0,0.0) optional=False
-9 game:cokeovendoor-*-east game:cokeovendoor-closed-east shape=closed.json rot=(0.0,270.0,0.0) optional=False
+9 iiex:furnace-puddlingfirehole-w iiex:furnace-puddlingfirehole-w shape=puddlingfirehole.json rot=(0.0,90.0,0.0) optional=False
 10 iiex:furnace-puddlingcore-*-* iiex:furnace-puddlingcore-tier1-n shape=cube.json rot=(0.0,0.0,0.0) optional=False
 11 iiex:furnace-puddlinghearth-e iiex:furnace-puddlinghearth-e shape=puddlinghearth.json rot=(0.0,270.0,0.0) optional=False
 12 iiex:furnace-puddlingchargedoor-e iiex:furnace-puddlingchargedoor-e shape=puddlingchargedoor.json rot=(0.0,270.0,0.0) optional=False
