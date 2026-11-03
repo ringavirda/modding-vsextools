@@ -8,9 +8,9 @@ namespace ExpandedLib.Shapes.Checks;
 /// <summary>
 /// The parting and the lie of a pour. Lie: every piece's and core's <c>at</c> is a rotation and a translation, the
 /// linear part orthonormal with determinant 1. Parting, for a closed pour: each placed piece spans the station's
-/// parting; no sand box of the drag reaches over it by more than 0.001, none of the cope under it by more than
-/// that, and no box stands in both halves; and where the pattern has roots named <c>Drag</c> and <c>Cope</c>,
-/// placed by each piece's <c>at</c>, the drag's stay under the parting and the cope's over it. One line per fault;
+/// parting, or lies wholly in one half with its face at the parting (a flat-back pattern); no sand box of the drag
+/// reaches over it by more than 0.001, none of the cope under it by more than that, and no box stands in both halves; and
+/// where the pattern has roots named <c>Drag</c> and <c>Cope</c>, placed by each piece's <c>at</c>, the drag's stay under the parting and the cope's over it. One line per fault;
 /// reads a turned leaf on the 1/32 lattice; needs the part record's pour, and for a closed pour the settings, cast and cope.
 /// </summary>
 public sealed class Parting : ICheck {
@@ -76,7 +76,10 @@ public sealed class Parting : ICheck {
       counted++;
       double lo = p.Cast[k].Min(b => b.Lo.Y),
         hi = p.Cast[k].Max(b => b.Hi.Y);
-      if (!(lo < parting - Eps && hi > parting + Eps))
+      bool spans = lo < parting - Eps && hi > parting + Eps,
+        flatBackDrag = lo < parting - Eps && hi >= parting - Eps,
+        flatBackCope = hi > parting + Eps && lo <= parting + Eps;
+      if (!(spans || flatBackDrag || flatBackCope))
         lines.Add(
           $"Piece{k + 1}: y {Fmt.G(lo)} to {Fmt.G(hi)} does not span the parting at {Fmt.G(parting)}"
         );

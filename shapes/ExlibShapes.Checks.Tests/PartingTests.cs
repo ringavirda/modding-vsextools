@@ -95,6 +95,17 @@ public class PartingTests {
   }
 
   [Fact]
+  public void A_flat_back_piece_touching_the_parting_passes() {
+    foreach (double y in new[] { 4.0, 4.0 - 5e-7, 8.0, 8.0 + 5e-7 }) {
+      CheckInput input = StageFixtures.Closed(at: PourFixtures.At(13, y, -3));
+      Assert.DoesNotContain(
+        Check.Run(input).Lines,
+        l => l.Contains("does not span the parting")
+      );
+    }
+  }
+
+  [Fact]
   public void A_piece_wholly_under_the_parting_names_its_span() {
     CheckInput input = StageFixtures.Closed(at: PourFixtures.At(13, 1, -3));
     Assert.Contains(
