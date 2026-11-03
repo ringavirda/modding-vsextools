@@ -33,13 +33,13 @@ internal sealed class Workspace : IDisposable {
     { "elements": [ { "name": "Root", "from": [0, 0, 0], "to": [1, 1, 1], "children": [
       {{Cube("Base", "[0, 0, 0]", "[16, 4, 16]")}},
       {{Cube("Way", "[2, 3, 2]", "[14, 4, 14]")}},
-      {{Cube("Cav", "[6, 0, 6]", "[10, 4, 10]")}}
+      {{Cube("Cav", "[0, 1, 6]", "[16, 3, 10]")}}
     ] } ] }
     """;
 
   public static readonly string DrawingWithMystery = Drawing.Replace(
-    Cube("Cav", "[6, 0, 6]", "[10, 4, 10]"),
-    Cube("Cav", "[6, 0, 6]", "[10, 4, 10]")
+    Cube("Cav", "[0, 1, 6]", "[16, 3, 10]"),
+    Cube("Cav", "[0, 1, 6]", "[16, 3, 10]")
       + ", "
       + Cube("Mystery", "[1, 1, 1]", "[2, 2, 2]")
   );
@@ -146,7 +146,7 @@ internal sealed class Workspace : IDisposable {
   ) =>
     $$"""
       { "item": "{{item}}", "source": { "groups": {{groups}} },
-        "station": "floor", "lie": {{FloorLie}}, "cores": [ { "feature": "cav", "print": 2 } ] }
+        "station": "floor", "lie": {{FloorLie}}, "cores": [ { "feature": "cav", "print": 1 } ] }
       """;
 
   public (int Exit, string Out, string Err) Run(params string[] args) {

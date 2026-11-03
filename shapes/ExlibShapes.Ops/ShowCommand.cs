@@ -80,12 +80,8 @@ internal static class ShowCommand {
         : $"set: {m.Set.Item}, station {m.Set.Station ?? "none"}"
     );
     lines.Add("standard items:");
-    foreach (
-      IGrouping<string, UserSpec> g in m
-        .Users.GroupBy(u => u.Blank)
-        .OrderBy(g => g.Key, StringComparer.Ordinal)
-    )
-      lines.Add($"  {g.Key} x{g.Sum(u => u.Count)}");
+    foreach (StandardSpec s in m.Standard)
+      lines.Add($"  {s.Item} x{s.Count}");
   }
 
   private static void PartLines(Args a, string shapePath, List<string> lines) {

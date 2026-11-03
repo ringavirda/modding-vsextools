@@ -96,9 +96,9 @@ public class ImportTests : IDisposable {
       SLIDE_SUNK = {"Fixing": ((2, 0, 1),)}
       def kinds(sf):
           return {
-              "lathebed": dict(item="cast-lathe-bed", pieces={"Bed": (None, 0)},
+              "lathebed": dict(item="cast-lathe-bed", fills=("longflask-filling-castlathebed", "pattern-castlathebed"), pieces={"Bed": (None, 0)},
                                lie=[[0, 0, 1, 7.5], [0, -1, 0, 22], [1, 0, 0, -19], [0, 0, 0, 1.0]]),
-              "latheframe": dict(item="cast-lathe-frame", pieces={"StandardW": ("StandardW", None), "StandardE": ("StandardE", None)},
+              "latheframe": dict(item="cast-lathe-frame", fills=("floorflask-filling-castlatheframe",), pieces={"StandardW": ("StandardW", None), "StandardE": ("StandardE", None)},
                                  lie=[[1, 0, 0, 5.875], [0, 1, 0, 4], [0, 0, 1, -24], [0, 0, 0, 1.0]]),
           }
       """
@@ -164,6 +164,33 @@ public class ImportTests : IDisposable {
   }
 
   [Fact]
+  public void Import_lists_the_shipped_asset_named_like_the_drawings_folder() {
+    string drawing = Put(
+      "exmods/workbench/shapes/lathe/machine-mp-lathe-proposed.json",
+      Drawing()
+    );
+    Put("exmods/mods/iiex/assets/iiex/shapes/forming/lathe.json", Drawing());
+    Put("exmods/mods/iiex/assets/iiex/shapes/forming/bed.json", Drawing());
+
+    (int exit, string output, _) = Run(
+      "import",
+      drawing,
+      "--out",
+      Path.Combine(dir, "out")
+    );
+
+    Assert.Equal(0, exit);
+    string[] listed = [.. output.Split('\n').Where(l => l.StartsWith("  "))];
+    Assert.Equal(
+      [
+        "  shipped mods/iiex/assets/iiex/shapes/forming/lathe.json",
+        "  proposed workbench/shapes/lathe/machine-mp-lathe-proposed.json",
+      ],
+      listed.Select(l => l.TrimEnd('\r'))
+    );
+  }
+
+  [Fact]
   public void Iron5_is_a_fastener_guess() {
     string drawing = LatheDrawing();
     string outDir = Path.Combine(dir, "out");
@@ -176,6 +203,7 @@ public class ImportTests : IDisposable {
     Assert.Equal("fastener", r.Elements["Bolts"].Stage);
     Assert.Equal("cast", r.Elements["Way1"].Stage);
     Assert.Equal("cast", r.Elements["Root"].Stage);
+    Assert.Equal("fallen", r.Owner);
     Assert.Equal(["machine"], r.Kinds);
     Assert.Equal("stages", (string?)r.Carried["import"]!["unconfirmed"]![0]);
   }
@@ -305,6 +333,8 @@ public class ImportTests : IDisposable {
     r.Elements["Way1"].Stage = "worked";
     r.Steps.Add(new Step { Id = "plane" });
     r.Carried["blank"] = "castbed";
+    r.Features["Kept"] = new Feature { Origin = "planed" };
+    r.Features["Kept"].Elements.Add("Way2");
     r.WriteFile(recordPath);
 
     ImportWithLane(outDir, python!);
@@ -313,6 +343,8 @@ public class ImportTests : IDisposable {
     Assert.Equal("worked", r.Elements["Way1"].Stage);
     Assert.Equal("plane", r.Steps.Single().Id);
     Assert.Equal("castbed", (string?)r.Carried["blank"]);
+    Assert.Equal("planed", r.Features["Kept"].Origin);
+    Assert.Equal(["Way2"], r.Features["Kept"].Elements);
   }
 
   [SkippableFact]
@@ -357,6 +389,10 @@ public class ImportTests : IDisposable {
       m.Castings[2].Groups.Single().Groups
     );
     Assert.Equal(["CrossSlide"], m.Castings[1].Groups.Single().Groups);
+    Assert.Equal(
+      ["long", "floor", "floor"],
+      [m.Castings[0].Station, m.Castings[1].Station, m.Castings[2].Station]
+    );
     Assert.Equal("", err);
   }
 

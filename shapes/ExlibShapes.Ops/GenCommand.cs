@@ -49,6 +49,7 @@ internal static class GenCommand {
     GenResult result = gen.Run(ctx, spec);
 
     var provenance = new Provenance(Path.Combine(root, "provenance.jsonl"));
+    string fingerprint = Workspace.SpecFingerprint(specPath);
     foreach (GenOutput o in result.Outputs) {
       string shapePath = Path.Combine(root, "items", o.Name + "-proposed.json");
       Ownership.Guard(provenance, shapePath);
@@ -57,6 +58,10 @@ internal static class GenCommand {
       string sha = Provenance.Sha256Of(bytes);
       o.Record.Shape = o.Name + "-proposed.json";
       o.Record.ShapeSha = sha;
+      o.Record.Carried["gen"] = new JObject {
+        ["spec"] = Workspace.Relative(root, specPath),
+        ["inputs"] = fingerprint,
+      };
       o.Record.WriteFile(Workspace.RecordFileOf(shapePath));
       var row = new ProvenanceRow(
         Workspace.Relative(root, shapePath),
@@ -87,12 +92,13 @@ internal static class GenCommand {
     foreach (string redraw in result.Redraws)
       output.WriteLine($"redraw: {redraw}");
 
+    string specName = Workspace.Relative(root, specPath);
     string storePath = Path.Combine(root, QuestionStore.FileName);
     List<StoredQuestion> kept =
     [
-      .. QuestionStore.Load(storePath).Where(q => q.Spec != specPath),
+      .. QuestionStore.Load(storePath).Where(q => q.Spec != specName),
       .. result.Questions.Select(q => new StoredQuestion(
-        specPath,
+        specName,
         q.Part,
         q.Feature,
         q.Text,

@@ -7,7 +7,8 @@ namespace ExpandedLib.Shapes.Checks;
 /// <summary>
 /// Whether every face takes the texture of its element's role. A pattern record's elements all take the
 /// <c>pattern</c> role and a core box record's the <c>corebox</c> role; any other element takes the role its
-/// record row (or its nearest tagged group's) names. One line per fault:
+/// record row (or its nearest tagged group's) names; a face a record step cuts takes that step's
+/// <c>finished.&lt;step&gt;</c> role instead. One line per fault:
 /// <c>PATH face: texture 'oak', the pattern role takes 'wood'</c>, or <c>PATH: no role in the record</c>.
 /// Needs the record and the settings.
 /// </summary>
@@ -34,6 +35,10 @@ public sealed class Role : ICheck {
       record.Kinds.Contains("pattern") ? "pattern"
       : record.Kinds.Contains("corebox") ? "corebox"
       : null;
+    var cut = new Dictionary<string, string>();
+    foreach (Step step in record.Steps)
+      foreach (string face in step.Faces)
+        cut[face] = "finished." + step.Id;
     var lines = new List<string>();
     int faces = 0;
     foreach (Node leaf in new Tree(input.Shape).Leaves) {
@@ -43,13 +48,18 @@ public sealed class Role : ICheck {
         faces += leaf.Faces.Count;
         continue;
       }
-      string key = RoleTextures.KeyOf(settings, role);
       foreach ((string face, Face spec) in leaf.Faces) {
         faces++;
+        string faceRole =
+          kindRole == null
+          && cut.TryGetValue($"{leaf.Name}/{face}", out string? c)
+            ? c
+            : role;
+        string key = RoleTextures.KeyOf(settings, faceRole);
         string name = (spec.Texture ?? "").TrimStart('#');
         if (!RoleTextures.Is(input.Shape, settings, key, name))
           lines.Add(
-            $"{leaf.Path} {face}: texture '{name}', the {role} role takes '{key}'"
+            $"{leaf.Path} {face}: texture '{name}', the {faceRole} role takes '{key}'"
           );
       }
     }

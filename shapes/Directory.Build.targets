@@ -81,4 +81,62 @@
       />
     </ItemGroup>
   </Target>
+  <!-- Embeds the casting generator's version in ExlibShapes.Generators as AssemblyMetadata "GeneratorVersion.castgen":
+       the sha256 of the sources of Generators, Checks and Core, so it does not depend on the path a build ran in. -->
+  <UsingTask
+    TaskName="SourceTreeHash"
+    TaskFactory="RoslynCodeTaskFactory"
+    AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll"
+  >
+    <ParameterGroup>
+      <Roots Required="true" ParameterType="System.String" />
+      <Hash Output="true" ParameterType="System.String" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Linq" />
+      <Using Namespace="System.Security.Cryptography" />
+      <Using Namespace="System.Text" />
+      <Code Type="Fragment" Language="cs">
+        <![CDATA[
+        string Sep = Path.DirectorySeparatorChar.ToString();
+        string[] roots = Roots.Split(';');
+        using (var sha = SHA256.Create()) {
+          foreach (string root in roots) {
+            string name = Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar));
+            string[] files = Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
+              .Where(f => !f.Contains(Sep + "obj" + Sep) && !f.Contains(Sep + "bin" + Sep))
+              .Select(f => name + "/" + f.Substring(root.Length).TrimStart(Path.DirectorySeparatorChar).Replace('\\', '/'))
+              .OrderBy(f => f, System.StringComparer.Ordinal)
+              .ToArray();
+            foreach (string rel in files) {
+              byte[] label = Encoding.UTF8.GetBytes(rel + "\n");
+              sha.TransformBlock(label, 0, label.Length, null, 0);
+              byte[] body = File.ReadAllBytes(Path.Combine(root, rel.Substring(name.Length + 1)));
+              sha.TransformBlock(body, 0, body.Length, null, 0);
+            }
+          }
+          sha.TransformFinalBlock(new byte[0], 0, 0);
+          Hash = string.Concat(sha.Hash.Select(b => b.ToString("x2")));
+        }
+      ]]>
+      </Code>
+    </Task>
+  </UsingTask>
+
+  <Target
+    Name="EmbedGeneratorVersion"
+    BeforeTargets="GetAssemblyAttributes"
+    Condition="'$(MSBuildProjectName)' == 'ExlibShapes.Generators'"
+  >
+    <SourceTreeHash Roots="$(MSBuildProjectDirectory);$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../ExlibShapes.Checks'));$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../ExlibShapes.Core'))">
+      <Output TaskParameter="Hash" PropertyName="_GeneratorHash" />
+    </SourceTreeHash>
+    <ItemGroup>
+      <AssemblyMetadata
+        Include="GeneratorVersion.castgen"
+        Value="$(_GeneratorHash)"
+      />
+    </ItemGroup>
+  </Target>
 </Project>

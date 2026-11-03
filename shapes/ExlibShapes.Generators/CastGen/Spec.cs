@@ -160,6 +160,11 @@ public sealed record SetSpec(
   IReadOnlyList<GroupSpec> Groups
 );
 
+/// <summary>A drawn standard item with a casting of its own, counted in the machine's bill and not generated.</summary>
+/// <param name="Item">The item name.</param>
+/// <param name="Count">How many the machine uses.</param>
+public sealed record StandardSpec(string Item, int Count);
+
 /// <summary>A machine file.</summary>
 public sealed record MachineSpec(
   string Machine,
@@ -169,7 +174,8 @@ public sealed record MachineSpec(
   IReadOnlyList<UserSpec> Users,
   IReadOnlyList<JoinedSpec> Joined,
   IReadOnlyList<CastingSpec> Castings,
-  SetSpec? Set
+  SetSpec? Set,
+  IReadOnlyList<StandardSpec> Standard
 );
 
 /// <summary>Reads the CastGen spec files. Every object is strict: a key the schema does not name
@@ -238,6 +244,13 @@ public static class Spec {
       );
     JObject? setObj = r.Object("set");
     SetSpec? set = setObj == null ? null : ReadSet(setObj);
+    var standard = new List<StandardSpec>();
+    foreach (JToken t in r.Array("standard") ?? []) {
+      var s = new Fields(Fields.AsObject(t, "standard"), "standard");
+      int count = (int)(s.Number("count") ?? 1);
+      standard.Add(new StandardSpec(s.Text("item"), count));
+      s.Done();
+    }
     r.Done();
     return new MachineSpec(
       machine,
@@ -247,7 +260,8 @@ public static class Spec {
       users,
       joined,
       castings,
-      set
+      set,
+      standard
     );
   }
 
@@ -355,6 +369,10 @@ public static class Spec {
     var r = new Fields(o, "casting");
     string item = r.Text("item");
     JObject? src = r.Object("source");
+    if (src != null && (src.ContainsKey("shape") || src.ContainsKey("sha")))
+      throw new SpecException(
+        $"{item}: a casting takes its drawing from the machine file's source; source.shape and source.sha are not read"
+      );
     SourceRef? own = src == null ? null : ReadSource(src, machine, true);
     var groups = new List<GroupSpec>();
     JArray? kit = r.Array("groups");

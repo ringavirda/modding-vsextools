@@ -376,7 +376,7 @@ exmod shapetool gen SPEC --root DIR [--runtime RDIR] [--shapes DIR] [--settings 
 exmod shapetool check PATH... [--catalogue] [--mutate] [--source SHAPE] [--settings FILE] [--cache DIR]
 exmod shapetool show PART [--root DIR] [--settings FILE] [--source SHAPE] [--cache DIR]
 exmod shapetool answer PART FEATURE OPTION [--root DIR] [--shapes DIR] [--by NAME]
-exmod shapetool import DRAWING [--lane DIR --module lathe|shaper|smallflask] [--out DIR] [--python EXE] [--search DIR]
+exmod shapetool import DRAWING [--lane DIR --module lathe|shaper|smallflask] [--out=DIR] [--python EXE] [--search DIR]
 
 Passes the verb to exlib-shapes and exits with its code: 0 passed, 1 a gate failed or the run could not
 be made, 2 usage, 3 an open question, printed as `Question:` lines for the main session to ask.
@@ -390,6 +390,10 @@ be made, 2 usage, 3 an open question, printed as `Question:` lines for the main 
   answer   stores the answer to an open question in the part's record, against the feature's sha
   import   lists every drawing of a drawing's block, then writes its record skeleton and, with a lane, a
            machine file of the lane's casting kinds; guesses go out as Questions, one per drawing group
+
+`import` needs `--out=DIR` in the `=` form here: PowerShell's own parameter binder treats a bare `--out`
+token as an ambiguous prefix of its common `-OutVariable`/`-OutBuffer` parameters. The standalone
+`exlib-shapes import` takes either form.
 
 Runs the published copy (`exmod shapes-build`) under EXMOD_SHAPES_NO_BUILD, takes no lock, and appends
 one line per command to $XDG_STATE_HOME/exlib-shapes/runs.jsonl:

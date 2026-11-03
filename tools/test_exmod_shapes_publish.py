@@ -195,6 +195,14 @@ ConvertTo-Json -Compress @($code, $global:seen)""")
         self.assertEqual(3, code)
         self.assertEqual(os.path.join(self.root, self.publishes()[0], "exlib-shapes.dll") + "|check|a.json|--catalogue", seen[0] if isinstance(seen, list) else seen)
 
+    def test_shapetool_help_documents_import_out_in_the_form_pwsh_passes(self):
+        # Fails if the shapetool help goes back to `--out DIR`, which pwsh refuses as an ambiguous parameter.
+        shapes = self.read(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "exmod", "shapes.ps1"))
+        detail = shapes[shapes.index("-Name shapetool"):]
+        import_line = next(l for l in detail.splitlines() if l.startswith("exmod shapetool import"))
+        self.assertIn("--out=DIR", import_line)
+        self.assertNotIn("--out DIR", import_line)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -29,6 +29,8 @@ internal static class MachineSkeleton {
               .Order(StringComparer.Ordinal)
           ),
         };
+      if (StationOfFills(k["fills"]) is { } station)
+        entry["station"] = station;
       if (Lie(k["lie"]) is { } lie)
         entry["lie"] = lie;
       castings.Add(((string)entry["item"]!, entry));
@@ -42,7 +44,9 @@ internal static class MachineSkeleton {
               (string)p.Value["item"]!
             ),
             ["source"] = new JObject { ["groups"] = new JArray("CrossSlide") },
-          }
+          }.WithStation(
+            (p.Value["rows"] as JObject)?.Properties().FirstOrDefault()?.Name
+          )
         )
       );
     var machine = new JObject {
@@ -55,6 +59,20 @@ internal static class MachineSkeleton {
       castings.OrderBy(c => c.Item, StringComparer.Ordinal).Select(c => c.Entry)
     );
     return machine;
+  }
+
+  private static JObject WithStation(this JObject entry, string? station) {
+    if (station != null)
+      entry["station"] = station;
+    return entry;
+  }
+
+  /// <summary>The station a kind's filling names: <c>longflask-filling-castlathebed</c> is <c>long</c>; null when the
+  /// kind lists no filling.</summary>
+  private static string? StationOfFills(JToken? fills) {
+    string? first = (fills as JArray)?.FirstOrDefault()?.ToString();
+    int at = first?.IndexOf("flask-", StringComparison.Ordinal) ?? -1;
+    return at > 0 ? first![..at] : null;
   }
 
   /// <summary>The per-flask-axis lie of a 4 x 4 matrix taking an item point to the flask; null when a row is not a

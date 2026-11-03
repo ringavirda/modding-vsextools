@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using ExpandedLib.Shapes.Core;
 using Newtonsoft.Json.Linq;
 using Xunit;
@@ -274,5 +277,74 @@ public class CastGenRunTests {
     Assert.Throws<SpecException>(() =>
       Run(Ctx(), BlankEntry("floor", FloorLie, """, "bogus": 1"""))
     );
+  }
+
+  [Theory]
+  [InlineData("shape", "nosuch.json")]
+  [InlineData("sha", "deadbeef")]
+  public void A_casting_source_that_names_a_drawing_throws_SpecException(
+    string key,
+    string value
+  ) {
+    JObject casting = JObject.Parse(
+      $$"""{ "item": "cast-x", "source": { "groups": ["Root"], "{{key}}": "{{value}}" } }"""
+    );
+
+    SpecException e = Assert.Throws<SpecException>(() =>
+      Spec.ReadMachine(
+        JObject.Parse(
+          $$"""
+          { "machine": "planer", "source": { "shape": "m.json", "sha": "0000000" },
+            "castings": [ {{casting}} ] }
+          """
+        )
+      )
+    );
+
+    Assert.Contains("cast-x", e.Message);
+    Assert.Contains("source." + key, e.Message);
+  }
+
+  [SkippableFact]
+  public void The_generator_version_is_the_hash_of_its_sources_and_not_of_its_build() {
+    DirectoryInfo? shapes = new DirectoryInfo(AppContext.BaseDirectory).Parent;
+    while (
+      shapes != null
+      && !File.Exists(
+        Path.Combine(
+          shapes.FullName,
+          "ExlibShapes.Generators",
+          "ExlibShapes.Generators.csproj"
+        )
+      )
+    )
+      shapes = shapes.Parent;
+    Skip.If(shapes == null, "built outside the source tree");
+    using var sha = SHA256.Create();
+    foreach (
+      string project in new[]
+      {
+        "ExlibShapes.Generators",
+        "ExlibShapes.Checks",
+        "ExlibShapes.Core",
+      }
+    ) {
+      string root = Path.Combine(shapes!.FullName, project);
+      foreach (
+        string rel in Directory
+          .EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
+          .Select(f => Path.GetRelativePath(root, f).Replace('\\', '/'))
+          .Where(f => !f.StartsWith("obj/") && !f.StartsWith("bin/"))
+          .Order(StringComparer.Ordinal)
+      ) {
+        byte[] label = Encoding.UTF8.GetBytes(project + "/" + rel + "\n");
+        sha.TransformBlock(label, 0, label.Length, null, 0);
+        byte[] body = File.ReadAllBytes(Path.Combine(root, rel));
+        sha.TransformBlock(body, 0, body.Length, null, 0);
+      }
+    }
+    sha.TransformFinalBlock([], 0, 0);
+
+    Assert.Equal(Convert.ToHexStringLower(sha.Hash!), new CastGen().Version);
   }
 }

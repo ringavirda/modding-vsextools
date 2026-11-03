@@ -284,7 +284,8 @@ the lane's packages (numpy). `smallflask` reads `propose.py` and has no casting 
 
 Exit codes: `0` pass, `1` a gate failed or the run could not be made, `2` usage, `3` an open question. Each command
 appends one line to `$XDG_STATE_HOME/exlib-shapes/runs.jsonl`. Inside the workspace, `exmod shapetool VERB ARGS` runs
-the published copy and returns these codes.
+the published copy and returns these codes; there `import` takes `--out=DIR`, because PowerShell reads a bare `--out` as
+an ambiguous prefix of its `-OutVariable` and `-OutBuffer`.
 
 ## tree / measure
 

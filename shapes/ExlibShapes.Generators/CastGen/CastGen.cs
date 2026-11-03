@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.RegularExpressions;
 using ExpandedLib.Shapes.Checks;
 using ExpandedLib.Shapes.Core;
@@ -14,16 +12,19 @@ namespace ExpandedLib.Shapes.Generators;
 
 /// <summary>The casting generator: steps 1 to 11 chained over one blank file or one machine file entry.</summary>
 public sealed partial class CastGen : IGenerator {
-  private static readonly Lazy<string> Sources = new(HashAssemblies);
-
   [GeneratedRegex("^Print")]
   private static partial Regex PrintName();
 
   /// <inheritdoc />
   public string Id => "castgen";
 
-  /// <summary>The sha256 of the assemblies the generator runs from: this one, Core's and Checks'.</summary>
-  public string Version => Sources.Value;
+  /// <summary>The sha256 of the sources of Generators, Checks and Core, embedded at build; it does not depend on the
+  /// path a build ran in.</summary>
+  public string Version { get; } =
+    typeof(CastGen)
+      .Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+      .First(a => a.Key == "GeneratorVersion.castgen")
+      .Value!;
 
   /// <inheritdoc />
   public JObject SpecSchema => (JObject)Spec.Schema.DeepClone();
@@ -625,24 +626,5 @@ public sealed partial class CastGen : IGenerator {
           )
       );
     return asks;
-  }
-
-  private static string HashAssemblies() {
-    var all = new StringBuilder();
-    foreach (
-      Assembly a in new[]
-      {
-        typeof(CastGen).Assembly,
-        typeof(Mat4d).Assembly,
-        typeof(Blankmatch).Assembly,
-      }
-    )
-      all.Append(
-          a.Location.Length > 0 && File.Exists(a.Location)
-            ? Provenance.Sha256Of(File.ReadAllBytes(a.Location))
-            : a.FullName
-        )
-        .Append('\n');
-    return Provenance.Sha256Of(all.ToString());
   }
 }

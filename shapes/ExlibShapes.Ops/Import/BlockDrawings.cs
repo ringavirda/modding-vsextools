@@ -35,13 +35,17 @@ internal static class BlockDrawings {
 
   /// <summary>Every shape file under <paramref name="searchRoot"/> named like the block of
   /// <paramref name="drawing"/>: the plain file, its <c>-proposed</c> and <c>-sketch</c> forms, in any folder
-  /// including <c>old</c>. Records, runtime copies and build output are not drawings.</summary>
+  /// including <c>old</c>, and the shipped asset (a file under <c>assets</c>) named like the folder the drawing is in.
+  /// Records, runtime copies and build output are not drawings.</summary>
   /// <param name="drawing">A drawing of the block.</param>
   /// <param name="searchRoot">The tree to search.</param>
   public static List<BlockDrawing> Find(string drawing, string searchRoot) {
     string stem = Stem(drawing);
     var found = new List<BlockDrawing>();
-    Walk(Path.GetFullPath(searchRoot), stem, found);
+    string folder = Path.GetFileName(
+      Path.GetDirectoryName(Path.GetFullPath(drawing))
+    )!;
+    Walk(Path.GetFullPath(searchRoot), stem, folder, found);
     return [.. found.OrderBy(d => d.Path, StringComparer.Ordinal)];
   }
 
@@ -55,17 +59,23 @@ internal static class BlockDrawings {
     return dir;
   }
 
-  private static void Walk(string dir, string stem, List<BlockDrawing> found) {
+  private static void Walk(
+    string dir,
+    string stem,
+    string folder,
+    List<BlockDrawing> found
+  ) {
     foreach (string file in Directory.EnumerateFiles(dir, "*.json")) {
       string name = Path.GetFileName(file);
       if (name.EndsWith(".part.json", StringComparison.Ordinal))
         continue;
-      if (Stem(file) == stem)
-        found.Add(new BlockDrawing(KindOf(file), file));
+      string kind = KindOf(file);
+      if (Stem(file) == stem || (kind == "shipped" && Stem(file) == folder))
+        found.Add(new BlockDrawing(kind, file));
     }
     foreach (string sub in Directory.EnumerateDirectories(dir))
       if (!Skipped.Contains(Path.GetFileName(sub)))
-        Walk(sub, stem, found);
+        Walk(sub, stem, folder, found);
   }
 
   private static string KindOf(string file) {

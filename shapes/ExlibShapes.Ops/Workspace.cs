@@ -45,6 +45,27 @@ internal static class Workspace {
     return Settings.ReadFile(path);
   }
 
+  /// <summary>The sha256 of a spec file and the blank files beside it, which <c>gen</c> records in each output and
+  /// <c>check</c> compares to the files now.</summary>
+  /// <param name="specPath">The spec file; its <c>blanks</c> folder is read when there is one.</param>
+  public static string SpecFingerprint(string specPath) {
+    var text = new StringBuilder(
+      Provenance.Sha256Of(File.ReadAllBytes(specPath))
+    );
+    string blanks = Path.Combine(Path.GetDirectoryName(specPath)!, "blanks");
+    if (Directory.Exists(blanks))
+      foreach (
+        string f in Directory
+          .EnumerateFiles(blanks, "*.json")
+          .Order(StringComparer.Ordinal)
+      )
+        text.Append('\n')
+          .Append(Path.GetFileName(f))
+          .Append(' ')
+          .Append(Provenance.Sha256Of(File.ReadAllBytes(f)));
+    return Provenance.Sha256Of(text.ToString());
+  }
+
   /// <summary>The shape path of a shape file or its record path.</summary>
   public static string ShapeFileOf(string path) =>
     path.EndsWith(".part.json", StringComparison.Ordinal)

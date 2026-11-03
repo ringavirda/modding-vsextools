@@ -191,4 +191,35 @@ public class RoleTests {
     Assert.All(findings, f => Assert.Equal("boss_texture", f.Kind));
     Assert.All(findings, f => Assert.Equal("Bed/Lug", f.Path));
   }
+
+  [Fact]
+  public void A_face_a_step_cuts_takes_the_steps_finished_role() {
+    Shape planed = Fixtures.Edited(
+      "cast-ok.json",
+      raw => {
+        raw["textures"]!["cast-iron-turned1"] = "block/metal/cast-iron-turned1";
+        raw.SelectTokens("$..children[?(@.name == 'Way')]")
+          .OfType<JObject>()
+          .First()["faces"]!["up"]!["texture"] = "#cast-iron-turned1";
+      }
+    );
+    CheckInput Input(string body) =>
+      new(
+        planed,
+        Record: CastFixtures.Record(body),
+        Settings: CastFixtures.Settings()
+      );
+
+    CheckResult cut = Check.Run(
+      Input(CastFixtures.CastRecord + "," + CastFixtures.PlaneWay)
+    );
+    CheckResult uncut = Check.Run(Input(CastFixtures.CastRecord));
+
+    Assert.Equal(0, cut.ExitCode);
+    Assert.Equal(1, uncut.ExitCode);
+    Assert.Contains(
+      "Way up: texture 'cast-iron-turned1', the cast role takes 'cast-iron1'",
+      uncut.Lines.Single(l => l.Contains("Way up"))
+    );
+  }
 }

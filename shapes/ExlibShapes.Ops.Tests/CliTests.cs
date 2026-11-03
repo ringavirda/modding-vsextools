@@ -118,7 +118,7 @@ public class CliTests {
     string spec = w.MachineSpec(
       Workspace.Casting(),
       Workspace.User(2),
-      """, "set": { "item": "planer-set", "station": "small", "groups": [ { "groups": ["Root/Base"] } ] }"""
+      """, "set": { "item": "planer-set", "station": "small", "groups": [ { "groups": ["Root/Base"] } ] }, "standard": [ { "item": "castbearingblock", "count": 4 } ]"""
     );
 
     (int exit, string output, _) = w.Run("show", spec);
@@ -127,7 +127,8 @@ public class CliTests {
     Assert.Contains("cast-planer-bed x1, station floor", output);
     Assert.Contains("planer-bed on blank castbed x2", output);
     Assert.Contains("set: planer-set, station small", output);
-    Assert.Contains("  castbed x2", output);
+    Assert.Contains("  castbearingblock x4", output);
+    Assert.DoesNotContain("  castbed x2", output);
     Assert.True(output.Split('\n').Length < 40);
   }
 
@@ -154,7 +155,7 @@ public class CliTests {
       "m.json",
       Workspace.DrawingWithMystery,
       Workspace.MysteryRecord,
-      owner: "import"
+      owner: "fallen"
     );
     string spec = w.MachineSpec(
       Workspace.Casting("[\"Root/Base\"]", "cast-planer-base")
@@ -168,6 +169,14 @@ public class CliTests {
     (int exit, string output, string genErr) = w.Gen(spec);
     Assert.True(exit == 3, genErr);
     Assert.Contains("Question: Mystery:", output);
+    Assert.False(
+      Path.IsPathRooted(
+        (string)
+          JArray.Parse(File.ReadAllText(Path.Combine(w.Out, "questions.json")))[
+            0
+          ]["spec"]!
+      )
+    );
     Assert.True(
       File.Exists(
         Path.Combine(w.Out, "items", "cast-planer-base-proposed.json")
@@ -198,7 +207,7 @@ public class CliTests {
     Answer a = Assert.Single(record.Answers);
     Assert.Equal(("Mystery", "cast", "fallen"), (a.Feature, a.Text, a.By));
     Assert.Matches(@"^\d{4}-\d\d-\d\d$", a.Date);
-    Assert.Equal("import", record.Owner);
+    Assert.Equal("fallen", record.Owner);
 
     (int rerun, string again, string rerunErr) = w.Gen(spec);
     Assert.True(rerun == 0, rerunErr);
@@ -257,7 +266,7 @@ public class CliTests {
   }
 
   [Fact]
-  public void Cli_check_exits_1_on_a_failed_gate_and_a_second_run_is_cached() {
+  public void Cli_check_passes_a_clean_filling_and_a_second_run_is_cached() {
     using var w = new Workspace();
     w.Gen(w.MachineSpec(Workspace.Casting()));
     string filling = Path.Combine(
@@ -265,30 +274,54 @@ public class CliTests {
       "items",
       "floorflask-filling-cast-planer-bed-proposed.json"
     );
-
-    (int exit, string output, string err) = w.Run(
+    string[] args =
+    [
       "check",
       filling,
       "--cache",
       Path.Combine(w.Dir, "cache"),
       "--settings",
-      w.SettingsFile
-    );
-    (_, string second, _) = w.Run(
-      "check",
-      filling,
-      "--cache",
-      Path.Combine(w.Dir, "cache"),
-      "--settings",
-      w.SettingsFile
-    );
+      w.SettingsFile,
+    ];
 
-    Assert.True(exit == 1, output + err);
+    (int exit, string output, string err) = w.Run(args);
+    (_, string second, _) = w.Run(args);
+
+    Assert.True(exit == 0, output + err);
     Assert.Contains("PASS impression", output);
-    Assert.Contains("FAIL corefit", output);
+    Assert.Contains("PASS corefit", output);
     Assert.DoesNotContain("SKIP", output);
     Assert.DoesNotContain(", cached", output);
     Assert.Contains(", cached", second);
+  }
+
+  [Fact]
+  public void Cli_check_exits_1_on_a_core_print_that_leaves_the_sand() {
+    using var w = new Workspace();
+    w.Gen(w.MachineSpec(Workspace.Casting()));
+    string core = Path.Combine(
+      w.Out,
+      "items",
+      "drysandcore-cast-planer-bed-proposed.json"
+    );
+    JObject shape = JObject.Parse(File.ReadAllText(core));
+    foreach (JToken e in shape.DescendantsAndSelf().OfType<JObject>().ToList())
+      if ((string?)e["name"] == "Print1")
+        foreach (string end in new[] { "from", "to" })
+          e[end]![1] = (double)e[end]![1]! + 40;
+    File.WriteAllText(core, shape.ToString());
+
+    (int exit, string output, string err) = Check(
+      w,
+      Path.Combine(
+        w.Out,
+        "items",
+        "floorflask-filling-cast-planer-bed-proposed.json"
+      )
+    );
+
+    Assert.True(exit == 1, output + err);
+    Assert.Contains("FAIL corefit", output);
   }
 
   private (int Exit, string Out, string Err) Check(Workspace w, string path) =>
@@ -472,7 +505,7 @@ public class CliTests {
     w.Run(
       "gen",
       w.MachineSpec(
-        Workspace.Casting().Replace("\"print\": 2", "\"print\": 3")
+        Workspace.Casting().Replace("\"print\": 1", "\"print\": 3")
           + ", "
           + Workspace.Casting("[\"Root/Base\"]", "cast-planer-base"),
         Workspace.User()
@@ -492,6 +525,28 @@ public class CliTests {
       before["items/cast-planer-base-proposed.json"],
       after["items/cast-planer-base-proposed.json"]
     );
+  }
+
+  [Fact]
+  public void Cli_check_refuses_an_output_whose_spec_changed_since_gen() {
+    using var w = new Workspace();
+    string spec = w.MachineSpec(Workspace.Casting());
+    w.Gen(spec);
+    File.WriteAllText(spec, File.ReadAllText(spec) + " ");
+    string item = Path.Combine(
+      w.Out,
+      "items",
+      "floorflask-filling-cast-planer-bed-proposed.json"
+    );
+    File.WriteAllText(
+      spec,
+      File.ReadAllText(spec).Replace("cast-planer-bed", "cast-planer-bed2")
+    );
+
+    (int exit, _, string err) = Check(w, item);
+
+    Assert.Equal(1, exit);
+    Assert.Contains("stale outputs", err);
   }
 
   [Fact]

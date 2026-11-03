@@ -143,14 +143,32 @@ internal static class CheckCommand {
     if (file0 == null)
       return null;
     var provenance = new Provenance(file0);
-    return () =>
-      Staleness.Reason(
-        provenance,
-        file,
-        "castgen",
-        version,
-        provenance.Find(file)?.InputHash ?? ""
-      );
+    return () => {
+      ProvenanceRow? row = provenance.Find(file);
+      return Staleness.Reason(
+          provenance,
+          file,
+          "castgen",
+          version,
+          row?.InputHash ?? ""
+        ) ?? SpecStale(file, Path.GetDirectoryName(file0)!);
+    };
+  }
+
+  private static string? SpecStale(string file, string root) {
+    string recordPath = Workspace.RecordFileOf(file);
+    if (
+      !File.Exists(recordPath)
+      || PartRecord.ReadFile(recordPath).Carried["gen"] is not JObject gen
+    )
+      return null;
+    string name = Workspace.Relative(root, file);
+    string spec = Path.GetFullPath(Path.Combine(root, (string)gen["spec"]!));
+    if (!File.Exists(spec))
+      return $"{name}: its spec {gen["spec"]} is not there";
+    return Workspace.SpecFingerprint(spec) == (string?)gen["inputs"]
+      ? null
+      : $"{name}: its spec or blank files changed since gen made it";
   }
 
   private static CheckInput InputOf(
