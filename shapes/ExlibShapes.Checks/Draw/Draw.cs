@@ -13,7 +13,9 @@ namespace ExpandedLib.Shapes.Checks;
 /// failure. One summary line per half (<c>Drag: N columns occupied, M not unbroken from the parting</c>, ending
 /// <c>  FAIL</c> when M is not 0) and one <c>  Drag x A..B z C..D: first gap at y Y</c> per broken column. A column may
 /// start up to 0.05 voxel (the drawing tolerance) away from the parting. A turned leaf
-/// is read as the 1/32 lattice cells whose centre lies inside it; needs <see cref="CheckInput.Parting"/>.
+/// is read as the 1/32 lattice cells whose centre lies inside it; the staves of a round run about a world axis are
+/// read as the polygon they span over the run's axial extent (<see cref="StaveRuns"/>); needs
+/// <see cref="CheckInput.Parting"/>.
 /// </summary>
 public sealed class Draw : ICheck {
   internal const double Step = 1.0 / 32;
@@ -38,8 +40,13 @@ public sealed class Draw : ICheck {
     var tree = new Tree(input.Shape);
     var frames = new Frames(input.Shape);
     var boxes = new List<Box>();
-    foreach (Node leaf in tree.Leaves)
+    List<StaveRun> runs = StaveRuns.Find(tree, frames);
+    var staves = runs.SelectMany(r => r.Members.Select(m => m.Path))
+      .ToHashSet();
+    foreach (Node leaf in tree.Leaves.Where(l => !staves.Contains(l.Path)))
       boxes.AddRange(Lattice.Fine.Solid(frames.Mat(leaf), leaf.Size));
+    foreach (StaveRun run in runs)
+      boxes.AddRange(StaveRuns.Solid(run, Lattice.Fine));
     if (boxes.Count == 0)
       return CheckResult.Of(Id, 0, false, []);
     double[] xs = Breaks(boxes, 0),

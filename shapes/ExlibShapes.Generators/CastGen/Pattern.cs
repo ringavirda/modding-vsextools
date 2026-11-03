@@ -177,9 +177,12 @@ public static class Patterns {
         throw new CastGenException(
           $"{item}: {Fmt.G(broken)} vx2 of columns do not draw from the parting at y {Fmt.G(parting)} and no one leaf taken off frees them"
         );
-      main.Remove(best);
+      foreach (string name in field.Together(best.Name)) {
+        Leaf gone = main.First(l => l.Name == name);
+        main.Remove(gone);
+        taken.Add(gone);
+      }
       field.Remove(best.Name);
-      taken.Add(best);
       broken = field.Broken;
     }
 

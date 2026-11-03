@@ -131,6 +131,9 @@ internal sealed class Pouring {
     return leaves;
   }
 
+  private static Box Placed(Mat4d at, Box b) =>
+    WorldBox.Of(at * Mat4d.Translate(b.Lo), b.Hi - b.Lo);
+
   /// <summary>Reads the solids and the metal of the pour <paramref name="input"/> holds.</summary>
   /// <exception cref="CheckUsageException">The record has no pour or an input the pour names is missing.</exception>
   public static Pouring Of(
@@ -176,19 +179,30 @@ internal sealed class Pouring {
     }
     var placedCast = new List<List<Box>>();
     var castFrames = new Frames(cast);
-    List<Node> castLeaves = [.. new Tree(cast).Leaves];
+    var castTree = new Tree(cast);
+    List<StaveRun> castRuns = StaveRuns.Find(castTree, castFrames);
+    var staves = castRuns
+      .SelectMany(r => r.Members.Select(m => m.Path))
+      .ToHashSet();
+    List<Node> castLeaves =
+    [
+      .. castTree.Leaves.Where(l => !staves.Contains(l.Path)),
+    ];
     double turned = RoleLeaves(leaves, "core").Sum(l => l.Turned);
     if (pour.Closed)
       turned += RoleLeaves(Leaves(input.Pair!, input, settings, lat), "core")
         .Sum(l => l.Turned);
     foreach (Mat4d at in pour.Pieces) {
-      turned += castLeaves.Sum(l =>
+      turned += castTree.Leaves.Sum(l =>
         Lattice.TurnedArea(at * castFrames.Mat(l), l.Size)
       );
       placedCast.Add([
         .. castLeaves.SelectMany(l =>
           lat.Solid(at * castFrames.Mat(l), l.Size)
         ),
+        .. castRuns
+          .SelectMany(r => StaveRuns.Solid(r, lat))
+          .Select(b => Placed(at, b)),
       ]);
     }
     var feeds = new List<(Feed, List<Box>)>();

@@ -10,7 +10,8 @@ namespace ExpandedLib.Shapes.Checks;
 /// again: the plan is cut once at every edge of every leaf, and the broken area is the plan area of the cells whose
 /// column does not run unbroken from the parting, summed over both halves, in vx2. A leaf left out changes only the
 /// cells it stands in, so <see cref="Without"/> reads those cells alone, and a cell is read again only after a leaf
-/// standing in it is removed.
+/// standing in it is removed. The staves of a round run about a world axis are one owner, read as the polygon they
+/// span (<see cref="StaveRuns"/>) and left out together.
 /// </summary>
 public sealed class DrawField {
   private readonly double _parting;
@@ -32,14 +33,27 @@ public sealed class DrawField {
     var tree = new Tree(shape);
     var frames = new Frames(shape);
     var boxes = new List<(Box Box, int Owner)>();
+    var runOwner = new Dictionary<string, int>();
+    foreach (StaveRun run in StaveRuns.Find(tree, frames)) {
+      int owner = _footprint.Count;
+      _footprint.Add([]);
+      foreach (Node m in run.Members) {
+        _owners.Add(m.Name, owner);
+        runOwner[m.Path] = owner;
+      }
+      foreach (Box b in StaveRuns.Solid(run, Lattice.Fine))
+        boxes.Add((b, owner));
+    }
     foreach (Node leaf in tree.Leaves) {
-      int owner = _owners.Count;
+      if (runOwner.ContainsKey(leaf.Path))
+        continue;
+      int owner = _footprint.Count;
       _owners.Add(leaf.Name, owner);
       _footprint.Add([]);
       foreach (Box b in Lattice.Fine.Solid(frames.Mat(leaf), leaf.Size))
         boxes.Add((b, owner));
     }
-    _removed = new bool[_owners.Count];
+    _removed = new bool[_footprint.Count];
     List<Box> all = [.. boxes.Select(b => b.Box)];
     _xs = Draw.Breaks(all, 0);
     _zs = Draw.Breaks(all, 2);
@@ -47,7 +61,7 @@ public sealed class DrawField {
       Math.Max(_xs.Length - 1, 0),
       Math.Max(_zs.Length - 1, 0)
     ];
-    var seen = new HashSet<(int, int)>[_owners.Count];
+    var seen = new HashSet<(int, int)>[_footprint.Count];
     for (int o = 0; o < seen.Length; o++)
       seen[o] = [];
     foreach ((Box b, int owner) in boxes) {
@@ -75,7 +89,15 @@ public sealed class DrawField {
   /// <summary>The broken area of the leaves not yet removed, in vx2; 0 when every column draws.</summary>
   public double Broken { get; private set; }
 
-  /// <summary>Leaves a leaf out for good.</summary>
+  /// <summary>The leaves that leave together with <paramref name="name"/>: the staves of its round run, else itself.</summary>
+  /// <param name="name">The leaf's element name.</param>
+  /// <exception cref="KeyNotFoundException">No leaf has that name.</exception>
+  public IReadOnlyList<string> Together(string name) {
+    int owner = _owners[name];
+    return [.. _owners.Where(kv => kv.Value == owner).Select(kv => kv.Key)];
+  }
+
+  /// <summary>Leaves a leaf out for good, with the rest of its round run.</summary>
   /// <param name="name">The leaf's element name.</param>
   /// <exception cref="KeyNotFoundException">No leaf has that name.</exception>
   public void Remove(string name) {

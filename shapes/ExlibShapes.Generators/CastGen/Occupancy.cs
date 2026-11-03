@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ExpandedLib.Shapes.Checks;
 using ExpandedLib.Shapes.Core;
 
 namespace ExpandedLib.Shapes.Generators;
@@ -74,16 +75,65 @@ public sealed class Occupancy {
   /// <summary>The axis-aligned bounds of every leaf placed, one per leaf, in the order added.</summary>
   public List<Box> Parts { get; } = [];
 
-  /// <summary>The leaves placed by <paramref name="at"/>.</summary>
+  /// <summary>The leaves placed by <paramref name="at"/>; the staves of a round run about a world axis stand for the
+  /// polygon they span over the run's axial extent.</summary>
   /// <param name="leaves">Root-level leaves, no children, scale 1.</param>
   /// <param name="at">The placement applied to each leaf's own matrix; null is none.</param>
   /// <exception cref="CastGenException">A leaf is turned about more than one world axis.</exception>
   public static Occupancy Of(IEnumerable<Leaf> leaves, Mat4d? at = null) {
     var occ = new Occupancy();
     Mat4d place = at ?? Mat4d.Identity;
-    foreach (Leaf l in leaves)
-      occ.Add(place * Engine.Local(l.Element), Engine.Size(l.Element), l.Name);
+    List<Leaf> all = [.. leaves];
+    Shape shape = Flush.ShapeOf(all);
+    List<StaveRun> runs = StaveRuns.Find(new Tree(shape), new Frames(shape));
+    var staves = runs.SelectMany(r => r.Members.Select(m => m.Name))
+      .ToHashSet();
+    foreach (Leaf l in all) {
+      Mat4d world = place * Engine.Local(l.Element);
+      if (staves.Contains(l.Name))
+        occ.Parts.Add(WorldBox.Of(world, Engine.Size(l.Element)));
+      else
+        occ.Add(world, Engine.Size(l.Element), l.Name);
+    }
+    foreach (StaveRun run in runs)
+      occ.Add(run, place);
     return occ;
+  }
+
+  private void Add(StaveRun run, Mat4d place) {
+    int a = run.Axis,
+      u = (a + 1) % 3,
+      v = (a + 2) % 3;
+    foreach (List<(double U, double V)> poly in run.Polygons) {
+      var pts = new List<Vec3>();
+      foreach ((double pu, double pv) in poly)
+        foreach (double along in new[] { run.Lo, run.Hi }) {
+          var c = new double[3];
+          c[a] = along;
+          c[u] = pu;
+          c[v] = pv;
+          pts.Add(place.Mul(new Vec3(c[0], c[1], c[2])));
+        }
+      Vec3 d = place.MulLinear(
+        new Vec3(a == 0 ? 1 : 0, a == 1 ? 1 : 0, a == 2 ? 1 : 0)
+      );
+      int[] axes = [.. Enumerable.Range(0, 3).Where(i => Math.Abs(d[i]) > Eps)];
+      if (axes.Length != 1)
+        throw new CastGenException(
+          $"{run.Members[0].Name}: a round run turned about more than one axis, which no extruded polygon holds"
+        );
+      int na = axes[0],
+        nu = (na + 1) % 3,
+        nv = (na + 2) % 3;
+      Prisms.Add(
+        new Prism(
+          na,
+          pts.Min(p => p[na]),
+          pts.Max(p => p[na]),
+          StaveRuns.Hull([.. pts.Select(p => (p[nu], p[nv]))])
+        )
+      );
+    }
   }
 
   /// <summary>Adds the box of <paramref name="size"/> placed by <paramref name="world"/>.</summary>
@@ -121,7 +171,9 @@ public sealed class Occupancy {
       .Corners(world, size)
       .Select(p => (U: p[u], V: p[v]))
       .ToList();
-    Prisms.Add(new Prism(a0, bounds.Lo[a0], bounds.Hi[a0], Hull(pts)));
+    Prisms.Add(
+      new Prism(a0, bounds.Lo[a0], bounds.Hi[a0], StaveRuns.Hull(pts))
+    );
   }
 
   /// <summary>Adds a box on the world axes.</summary>
@@ -158,33 +210,5 @@ public sealed class Occupancy {
         )
       );
     }
-  }
-
-  private static List<(double U, double V)> Hull(List<(double U, double V)> pts) {
-    List<(double U, double V)> s =
-    [
-      .. pts.Distinct().OrderBy(p => p.U).ThenBy(p => p.V),
-    ];
-    if (s.Count < 3)
-      return s;
-    static double Cross(
-      (double U, double V) o,
-      (double U, double V) a,
-      (double U, double V) b
-    ) => (a.U - o.U) * (b.V - o.V) - (a.V - o.V) * (b.U - o.U);
-    var h = new List<(double U, double V)>();
-    foreach (var p in s) {
-      while (h.Count >= 2 && Cross(h[^2], h[^1], p) <= Eps)
-        h.RemoveAt(h.Count - 1);
-      h.Add(p);
-    }
-    int lower = h.Count + 1;
-    for (int i = s.Count - 2; i >= 0; i--) {
-      while (h.Count >= lower && Cross(h[^2], h[^1], s[i]) <= Eps)
-        h.RemoveAt(h.Count - 1);
-      h.Add(s[i]);
-    }
-    h.RemoveAt(h.Count - 1);
-    return h;
   }
 }

@@ -73,7 +73,7 @@ internal static class RoundRuns {
     return (f1, V.Cross(d, f1));
   }
 
-  private static (Vec3 Point, Vec3 Axis)? Circle(List<Node> members, Frames fr) {
+  internal static (Vec3 Point, Vec3 Axis)? Circle(List<Node> members, Frames fr) {
     Vec3[] pts = [.. members.Select(fr.Centre)];
     Vec3 mean = V.Mean(pts);
     var ata = new double[9];
