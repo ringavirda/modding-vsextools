@@ -21,7 +21,8 @@ public class CastSetTests {
   private static string Record(
     string hole = DefaultHole,
     string capEntry = DefaultCap,
-    string seatStage = "worked"
+    string seatStage = "worked",
+    string holeStage = "worked"
   ) =>
     $$"""
       { "schema": 1, "shape": "d.json", "kinds": ["casting"],
@@ -30,7 +31,7 @@ public class CastSetTests {
           {{capEntry}}
           "Bolt1": { "stage": "fastener", "role": "fastener" },
           "Seat": { "stage": "{{seatStage}}", "role": "cast" },
-          "Hole": { "stage": "cast", "role": "cast" },
+          "Hole": { "stage": "{{holeStage}}", "role": "cast" },
           "Cav": { "stage": "cast", "role": "cast" }
         },
         "features": {
@@ -128,16 +129,31 @@ public class CastSetTests {
     CastSetResult r = Run(Record());
 
     Assert.DoesNotContain(r.Cast, l => l.Name == "Hole");
-    List<Leaf> fill = [.. r.Cast.Where(l => l.Name.StartsWith("bore_fill"))];
-    Assert.Equal(3, fill.Count);
-    Box u = BlankResult.Union(fill.Select(l => l.Box))!.Value;
-    Fx.Near(new Vec3(3, 0, 3), u.Lo);
-    Fx.Near(new Vec3(5, 4, 5), u.Hi);
-    Assert.All(fill, l => Assert.Equal("cast", l.Role));
-    Assert.All(
-      fill,
-      l => Assert.Equal("#cast-iron1", l.Element.Faces[0].Value.Texture)
-    );
+    Leaf fill = Assert.Single(r.Cast, l => l.Name.StartsWith("bore_fill"));
+    Fx.Near(new Vec3(3, 0, 3), fill.Box.Lo);
+    Fx.Near(new Vec3(5, 4, 5), fill.Box.Hi);
+    Assert.Equal("cast", fill.Role);
+    Assert.Equal("#cast-iron1", fill.Element.Faces[0].Value.Texture);
+  }
+
+  [Fact]
+  public void A_round_hole_across_the_draw_is_filled_to_its_circumscribed_square() {
+    string across =
+      """{ "axis": "x", "centre": [4, 2, 4], "radius": 1, "depth": 2 }""";
+
+    CastSetResult r = Run(Record(hole: across));
+
+    Leaf fill = Assert.Single(r.Cast, l => l.Name.StartsWith("bore_fill"));
+    Fx.Near(new Vec3(4, 1, 3), fill.Box.Lo);
+    Fx.Near(new Vec3(6, 3, 5), fill.Box.Hi);
+  }
+
+  [Fact]
+  public void A_cast_element_of_a_drilled_feature_stays_and_its_hole_is_filled() {
+    CastSetResult r = Run(Record(holeStage: "cast"));
+
+    Assert.Contains(r.Cast, l => l.Name == "Hole" && l.Role == "cast");
+    Assert.Single(r.Cast, l => l.Name.StartsWith("bore_fill"));
   }
 
   [Fact]

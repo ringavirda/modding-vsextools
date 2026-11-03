@@ -266,7 +266,7 @@ public class WorkedTests {
       { "schema": 1,
         "elements": { "Base": { "stage": "cast", "role": "cast" }, "Base2": { "stage": "cast", "role": "cast" },
                       "Base3": { "stage": "cast", "role": "cast" }, "Base4": { "stage": "cast", "role": "cast" },
-                      "Hole": { "stage": "cast", "role": "cast" } },
+                      "Hole": { "stage": "worked", "role": "cast" } },
         "features": { "bore": { "elements": ["Hole"], "origin": "drilled", "step": "drill", "faces": ["Hole/up"],
                                 "hole": { "axis": "y", "centre": [4, 0, 4], "radius": 1, "depth": 4 } } } }
       """;

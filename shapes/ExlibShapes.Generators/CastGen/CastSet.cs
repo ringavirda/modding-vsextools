@@ -207,7 +207,8 @@ public static class CastSet {
       if (origin == "drilled") {
         if (!drilled.Contains(fid!))
           drilled.Add(fid!);
-        continue;
+        if (ep?.Stage != "cast")
+          continue;
       }
       if (
         origin != null
@@ -311,8 +312,8 @@ public static class CastSet {
 
   /// <summary>The boxes that fill a drilled feature. Its record entry carries a <c>hole</c> object:
   /// <c>axis</c> (x, y or z), <c>centre</c> [x, y, z] in the drawing, <c>depth</c> (signed, from
-  /// the centre along the axis) and either <c>radius</c> (a regular octagon with flats at the
-  /// radius) or <c>polygon</c> (convex [u, v] points, u and v the other two axes in x, y, z
+  /// the centre along the axis) and either <c>radius</c> (the circumscribed square of side 2 x radius, so a bore across
+  /// the draw leaves no sand corner) or <c>polygon</c> (convex [u, v] points, u and v the other two axes in x, y, z
   /// order, relative to the centre). A polygon is cut into strips between its vertex levels, each
   /// an inscribed box.</summary>
   private static List<Leaf> Fill(
@@ -341,18 +342,7 @@ public static class CastSet {
     List<(double U, double V)> poly;
     if (h["radius"] != null) {
       double r = (double)h["radius"]!;
-      double k = r * Math.Tan(Math.PI / 8);
-      poly =
-      [
-        (-k, -r),
-        (k, -r),
-        (r, -k),
-        (r, k),
-        (k, r),
-        (-k, r),
-        (-r, k),
-        (-r, -k),
-      ];
+      poly = [(-r, -r), (r, -r), (r, r), (-r, r)];
     } else if (h["polygon"] is JArray pts && pts.Count >= 3)
       poly =
       [
