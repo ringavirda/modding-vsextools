@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using ExpandedLib.Shapes.Checks;
 using ExpandedLib.Shapes.Core;
 using Newtonsoft.Json.Linq;
 using Xunit;
@@ -56,13 +57,17 @@ public class CastGenRunTests {
   private static GenContext Ctx(
     string drawing = "",
     string form = "",
-    string record = ""
+    string record = "",
+    string formRecord = ""
   ) =>
     new(
       Fx.Settings,
       (shape, sha) => {
         (string s, string r) = shape switch {
-          "b.json" => (form.Length > 0 ? form : FormDrawing, FormRecord),
+          "b.json" => (
+            form.Length > 0 ? form : FormDrawing,
+            formRecord.Length > 0 ? formRecord : FormRecord
+          ),
           "m.json" => (
             drawing.Length > 0 ? drawing : Drawing,
             record.Length > 0 ? record : Record
@@ -294,6 +299,36 @@ public class CastGenRunTests {
     Assert.All(item.Shape.Elements, e => Assert.True(MaxX(e) <= 9));
     GenOutput pattern = r.Outputs.Single(o => o.Name == "pattern-castbed");
     Assert.All(pattern.Shape.Elements, e => Assert.True(MaxX(e) <= 11));
+  }
+
+  [Fact]
+  public void A_sunk_leaf_is_drawn_unmoved_where_that_keeps_the_pattern_whole() {
+    string form = $$"""
+      { "elements": [ { "name": "Root", "from": [0, 0, 0], "to": [1, 1, 1], "children": [
+        {{Cube("Arm", "[6, 1, 6]", "[10, 4, 10]")}},
+        {{Cube("Base", "[0, 0, 0]", "[8, 4, 8]")}}
+      ] } ] }
+      """;
+    const string formRecord = """
+      { "schema": 1,
+        "elements": { "Arm": { "stage": "cast", "role": "cast" }, "Base": { "stage": "cast", "role": "cast" } },
+        "features": { "ways": { "elements": ["Base"], "origin": "cast", "faces": ["Base/south"], "step": "plane" } } }
+      """;
+    JObject open = JObject.Parse(
+      """
+      { "blank": "castarm", "size": [10, 4, 10], "cutFaces": "from-record",
+        "form": { "shape": "b.json", "sha": "0000000", "groups": ["Root"] } }
+      """
+    );
+
+    GenResult r = Run(Ctx(form: form, formRecord: formRecord), open);
+
+    GenOutput item = r.Outputs.Single(o => o.Name == "castarm");
+    Assert.Equal(
+      [("Arm", "sink")],
+      FlushMoves.Read(item.Record).Select(m => (m.Element, m.Rule))
+    );
+    Assert.DoesNotContain(r.Outputs, o => o.Name.Contains("-loose"));
   }
 
   [Fact]

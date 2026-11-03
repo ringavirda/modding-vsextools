@@ -44,6 +44,9 @@ public static class Patterns {
   /// <param name="head">The height of a feeding head, in voxels, for a piece stood on end; none when null. The head
   /// is the element <c>Head</c> over the top of the casting, the plan of the leaves that reach the top, and is
   /// drawn after the loose pieces are taken off.</param>
+  /// <param name="unmoved">Leaves of <paramref name="cast"/> that the flush pass moved, as they stood before it, in
+  /// the same frame. One that draws fewer columns broken than the moved leaf replaces it in the pattern before any
+  /// leaf is taken off; null or empty keeps every cast leaf as it is.</param>
   /// <exception cref="CastGenException">A turned leaf crosses the parting, or no leaf split off draws the
   /// pattern.</exception>
   public static PatternResult Make(
@@ -53,7 +56,8 @@ public static class Patterns {
     IReadOnlyList<PatternPrint> prints,
     double? parting,
     string spec,
-    double? head = null
+    double? head = null,
+    IReadOnlyList<Leaf>? unmoved = null
   ) {
     string key = "#" + ctx.Settings.RoleKey("pattern");
     List<Leaf> leaves =
@@ -69,7 +73,12 @@ public static class Patterns {
       ),
     ];
     double draw = parting ?? leaves.Max(l => l.Box.Hi.Y);
-    (List<Leaf> main, List<List<Leaf>> loose) = Detach(item, leaves, draw);
+    (List<Leaf> main, List<List<Leaf>> loose) = Detach(
+      item,
+      leaves,
+      draw,
+      [.. (unmoved ?? []).Select(l => Restyle(l, l.Name, l.Element, key))]
+    );
 
     if (parting is double cut)
       main = [.. main.SelectMany(l => Cut(l, cut))];
@@ -133,11 +142,26 @@ public static class Patterns {
   private static (List<Leaf> Main, List<List<Leaf>> Loose) Detach(
     string item,
     List<Leaf> leaves,
-    double parting
+    double parting,
+    List<Leaf> unmoved
   ) {
     List<Leaf> main = [.. leaves];
     var taken = new List<Leaf>();
     var field = new DrawField(Flush.ShapeOf(main), parting);
+    foreach (Leaf u in unmoved.OrderBy(l => l.Name, StringComparer.Ordinal)) {
+      if (field.Broken <= Slack)
+        break;
+      int at = main.FindIndex(l => l.Name == u.Name);
+      if (at < 0)
+        continue;
+      List<Leaf> trial = [.. main];
+      trial[at] = u;
+      var tried = new DrawField(Flush.ShapeOf(trial), parting);
+      if (tried.Broken < field.Broken - Slack) {
+        main = trial;
+        field = tried;
+      }
+    }
     double broken = field.Broken;
     while (broken > Slack) {
       Leaf? best = null;
@@ -198,13 +222,7 @@ public static class Patterns {
     for (int k = 0; k < 3; k++)
       if (Math.Abs(Math.Abs(m[1, k]) - 1) < Eps)
         j = k;
-    bool quarter = new[]
-    {
-      l.Element.RotationX,
-      l.Element.RotationY,
-      l.Element.RotationZ,
-    }.All(r => (r ?? 0) % 90 == 0);
-    if (j < 0 || !quarter)
+    if (j < 0)
       throw new CastGenException(
         $"{l.Name}: a turned leaf crosses the parting at y {Fmt.G(parting)}"
       );

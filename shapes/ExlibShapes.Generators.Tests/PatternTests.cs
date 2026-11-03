@@ -161,14 +161,62 @@ public class PatternTests {
   }
 
   [Fact]
-  public void A_turned_leaf_crossing_the_parting_is_refused() {
+  public void A_moved_leaf_that_breaks_the_draw_is_replaced_by_its_unmoved_form_before_any_is_taken_off() {
+    Box3 arm = Bx("Arm", "[8, 2, 0]", "[10, 8, 4]");
+    Box3 sunk = Bx("Arm", "[8, 2, 0]", "[10, 7.875, 4]");
+
+    PatternResult kept = Patterns.Make(
+      Ctx,
+      "pattern-castthing",
+      Leaves(Base, sunk),
+      [],
+      null,
+      "spec",
+      null,
+      Leaves(arm)
+    );
+    PatternResult taken = Make(null, null, Base, sunk);
+
+    Assert.Empty(kept.Loose);
+    Assert.Contains("Arm", Names(kept.Pattern));
+    Assert.Single(taken.Loose);
+  }
+
+  [Fact]
+  public void A_leaf_turned_about_the_parting_normal_is_cut_at_it() {
     List<Leaf> leaves = Leaves(Bx("Ring", "[0, 2, 0]", "[8, 14, 8]"));
     leaves[0].Element.RotationY = 45;
     leaves[0].Element.RotationOrigin = [4, 8, 4];
 
-    Assert.Throws<CastGenException>(() =>
-      Patterns.Make(Ctx, "pattern-castring", leaves, [], 8, "spec")
+    PatternResult r = Patterns.Make(
+      Ctx,
+      "pattern-castring",
+      leaves,
+      [],
+      8,
+      "spec"
     );
+
+    Assert.Contains("Ring_cope", Names(r.Pattern));
+  }
+
+  [Fact]
+  public void A_leaf_turned_about_another_axis_across_the_parting_is_taken_off_not_cut() {
+    List<Leaf> leaves = Leaves(Bx("Ring", "[0, 2, 0]", "[8, 14, 8]"));
+    leaves[0].Element.RotationX = 45;
+    leaves[0].Element.RotationOrigin = [4, 8, 4];
+
+    PatternResult r = Patterns.Make(
+      Ctx,
+      "pattern-castring",
+      leaves,
+      [],
+      8,
+      "spec"
+    );
+
+    Assert.Empty(Names(r.Pattern));
+    Assert.Single(r.Loose);
   }
 
   [Fact]

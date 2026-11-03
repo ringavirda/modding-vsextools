@@ -368,10 +368,10 @@ public sealed partial class CastGen : IGenerator {
       rec.Features[kv.Key] = kv.Value;
     rec.Steps.AddRange(c.Record.Steps);
 
-    List<Leaf> leaves = Allowances.Out(c.Cast, c.CutFaces, c.Allowance);
-    leaves = Flush
+    List<Leaf> allowed = Allowances.Out(c.Cast, c.CutFaces, c.Allowance);
+    List<Leaf> leaves = Flush
       .Resolve(
-        leaves,
+        allowed,
         new HashSet<string>(c.CutFaces, StringComparer.Ordinal),
         c.Allowance,
         true,
@@ -389,12 +389,25 @@ public sealed partial class CastGen : IGenerator {
       throw new CastGenException(
         $"{c.Code}: the groups of a casting with cores share one lie"
       );
-    List<Leaf> turned = oneLie
-      ? Lies.Apply(
-        leaves,
-        new LieSpec(lie.Axes.Select(a => a with { Offset = 0 }).ToList())
-      )
-      : TurnedByGroup(c, leaves, lies);
+    List<Leaf> Turned(List<Leaf> from) =>
+      oneLie
+        ? Lies.Apply(
+          from,
+          new LieSpec(lie.Axes.Select(a => a with { Offset = 0 }).ToList())
+        )
+        : TurnedByGroup(c, from, lies);
+    List<Leaf> turned = Turned(leaves);
+    HashSet<string> sunk =
+    [
+      .. FlushMoves
+        .Read(rec)
+        .Where(m => m.Rule is "sink" or "raise")
+        .Select(m => m.Element),
+    ];
+    List<Leaf> unmoved =
+    [
+      .. Turned(Splits.Apply(allowed)).Where(l => sunk.Contains(l.Name)),
+    ];
 
     List<Leaf> itemLeaves = oneLie ? leaves : Lies.Apply(turned, Inverse(lie));
 
@@ -520,7 +533,8 @@ public sealed partial class CastGen : IGenerator {
       prints,
       parting,
       c.SpecText,
-      st?.HeadHeight
+      st?.HeadHeight,
+      unmoved
     );
 
     List<Leaf> shown = Uvs.Unroll(
