@@ -8,16 +8,21 @@ namespace ExpandedLib.Shapes.Ops;
 
 /// <summary>A machine file of a lane's casting kinds, one casting entry each.</summary>
 internal static class MachineSkeleton {
-  /// <summary>The machine file for <paramref name="lane"/>; null when the lane module has no casting kinds.</summary>
+  /// <summary>The machine file for <paramref name="lane"/>; null when the lane module has no casting kinds. A kind the
+  /// lane's fillings name and its kinds table does not (the shaper's frame, standard and table) gets an entry of its item
+  /// and station alone.</summary>
   /// <param name="lane">The lane's tables, kinds and press entries.</param>
   /// <param name="drawingName">The drawing's file name, the source shape when the lane names none.</param>
   public static JObject? Build(LaneTables lane, string drawingName) {
-    if (lane.Kinds == null || lane.Kinds.Count == 0)
+    if (
+      (lane.Kinds == null || lane.Kinds.Count == 0)
+      && lane.Fillings is not { Count: > 0 }
+    )
       return null;
     string shape = (string?)lane.Tables["COPY"] ?? drawingName;
     string sha = (string?)lane.Tables["COPY_COMMIT"] ?? "HEAD";
     var castings = new List<(string Item, JObject Entry)>();
-    foreach (JProperty kind in lane.Kinds.Properties()) {
+    foreach (JProperty kind in lane.Kinds?.Properties() ?? []) {
       var k = (JObject)kind.Value;
       var entry = new JObject { ["item"] = (string)k["item"]! };
       if (k["pieces"] is JObject pieces)
@@ -49,6 +54,18 @@ internal static class MachineSkeleton {
           )
         )
       );
+    string tag = "flask-filling-cast" + lane.Module;
+    foreach (string name in lane.Fillings ?? []) {
+      int at = name.IndexOf(tag, StringComparison.Ordinal);
+      if (at <= 0 || name.Contains("-cope-", StringComparison.Ordinal))
+        continue;
+      string item = $"cast-{lane.Module}-{name[(at + tag.Length)..]}";
+      if (castings.Any(c => c.Item == item))
+        continue;
+      castings.Add(
+        (item, new JObject { ["item"] = item, ["station"] = name[..at] })
+      );
+    }
     var machine = new JObject {
       ["machine"] = lane.Module,
       ["source"] = new JObject { ["shape"] = shape, ["sha"] = sha },

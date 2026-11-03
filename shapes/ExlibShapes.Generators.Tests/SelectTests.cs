@@ -38,6 +38,38 @@ public class SelectTests {
   }
 
   [Fact]
+  public void An_element_selected_alone_leaves_its_children_out() {
+    Shape drawn = Reader.Read(
+      $$"""
+      { "elements": [
+        {{Fx.Cube("Root", "[0, 0, 0]", "[1, 1, 1]", $$"""
+      "children": [ {{Fx.Cube("Child", "[2, 0, 0]", "[3, 1, 1]")}} ],
+      """)}} ] }
+      """
+    );
+
+    List<Leaf> alone = Select.Groups(drawn, [Select.Alone("Root")]);
+    List<Leaf> subtree = Select.Groups(drawn, ["Root"]);
+
+    Assert.Equal("Root", Assert.Single(alone).Name);
+    Assert.Equal(["Root", "Child"], subtree.Select(l => l.Name));
+    Assert.Throws<SpecException>(() =>
+      Select.Groups(drawn, [Select.Alone("Root/Nope")])
+    );
+  }
+
+  [Fact]
+  public void The_spec_reads_an_element_entry_as_alone() {
+    SourceRef s = Spec.ReadMachine(
+      Newtonsoft.Json.Linq.JObject.Parse(
+        """{ "machine": "m", "source": { "shape": "s.json", "sha": "a", "groups": ["A", { "element": "A/B" }] } }"""
+      )
+    ).Source;
+
+    Assert.Equal(["A", Select.Alone("A/B")], s.Groups);
+  }
+
+  [Fact]
   public void A_uniformly_scaled_parent_is_folded_into_the_leaf_size() {
     Shape drawn = Reader.Read(
       $$"""

@@ -2,7 +2,7 @@
 
 MODULE is lathe, shaper or smallflask (DIR/propose.py). The output has `tables` (every upper-case module constant that is
 plain data), `kinds` (the module's `kinds(stdfill)` entries, when it has them) and `press` (press.py's cross slide entries,
-for the lathe), each value as lists, objects, numbers, strings and null."""
+for the lathe) and `fillings` (the names in groupcheck.FILLINGS of the module's casting kinds, `STATIONflask-filling-cast<module>...`, when the lane has groupcheck), each value as lists, objects, numbers, strings and null."""
 import importlib
 import json
 import math
@@ -52,6 +52,13 @@ def main():
         if module == "lathe":
             press = importlib.import_module("press")
             result["press"] = {k: dump_each(press.KINDS[k]) for k in press.CROSSSLIDE}
+        try:
+            groupcheck = importlib.import_module("groupcheck")
+        except ImportError:
+            groupcheck = None
+        if groupcheck is not None:
+            tag = "flask-filling-cast" + module
+            result["fillings"] = sorted(n for n in groupcheck.FILLINGS if tag in n)
     finally:
         sys.stdout = real
     json.dump(result, sys.stdout, sort_keys=True)

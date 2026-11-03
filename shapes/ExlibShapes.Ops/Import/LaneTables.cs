@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
@@ -12,12 +14,14 @@ namespace ExpandedLib.Shapes.Ops;
 /// <param name="Tables">Every upper-case module constant that is plain data, by name.</param>
 /// <param name="Kinds">The module's casting kinds by code; null when it has none.</param>
 /// <param name="Press">The lathe's press.py cross slide entries by code; null for another module.</param>
+/// <param name="Fillings">The lane's filling names of the module's casting kinds, <c>longflask-filling-castshaperframe</c>; null when the lane has none.</param>
 /// <param name="KindsError">Why the kinds could not be built; null when they were or the module has none.</param>
 internal sealed record LaneTables(
   string Module,
   JObject Tables,
   JObject? Kinds,
   JObject? Press,
+  IReadOnlyList<string>? Fillings,
   string? KindsError
 ) {
   public static readonly string[] Modules = ["lathe", "shaper", "smallflask"];
@@ -74,6 +78,7 @@ internal sealed record LaneTables(
           (JObject)o["tables"]!,
           o["kinds"] as JObject,
           o["press"] as JObject,
+          (o["fillings"] as JArray)?.Select(t => (string)t!).ToList(),
           (string?)o["kindsError"]
         );
       }

@@ -35,16 +35,24 @@ public sealed record Leaf(
 public static class Select {
   private const double Eps = 1e-9;
 
+  /// <summary>Starts a group string that selects one element alone: <c>element:Root/Ram</c>.</summary>
+  public const string AlonePrefix = "element:";
+
+  /// <summary>The group string of <paramref name="path"/> selected alone.</summary>
+  public static string Alone(string path) => AlonePrefix + path;
+
   /// <summary>Every drawn element (one with an enabled face) under each of
   /// <paramref name="groups"/>, as root-level leaves whose world matrix is
   /// <paramref name="placement"/> times the drawing's.</summary>
   /// <param name="shape">The drawing.</param>
-  /// <param name="groups">Element paths; a path selects itself and all it contains.</param>
+  /// <param name="groups">Element paths; a path selects itself and all it contains, an
+  /// <see cref="Alone"/> string only the named element, its children left to other entries.</param>
   /// <param name="placement">Applied to every world matrix; null is none.</param>
   /// <param name="taken">Names already used by the caller's other selections; a repeated name
   /// gets <c>_2</c>, <c>_3</c>; the names used here are added.</param>
   /// <exception cref="CastGenException">A group is not in the drawing, an element is unnamed, or a
   /// world matrix is not a rotation and positive scale.</exception>
+  /// <exception cref="SpecException">An <see cref="Alone"/> path names no element.</exception>
   public static List<Leaf> Groups(
     Shape shape,
     IReadOnlyList<string> groups,
@@ -58,12 +66,14 @@ public static class Select {
     var outp = new List<Leaf>();
     var seen = new HashSet<string>(StringComparer.Ordinal);
     foreach (string group in groups) {
-      string prefix = group + "/";
+      bool alone = group.StartsWith(AlonePrefix, StringComparison.Ordinal);
+      string path = alone ? group[AlonePrefix.Length..] : group;
+      string prefix = path + "/";
       bool found = false;
       foreach (PathedElement pe in all) {
         if (
-          pe.Path != group
-          && !pe.Path.StartsWith(prefix, StringComparison.Ordinal)
+          pe.Path != path
+          && (alone || !pe.Path.StartsWith(prefix, StringComparison.Ordinal))
         )
           continue;
         found = true;
@@ -82,7 +92,9 @@ public static class Select {
         );
       }
       if (!found)
-        throw new CastGenException($"group \"{group}\" is not in the drawing");
+        throw alone
+          ? new SpecException($"element \"{path}\" is not in the drawing")
+          : new CastGenException($"group \"{group}\" is not in the drawing");
     }
     return outp;
   }

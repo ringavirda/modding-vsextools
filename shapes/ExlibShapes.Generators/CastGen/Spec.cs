@@ -16,7 +16,8 @@ public sealed class CastGenException(string message) : Exception(message);
 /// <summary>A drawing pinned at a commit or file sha, and the groups taken from it.</summary>
 /// <param name="Shape">The shape path.</param>
 /// <param name="Sha">The pin.</param>
-/// <param name="Groups">Element paths; every drawn element under one is taken.</param>
+/// <param name="Groups">Element paths; every drawn element under one is taken. A
+/// <c>{"element": path}</c> entry is held as <see cref="Select.Alone"/> and takes that element only.</param>
 public sealed record SourceRef(
   string Shape,
   string Sha,
@@ -277,7 +278,7 @@ public static class Spec {
     string shape =
       r.OptText("shape") ?? inherit?.Shape ?? throw r.Missing("shape");
     string sha = r.OptText("sha") ?? inherit?.Sha ?? throw r.Missing("sha");
-    List<string> groups = r.Texts("groups");
+    List<string> groups = r.Selects("groups");
     if (groups.Count == 0 && !groupsOptional)
       throw r.Missing("groups");
     r.Done();
@@ -420,7 +421,7 @@ public static class Spec {
 
   private static GroupSpec ReadGroup(JObject o) {
     var r = new Fields(o, "group entry");
-    List<string> groups = r.Texts("groups");
+    List<string> groups = r.Selects("groups");
     if (groups.Count == 0)
       throw r.Missing("groups");
     JObject? at = r.Object("at");
@@ -580,6 +581,27 @@ internal sealed class Fields {
           ? (string)t!
           : throw new SpecException($"{where}: \"{key}\" holds a non-text")
       );
+    return outp;
+  }
+
+  /// <summary>A list of path strings and <c>{"element": path}</c> objects; the object form is
+  /// returned as <see cref="Select.Alone"/>.</summary>
+  public List<string> Selects(string key) {
+    JArray? a = Array(key);
+    var outp = new List<string>();
+    foreach (JToken t in a ?? []) {
+      if (t.Type == JTokenType.String)
+        outp.Add((string)t!);
+      else if (
+        t is JObject { Count: 1 } obj
+        && obj["element"] is { Type: JTokenType.String } e
+      )
+        outp.Add(Select.Alone((string)e!));
+      else
+        throw new SpecException(
+          $"{where}: \"{key}\" holds an entry that is neither a path nor {{\"element\": path}}"
+        );
+    }
     return outp;
   }
 

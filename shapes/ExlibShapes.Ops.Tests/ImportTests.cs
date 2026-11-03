@@ -398,6 +398,73 @@ public class ImportTests : IDisposable {
   }
 
   [SkippableFact]
+  public void Import_writes_an_entry_for_a_filling_kind_at_each_station() {
+    string? python = Python();
+    Skip.If(python == null, "no python3");
+    string outDir = Path.Combine(dir, "out");
+    string lane = FakeLane();
+    Put(
+      "lane/groupcheck.py",
+      """
+      FILLINGS = {
+          "longflask-filling-castlathebed": (1, 0, "west"),
+          "longflask-cope-filling-castlathebed": (1, 0, "west"),
+          "pitflask-filling-castlathestand": (1, 0, "south"),
+          "floorflask-filling-castlathewagon": (1, 0, "south"),
+          "longflask-filling-castshaperframe": (2, 0, "alt"),
+      }
+      """
+    );
+
+    Run(
+      "import",
+      LatheDrawing(),
+      "--lane",
+      lane,
+      "--module",
+      "lathe",
+      "--out",
+      outDir,
+      "--python",
+      python!
+    );
+
+    JArray castings = (JArray)
+      JObject.Parse(File.ReadAllText(Path.Combine(outDir, "lathe.json")))[
+        "castings"
+      ]!;
+    Assert.Equal(
+      [
+        "cast-lathe-bed",
+        "cast-lathe-crossslide",
+        "cast-lathe-frame",
+        "cast-lathe-stand",
+        "cast-lathe-wagon",
+      ],
+      castings.Select(c => (string)c["item"]!)
+    );
+    Assert.Equal(
+      "pit",
+      (string?)
+        castings.Single(c => (string)c["item"]! == "cast-lathe-stand")[
+          "station"
+        ]
+    );
+    Assert.Equal(
+      "floor",
+      (string?)
+        castings.Single(c => (string)c["item"]! == "cast-lathe-wagon")[
+          "station"
+        ]
+    );
+    Assert.Equal(
+      "long",
+      (string?)
+        castings.Single(c => (string)c["item"]! == "cast-lathe-bed")["station"]
+    );
+  }
+
+  [SkippableFact]
   public void Import_does_not_overwrite_a_machine_file_it_does_not_own() {
     string? python = Python();
     Skip.If(python == null, "no python3");

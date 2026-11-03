@@ -278,9 +278,11 @@ group holding elements the lane's tables work after the pour (`*_ALLOW` faces, r
 `*_TRIM` rows go to the record's `import.moves`). A lane's lathe BORE rings are confirmed `bored`; every other such
 feature is a guess, marked `unconfirmed`, and goes out as one `Question` for its group. With a lane it also writes
 `OUT/MODULE.json`, a machine file of the module's casting kinds (the lathe's seven include press.py's cross slide) with
-each kind's groups and lie; a file there with no provenance row is not overwritten. The lane's tables are read by
+each kind's groups and lie, and an entry (item and station only) for every kind the lane's `groupcheck.FILLINGS` names for the module that its kinds table does not, whatever its station (the shaper's frame, standard and table); a file there with no provenance row is not overwritten. The lane's tables are read by
 `python3 -I` on a dumper that imports the lane module; `--python` or `EXLIB_SHAPES_PYTHON` names an interpreter with
-the lane's packages (numpy). `smallflask` reads `propose.py` and has no casting kinds. Exits 3 when it asked.
+the lane's packages (numpy). `smallflask` reads `propose.py` and has no casting kinds. A casting's `source.groups` or kit `groups` entry is a path
+string (the group and every element under it) or `{"element": "PATH"}` (that element alone, its children left to their own
+entries; a path naming no element is a spec error). Exits 3 when it asked.
 
 Exit codes: `0` pass, `1` a gate failed or the run could not be made, `2` usage, `3` an open question. Each command
 appends one line to `$XDG_STATE_HOME/exlib-shapes/runs.jsonl`. Inside the workspace, `exmod shapetool VERB ARGS` runs
