@@ -282,7 +282,7 @@ public static class Uvs {
     child.RotationOrigin = pivot;
   }
 
-  private static Mat4d Inverse(Mat4d m) {
+  internal static Mat4d Inverse(Mat4d m) {
     var inv = new double[16];
     for (int j = 0; j < 3; j++) {
       double s2 = 0;

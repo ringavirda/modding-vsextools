@@ -45,25 +45,32 @@ internal static class Workspace {
     return Settings.ReadFile(path);
   }
 
-  /// <summary>The sha256 of a spec file and the blank files beside it, which <c>gen</c> records in each output and
-  /// <c>check</c> compares to the files now.</summary>
-  /// <param name="specPath">The spec file; its <c>blanks</c> folder is read when there is one.</param>
-  public static string SpecFingerprint(string specPath) {
-    var text = new StringBuilder(
-      Provenance.Sha256Of(File.ReadAllBytes(specPath))
+  /// <summary>Runs CastGen on the spec file as <c>gen</c> does and returns its result without writing anything.</summary>
+  /// <param name="specPath">The blank file or machine file; its <c>blanks</c> folder holds the blank files it names.</param>
+  /// <param name="shapes">The git checkout the spec's drawings are read from.</param>
+  /// <param name="settings">The settings the outputs are made with.</param>
+  public static GenResult RunGen(
+    string specPath,
+    string shapes,
+    Settings settings
+  ) {
+    string specDir = Path.GetDirectoryName(specPath)!;
+    var sources = new GitSources(shapes);
+    var ctx = new GenContext(
+      settings,
+      sources.Resolve,
+      null,
+      null,
+      code => {
+        string path = Path.Combine(specDir, "blanks", code + ".json");
+        return File.Exists(path)
+          ? JObject.Parse(File.ReadAllText(path))
+          : throw new CastGenException(
+            $"blank \"{code}\": no {Relative(specDir, path)} beside the spec"
+          );
+      }
     );
-    string blanks = Path.Combine(Path.GetDirectoryName(specPath)!, "blanks");
-    if (Directory.Exists(blanks))
-      foreach (
-        string f in Directory
-          .EnumerateFiles(blanks, "*.json")
-          .Order(StringComparer.Ordinal)
-      )
-        text.Append('\n')
-          .Append(Path.GetFileName(f))
-          .Append(' ')
-          .Append(Provenance.Sha256Of(File.ReadAllBytes(f)));
-    return Provenance.Sha256Of(text.ToString());
+    return new CastGen().Run(ctx, JObject.Parse(File.ReadAllText(specPath)));
   }
 
   /// <summary>The shape path of a shape file or its record path.</summary>

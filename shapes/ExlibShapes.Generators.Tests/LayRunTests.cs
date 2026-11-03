@@ -25,12 +25,16 @@ internal static class LayFx {
     { "schema": 1, "elements": { "Base": { "stage": "cast", "role": "cast" } } }
     """;
 
-  public static GenContext Ctx(string drawing, string record) =>
+  public static GenContext Ctx(
+    string drawing,
+    string record,
+    string formRecord = FormRecord
+  ) =>
     new(
       Fx.Settings,
       (shape, sha) => {
         (string s, string r) = shape switch {
-          "b.json" => (FormDrawing, FormRecord),
+          "b.json" => (FormDrawing, formRecord),
           "m.json" => (drawing, record),
           _ => throw new InvalidOperationException(shape),
         };
@@ -158,6 +162,53 @@ public class JoinedRunTests {
       .Value;
     Assert.Equal(80, bounds.Hi.X - bounds.Lo.X, 1e-9);
     Assert.Contains(r.Outputs, o => o.Name == "bed-sec3");
+  }
+
+  [Fact]
+  public void A_joined_item_keeps_the_work_its_sections_cut() {
+    const string ways = """
+      { "schema": 1, "elements": { "Base": { "stage": "cast", "role": "cast" } },
+        "features": { "ways": { "elements": ["Base"], "origin": "cast", "faces": ["Base/up"], "step": "plane" } } }
+      """;
+    string worked(int i) =>
+      User(i)
+        .Replace(
+          "\"steps\": [\"plane\"]",
+          "\"steps\": [ { \"step\": \"plane\", \"cuts\": [\"ways\"] } ]"
+        );
+    var spec = LayFx.Machine(
+      users: worked(0) + "," + worked(1),
+      joined: """
+      { "item": "bed-joined", "from": ["bed-sec1", "bed-sec2"],
+        "steps": [ { "step": "plane", "features": ["seat"] } ] }
+      """
+    );
+
+    GenResult r = new CastGen().Run(LayFx.Ctx(Drawing, Record, ways), spec);
+
+    GenOutput section = r.Outputs.Single(o => o.Name == "bed-sec2");
+    GenOutput bed = r.Outputs.Single(o => o.Name == "bed-joined");
+    Assert.Equal(
+      "#cast-iron-turned1",
+      LayFx
+        .Named(section, "Base")
+        .Faces.Single(kv => kv.Key == "up")
+        .Value.Texture
+    );
+    Element[] tops =
+    [
+      .. bed.Shape.Elements.Where(e => e.Name != "Seat" && e.To![1] == 4),
+    ];
+    Assert.True(tops.Length >= 2);
+    Assert.All(
+      tops,
+      e =>
+        Assert.Equal(
+          "#cast-iron-turned1",
+          e.Faces.Single(kv => kv.Key == "up").Value.Texture
+        )
+    );
+    Assert.Equal(32, tops.Max(e => e.To![0]) - tops.Min(e => e.From![0]));
   }
 
   [Fact]

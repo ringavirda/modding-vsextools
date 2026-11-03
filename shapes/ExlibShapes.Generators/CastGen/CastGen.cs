@@ -205,7 +205,7 @@ public sealed partial class CastGen : IGenerator {
       acc.Questions.AddRange(joined.Questions);
       if (joined.Questions.Count > 0)
         continue;
-      WorkedResult made = Worked.ForJoined(ctx, spec, joined);
+      WorkedResult made = Worked.ForJoined(ctx, spec, joined, acc.Worked);
       var form = new PartRecord();
       foreach (KeyValuePair<string, Feature> kv in rs.Record.Features)
         form.Features[kv.Key] = kv.Value;

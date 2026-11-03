@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -95,10 +96,11 @@ internal static class CheckCommand {
     Profile profile = Selection.ParseProfile(settings.LintProfile);
     string version = new CastGen().Version;
     var jobs = new List<CheckJob>();
+    var regenerated = new ConcurrentDictionary<string, Lazy<GenResult>>();
     foreach (string file in files) {
       string full = Path.GetFullPath(file);
       CheckInput input = InputOf(full, settings, sourcePath);
-      Func<string?>? stale = StaleOf(full, version);
+      Func<string?>? stale = StaleOf(full, version, settings, regenerated);
       foreach (ICheck c in Selection.For(input.Record!.Kinds, profile))
         if (Selection.Applies(c, input))
           jobs.Add(
@@ -135,7 +137,12 @@ internal static class CheckCommand {
       .Order(StringComparer.Ordinal);
   }
 
-  private static Func<string?>? StaleOf(string file, string version) {
+  private static Func<string?>? StaleOf(
+    string file,
+    string version,
+    Settings settings,
+    ConcurrentDictionary<string, Lazy<GenResult>> regenerated
+  ) {
     string? file0 = Workspace.FindUp(
       Path.GetDirectoryName(file)!,
       "provenance.jsonl"
@@ -144,31 +151,64 @@ internal static class CheckCommand {
       return null;
     var provenance = new Provenance(file0);
     return () => {
+      string root = Path.GetDirectoryName(file0)!;
       ProvenanceRow? row = provenance.Find(file);
-      return Staleness.Reason(
-          provenance,
-          file,
-          "castgen",
-          version,
-          row?.InputHash ?? ""
-        ) ?? SpecStale(file, Path.GetDirectoryName(file0)!);
+      string? hash = null;
+      if (row is { Generator: "castgen" } && row.Version == version) {
+        (hash, string? lost) = InputHashNow(file, root, settings, regenerated);
+        if (lost != null)
+          return lost;
+      }
+      return Staleness.Reason(provenance, file, "castgen", version, hash ?? "");
     };
   }
 
-  private static string? SpecStale(string file, string root) {
+  /// <summary>The input hash <c>gen</c> computes for <paramref name="file"/> from its spec, drawings and settings now,
+  /// or the reason it cannot be computed.</summary>
+  private static (string? Hash, string? Lost) InputHashNow(
+    string file,
+    string root,
+    Settings settings,
+    ConcurrentDictionary<string, Lazy<GenResult>> regenerated
+  ) {
     string recordPath = Workspace.RecordFileOf(file);
     if (
       !File.Exists(recordPath)
       || PartRecord.ReadFile(recordPath).Carried["gen"] is not JObject gen
     )
-      return null;
+      return (null, null);
     string name = Workspace.Relative(root, file);
     string spec = Path.GetFullPath(Path.Combine(root, (string)gen["spec"]!));
+    string shapes = Path.GetFullPath(
+      Path.Combine(root, (string?)gen["shapes"] ?? ".")
+    );
     if (!File.Exists(spec))
-      return $"{name}: its spec {gen["spec"]} is not there";
-    return Workspace.SpecFingerprint(spec) == (string?)gen["inputs"]
-      ? null
-      : $"{name}: its spec or blank files changed since gen made it";
+      return (null, $"{name}: its spec {gen["spec"]} is not there");
+    var lazy = regenerated.GetOrAdd(
+      spec,
+      _ => new Lazy<GenResult>(() => Workspace.RunGen(spec, shapes, settings))
+    );
+    GenResult result;
+    try {
+      result = lazy.Value;
+    } catch (Exception e)
+        when (e
+            is CastGenException
+              or SpecException
+              or InvalidOperationException
+              or ReconcileException
+              or IOException
+              or Newtonsoft.Json.JsonException
+        ) {
+      return (null, $"{name}: its spec no longer generates: {e.Message}");
+    }
+    string output = Path.GetFileName(file);
+    GenOutput? now = result.Outputs.FirstOrDefault(o =>
+      o.Name + "-proposed.json" == output
+    );
+    return now == null
+      ? (null, $"{name}: its spec no longer makes it")
+      : (now.InputHash, null);
   }
 
   private static CheckInput InputOf(

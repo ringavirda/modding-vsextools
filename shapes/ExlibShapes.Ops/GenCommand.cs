@@ -27,29 +27,14 @@ internal static class GenCommand {
     );
     string shapes = Path.GetFullPath(a.Option("--shapes") ?? root);
     string? runtime = a.Option("--runtime");
-    string specDir = Path.GetDirectoryName(specPath)!;
-    JObject spec = JObject.Parse(File.ReadAllText(specPath));
-    Settings settings = Workspace.LoadSettings(a.Option("--settings"), specDir);
-    var sources = new GitSources(shapes);
-    var ctx = new GenContext(
-      settings,
-      sources.Resolve,
-      null,
-      null,
-      code => {
-        string path = Path.Combine(specDir, "blanks", code + ".json");
-        return File.Exists(path)
-          ? JObject.Parse(File.ReadAllText(path))
-          : throw new CastGenException(
-            $"blank \"{code}\": no {Workspace.Relative(specDir, path)} beside the spec"
-          );
-      }
+    Settings settings = Workspace.LoadSettings(
+      a.Option("--settings"),
+      Path.GetDirectoryName(specPath)!
     );
     var gen = new CastGen();
-    GenResult result = gen.Run(ctx, spec);
+    GenResult result = Workspace.RunGen(specPath, shapes, settings);
 
     var provenance = new Provenance(Path.Combine(root, "provenance.jsonl"));
-    string fingerprint = Workspace.SpecFingerprint(specPath);
     foreach (GenOutput o in result.Outputs) {
       string shapePath = Path.Combine(root, "items", o.Name + "-proposed.json");
       Ownership.Guard(provenance, shapePath);
@@ -60,7 +45,7 @@ internal static class GenCommand {
       o.Record.ShapeSha = sha;
       o.Record.Carried["gen"] = new JObject {
         ["spec"] = Workspace.Relative(root, specPath),
-        ["inputs"] = fingerprint,
+        ["shapes"] = Workspace.Relative(root, shapes),
       };
       o.Record.WriteFile(Workspace.RecordFileOf(shapePath));
       var row = new ProvenanceRow(

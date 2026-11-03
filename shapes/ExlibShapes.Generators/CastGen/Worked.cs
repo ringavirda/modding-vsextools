@@ -164,17 +164,21 @@ public static partial class Worked {
       blank.Record.Write()
     );
 
-  /// <summary>The worked item of a joined entry: the sections' cast elements in the machine drawing's frame, with
-  /// each step's features (the machine record's) carved in and finished, and the faces its cuts name finished.
-  /// There is no blank to match: the sections are matched as users.</summary>
+  /// <summary>The worked item of a joined entry: each section's worked item, placed back in the machine drawing's
+  /// frame by the inverse of its user's <c>at</c>, with each step's features (the machine record's) carved in and
+  /// finished, and the faces its cuts name finished. There is no blank to match: the sections are matched as
+  /// users.</summary>
   /// <param name="ctx">The context.</param>
   /// <param name="machine">The machine file.</param>
   /// <param name="joined">The assembled sections.</param>
-  /// <exception cref="CastGenException">A step or feature names nothing, or a step's machine is outside its row.</exception>
+  /// <param name="earlier">The worked items made before this one; each section's is among them.</param>
+  /// <exception cref="CastGenException">A step or feature names nothing, a step's machine is outside its row, or a
+  /// section's worked item is not in <paramref name="earlier"/>.</exception>
   public static WorkedResult ForJoined(
     GenContext ctx,
     MachineSpec machine,
-    JoinedResult joined
+    JoinedResult joined,
+    IReadOnlyList<GenOutput> earlier
   ) {
     ResolvedSource rs = ctx.Resolve(machine.Source.Shape, machine.Source.Sha);
     List<Leaf> placed = [];
@@ -208,7 +212,7 @@ public static partial class Worked {
         machine.Route
       ),
     };
-    blank.Cast.AddRange(joined.Cast);
+    blank.Cast.AddRange(Sections(machine, joined, earlier));
     blank.TagCast();
     foreach (KeyValuePair<string, Feature> kv in rs.Record.Features)
       blank.Record.Features[kv.Key] = kv.Value;
@@ -239,6 +243,45 @@ public static partial class Worked {
     return new WorkedResult([output], [], [], []) {
       Inputs = [new GenInput(placedName, Flush.ShapeOf(placed), placedRecord)],
     };
+  }
+
+  private static List<Leaf> Sections(
+    MachineSpec machine,
+    JoinedResult joined,
+    IReadOnlyList<GenOutput> earlier
+  ) {
+    var leaves = new List<Leaf>();
+    var taken = new HashSet<string>(StringComparer.Ordinal);
+    foreach (string from in joined.Sections) {
+      GenOutput section =
+        earlier.FirstOrDefault(o => o.Name == from)
+        ?? throw new CastGenException(
+          $"joined \"{joined.Item}\": \"{from}\" is not an earlier worked item"
+        );
+      UserSpec user = machine.Users.First(u => u.Worked.Item == from);
+      Mat4d? back = user.At == null ? null : Uvs.Inverse(user.At.Matrix);
+      foreach (Element e in section.Shape.Elements) {
+        string source = e.Name ?? "";
+        section.Record.Elements.TryGetValue(source, out ElementPart? ep);
+        Element placed = back is { } m
+          ? Select.Flatten(e, m * Engine.Local(e), source)
+          : Select.Clone(e, false);
+        string name = source;
+        for (int i = 2; !taken.Add(name); i++)
+          name = $"{source}_{i}";
+        leaves.Add(
+          new Leaf(
+            name,
+            source,
+            source,
+            placed,
+            ep?.Stage ?? "cast",
+            ep?.Role ?? "cast"
+          )
+        );
+      }
+    }
+    return leaves;
   }
 
   private sealed record UserPart(PartRecord Record, List<Leaf> Placed);

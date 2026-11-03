@@ -549,6 +549,65 @@ public class CliTests {
     Assert.Contains("stale outputs", err);
   }
 
+  private const string Pattern = "pattern-cast-planer-bed-proposed.json";
+
+  [Fact]
+  public void Cli_check_keeps_an_output_fresh_when_a_user_is_added_to_its_spec() {
+    using var w = new Workspace();
+    string spec = w.MachineSpec(Workspace.Casting(), Workspace.User());
+    w.Gen(spec);
+    w.MachineSpec(
+      Workspace.Casting(),
+      Workspace.User() + ", " + Workspace.User(1, "planer-bed2")
+    );
+
+    (int exit, _, string err) = Check(w, Path.Combine(w.Out, "items", Pattern));
+
+    Assert.Equal(0, exit);
+    Assert.DoesNotContain("stale outputs", err);
+  }
+
+  [Fact]
+  public void Cli_check_refuses_an_output_whose_source_drawing_changed() {
+    using var w = new Workspace();
+    w.Gen(w.MachineSpec(Workspace.Casting(), Workspace.User()));
+    w.Write(
+      "m.json",
+      Workspace.Drawing.Replace("[2, 3, 2]", "[3, 3, 2]"),
+      Workspace.Record
+    );
+
+    (int exit, _, string err) = Check(
+      w,
+      Path.Combine(w.Out, "items", "cast-planer-bed-proposed.json")
+    );
+
+    Assert.Equal(1, exit);
+    Assert.Contains("stale outputs", err);
+  }
+
+  [Fact]
+  public void Cli_check_refuses_an_output_made_under_other_settings() {
+    using var w = new Workspace();
+    w.Gen(w.MachineSpec(Workspace.Casting(), Workspace.User()));
+    File.WriteAllText(
+      w.SettingsFile,
+      File.ReadAllText(w.SettingsFile)
+        .Replace(
+          "\"finished.turn\": \"cast-iron-turned1\"",
+          "\"finished.turn\": \"cast-iron1\""
+        )
+    );
+
+    (int exit, _, string err) = Check(
+      w,
+      Path.Combine(w.Out, "items", "planer-bed-proposed.json")
+    );
+
+    Assert.Equal(1, exit);
+    Assert.Contains("stale outputs", err);
+  }
+
   [Fact]
   public void Cli_check_refuses_an_output_made_by_another_generator_version() {
     using var w = new Workspace();
