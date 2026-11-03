@@ -410,6 +410,8 @@ public sealed partial class CastGen : IGenerator {
     ];
 
     List<Leaf> itemLeaves = oneLie ? leaves : Lies.Apply(turned, Inverse(lie));
+    if (!oneLie)
+      Lays.Write(rec, LaysOf(c, leaves, lies));
 
     Station? st = null;
     if (
@@ -723,6 +725,33 @@ public sealed partial class CastGen : IGenerator {
           .Single();
       }),
     ];
+  }
+
+  private static Dictionary<string, Vec3> LaysOf(
+    Casting c,
+    IReadOnlyList<Leaf> leaves,
+    IReadOnlyList<LieSpec> lies
+  ) {
+    Func<Leaf, int> groupOf = GroupOf(c);
+    var lays = new Dictionary<string, Vec3>();
+    foreach (Leaf l in leaves) {
+      LieSpec own = lies[groupOf(l)];
+      bool turnedApart = Enumerable
+        .Range(0, 3)
+        .Any(f =>
+          own.Axes[f].Item != lies[0].Axes[f].Item
+          || own.Axes[f].Sign != lies[0].Axes[f].Sign
+        );
+      if (turnedApart)
+        continue;
+      var by = new double[3];
+      for (int f = 0; f < 3; f++)
+        by[lies[0].Axes[f].Item] =
+          lies[0].Axes[f].Sign * (own.Axes[f].Offset - lies[0].Axes[f].Offset);
+      if (by.Any(v => v != 0))
+        lays[Tags.Unsplit(l.Name)] = new Vec3(by[0], by[1], by[2]);
+    }
+    return lays;
   }
 
   private static readonly LieSpec Identity = new([

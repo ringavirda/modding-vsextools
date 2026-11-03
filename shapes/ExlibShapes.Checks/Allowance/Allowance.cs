@@ -15,7 +15,8 @@ namespace ExpandedLib.Shapes.Checks;
 /// <c>NAME/FACE: not a face of a cast element in the source</c>. Needs the source shape, its record and the item.
 /// The item's record (<see cref="CheckInput.Record"/>) may carry <see cref="FlushMoves"/>: a recorded move of a face
 /// no step cuts, a merge of two elements no step cuts or a cap beside a face no step cuts explains the difference
-/// from source plus allowance; a move or merge on a cut face and a cap on one are faults
+/// from source plus allowance, and the record's <see cref="Lays"/> move a kit group's elements to where the item lays
+/// them apart; a move or merge on a cut face and a cap on one are faults
 /// (<c>NAME/FACE: a RULE move on a face a step cuts</c>, <c>NAME: a merge on an element a step cuts</c>,
 /// <c>NAME: cap not D thick beside OF/FACE, or on a face a step cuts</c>).
 /// </summary>
@@ -71,6 +72,7 @@ public sealed class Allowance : ICheck {
         cuts[name].Add(face);
     }
     List<FlushMove> moves = FlushMoves.Read(input.Record);
+    Dictionary<string, Vec3> lays = Lays.Read(input.Record);
     var absorbed = moves
       .Where(m => m.Rule == "merge")
       .ToDictionary(m => m.Element, m => m.Into ?? "");
@@ -100,6 +102,8 @@ public sealed class Allowance : ICheck {
         if (cast.TryGetValue(m.Element, out Box other))
           out_ = Union(out_, other);
       }
+      if (lays.TryGetValue(name, out Vec3 laid))
+        out_ = new Box(out_.Lo + laid, out_.Hi + laid);
       if (!item.TryGetValue(name, out Box got)) {
         lines.Add($"{name}: missing from the item");
         continue;

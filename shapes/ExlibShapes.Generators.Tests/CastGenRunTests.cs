@@ -360,6 +360,48 @@ public class CastGenRunTests {
   }
 
   [Fact]
+  public void A_group_laid_apart_by_its_lie_is_recorded_and_passes_allowance() {
+    string grouped = $$"""
+      { "elements": [ { "name": "Root", "from": [0, 0, 0], "to": [1, 1, 1], "children": [
+        { "name": "Left", "from": [0, 0, 0], "to": [0, 0, 0], "children": [
+          {{Cube("Base", "[0, 0, 0]", "[16, 4, 16]")}} ] },
+        { "name": "Right", "from": [0, 0, 0], "to": [0, 0, 0], "children": [
+          {{Cube("Cap", "[2, 4, 2]", "[14, 6, 14]")}} ] }
+      ] } ] }
+      """;
+    const string groupedRecord = """
+      { "schema": 1, "elements": { "Base": { "stage": "cast", "role": "cast" },
+        "Cap": { "stage": "cast", "role": "cast" } } }
+      """;
+    JObject spec = MachineEntry(
+      """
+      { "item": "cast-kit", "groups": [ { "groups": ["Root/Left"], "lie": { "x": { "axis": "x", "offset": 0 }, "y": { "axis": "y", "offset": 0 }, "z": { "axis": "z", "offset": 0 } } },
+        { "groups": ["Root/Right"], "lie": { "x": { "axis": "x", "offset": 3 }, "y": { "axis": "y", "offset": -1 }, "z": { "axis": "z", "offset": -30 } } } ] }
+      """
+    );
+    GenContext ctx = Ctx(grouped, record: groupedRecord);
+
+    GenResult r = Run(ctx, spec);
+
+    GenOutput item = r.Outputs.Single(o => o.Name == "cast-kit");
+    Assert.Equal(
+      new Vec3(3, -1, -30),
+      Assert.Single(Lays.Read(item.Record), k => k.Key == "Cap").Value
+    );
+    Assert.DoesNotContain("Base", Lays.Read(item.Record).Keys);
+    ResolvedSource src = ctx.Resolve("m.json", "0000000");
+    CheckResult got = new Allowance().Run(
+      new CheckInput(
+        item.Shape,
+        Record: item.Record,
+        Source: src.Shape,
+        SourceRecord: src.Record
+      )
+    );
+    Assert.Equal(0, got.ExitCode);
+  }
+
+  [Fact]
   public void A_group_whose_leaf_has_the_groups_name_is_still_written_as_a_group() {
     string grouped = $$"""
       { "elements": [ { "name": "Root", "from": [0, 0, 0], "to": [0, 0, 0], "children": [

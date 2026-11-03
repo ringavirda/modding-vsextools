@@ -142,14 +142,15 @@ public sealed class Runner : ICheck {
             $"{f.Name}: {Fmt.G(narrow)} across, at least {Fmt.G(across)} wanted"
           );
       }
-    Feed first = cuts.FirstOrDefault(f => f.Kind == "runner") ?? cuts[0];
+    Feed? first = cuts.FirstOrDefault(f => f.Kind == "runner");
     Box[] target =
       pour.Closed
         ? [.. pour.Feeds.Where(f => f.Kind == "sprue").SelectMany(f => f.Boxes)]
       : station.Drop is double[] d ? [Pouring.Of(d)]
       : [];
     if (
-      target.Length > 0
+      first != null
+      && target.Length > 0
       && !first.Boxes.Any(b => target.Any(t => Touch(b, t)))
     )
       lines.Add(

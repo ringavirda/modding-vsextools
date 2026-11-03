@@ -48,7 +48,8 @@ internal static class Feeds {
   /// at a right angle where no straight one stays the margin clear of the other pieces. A closed pour's sprue stands
   /// over the station's sprue rect from the parting to the sand's top, its runner and gates lie in the drag under the
   /// parting, and a riser stands through the cope over each asked point. A station with a head height gets a head
-  /// feed over each piece, the pattern's <c>Head</c>.</summary>
+  /// feed over each piece, the pattern's <c>Head</c>. A piece of bodies that do not touch (a kit laid apart) gets a gate
+  /// <c>Gate&lt;k&gt;.&lt;n&gt;</c> from its largest body to each other body, <c>GateAcross</c> wide.</summary>
   /// <param name="item">The filling's name, for messages.</param>
   /// <param name="station">The station row.</param>
   /// <param name="closed">Whether the pour is closed.</param>
@@ -117,17 +118,28 @@ internal static class Feeds {
     }
     double y0 = y1 - depth;
 
+    List<List<List<Box>>> bodies = [.. pieces.Select(Bodies)];
+    List<Box> Band(IEnumerable<Box> boxes) =>
+      [.. boxes.Where(b => b.Hi.Y > y0 + Eps && b.Lo.Y < y1 - Eps)];
+    CastGenException NoMetal(int piece) =>
+      new(
+        $"{item}: Piece{piece + 1} has no metal between y {Fmt.G(y0)} and {Fmt.G(y1)}, where the runner lies"
+      );
+
     Rect[] feet = new Rect[pieces.Count];
+    var primaries = new List<Box>[pieces.Count];
     for (int k = 0; k < pieces.Count; k++) {
-      List<Box> band =
+      List<Box> primary =
+        bodies[k]
+          .Select(body => Band(body))
+          .FirstOrDefault(band => band.Count > 0)
+        ?? throw NoMetal(k);
+      feet[k] = Rect.Of(primary);
+      primaries[k] = primary;
+      bodies[k] =
       [
-        .. pieces[k].Where(b => b.Hi.Y > y0 + Eps && b.Lo.Y < y1 - Eps),
+        .. bodies[k].Where(body => !body.Any(b => primary.Contains(b))),
       ];
-      if (band.Count == 0)
-        throw new CastGenException(
-          $"{item}: Piece{k + 1} has no metal between y {Fmt.G(y0)} and {Fmt.G(y1)}, where the runner lies"
-        );
-      feet[k] = Rect.Of(band);
     }
 
     List<Box> Reach(
@@ -185,6 +197,26 @@ internal static class Feeds {
       if (gate.Count > 0)
         feeds.Add(new FeedLaid($"Gate{k + 1}", "gate", gate, [], k + 1));
     }
+    for (int k = 0; k < pieces.Count; k++)
+      foreach (
+        (List<Box> band, int n) in bodies[k]
+          .Select(body => Band(body))
+          .Where(band => band.Count > 0)
+          .Select((band, n) => (band, n + 1))
+      ) {
+        (Box from, Box to) = Nearest(primaries[k], band);
+        List<Box> gate = Reach(
+          "gate",
+          k + 1,
+          Rect.Of([from]),
+          Past,
+          Rect.Of([to]),
+          across,
+          b => Clear(b, k)
+        );
+        if (gate.Count > 0)
+          feeds.Add(new FeedLaid($"Gate{k + 1}.{n}", "gate", gate, [], k + 1));
+      }
     if (station.HeadHeight != null)
       for (int k = 0; k < pieces.Count; k++)
         feeds.Add(new FeedLaid($"Head{k + 1}", "head", [], ["Head"], k + 1));
@@ -339,6 +371,43 @@ internal static class Feeds {
       hi = towardLow ? cz + w / 2 : b.Z0 + Past;
     return new Box(new Vec3(x - w / 2, y0, lo), new Vec3(x + w / 2, y1, hi));
   }
+
+  /// <summary>The bodies of one piece, boxes that touch or overlap joined, the largest volume first.</summary>
+  private static List<List<Box>> Bodies(IReadOnlyList<Box> boxes) {
+    var bodies = new List<List<Box>>();
+    var left = boxes.ToList();
+    while (left.Count > 0) {
+      var body = new List<Box> { left[0] };
+      left.RemoveAt(0);
+      for (int i = 0; i < body.Count; i++)
+        for (int j = left.Count - 1; j >= 0; j--)
+          if (Gap(body[i], left[j]) <= Eps) {
+            body.Add(left[j]);
+            left.RemoveAt(j);
+          }
+      bodies.Add(body);
+    }
+    return
+    [
+      .. bodies.OrderByDescending(b =>
+        b.Sum(x => (x.Hi.X - x.Lo.X) * (x.Hi.Y - x.Lo.Y) * (x.Hi.Z - x.Lo.Z))
+      ),
+    ];
+  }
+
+  private static (Box From, Box To) Nearest(
+    IReadOnlyList<Box> from,
+    IReadOnlyList<Box> to
+  ) =>
+    (
+      from.SelectMany(a => to.Select(b => (From: a, To: b)))
+        .MinBy(p =>
+          Math.Max(
+            Math.Max(p.From.Lo.X - p.To.Hi.X, p.To.Lo.X - p.From.Hi.X),
+            Math.Max(p.From.Lo.Z - p.To.Hi.Z, p.To.Lo.Z - p.From.Hi.Z)
+          )
+        )
+    );
 
   private static double Gap(Box a, Box b) =>
     Enumerable

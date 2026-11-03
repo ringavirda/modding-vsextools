@@ -128,6 +128,23 @@ public class FillingTests(ITestOutputHelper output) {
   }
 
   [Fact]
+  public void A_piece_of_two_bodies_gates_the_second_and_floods_it() {
+    List<Leaf> kit = Leaves(
+      Bx("Body", "[0, 0, 0]", "[6, 4, 6]"),
+      Bx("Arm", "[0, 0, -8]", "[2, 4, 0]"),
+      Bx("Apart", "[3, 0, -14]", "[6, 4, -11]")
+    );
+    PourRequest r = Request("floor", kit, [At(13, 10, 4)]);
+
+    FillingResult f = Make(r);
+
+    Assert.Empty(Failing(f, r));
+    FeedLaid gate = Assert.Single(f.Feeds, x => x.Kind == "gate");
+    Assert.Equal("Gate1.1", gate.Name);
+    Assert.Equal(1, gate.Into);
+  }
+
+  [Fact]
   public void A_drop_over_the_piece_lays_no_runner() {
     PourRequest r = Request("floor", Block(6, 4, 6), [At(13, 10, 4)]);
 
