@@ -193,14 +193,27 @@ public static class Patterns {
       yield return l;
       yield break;
     }
-    if (!l.AxisAligned)
+    Mat4d m = Engine.Local(l.Element);
+    int j = -1;
+    for (int k = 0; k < 3; k++)
+      if (Math.Abs(Math.Abs(m[1, k]) - 1) < Eps)
+        j = k;
+    bool quarter = new[]
+    {
+      l.Element.RotationX,
+      l.Element.RotationY,
+      l.Element.RotationZ,
+    }.All(r => (r ?? 0) % 90 == 0);
+    if (j < 0 || !quarter)
       throw new CastGenException(
         $"{l.Name}: a turned leaf crosses the parting at y {Fmt.G(parting)}"
       );
+    double up = m[1, j];
+    double at = (parting - m[1, 3]) / up;
     Element low = Select.Clone(l.Element, true),
       high = Select.Clone(l.Element, true);
-    low.To![1] = parting;
-    high.From![1] = parting;
+    (up > 0 ? low : high).To![j] = l.Element.From![j] + at;
+    (up > 0 ? high : low).From![j] = l.Element.From![j] + at;
     high.Name = l.Name + "_cope";
     yield return l with {
       Element = low,

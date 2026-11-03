@@ -48,12 +48,17 @@ public class CastGenRunTests {
   private const string FloorLie =
     """{ "x": { "axis": "x", "offset": 4 }, "y": { "axis": "y", "offset": 10 }, "z": { "axis": "z", "offset": -8 } }""";
 
-  private static GenContext Ctx(string drawing = "") =>
+  private static readonly string SmallFormDrawing = FormDrawing.Replace(
+    "[16, 4, 16]",
+    "[8, 4, 8]"
+  );
+
+  private static GenContext Ctx(string drawing = "", string form = "") =>
     new(
       Fx.Settings,
       (shape, sha) => {
         (string s, string r) = shape switch {
-          "b.json" => (FormDrawing, FormRecord),
+          "b.json" => (form.Length > 0 ? form : FormDrawing, FormRecord),
           "m.json" => (drawing.Length > 0 ? drawing : Drawing, Record),
           _ => throw new InvalidOperationException(shape),
         };
@@ -239,6 +244,46 @@ public class CastGenRunTests {
       o.Name == "longflask-cope-filling-castbed"
     );
     Assert.Equal("cope", (string?)cope.Record.Carried["pour"]!["half"]);
+  }
+
+  [Fact]
+  public void A_turned_lie_writes_the_cast_item_in_its_frame() {
+    const string turnedLie =
+      """{ "x": { "axis": "z", "offset": 8 }, "y": { "axis": "y", "offset": 4 }, "z": { "axis": "-x", "offset": -14 } }""";
+    const string plainLie =
+      """{ "x": { "axis": "x", "offset": 8 }, "y": { "axis": "y", "offset": 4 }, "z": { "axis": "z", "offset": -30 } }""";
+
+    GenResult turned = Run(Ctx(), BlankEntry("long", turnedLie));
+    GenResult plain = Run(Ctx(), BlankEntry("long", plainLie));
+
+    GenOutput item = turned.Outputs.Single(o => o.Name == "castbed");
+    GenOutput itemPlain = plain.Outputs.Single(o => o.Name == "castbed");
+    Assert.Equal(
+      CanonicalWriter.Write(itemPlain.Shape),
+      CanonicalWriter.Write(item.Shape)
+    );
+    JToken at = turned
+      .Outputs.Single(o => o.Name == "longflask-filling-castbed")
+      .Record.Carried["pour"]!["pieces"]![0]!["at"]!;
+    Assert.Equal(
+      [0, 0, 1, 8, 0, 1, 0, 4, -1, 0, 0, -14, 0, 0, 0, 1],
+      at.Select(v => (double)v)
+    );
+  }
+
+  [Fact]
+  public void A_closed_pour_takes_a_side_lie() {
+    const string sideLie =
+      """{ "x": { "axis": "-y", "offset": 10 }, "y": { "axis": "x", "offset": 4 }, "z": { "axis": "z", "offset": -30 } }""";
+
+    GenResult r = Run(Ctx(form: SmallFormDrawing), BlankEntry("long", sideLie));
+
+    Assert.Contains(r.Outputs, o => o.Name == "longflask-filling-castbed");
+    Assert.Contains(r.Outputs, o => o.Name == "longflask-cope-filling-castbed");
+    GenOutput item = r.Outputs.Single(o => o.Name == "castbed");
+    Assert.All(item.Shape.Elements, e => Assert.True(e.To![0] <= 9));
+    GenOutput pattern = r.Outputs.Single(o => o.Name == "pattern-castbed");
+    Assert.All(pattern.Shape.Elements, e => Assert.True(e.To![0] <= 11));
   }
 
   [Fact]

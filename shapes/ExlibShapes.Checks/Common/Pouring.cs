@@ -213,7 +213,7 @@ internal sealed class Pouring {
           throw new CheckUsageException(
             $"{gate}: feed '{f.Name}' enters piece {into}, the pour has {pour.Pieces.Count}"
           );
-        Mat4d at = pour.Pieces[into - 1];
+        Mat4d at = Mat4d.Translate(pour.Pieces[into - 1].Mul(Vec3.Zero));
         foreach (Node n in pattern.Leaves)
           if (
             f.Patterns.Any(g =>

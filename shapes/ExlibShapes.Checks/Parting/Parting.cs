@@ -133,7 +133,7 @@ public sealed class Parting : ICheck {
         for (int k = 0; k < p.Pour.Pieces.Count; k++) {
           counted++;
           List<Box> solid = Lattice.Fine.Solid(
-            p.Pour.Pieces[k] * frames.Mat(leaf),
+            Mat4d.Translate(p.Pour.Pieces[k].Mul(Vec3.Zero)) * frames.Mat(leaf),
             leaf.Size
           );
           double reach = drag ? solid.Max(b => b.Hi.Y) : solid.Min(b => b.Lo.Y);

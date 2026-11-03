@@ -381,6 +381,8 @@ public sealed partial class CastGen : IGenerator {
       )
       : TurnedByGroup(c, leaves, lies);
 
+    List<Leaf> itemLeaves = oneLie ? leaves : Lies.Apply(turned, Inverse(lie));
+
     Station? st = null;
     if (
       c.Station != null
@@ -411,6 +413,12 @@ public sealed partial class CastGen : IGenerator {
           )
         ),
     ];
+    List<Mat4d> pieceAt =
+    [
+      .. Enumerable
+        .Range(0, pieces)
+        .Select(k => Mat4d.Translate(0, 0, -k * step) * lie.Matrix),
+    ];
     if (st != null) {
       FitReport fit = StationFit.Run(
         ctx.Settings,
@@ -438,11 +446,6 @@ public sealed partial class CastGen : IGenerator {
         throw new CastGenException(string.Join("; ", fit.Failures));
     }
     bool closed = st?.Parting != null;
-    bool keepsY = lies.All(l => l.Axes[1] is { Item: 1, Sign: 1 });
-    if (st != null && (closed || st.HeadHeight != null) && !keepsY)
-      throw new CastGenException(
-        $"{c.Code}: station \"{c.Station}\" parts or feeds along y, so its lie keeps the item's y"
-      );
     double? parting = null;
     if (closed) {
       double flask = st!.Parting!.Value;
@@ -508,7 +511,7 @@ public sealed partial class CastGen : IGenerator {
     List<Leaf> shown = Uvs.Unroll(
       ctx,
       c.Code,
-      [.. Uvs.Assign(ctx, c.Code, turned)]
+      [.. Uvs.Assign(ctx, c.Code, itemLeaves)]
     );
     foreach (Leaf l in shown)
       rec.Elements[l.Name] = new ElementPart {
@@ -574,8 +577,8 @@ public sealed partial class CastGen : IGenerator {
         closed,
         c.Code,
         pattern.Pattern.Name,
-        turned,
-        at,
+        itemLeaves,
+        pieceAt,
         pattern.Pattern.Shape,
         seats,
         "chain",
@@ -671,6 +674,13 @@ public sealed partial class CastGen : IGenerator {
     new(1, 1, 0),
     new(2, 1, 0),
   ]);
+
+  private static LieSpec Inverse(LieSpec lie) {
+    var axes = new LieAxis[3];
+    for (int f = 0; f < 3; f++)
+      axes[lie.Axes[f].Item] = new LieAxis(f, lie.Axes[f].Sign, 0);
+    return new LieSpec(axes);
+  }
 
   private static Mat4d Turn(LieSpec lie) =>
     new LieSpec([.. lie.Axes.Select(a => a with { Offset = 0 })]).Matrix;

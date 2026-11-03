@@ -145,6 +145,18 @@ public class PartingTests {
   }
 
   [Fact]
+  public void A_turned_piece_places_the_pattern_by_its_offset_alone() {
+    CheckInput input = StageFixtures.Closed(
+      at: "[0, -1, 0, 13, 1, 0, 0, 5, 0, 0, 1, -3, 0, 0, 0, 1]",
+      pattern: Pattern(3, 3)
+    );
+    Assert.DoesNotContain(
+      Check.Run(input).Lines,
+      l => l.StartsWith("Piece1: pattern")
+    );
+  }
+
+  [Fact]
   public void A_pattern_drag_reaching_over_the_parting_is_named() {
     CheckInput input = StageFixtures.Closed(pattern: Pattern(4, 3));
     Assert.Contains(
