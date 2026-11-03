@@ -83,9 +83,28 @@ public class BlankTests {
   public void Cut_faces_come_from_the_record_steps_by_default() {
     BlankResult b = Build(Spec());
 
-    Assert.Equal(["ends", "ways"], b.CutFeatures.Order());
+    Assert.Equal(["ends", "slot", "ways"], b.CutFeatures.Order());
     Assert.Contains("Base/up", b.CutFaces);
     Assert.Contains("Top/west", b.CutFaces);
+  }
+
+  [Fact]
+  public void From_record_takes_planed_faces() {
+    const string record = """
+      { "schema": 1,
+        "elements": { "Base": { "stage": "cast" }, "Top": { "stage": "cast" },
+                      "Slot": { "stage": "cast" }, "Far": { "stage": "cast" } },
+        "features": {
+          "bed": { "elements": ["Base"], "origin": "planed", "faces": ["Base/up"] },
+          "far": { "elements": ["Far"], "origin": "planed", "faces": ["Far/up"] },
+          "holes": { "elements": ["Slot"], "origin": "drilled", "faces": ["Slot/up"],
+                    "hole": { "axis": "y", "centre": [4, 3, 4], "depth": -2, "radius": 1 } } } }
+      """;
+
+    BlankResult b = Blank.Build(Fx.Ctx(Form, record), Spec());
+
+    Assert.Equal(["bed"], b.CutFeatures);
+    Assert.Equal(["Base/up"], b.CutFaces);
   }
 
   [Fact]

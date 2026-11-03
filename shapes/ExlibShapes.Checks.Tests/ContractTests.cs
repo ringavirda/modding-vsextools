@@ -47,12 +47,27 @@ public class ContractTests {
       )
     );
     Assert.Equal(
-      ["runner", "split", "facecheck"],
+      ["split", "facecheck"],
       Selection
         .For(["filling"], Profile.Structural)
         .Where(c => Selection.Applies(c, input))
         .Select(c => c.Id)
     );
+  }
+
+  [Fact]
+  public void A_cope_skips_the_runner_gate() {
+    var input = new CheckInput(
+      null,
+      Record: CastFixtures.Record(
+        "\"kinds\": [\"filling\"], \"pour\": { \"half\": \"cope\", \"pair\": \"drag\" }"
+      )
+    );
+    ICheck runner = Selection
+      .For(["filling"], Profile.Structural)
+      .Single(c => c.Id == "runner");
+
+    Assert.False(Selection.Applies(runner, input));
   }
 
   [Fact]

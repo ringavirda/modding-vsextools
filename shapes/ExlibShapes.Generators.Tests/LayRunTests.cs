@@ -165,6 +165,30 @@ public class JoinedRunTests {
   }
 
   [Fact]
+  public void Joined_item_keeps_only_its_features() {
+    string record = Record.Replace(
+      "\"features\": {",
+      "\"features\": { \"far\": { \"elements\": [\"Sec4\"], \"origin\": \"planed\", \"faces\": [\"Sec4/up\"], \"step\": \"plane\" },"
+    );
+    var spec = LayFx.Machine(
+      users: User(0) + "," + User(1),
+      joined: """
+      { "item": "bed-joined", "from": ["bed-sec1", "bed-sec2"],
+        "steps": [ { "step": "plane", "features": ["seat"] } ] }
+      """
+    );
+
+    GenResult r = new CastGen().Run(LayFx.Ctx(Drawing, record), spec);
+
+    GenOutput bed = r.Outputs.Single(o => o.Name == "bed-joined");
+    GenInput placed = r.Inputs.Single(i => i.Name == "bed-joined-placed");
+    Assert.Contains("seat", bed.Record.Features.Keys);
+    Assert.DoesNotContain("far", bed.Record.Features.Keys);
+    Assert.Contains("seat", placed.Record.Features.Keys);
+    Assert.DoesNotContain("far", placed.Record.Features.Keys);
+  }
+
+  [Fact]
   public void A_joined_item_keeps_the_work_its_sections_cut() {
     const string ways = """
       { "schema": 1, "elements": { "Base": { "stage": "cast", "role": "cast" } },

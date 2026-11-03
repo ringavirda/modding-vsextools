@@ -114,10 +114,19 @@ public static class Blank {
     foreach (StretchSpec s in form.Stretch)
       Stretch(res.Cast, s, spec.Size[s.Axis]);
 
+    var inCast = new HashSet<string>(
+      set.Cast.Concat(set.Worked).Select(l => l.SourceName),
+      StringComparer.Ordinal
+    );
     IEnumerable<string> cut =
       spec.CutFaces
       ?? rs.Record.Features.Where(kv =>
-          kv.Value.Step != null && kv.Value.Origin is null or "cast"
+          kv.Value.Elements.Any(inCast.Contains)
+          && (
+            kv.Value.Origin is "planed" or "turned" or "bored" or "filed"
+              ? kv.Value.Faces.Count > 0
+              : kv.Value.Step != null && kv.Value.Origin is null or "cast"
+          )
         )
         .Select(kv => kv.Key);
     foreach (string id in cut) {
@@ -126,7 +135,11 @@ public static class Blank {
           $"blank \"{spec.Blank}\": cut feature \"{id}\" is not in the record"
         );
       res.CutFeatures.Add(id);
-      res.CutFaces.AddRange(f.Faces);
+      res.CutFaces.AddRange(
+        spec.CutFaces == null
+          ? f.Faces.Where(x => inCast.Contains(x[..x.IndexOf('/')]))
+          : f.Faces
+      );
     }
     res.TagCast();
     foreach (KeyValuePair<string, Feature> kv in rs.Record.Features)

@@ -68,16 +68,7 @@ public static partial class Worked {
 
     PartRecord rec = PartRecord.Read(rs.Record.Write());
     rec.Answers.AddRange(ctx.Answers);
-    foreach (
-      string name in rec
-        .Features.Where(kv =>
-          kv.Value.Origin is not (null or "cast" or "cored")
-          && !placed.Any(l => kv.Value.Elements.Contains(l.SourceName))
-        )
-        .Select(kv => kv.Key)
-        .ToList()
-    )
-      rec.Features.Remove(name);
+    DropUnplaced(rec, placed);
     CheckResult match = new Blankmatch().Run(
       new CheckInput(
         Flush.ShapeOf(placed),
@@ -218,6 +209,7 @@ public static partial class Worked {
     foreach (KeyValuePair<string, Feature> kv in rs.Record.Features)
       blank.Record.Features[kv.Key] = kv.Value;
     blank.Record.Steps.AddRange(rs.Record.Steps);
+    DropUnplaced(blank.Record, placed);
 
     string spec = JsonConvert.SerializeObject(
       new {
@@ -239,11 +231,25 @@ public static partial class Worked {
     );
     string placedName = joined.Item + "-placed";
     PartRecord placedRecord = PartRecord.Read(rs.Record.Write());
+    DropUnplaced(placedRecord, placed);
     placedRecord.Carried["blank"] = joined.Item;
     ((JObject)output.Record.Carried["blankform"]!)["placed"] = placedName;
     return new WorkedResult([output], [], [], []) {
       Inputs = [new GenInput(placedName, Flush.ShapeOf(placed), placedRecord)],
     };
+  }
+
+  private static void DropUnplaced(PartRecord rec, List<Leaf> placed) {
+    foreach (
+      string name in rec
+        .Features.Where(kv =>
+          kv.Value.Origin is not (null or "cast" or "cored")
+          && !placed.Any(l => kv.Value.Elements.Contains(l.SourceName))
+        )
+        .Select(kv => kv.Key)
+        .ToList()
+    )
+      rec.Features.Remove(name);
   }
 
   private static List<Leaf> Sections(
