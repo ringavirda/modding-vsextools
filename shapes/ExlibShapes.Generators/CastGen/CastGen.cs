@@ -560,12 +560,14 @@ public sealed partial class CastGen : IGenerator {
       }
       string? name =
         c.GroupNames.Count > grp.Key ? c.GroupNames[grp.Key] : null;
-      if (name == null || members.Any(m => m.Name == name)) {
+      if (name == null) {
         foreach (Element m in members)
           shape.Elements.Add(m);
         continue;
       }
-      var root = new Element { Name = name };
+      var root = new Element {
+        Name = members.Any(m => m.Name == name) ? name + "Group" : name,
+      };
       root.Children.AddRange(members);
       shape.Elements.Add(root);
     }

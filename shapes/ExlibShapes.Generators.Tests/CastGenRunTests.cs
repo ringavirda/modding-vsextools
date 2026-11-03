@@ -360,6 +360,34 @@ public class CastGenRunTests {
   }
 
   [Fact]
+  public void A_group_whose_leaf_has_the_groups_name_is_still_written_as_a_group() {
+    string grouped = $$"""
+      { "elements": [ { "name": "Root", "from": [0, 0, 0], "to": [0, 0, 0], "children": [
+        { "name": "Base", "from": [0, 0, 0], "to": [16, 4, 16], "faces": { "up": { "texture": "#cast-iron1" } }, "children": [
+          {{Cube("Foot", "[2, 4, 2]", "[14, 6, 14]")}} ] },
+        { "name": "Side", "from": [0, 0, 0], "to": [0, 0, 0], "children": [
+          {{Cube("Lug", "[6, 6, 6]", "[10, 8, 10]")}} ] }
+      ] } ] }
+      """;
+    const string groupedRecord = """
+      { "schema": 1, "elements": { "Base": { "stage": "cast", "role": "cast" },
+        "Foot": { "stage": "cast", "role": "cast" }, "Lug": { "stage": "cast", "role": "cast" } } }
+      """;
+    JObject spec = MachineEntry(
+      """{ "item": "cast-kit", "groups": [ { "groups": ["Root/Base"] }, { "groups": ["Root/Side"] } ] }"""
+    );
+
+    GenResult r = Run(Ctx(grouped, record: groupedRecord), spec);
+
+    Shape item = r.Outputs.Single(o => o.Name == "cast-kit").Shape;
+    Assert.Equal(["BaseGroup", "Side"], item.Elements.Select(e => e.Name));
+    Assert.Equal(
+      ["Base", "Foot"],
+      item.Elements[0].Children.Select(e => e.Name)
+    );
+  }
+
+  [Fact]
   public void Draw_input_holds_the_pattern_halves() {
     const string plainLie =
       """{ "x": { "axis": "x", "offset": 8 }, "y": { "axis": "y", "offset": 4 }, "z": { "axis": "z", "offset": -30 } }""";

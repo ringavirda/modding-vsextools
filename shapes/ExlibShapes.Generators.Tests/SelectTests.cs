@@ -87,6 +87,35 @@ public class SelectTests {
     Assert.Null(leaf.Element.ScaleX);
   }
 
+  [Theory]
+  [InlineData(-89.9802, true)]
+  [InlineData(-89.9, false)]
+  public void A_rotation_within_a_twentieth_of_a_degree_of_square_is_read_as_square(
+    double angle,
+    bool square
+  ) {
+    string deg = angle.ToString(
+      System.Globalization.CultureInfo.InvariantCulture
+    );
+    Shape drawn = Reader.Read(
+      $$"""
+      { "elements": [
+        { "name": "Root", "from": [2, 0, 3], "to": [2, 0, 3], "rotationY": {{deg}}, "rotationOrigin": [2, 0, 3], "children": [
+          {{Fx.Cube(
+        "Leaf",
+        "[1, 0, 0]",
+        "[6, 3, 2]",
+        "\"rotationZ\": 22.5, \"rotationOrigin\": [1, 0, 0],"
+      )}} ] } ] }
+      """
+    );
+
+    Leaf leaf = Assert.Single(Select.Groups(drawn, ["Root"]));
+
+    Assert.Equal(square ? -90 : angle, leaf.Element.RotationY!.Value, 6);
+    Assert.Equal(square, leaf.Element.RotationZ is null);
+  }
+
   [Fact]
   public void A_sheared_world_matrix_is_refused() {
     Shape drawn = Reader.Read(

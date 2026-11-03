@@ -65,7 +65,7 @@ public static class Select {
     taken ??= new HashSet<string>(StringComparer.Ordinal);
     Mat4d place = placement ?? Mat4d.Identity;
     List<PathedElement> all = Engine.Walk(shape);
-    Dictionary<string, Mat4d> world = Engine.WorldMatrices(shape);
+    Dictionary<string, Mat4d> world = SquaredWorld(all);
     var outp = new List<Leaf>();
     var seen = new HashSet<string>(StringComparer.Ordinal);
     foreach (string group in groups) {
@@ -104,6 +104,30 @@ public static class Select {
           : new CastGenException($"group \"{group}\" is not in the drawing");
     }
     return outp;
+  }
+
+  /// <summary>Within this many degrees of a multiple of 90 a drawn rotation is read as that multiple.</summary>
+  public const double SquareTolerance = 0.05;
+
+  private static Dictionary<string, Mat4d> SquaredWorld(List<PathedElement> all) {
+    var world = new Dictionary<string, Mat4d>();
+    foreach (PathedElement pe in all) {
+      Element e = Clone(pe.Element, false);
+      e.RotationX = Square(e.RotationX);
+      e.RotationY = Square(e.RotationY);
+      e.RotationZ = Square(e.RotationZ);
+      Mat4d local = Engine.Local(e);
+      world[pe.Path] =
+        pe.ParentPath == null ? local : world[pe.ParentPath] * local;
+    }
+    return world;
+  }
+
+  private static double? Square(double? deg) {
+    if (deg is not double d)
+      return null;
+    double square = Math.Round(d / 90) * 90;
+    return Math.Abs(d - square) <= SquareTolerance ? square : d;
   }
 
   private static bool Drawn(Element e) =>
