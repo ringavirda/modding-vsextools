@@ -34,15 +34,15 @@ public sealed partial class CastGen : IGenerator {
   /// file gives each user's worked item, each joined entry's worked item, and for each own casting and the set the
   /// same products as a blank, its own worked items included. A casting whose cast set holds an untagged feature, a
   /// joined entry whose sections do, or a user whose placement is out of its blank's band, returns its question and
-  /// none of its outputs; every other product is still made. An open pour holds <c>perPour</c> pieces of a blank, or
+  /// none of its outputs; every other product is still made. A pour holds <c>perPour</c> pieces of a blank, or
   /// <c>perPour</c> of a machine's casting, in a column away from the drop in the flask's -z, each a station margin
-  /// of sand twice over the last's end; the pour's order is <c>south</c>. The groups of a kit each lie by their own
+  /// of sand twice over the last's end; the pour's order is <c>south</c>. A closed pour's pieces lie in its drag under one cope. The groups of a kit each lie by their own
   /// <c>lie</c> (else the casting's), their offsets relative to the first group's.</summary>
   /// <param name="ctx">The context. A machine file's users need <see cref="GenContext.Blank"/>.</param>
   /// <param name="spec">The blank file (it has <c>blank</c>) or machine file (it has <c>machine</c>) as written.</param>
   /// <exception cref="SpecException">The entry is malformed.</exception>
   /// <exception cref="CastGenException">An input cannot make its output: a user fails its blank, a casting fits no
-  /// station, a closed pour or a head is on a lie that turns y, a closed pour holds more than one piece, a pour of
+  /// station, a closed pour or a head is on a lie that turns y, a pour of
   /// several pieces or a kit whose groups lie differently has cores.</exception>
   public GenResult Run(GenContext ctx, JObject spec) {
     var acc = new Acc();

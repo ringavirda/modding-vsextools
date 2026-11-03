@@ -270,7 +270,7 @@ public class FillingTests(ITestOutputHelper output) {
   }
 
   [Fact]
-  public void A_closed_pour_of_two_pieces_is_refused() {
+  public void A_closed_pour_of_two_pieces_holds_piece_groups_in_the_drag_under_one_cope() {
     PourRequest r = Request(
       "long",
       Block(6, 6, 6),
@@ -278,8 +278,37 @@ public class FillingTests(ITestOutputHelper output) {
       closed: true
     );
 
+    FillingResult f = Make(r);
+
+    Assert.Empty(Failing(f, r));
+    Assert.Equal(2, (Pour(f)["pieces"] as JArray)!.Count);
+    Element two = f.Filling.Shape.Elements.Single(e => e.Name == "Piece2");
+    Assert.Equal(
+      ["Bedded", "Level"],
+      two.Children.Select(c => c.Name!).Order()
+    );
+    Assert.DoesNotContain("Piece1", Names(f.Cope!.Shape.Elements));
+    Assert.All(
+      f.Filling.Shape.Elements.SelectMany(Flat)
+        .Where(e => e.Name!.StartsWith("Sand")),
+      e => Assert.True(e.To![1] <= 8 + 1e-9)
+    );
+  }
+
+  private static IEnumerable<Element> Flat(Element e) =>
+    new[] { e }.Concat(e.Children.SelectMany(Flat));
+
+  [Fact]
+  public void A_closed_pour_of_pieces_closer_than_the_margin_is_refused() {
+    PourRequest r = Request(
+      "long",
+      Block(6, 6, 6),
+      [At(13, 4, -3), At(13, 4, -8)],
+      closed: true
+    );
+
     Assert.Contains(
-      "holds one piece",
+      "closer than the margin",
       Assert.Throws<CastGenException>(() => Make(r)).Message
     );
   }

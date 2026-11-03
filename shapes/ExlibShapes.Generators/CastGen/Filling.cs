@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using ExpandedLib.Shapes.Checks;
 using ExpandedLib.Shapes.Core;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -84,7 +85,7 @@ public static class Fillings {
   /// <param name="request">What the pour is made from.</param>
   /// <param name="spec">The spec text the provenance hash is taken over.</param>
   /// <exception cref="CastGenException">The station is unknown or lacks a part of the rule, a head is missing from the
-  /// pattern, a piece or a feed lies in the runner box, a closed pour has more than one piece, two pieces' zones overlap, or a feed cannot be laid.</exception>
+  /// pattern, a piece or a feed lies in the runner box, two pieces' zones overlap, or a feed cannot be laid.</exception>
   public static FillingResult Make(
     GenContext ctx,
     PourRequest request,
@@ -98,8 +99,6 @@ public static class Fillings {
       throw new CastGenException($"{name}: no station \"{r.Station}\"");
     if (r.Pieces.Count == 0)
       throw new CastGenException($"{name}: the pour has no piece");
-    if (r.Closed && r.Pieces.Count > 1)
-      throw new CastGenException($"{name}: a closed pour holds one piece");
 
     var cast = r.Pieces.Select(at => Occupancy.Of(r.CastLeaves, at)).ToList();
     var heads = new List<Occupancy>();
@@ -187,18 +186,7 @@ public static class Fillings {
     foreach (StationBox b in st.RunnerBox)
       runnerRoot.Add((Styled(b.Name, b.From, b.To, runnerKey, "runner"), null));
 
-    if (r.Closed) {
-      double parting = st.Parting!.Value;
-      Box drag = new(station.Lo, new Vec3(station.Hi.X, parting, station.Hi.Z)),
-        cope = new(new Vec3(station.Lo.X, parting, station.Lo.Z), station.Hi);
-      foreach (Box b in Sands.Fill(drag, solid, r.Step))
-        dragRoot.Add((Sand(b), null));
-      foreach (Box b in Sands.Fill(cope, solid, r.Step))
-        copeRoot.Add((Sand(b), null));
-    } else if (r.Pieces.Count == 1) {
-      foreach (Box b in Sands.Fill(station, solid, r.Step))
-        dragRoot.Add((Sand(b), null));
-    } else {
+    void LayPieces(Box region) {
       double grow = Math.Max(st.Margin / 2, st.Footprint ?? 0);
       var zones = new List<Box>();
       for (int k = 0; k < metal.Count; k++) {
@@ -206,14 +194,14 @@ public static class Fillings {
         zones.Add(
           new Box(
             new Vec3(
-              Math.Max(plan.X0 - grow, station.Lo.X),
-              station.Lo.Y,
-              Math.Max(plan.Z0 - grow, station.Lo.Z)
+              Math.Max(plan.X0 - grow, region.Lo.X),
+              region.Lo.Y,
+              Math.Max(plan.Z0 - grow, region.Lo.Z)
             ),
             new Vec3(
-              Math.Min(plan.X1 + grow, station.Hi.X),
-              station.Hi.Y,
-              Math.Min(plan.Z1 + grow, station.Hi.Z)
+              Math.Min(plan.X1 + grow, region.Hi.X),
+              region.Hi.Y,
+              Math.Min(plan.Z1 + grow, region.Hi.Z)
             )
           )
         );
@@ -231,13 +219,13 @@ public static class Fillings {
             )
           )
             throw new CastGenException(
-              $"{name}: the zones of Piece{a + 1} and Piece{c + 1} overlap on the plan"
+              $"{name}: the zones of Piece{a + 1} and Piece{c + 1} overlap on the plan, closer than the margin {Fmt.G(st.Margin)}"
             );
       var outside = new Occupancy();
       outside.Add(solid);
       foreach (Box z in zones)
         outside.Add(z);
-      foreach (Box b in Sands.Fill(station, outside, r.Step))
+      foreach (Box b in Sands.Fill(region, outside, r.Step))
         dragRoot.Add((Sand(b), null));
       for (int k = 0; k < zones.Count; k++) {
         var level = new Occupancy();
@@ -262,6 +250,24 @@ public static class Fillings {
         foreach (Box b in Sands.Fill(zones[k], level, r.Step))
           dragRoot.Add((Sand(b), $"Piece{k + 1}/Level"));
       }
+    }
+
+    if (r.Closed) {
+      double parting = st.Parting!.Value;
+      Box drag = new(station.Lo, new Vec3(station.Hi.X, parting, station.Hi.Z)),
+        cope = new(new Vec3(station.Lo.X, parting, station.Lo.Z), station.Hi);
+      if (r.Pieces.Count == 1)
+        foreach (Box b in Sands.Fill(drag, solid, r.Step))
+          dragRoot.Add((Sand(b), null));
+      else
+        LayPieces(drag);
+      foreach (Box b in Sands.Fill(cope, solid, r.Step))
+        copeRoot.Add((Sand(b), null));
+    } else if (r.Pieces.Count == 1) {
+      foreach (Box b in Sands.Fill(station, solid, r.Step))
+        dragRoot.Add((Sand(b), null));
+    } else {
+      LayPieces(station);
     }
 
     foreach (StationBox rb in st.RunnerBox) {
