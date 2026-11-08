@@ -131,4 +131,26 @@ public class TexturesTests {
       Directory.Delete(root, true);
     }
   }
+
+  // Fails when the sibling-exmods branch of ModsRoot.Of is removed: the root stays W instead of W/exmods.
+  [Fact]
+  public void Build_roots_a_workbench_shape_at_the_sibling_exmods() {
+    string w = Path.Combine(
+      Path.GetTempPath(),
+      "textures-ws-" + Guid.NewGuid().ToString("N")
+    );
+    try {
+      string shape = Path.Combine(w, "workbench", "shapes-finished", "x.json");
+      Directory.CreateDirectory(Path.GetDirectoryName(shape)!);
+      Directory.CreateDirectory(Path.Combine(w, "exmods", "mods"));
+      File.WriteAllText(Path.Combine(w, "exmod.workspace.json"), "{}");
+      File.WriteAllText(shape, "{}");
+      Assert.Equal(
+        Path.Combine(w, "exmods"),
+        TextureRoots.Build(null, null, shape).RepoPath
+      );
+    } finally {
+      Directory.Delete(w, true);
+    }
+  }
 }

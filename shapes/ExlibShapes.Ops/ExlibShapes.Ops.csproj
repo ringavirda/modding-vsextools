@@ -18,6 +18,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="ExlibShapes.Ops.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\ExlibShapes.Core\ExlibShapes.Core.csproj" />
     <ProjectReference Include="..\ExlibShapes.Checks\ExlibShapes.Checks.csproj" />
     <ProjectReference Include="..\ExlibShapes.Generators\ExlibShapes.Generators.csproj" />

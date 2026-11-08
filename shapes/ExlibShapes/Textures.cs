@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using ExpandedLib.Assets;
+using ExpandedLib.Shapes.Ops;
 using SkiaSharp;
 
 namespace ExpandedLib.Shapes;
@@ -41,7 +42,8 @@ public sealed class TextureRoots {
   /// holding <c>.game/</c> (the current directory when none of those exist, or when
   /// <paramref name="shapePath"/> is null); <paramref name="game"/> is resolved through
   /// <see cref="GameInstall.Resolve"/> lazily, the first time a texture reference actually needs
-  /// <see cref="GamePath"/>.
+  /// <see cref="GamePath"/>. A root without <c>mods/</c> is replaced by the workspace's <c>exmods</c>
+  /// folder when <c>exmod.workspace.json</c> is above it (see <see cref="ModsRoot.Of"/>).
   /// </summary>
   public static TextureRoots Build(
     string? game,
@@ -69,7 +71,7 @@ public sealed class TextureRoots {
         || Directory.Exists(Path.Combine(dir.FullName, "mods"))
         || Path.Exists(Path.Combine(dir.FullName, ".git"))
       )
-        return dir.FullName;
+        return ModsRoot.Of(dir.FullName);
     for (DirectoryInfo? dir = new(start); dir != null; dir = dir.Parent)
       if (Directory.Exists(Path.Combine(dir.FullName, ".game")))
         return dir.FullName;

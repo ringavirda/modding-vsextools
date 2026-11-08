@@ -49,13 +49,14 @@ internal static class BlockDrawings {
     return [.. found.OrderBy(d => d.Path, StringComparer.Ordinal)];
   }
 
-  /// <summary>The nearest ancestor of <paramref name="drawing"/> that holds a <c>workbench</c> folder; its own
+  /// <summary>The nearest ancestor of <paramref name="drawing"/> that holds a <c>workbench</c> folder, moved to the
+  /// workspace's <c>exmods</c> folder when it holds no <c>mods/</c> (see <see cref="ModsRoot.Of"/>); the drawing's own
   /// directory when none does.</summary>
   public static string RootOf(string drawing) {
     string dir = Path.GetDirectoryName(Path.GetFullPath(drawing))!;
     for (string? d = dir; d != null; d = Path.GetDirectoryName(d))
       if (Directory.Exists(Path.Combine(d, "workbench")))
-        return d;
+        return ModsRoot.Of(d);
     return dir;
   }
 
