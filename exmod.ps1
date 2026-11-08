@@ -1096,7 +1096,8 @@ function Get-ExmodMemoryBudget {
 # in the memory dir, {owner, gb, charge, pids}, where the sampler writes the host PIDs; Streams empty on the real-use path),
 # or $null where there is no meminfo file. Throws when $env:EXMOD_BUILD_LOCK_HELD is set or a parent process holds
 # $env:EXMOD_BUILD_LOCK (a holder of the build lock must never wait for memory) and when a slot file cannot be opened;
-# every stream held is disposed first. The OS drops the share when the process dies.
+# every stream held is disposed first. When the process dies the OS drops a share held as lock files, and a later decision
+# ignores and deletes a share held as a booked-<id>.json.
 function Lock-ExmodMemory([int]$Gb, [string]$Label, [scriptblock]$OnWait, [switch]$Filtered) {
   if ($env:EXMOD_BUILD_LOCK_HELD) { throw "memory share asked for by $Label while the build lock is held" }
   if ($env:EXMOD_BUILD_LOCK) {
