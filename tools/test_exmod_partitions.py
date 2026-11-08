@@ -22,9 +22,11 @@ TESTS = ["Mod.Tests.WalkA.One", "Mod.Tests.WalkA.Two", "Mod.Tests.WalkB.One",
 # of one kind, `|` or `&` joined, FullyQualifiedName~ ~ != !=) and prints the VSTest summary of the
 # matches, failing when TEST_FAIL names a test among them (or, with TEST_OOM, or TEST_OOM_AT=<GiB> when the run's heap
 # limit is that many GiB, the first match, printing an OutOfMemoryException). TEST_HOLD_MB holds that many MiB resident
-# for TEST_HOLD_S seconds. A test run appends start/end to TEST_ORDER and its argv as JSON to TEST_ARGV.
+# for TEST_HOLD_S seconds. A test run appends start/end to TEST_ORDER and its argv as JSON to TEST_ARGV. TEST_FAIL_MANY=N
+# makes the run's matches N failing tests, Mod.Tests.Many.T0 on; TEST_TRX_SRC names a file copied to the trx logger's
+# LogFileName in the results directory.
 STUB = """#!/usr/bin/env python3
-import json, os, re, sys, time
+import json, os, re, shutil, sys, time
 tests = %r
 a = sys.argv[1:]
 if a[:1] != ["test"]:
@@ -59,12 +61,21 @@ if order:
     open(order, "a").write("start\\n")
     time.sleep(1)
     open(order, "a").write("end\\n")
-bad = [n for n in hit if n == os.environ.get("TEST_FAIL")]
+lg = [x for x in a if x.startswith("trx;LogFileName=")]
+if lg and os.environ.get("TEST_TRX_SRC"):
+    rd = a[a.index("--results-directory") + 1]
+    os.makedirs(rd, exist_ok=True)
+    shutil.copy(os.environ["TEST_TRX_SRC"], os.path.join(rd, lg[0].split("=", 1)[1]))
+many = int(os.environ.get("TEST_FAIL_MANY", "0"))
+if many:
+    hit = ["Mod.Tests.Many.T%%d" %% i for i in range(many)]
+    os.environ["TEST_FAIL"] = ""
+bad = [n for n in hit if n == os.environ.get("TEST_FAIL")] if not many else hit
 if oom and hit:
     bad = hit[:1]
     print("System.OutOfMemoryException: Exception of type was thrown.")
-if bad:
-    print("  Failed %%s [1 ms]" %% bad[0])
+for b in bad:
+    print("  Failed %%s [1 ms]" %% b)
     print("  Error Message:")
     print("   boom")
 print("%%s!  - Failed: %%d, Passed: %%d, Skipped: 0, Total: %%d" %% ("Failed" if bad else "Passed", len(bad), len(hit) - len(bad), len(hit)))
@@ -139,6 +150,32 @@ def run_pwsh(body, env_extra=None, args="", manifest=MANIFEST, stub=STUB):
 def listed(stub):
     out = subprocess.run([stub, "test", "x", "--list-tests"], capture_output=True, text=True).stdout
     return len([l for l in out.splitlines() if l.startswith("    ")])
+
+
+TRX_NS = "http://microsoft.com/schemas/VisualStudio/TeamTest/2010"
+
+
+def write_trx(path, classes, per_class, pad=0):
+    """A trx file with `classes` classes of `per_class` tests each; class i (0-based) has tests of (i+1) ms and
+    each result carries `pad` bytes of stdout. Results come before the test definitions, as dotnet writes them."""
+    filler = "x" * pad
+    with open(path, "w") as f:
+        f.write(f'<?xml version="1.0" encoding="UTF-8"?><TestRun xmlns="{TRX_NS}"><Results>')
+        for c in range(classes):
+            for t in range(per_class):
+                f.write(f'<UnitTestResult executionId="e{c}-{t}" testId="t{c}-{t}" testName="T{t}" '
+                        f'duration="00:00:00.{(c + 1) * 10000:07d}" outcome="Passed"><Output><StdOut>{filler}</StdOut></Output>'
+                        f'</UnitTestResult>')
+        f.write("</Results><TestDefinitions>")
+        for c in range(classes):
+            for t in range(per_class):
+                f.write(f'<UnitTest name="T{t}" id="t{c}-{t}"><Execution id="e{c}-{t}"/>'
+                        f'<TestMethod codeBase="a.dll" className="Mod.Tests.C{c:02d}" name="T{t}"/></UnitTest>')
+        f.write("</TestDefinitions></TestRun>")
+
+
+def results_block(out):
+    return out[out.index("===== Results ====="):]
 
 
 @unittest.skipUnless(PWSH, "pwsh not found")
@@ -351,6 +388,152 @@ class PartitionTests(unittest.TestCase):
         out, seen, recorded, _ = run_pwsh("", manifest={})
         self.assertEqual({"1.22/A.Tests": len(TESTS)}, recorded, out)
         self.assertEqual(["start", "end"], seen)
+
+
+
+def run_records(args="", env_extra=None, manifest=MANIFEST, body=""):
+    """(output, rows) of a stubbed run with EXMOD_RUN_LOG in a folder of its own; rows is [] when nothing was written."""
+    with tempfile.TemporaryDirectory() as d:
+        log = os.path.join(d, "test-runs.jsonl")
+        out, _, _, _ = run_pwsh(body, {"EXMOD_RUN_LOG": log, **(env_extra or {})}, args=args, manifest=manifest)
+        rows = []
+        if os.path.exists(log):
+            with open(log) as f:
+                rows = [json.loads(l) for l in f if l.strip()]
+        return out, rows
+
+
+@unittest.skipUnless(PWSH, "pwsh not found")
+@unittest.skipIf(sys.platform == "win32", "the dotnet stub is a shell script")
+class RunRecordTests(unittest.TestCase):
+    KEYS = ["run", "trigger", "root", "commit", "dirty", "label", "part", "filter", "filtered", "exit", "seconds",
+            "time", "tests", "passed", "failed", "skipped", "failures", "classes"]
+
+    def test_a_partitioned_host_writes_one_row_with_every_key(self):
+        # Fails when a key is dropped or renamed, when part is left out of a partition's row, or when the counts
+        # come from the wrong summary field.
+        out, rows = run_records(env_extra={"TEST_FAIL": "Mod.Tests.World.Two"})
+        self.assertEqual(3, len(rows), out)
+        by = {r["part"]: r for r in rows}
+        self.assertEqual({"walks", "worlds", "rest"}, set(by))
+        for r in rows:
+            self.assertEqual(self.KEYS, list(r))
+        w = by["worlds"]
+        self.assertEqual(("direct", "1.22/A.Tests/worlds", "FullyQualifiedName~.World.", False, 1),
+                         (w["trigger"], w["label"], w["filter"], w["filtered"], w["exit"]))
+        self.assertEqual((2, 1, 1, 0), (w["tests"], w["passed"], w["failed"], w["skipped"]))
+        self.assertEqual(["Mod.Tests.World.Two"], w["failures"])
+        self.assertEqual("repo", os.path.basename(w["root"]))
+        self.assertIsNone(w["commit"])
+        self.assertIsNone(w["dirty"])
+        self.assertIsNone(w["classes"])
+        self.assertIsInstance(w["seconds"], (int, float))
+        self.assertRegex(w["time"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+        self.assertEqual((0, 3, []), (by["walks"]["exit"], by["walks"]["tests"], by["walks"]["failures"]))
+
+    def test_a_filtered_whole_assembly_row_has_no_part_and_the_filter(self):
+        # Fails when part is written for an unpartitioned host or filtered is not the -Filter flag.
+        _, rows = run_records(args="'-Filter', 'FullyQualifiedName~.Other.'")
+        self.assertEqual(1, len(rows))
+        self.assertEqual((None, "FullyQualifiedName~.Other.", True, 3), (rows[0]["part"], rows[0]["filter"], rows[0]["filtered"], rows[0]["tests"]))
+
+    def test_one_run_id_covers_all_hosts_of_a_partitioned_run(self):
+        # Fails when the id is made again for each host.
+        _, rows = run_records()
+        ids = {r["run"] for r in rows}
+        self.assertEqual(3, len(rows))
+        self.assertEqual(1, len(ids), ids)
+        self.assertRegex(ids.pop(), r"^[0-9a-f]{12}$")
+
+    def test_run_id_and_trigger_come_from_the_environment(self):
+        # Fails when either variable is ignored.
+        _, rows = run_records(env_extra={"EXMOD_RUN_ID": "lane-7", "EXMOD_RUN_TRIGGER": "landing"})
+        self.assertEqual({("lane-7", "landing")}, {(r["run"], r["trigger"]) for r in rows})
+
+    def test_failures_are_capped_at_fifty_and_truncated_marks_more(self):
+        # Fails when the cap is dropped (60 names), moved to 49, or truncated is written at exactly 50.
+        _, rows = run_records(args="'-Filter', 'FullyQualifiedName~.Other.'", env_extra={"TEST_FAIL_MANY": "60"})
+        self.assertEqual(50, len(rows[0]["failures"]))
+        self.assertEqual(("Mod.Tests.Many.T0", "Mod.Tests.Many.T49"), (rows[0]["failures"][0], rows[0]["failures"][-1]))
+        self.assertIs(True, rows[0]["truncated"])
+        self.assertEqual(["failures", "truncated", "classes"], list(rows[0])[-3:])
+        _, rows = run_records(args="'-Filter', 'FullyQualifiedName~.Other.'", env_extra={"TEST_FAIL_MANY": "50"})
+        self.assertEqual(50, len(rows[0]["failures"]))
+        self.assertNotIn("truncated", rows[0])
+
+    def test_classes_hold_the_forty_largest_and_the_trx_is_deleted(self):
+        # Fails when the classes are not summed per class, not cut to 40, not largest first, or when the trx file stays.
+        with tempfile.TemporaryDirectory() as d:
+            trx = os.path.join(d, "in.trx")
+            write_trx(trx, 45, 3)
+            out, rows = run_records(args="'-Filter', 'FullyQualifiedName~.Other.'", env_extra={"TEST_TRX_SRC": trx})
+            self.assertEqual(1, len(rows), out)
+            classes = rows[0]["classes"]
+            self.assertEqual(40, len(classes))
+            self.assertEqual(["Mod.Tests.C44", "Mod.Tests.C43"], list(classes)[:2])
+            self.assertEqual({f"Mod.Tests.C{i:02d}" for i in range(5, 45)}, set(classes))
+            self.assertAlmostEqual(0.135, classes["Mod.Tests.C44"], places=3)
+            self.assertNotIn("Mod.Tests.C04", classes)
+        with tempfile.TemporaryDirectory() as d:
+            trx = os.path.join(d, "x.trx")
+            write_trx(trx, 2, 1)
+            body = ("$r = Read-ExmodTrxClassSeconds $env:TRX_FILE; Write-Host \"classes: $($r.Count)\"; "
+                    "Add-ExmodTestRunRecord 'r' 'root' ([pscustomobject]@{ Commit = $null; Dirty = $null }) 'l' '' $false '' 0 1.0 @() $env:TRX_FILE; "
+                    "Write-Host \"left: $(Test-Path -LiteralPath $env:TRX_FILE)\"")
+            out, _ = run_records(env_extra={"TRX_FILE": trx}, body=body)
+            self.assertIn("classes: 2", out)
+            self.assertIn("left: False", out)
+
+    def test_a_large_trx_is_read_without_loading_it_whole(self):
+        # Fails when the reader loads the file whole (XmlDocument or ReadAllText): the process's peak working set then
+        # grows by several times the 50 MB file.
+        with tempfile.TemporaryDirectory() as d:
+            trx = os.path.join(d, "big.trx")
+            write_trx(trx, 50, 400, pad=2600)
+            self.assertGreaterEqual(os.path.getsize(trx), 50 * 1024 * 1024)
+            body = ("$before = [Diagnostics.Process]::GetCurrentProcess().PeakWorkingSet64; "
+                    "$r = Read-ExmodTrxClassSeconds $env:TRX_FILE; "
+                    "$grew = [Diagnostics.Process]::GetCurrentProcess().PeakWorkingSet64 - $before; "
+                    "Write-Host \"big: $($r.Count) $($r['Mod.Tests.C49']) growth-mb: $([int]($grew / 1MB))\"")
+            out, _ = run_records(env_extra={"TRX_FILE": trx}, body=body)
+            m = re.search(r"big: (\d+) ([\d.]+) growth-mb: (-?\d+)", out)
+            self.assertTrue(m, out)
+            self.assertEqual(40, int(m.group(1)))
+            self.assertAlmostEqual(20.0, float(m.group(2)), places=2)
+            self.assertLess(int(m.group(3)), 40, out)
+
+    def test_a_missing_and_a_corrupt_trx_leave_the_run_unchanged(self):
+        # Fails when an unreadable trx throws out of the reader into the run (no row is written) or sets classes.
+        with tempfile.TemporaryDirectory() as d:
+            good = os.path.join(d, "good.trx")
+            write_trx(good, 2, 2)
+            bad = os.path.join(d, "bad.trx")
+            with open(bad, "w") as f:
+                f.write("<TestRun><Results><UnitTestResult testId=\"a\" duration=\"00:00:01\"")
+            args = "'-Filter', 'FullyQualifiedName~.Other.'"
+            base_out, base_rows = run_records(args=args, env_extra={"TEST_TRX_SRC": good})
+            self.assertIsNotNone(base_rows[0]["classes"])
+            for name, env in (("missing", {}), ("corrupt", {"TEST_TRX_SRC": bad})):
+                out, rows = run_records(args=args, env_extra=env)
+                self.assertEqual(1, len(rows), name)
+                self.assertIsNone(rows[0]["classes"], name)
+                self.assertEqual(3, rows[0]["tests"], name)
+                self.assertEqual(re.sub(r"held \d+ s", "", results_block(base_out)), re.sub(r"held \d+ s", "", results_block(out)), name)
+                self.assertNotIn("threw:", out, name)
+
+    def test_an_unwritable_log_leaves_the_run_unchanged(self):
+        # Fails when a write failure escapes Add-ExmodTestRunRecord: the host's result is then lost.
+        with tempfile.TemporaryDirectory() as d:
+            blocker = os.path.join(d, "file")
+            with open(blocker, "w") as f:
+                f.write("x")
+            args = "'-Filter', 'FullyQualifiedName~.Other.'"
+            base_out, _ = run_records(args=args)
+            out, rows = run_records(args=args, env_extra={"EXMOD_RUN_LOG": os.path.join(blocker, "sub", "runs.jsonl")})
+            self.assertEqual([], rows)
+            self.assertNotIn("threw:", out)
+            self.assertEqual(re.sub(r"held \d+ s", "", results_block(base_out)), re.sub(r"held \d+ s", "", results_block(out)))
+            self.assertIn("PASS  1.22/A.Tests", out)
 
 
 if __name__ == "__main__":

@@ -513,6 +513,117 @@ function Add-ExmodMemoryPeakRecord([string]$Label, [bool]$Filtered, [string]$Fil
   catch { }
 }
 
+# The id of this exmod process's test run: $EXMOD_RUN_ID when set, else one id made on first use and kept, so every
+# host of the process records the same one.
+function Get-ExmodRunId {
+  if ($env:EXMOD_RUN_ID) { return $env:EXMOD_RUN_ID }
+  if (-not $script:ExmodRunId) { $script:ExmodRunId = [guid]::NewGuid().ToString('N').Substring(0, 12) }
+  return $script:ExmodRunId
+}
+
+# HEAD of the checkout at $Root and whether its tracked files differ from it, as { Commit; Dirty }; both $null when git
+# cannot say. Leaves $LASTEXITCODE as it found it.
+function Get-ExmodRunTree([string]$Root) {
+  $saved = $global:LASTEXITCODE
+  $tree = [pscustomobject]@{ Commit = $null; Dirty = $null }
+  try {
+    $head = @(git -C $Root rev-parse HEAD 2>$null)
+    if ($LASTEXITCODE -eq 0 -and $head.Count -eq 1 -and $head[0] -match '^[0-9a-f]{40,64}$') {
+      $changes = @(git -C $Root status --porcelain --untracked-files=no 2>$null)
+      if ($LASTEXITCODE -eq 0) { $tree = [pscustomobject]@{ Commit = $head[0]; Dirty = ($changes.Count -gt 0) } }
+      else { $tree = [pscustomobject]@{ Commit = $head[0]; Dirty = $null } }
+    }
+  }
+  catch { }
+  $global:LASTEXITCODE = $saved
+  return $tree
+}
+
+# Seconds per test class in the trx file $Path as an ordered map of the $Top largest, read with a streaming XmlReader
+# (a result's duration by test id, then the class of each test definition). $null when the file is missing or unreadable.
+function Read-ExmodTrxClassSeconds([string]$Path, [int]$Top = 40) {
+  $reader = $null
+  try {
+    $settings = [System.Xml.XmlReaderSettings]::new()
+    $settings.DtdProcessing = [System.Xml.DtdProcessing]::Prohibit
+    $reader = [System.Xml.XmlReader]::Create($Path, $settings)
+    $byTest = @{}
+    $byClass = @{}
+    while ($reader.Read()) {
+      if ($reader.NodeType -ne [System.Xml.XmlNodeType]::Element) { continue }
+      if ($reader.LocalName -eq 'UnitTestResult') {
+        $id = $reader.GetAttribute('testId')
+        $duration = $reader.GetAttribute('duration')
+        if ($id -and $duration) {
+          $byTest[$id] = [double]$byTest[$id] + [TimeSpan]::Parse($duration, [System.Globalization.CultureInfo]::InvariantCulture).TotalSeconds
+        }
+      }
+      elseif ($reader.LocalName -eq 'UnitTest') {
+        $id = $reader.GetAttribute('id')
+        if ($id -and $reader.ReadToDescendant('TestMethod')) {
+          $class = $reader.GetAttribute('className')
+          if ($class -and $byTest.ContainsKey($id)) { $byClass[$class] = [double]$byClass[$class] + $byTest[$id] }
+        }
+      }
+    }
+    $classes = [ordered]@{}
+    foreach ($entry in ($byClass.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First $Top)) {
+      $classes[$entry.Key] = [Math]::Round($entry.Value, 3)
+    }
+    return $classes
+  }
+  catch { return $null }
+  finally { if ($reader) { $reader.Dispose() } }
+}
+
+# Appends one JSON line for a finished test host to $EXMOD_RUN_LOG (default ~/.cache/exmod/test-runs.jsonl): run
+# ($RunId), trigger ($EXMOD_RUN_TRIGGER, else "direct"), root, commit, dirty ($Tree), label, part, filter, filtered,
+# exit, seconds, UTC time, the tests/passed/failed/skipped counts of the host's summary line (null without one), the
+# names of up to 50 failing tests (and truncated: true when there were more) and the seconds of the 40 largest test
+# classes from $TrxPath (null when it cannot be read). $Output is the host's output lines. $TrxPath is deleted. The
+# append holds the file exclusively (retrying while another host holds it), as concurrent appends overwrite each other.
+# Writes nothing else and never throws.
+function Add-ExmodTestRunRecord([string]$RunId, [string]$Root, $Tree, [string]$Label, [string]$Part, [bool]$Filtered, [string]$Filter, [int]$ExitCode, [double]$Seconds, $Output, [string]$TrxPath) {
+  try {
+    $classes = $null
+    if ($TrxPath -and (Test-Path -LiteralPath $TrxPath)) {
+      $classes = Read-ExmodTrxClassSeconds $TrxPath
+      Remove-Item -LiteralPath $TrxPath -Force -ErrorAction SilentlyContinue
+    }
+    $path = if ($env:EXMOD_RUN_LOG) { $env:EXMOD_RUN_LOG } else { Join-Path $HOME '.cache/exmod/test-runs.jsonl' }
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $path) | Out-Null
+    $counts = @($Output | Select-String -Pattern 'Failed:\s*(\d+),\s*Passed:\s*(\d+),\s*Skipped:\s*(\d+),\s*Total:\s*(\d+)' -AllMatches |
+        ForEach-Object { $_.Matches } | Select-Object -Last 1)
+    $failures = @(Get-ExmodTestFailures @($Output | ForEach-Object { "$_" }))
+    $names = @($failures | Select-Object -First 50 | ForEach-Object { $_.Name })
+    $row = [ordered]@{
+      run = $RunId
+      trigger = if ($env:EXMOD_RUN_TRIGGER) { $env:EXMOD_RUN_TRIGGER } else { 'direct' }
+      root = $Root; commit = $Tree.Commit; dirty = $Tree.Dirty
+      label = $Label; part = if ($Part) { $Part } else { $null }
+      filter = if ($Filter) { $Filter } else { $null }; filtered = $Filtered
+      exit = $ExitCode; seconds = [Math]::Round($Seconds, 1)
+      time = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture)
+      tests = if ($counts) { [int]$counts[0].Groups[4].Value } else { $null }
+      passed = if ($counts) { [int]$counts[0].Groups[2].Value } else { $null }
+      failed = if ($counts) { [int]$counts[0].Groups[1].Value } else { $null }
+      skipped = if ($counts) { [int]$counts[0].Groups[3].Value } else { $null }
+      failures = $names
+    }
+    if ($failures.Count -gt 50) { $row['truncated'] = $true }
+    $row['classes'] = $classes
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes((ConvertTo-Json $row -Compress -Depth 4) + "`n")
+    $log = $null
+    for ($try = 0; $try -lt 300 -and -not $log; $try++) {
+      try { $log = [System.IO.File]::Open($path, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None) }
+      catch [System.IO.IOException] { Start-Sleep -Milliseconds (10 + (Get-Random -Maximum 20)) }
+    }
+    try { $log.Write($bytes, 0, $bytes.Length) }
+    finally { $log.Dispose() }
+  }
+  catch { }
+}
+
 # The `dotnet test` filter that selects what none of $Filters selects. Each filter is `|`-joined terms
 # of the form <Property>~<value> or <Property>=<value>; the complement joins the negated terms
 # (!~, !=) with `&`. Throws on a filter with parentheses, `&` or an already negated term.
@@ -748,6 +859,11 @@ function Invoke-Test([string[]]$Argv) {
       $startSamplerFn = ${function:Start-ExmodMemorySampler}.ToString()
       $stopSamplerFn = ${function:Stop-ExmodMemorySampler}.ToString()
       $recordFn = ${function:Add-ExmodMemoryPeakRecord}.ToString()
+      $runRecordFn = ${function:Add-ExmodTestRunRecord}.ToString()
+      $trxFn = ${function:Read-ExmodTrxClassSeconds}.ToString()
+      $runId = Get-ExmodRunId
+      $runRoot = $RepoRoot
+      $runTree = Get-ExmodRunTree $RepoRoot
       $started = [System.Collections.Concurrent.ConcurrentDictionary[string, bool]]::new()
       foreach ($wave in $waves) {
         $units | Where-Object { (Get-ExmodTestWave $_.Version) -eq $wave } | ForEach-Object -ThrottleLimit $throttle -Parallel {
@@ -760,6 +876,11 @@ function Invoke-Test([string[]]$Argv) {
           ${function:Start-ExmodMemorySampler} = $using:startSamplerFn
           ${function:Stop-ExmodMemorySampler} = $using:stopSamplerFn
           ${function:Add-ExmodMemoryPeakRecord} = $using:recordFn
+          ${function:Add-ExmodTestRunRecord} = $using:runRecordFn
+          ${function:Read-ExmodTrxClassSeconds} = $using:trxFn
+          $runId = $using:runId
+          $runRoot = $using:runRoot
+          $runTree = $using:runTree
           $started = $using:started
           $item = $_
           $wave = $using:wave
@@ -768,7 +889,10 @@ function Invoke-Test([string[]]$Argv) {
             $started[(& $gateKey $item.Seq)] = $true
             return [pscustomobject]@{ Name = "$($item.Version)/$($item.Project)"; Ok = $false; Line = $item.BuildLine; Total = $null; Part = $item.Part }
           }
-          $testArgs = @('test', $item.Proj, '-f', $item.Tfm, '--no-build', '--nologo', '--blame', '--results-directory', $item.Blame)
+          $trxName = "run-$($item.Version)-$($item.Project)$(if ($item.Part) { "-$($item.Part)" }).trx"
+          $trxPath = Join-Path $item.Blame $trxName
+          $testArgs = @('test', $item.Proj, '-f', $item.Tfm, '--no-build', '--nologo', '--blame', '--results-directory', $item.Blame,
+            '--logger', "trx;LogFileName=$trxName")
           $runFilter = if ($item.PartFilter) { $item.PartFilter } else { $filter }
           if ($runFilter) { $testArgs += @('--filter', $runFilter) }
           if ($item.Legacy) { $testArgs += '-p:Legacy=true' }
@@ -788,18 +912,28 @@ function Invoke-Test([string[]]$Argv) {
             if ($null -ne $limitGb) { $attemptArgs += @('-e', ('DOTNET_GCHeapHardLimit=0x{0:X}' -f ([int64]$limitGb * 1GB))) }
             $reservation = $null
             $sampler = $null
+            $hostWatch = $null
+            $hostOut = $null
+            $hostExit = $null
             try {
               $reservation = Lock-ExmodMemory -Gb $shareGb -Label $label -Filtered:([bool]$filter) -OnWait { $started[$mine] = $true }
               $started[$mine] = $true
               $sampler = Start-ExmodMemorySampler $item.Blame $reservation.Record
+              $hostWatch = [System.Diagnostics.Stopwatch]::StartNew()
               $out = & $dotnet @attemptArgs 2>&1
               $ranExit = $LASTEXITCODE
+              $hostWatch.Stop()
+              $hostOut = $out
+              $hostExit = $ranExit
             }
             finally {
               $started[$mine] = $true
               $peakGb = Stop-ExmodMemorySampler $sampler
               Unlock-ExmodMemory $reservation -PeakGb $peakGb
               if ($reservation) { Add-ExmodMemoryPeakRecord $label ([bool]$filter) $runFilter $reservation $limitGb $peakGb $ranExit }
+              if ($null -ne $hostExit) {
+                [void](Add-ExmodTestRunRecord $runId $runRoot $runTree $label $item.Part ([bool]$filter) $runFilter $hostExit $hostWatch.Elapsed.TotalSeconds $hostOut $trxPath)
+              }
             }
             if ($null -ne $retryGb -and $ranExit -ne 0 -and ($out | Select-String -Pattern 'OutOfMemoryException' -Quiet)) {
               Write-Host "memory: $label ran out of memory under $limitGb GiB, retrying once under $retryGb GiB"
@@ -938,6 +1072,11 @@ shows an OutOfMemoryException, reruns once under filterHeapGb. While a host runs
 sampled every EXMOD_MEMORY_SAMPLE_MS (3000) ms on Linux; the `released` line ends with `, peak <p> GiB`, and one JSON
 line per run (label, filtered, filter, shareGb, limitGb, peakGb, seconds, exit, time) is appended to $EXMOD_MEMORY_LOG
 (~/.cache/exmod/memory-peaks.jsonl).
+After each host ends one JSON line is appended to $EXMOD_RUN_LOG (~/.cache/exmod/test-runs.jsonl): run ($EXMOD_RUN_ID, else
+one id per exmod process), trigger ($EXMOD_RUN_TRIGGER, else direct), root, commit, dirty, label, part, filter, filtered,
+exit, seconds, time, tests, passed, failed, skipped, failures (at most 50, then truncated: true) and classes (seconds of the
+40 largest test classes, from a trx file the host writes beside its blame results and exmod deletes). A failure to write or
+read it changes nothing else about the run.
 Where there is a process table (EXMOD_PROC_DIR, /proc; none on Windows) a share is granted on real use and no waiter holds
 a lock while it waits: each second one decision grants it when MemAvailable less EXMOD_MEMORY_FLOOR_GB (10) less what the
 running hosts may still grow to (their charge, the share until recorded peaks say less, less the resident size of their
