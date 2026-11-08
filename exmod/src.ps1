@@ -789,7 +789,7 @@ function Invoke-Test([string[]]$Argv) {
             $reservation = $null
             $sampler = $null
             try {
-              $reservation = Lock-ExmodMemory -Gb $shareGb -Label $label -OnWait { $started[$mine] = $true }
+              $reservation = Lock-ExmodMemory -Gb $shareGb -Label $label -Filtered:([bool]$filter) -OnWait { $started[$mine] = $true }
               $started[$mine] = $true
               $sampler = Start-ExmodMemorySampler $item.Blame $reservation.Record
               $out = & $dotnet @attemptArgs 2>&1

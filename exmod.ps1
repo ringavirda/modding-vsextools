@@ -1090,13 +1090,14 @@ function Get-ExmodMemoryBudget {
 # row that cannot be written is ignored.
 # Only Get-FlockAncestorHolder is called, so a -Parallel runspace takes both functions as text.
 # $Gb: GiB to take, at least 1. $Label: names the holder in the lines and the log row. $OnWait: invoked once, with no
-# arguments, when the first waits line is printed.
+# arguments, when the first waits line is printed. $Filtered: the run is filtered; the charge reads only recorded rows of the
+# same label, share and filtered flag.
 # Returns {Gb; Budget; Label; Streams; Taken; Waited; Record; Released} (Waited in s; Record the path of its booked-<id>.json
 # in the memory dir, {owner, gb, charge, pids}, where the sampler writes the host PIDs; Streams empty on the real-use path),
 # or $null where there is no meminfo file. Throws when $env:EXMOD_BUILD_LOCK_HELD is set or a parent process holds
 # $env:EXMOD_BUILD_LOCK (a holder of the build lock must never wait for memory) and when a slot file cannot be opened;
 # every stream held is disposed first. The OS drops the share when the process dies.
-function Lock-ExmodMemory([int]$Gb, [string]$Label, [scriptblock]$OnWait) {
+function Lock-ExmodMemory([int]$Gb, [string]$Label, [scriptblock]$OnWait, [switch]$Filtered) {
   if ($env:EXMOD_BUILD_LOCK_HELD) { throw "memory share asked for by $Label while the build lock is held" }
   if ($env:EXMOD_BUILD_LOCK) {
     $outer = Get-FlockAncestorHolder $env:EXMOD_BUILD_LOCK
@@ -1192,7 +1193,7 @@ function Lock-ExmodMemory([int]$Gb, [string]$Label, [scriptblock]$OnWait) {
       $lines = $text.Split("`n")
       for ($i = $(if ($from -gt 0) { 1 } else { 0 }); $i -lt $lines.Count; $i++) {
         try { $row = $lines[$i] | ConvertFrom-Json } catch { continue }
-        if ($row.label -eq $Label -and $row.shareGb -eq $take -and $null -ne $row.peakGb) { $peaks.Add([double]$row.peakGb) }
+        if ($row.label -eq $Label -and [bool]$row.filtered -eq [bool]$Filtered -and $row.shareGb -eq $take -and $null -ne $row.peakGb) { $peaks.Add([double]$row.peakGb) }
       }
       if ($peaks.Count -lt 5) { return [double]$take }
       $last = @($peaks | Select-Object -Last 50 | Sort-Object)
