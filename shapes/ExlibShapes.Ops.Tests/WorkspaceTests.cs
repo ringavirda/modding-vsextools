@@ -55,6 +55,13 @@ public class WorkspaceTests : IDisposable {
     Assert.Equal(w, BlockDrawings.RootOf(drawing));
   }
 
+  // Fails when ModsRoot.Of answers anything but the root with no exmod.workspace.json above it.
+  [Fact]
+  public void RootOf_keeps_the_root_with_no_workspace_file() {
+    string drawing = Put("workbench/x.json", "{}");
+    Assert.Equal(w, BlockDrawings.RootOf(drawing));
+  }
+
   // Fails when Find stops at the mods root: the W/workbench sketch is not listed.
   [Fact]
   public void Find_lists_the_workbench_drawings_beside_the_mods_root() {
@@ -69,7 +76,7 @@ public class WorkspaceTests : IDisposable {
   // Fails when LoadSettings drops the workbench/shapetool.json argument to FindUp: it throws CliUsageException.
   [Fact]
   public void LoadSettings_finds_workbench_settings_beside_the_workspace() {
-    string drawing = Tree();
+    Tree();
     Put(
       "workbench/shapetool.json",
       "{\"steps\": {}, \"textures\": {}, \"roles\": {}, \"stations\": {}, \"lint\": \"structural\"}"
@@ -77,7 +84,7 @@ public class WorkspaceTests : IDisposable {
     Assert.NotNull(
       ExpandedLib.Shapes.Ops.Workspace.LoadSettings(
         null,
-        Path.GetDirectoryName(drawing)!
+        Path.Combine(w, "exmods", "mods")
       )
     );
   }
