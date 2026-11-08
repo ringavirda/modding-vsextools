@@ -153,4 +153,35 @@ public class TexturesTests {
       Directory.Delete(w, true);
     }
   }
+
+  // Fails when ModsRoot.Of is applied to a root found by .git: the legacy checkout roots at W/exmods.
+  [Fact]
+  public void Build_keeps_a_git_root_beside_the_workspace_exmods() {
+    string w = Path.Combine(
+      Path.GetTempPath(),
+      "textures-ws-" + Guid.NewGuid().ToString("N")
+    );
+    try {
+      string shape = Path.Combine(
+        w,
+        "exmods-legacy",
+        "smex",
+        "assets",
+        "smex",
+        "shapes",
+        "x.json"
+      );
+      Directory.CreateDirectory(Path.GetDirectoryName(shape)!);
+      Directory.CreateDirectory(Path.Combine(w, "exmods-legacy", ".git"));
+      Directory.CreateDirectory(Path.Combine(w, "exmods", "mods"));
+      File.WriteAllText(Path.Combine(w, "exmod.workspace.json"), "{}");
+      File.WriteAllText(shape, "{}");
+      Assert.Equal(
+        Path.Combine(w, "exmods-legacy"),
+        TextureRoots.Build(null, null, shape).RepoPath
+      );
+    } finally {
+      Directory.Delete(w, true);
+    }
+  }
 }

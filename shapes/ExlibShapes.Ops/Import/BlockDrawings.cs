@@ -36,7 +36,8 @@ internal static class BlockDrawings {
   /// <summary>Every shape file under <paramref name="searchRoot"/> named like the block of
   /// <paramref name="drawing"/>: the plain file, its <c>-proposed</c> and <c>-sketch</c> forms, in any folder
   /// including <c>old</c>, and the shipped asset (a file under <c>assets</c>) named like the folder the drawing is in.
-  /// Records, runtime copies and build output are not drawings.</summary>
+  /// Records, runtime copies and build output are not drawings. When <paramref name="searchRoot"/> sits in a workspace
+  /// (a folder holding <c>exmod.workspace.json</c>) the workspace's <c>workbench</c> folder is searched too.</summary>
   /// <param name="drawing">A drawing of the block.</param>
   /// <param name="searchRoot">The tree to search.</param>
   public static List<BlockDrawing> Find(string drawing, string searchRoot) {
@@ -45,7 +46,17 @@ internal static class BlockDrawings {
     string folder = Path.GetFileName(
       Path.GetDirectoryName(Path.GetFullPath(drawing))
     )!;
-    Walk(Path.GetFullPath(searchRoot), stem, folder, found);
+    string root = Path.GetFullPath(searchRoot);
+    Walk(root, stem, folder, found);
+    string? parent = Path.GetDirectoryName(root);
+    string? workbench =
+      parent == null ? null : Path.Combine(parent, "workbench");
+    if (
+      workbench != null
+      && Directory.Exists(workbench)
+      && File.Exists(Path.Combine(parent!, "exmod.workspace.json"))
+    )
+      Walk(workbench, stem, folder, found);
     return [.. found.OrderBy(d => d.Path, StringComparer.Ordinal)];
   }
 

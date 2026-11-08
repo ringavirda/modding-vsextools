@@ -538,6 +538,18 @@ internal static class Program {
     return 0;
   }
 
+  // The nearest ancestor of the file that holds a workbench folder; null when none does.
+  private static string? WorkbenchParent(string file) {
+    for (
+      string? d = Path.GetDirectoryName(Path.GetFullPath(file));
+      d != null;
+      d = Path.GetDirectoryName(d)
+    )
+      if (Directory.Exists(Path.Combine(d, "workbench")))
+        return d;
+    return null;
+  }
+
   private static HashSet<string> ViewSet(string views) => [.. views.Split(',')];
 
   // `schematic` on a planned layout: the plan SVGs and iso PNGs of its declared cells, glyphs and
@@ -557,8 +569,11 @@ internal static class Program {
       shape
       ?? (
         planned.CopyPath is { } relative
-        && TextureRoots.Build(null, null, file).RepoPath is { } repo
-          ? Path.Combine(repo, relative)
+        && (
+          WorkbenchParent(file) ?? TextureRoots.Build(null, null, file).RepoPath
+        )
+          is { } baseDir
+          ? Path.Combine(baseDir, relative)
           : throw new UsageException(
             $"{file}: no planned.copy.path under a repository root; pass --shape"
           )

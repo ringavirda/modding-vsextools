@@ -71,7 +71,11 @@ public sealed class TextureRoots {
         || Directory.Exists(Path.Combine(dir.FullName, "mods"))
         || Path.Exists(Path.Combine(dir.FullName, ".git"))
       )
-        return ModsRoot.Of(dir.FullName);
+        return
+          Directory.Exists(Path.Combine(dir.FullName, "workbench"))
+          || dir.Name == "workbench"
+          ? ModsRoot.Of(dir.FullName)
+          : dir.FullName;
     for (DirectoryInfo? dir = new(start); dir != null; dir = dir.Parent)
       if (Directory.Exists(Path.Combine(dir.FullName, ".game")))
         return dir.FullName;

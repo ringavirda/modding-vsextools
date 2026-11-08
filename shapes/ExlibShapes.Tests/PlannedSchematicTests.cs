@@ -552,4 +552,43 @@ public class PlannedSchematicTests {
     Assert.True(PlannedLayout.Is(Planned));
     Assert.False(PlannedLayout.Is(FixturePath.Of("schematic/kiln.json")));
   }
+
+  // Fails when the copy path is joined to the mods root: W/exmods/workbench/... does not exist and the render stops.
+  [Fact]
+  public void The_copy_path_is_read_from_the_folder_holding_the_workbench() {
+    string w = Path.Combine(
+      Path.GetTempPath(),
+      "exlib-shapes-" + Guid.NewGuid().ToString("N")
+    );
+    try {
+      Directory.CreateDirectory(Path.Combine(w, "exmods", "mods"));
+      File.WriteAllText(Path.Combine(w, "exmod.workspace.json"), "{}");
+      string planned = Path.Combine(
+        w,
+        "workbench",
+        "layouts-planned",
+        "mini",
+        "mini.json"
+      );
+      string copy = Path.Combine(
+        w,
+        "workbench",
+        "shapes-finished",
+        "mini",
+        "mini-copy.json"
+      );
+      Directory.CreateDirectory(Path.GetDirectoryName(planned)!);
+      Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
+      File.Copy(Planned, planned);
+      File.Copy(
+        FixturePath.Of("planned/workbench/shapes-finished/mini/mini-copy.json"),
+        copy
+      );
+      Assert.True(
+        File.Exists(Path.Combine(RunOn(planned), "mini-plan-y0.svg"))
+      );
+    } finally {
+      Directory.Delete(w, true);
+    }
+  }
 }
