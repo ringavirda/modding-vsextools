@@ -39,7 +39,8 @@ public class WorkspaceTests : IDisposable {
   // Fails when the first guard of ModsRoot.Of (a root holding mods/ stays) is removed: RootOf answers W/exmods.
   [Fact]
   public void RootOf_keeps_a_root_that_holds_mods() {
-    Tree();
+    Directory.CreateDirectory(Path.Combine(w, "exmods", "mods"));
+    Put("exmod.workspace.json", "{}");
     Directory.CreateDirectory(Path.Combine(w, "lane", "mods"));
     string drawing = Put("lane/workbench/x.json", "{}");
     Assert.Equal(Path.Combine(w, "lane"), BlockDrawings.RootOf(drawing));
