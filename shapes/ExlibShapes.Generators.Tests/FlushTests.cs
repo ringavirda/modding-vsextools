@@ -304,7 +304,7 @@ public class FlushTests {
     while (dir != null && file == null) {
       string f = System.IO.Path.Combine(
         dir,
-        "exmods/workbench/shapes-finished/machine-tools/lathe/machine-mp-megablock-lathe-proposed.json"
+        "workbench/shapes-finished/machine-tools/lathe/machine-mp-megablock-lathe-proposed.json"
       );
       if (System.IO.File.Exists(f))
         file = f;

@@ -197,25 +197,33 @@ public class ReaderTests(ITestOutputHelper output) {
 
   [SkippableFact]
   public void Reads_every_finished_and_iiex_shape() {
+    string? workbench = WorkspacePath.Of("workbench");
     string? exmods = WorkspacePath.Of("exmods");
-    Skip.If(exmods is null, "no exmods checkout beside this one");
-    var files = new List<string>();
-    foreach (
-      string root in new[]
-      {
-        Path.Combine(exmods!, "workbench", "shapes-finished"),
-        Path.Combine(exmods!, "mods", "iiex"),
-      }
-    )
-      if (Directory.Exists(root))
-        files.AddRange(
-          Directory
-            .EnumerateFiles(root, "*.json", SearchOption.AllDirectories)
-            .Where(f =>
-              f.Replace('\\', '/').Contains("/shapes/")
-              || f.Replace('\\', '/').Contains("/shapes-finished/")
-            )
-        );
+    Skip.If(
+      workbench is null && exmods is null,
+      "no workbench or exmods checkout beside this one"
+    );
+    static List<string> ShapeFiles(string root) =>
+      Directory.Exists(root)
+        ? Directory
+          .EnumerateFiles(root, "*.json", SearchOption.AllDirectories)
+          .Where(f =>
+            f.Replace('\\', '/').Contains("/shapes/")
+            || f.Replace('\\', '/').Contains("/shapes-finished/")
+          )
+          .ToList()
+        : [];
+    List<string> finished = ShapeFiles(
+      Path.Combine(workbench ?? "", "shapes-finished")
+    );
+    // Mutation: dropping this floor lets a missing workbench pass on iiex's own shapes.
+    Assert.True(
+      finished.Count >= 400,
+      $"only {finished.Count} finished shapes found; clone workbench beside exmods"
+    );
+    var files = new List<string>(finished);
+    if (exmods is not null)
+      files.AddRange(ShapeFiles(Path.Combine(exmods, "mods", "iiex")));
     var unreadable = new List<string>();
     foreach (string f in files)
       try {

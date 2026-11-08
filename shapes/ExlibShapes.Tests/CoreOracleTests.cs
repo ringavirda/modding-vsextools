@@ -18,16 +18,16 @@ namespace ExpandedLib.Shapes.Tests;
 public class CoreOracleTests(ITestOutputHelper output) {
   private const double Tolerance = 1e-5;
 
-  private static List<string> ShapeFiles(string exmods) {
+  private static List<string> ShapeFiles(string? workbench, string? exmods) {
     var files = new List<string>();
     foreach (
-      string root in new[]
+      string? root in new[]
       {
-        Path.Combine(exmods, "workbench", "shapes-finished"),
-        Path.Combine(exmods, "mods", "iiex"),
+        workbench is null ? null : Path.Combine(workbench, "shapes-finished"),
+        exmods is null ? null : Path.Combine(exmods, "mods", "iiex"),
       }
     )
-      if (Directory.Exists(root))
+      if (root is not null && Directory.Exists(root))
         files.AddRange(
           Directory
             .EnumerateFiles(root, "*.json", SearchOption.AllDirectories)
@@ -41,12 +41,16 @@ public class CoreOracleTests(ITestOutputHelper output) {
 
   [SkippableFact]
   public void Core_agrees_with_the_game_on_every_shape() {
+    string? workbench = FixturePath.Workspace("workbench");
     string? exmods = FixturePath.Workspace("exmods");
-    Skip.If(exmods is null, "the sibling exmods checkout is absent");
+    Skip.If(
+      workbench is null && exmods is null,
+      "the sibling workbench and exmods checkouts are absent"
+    );
     int compared = 0;
     int skipped = 0;
     var mismatches = new List<string>();
-    foreach (string file in ShapeFiles(exmods!)) {
+    foreach (string file in ShapeFiles(workbench, exmods)) {
       Shape? game;
       try {
         game = JsonConvert.DeserializeObject<Shape>(File.ReadAllText(file));
