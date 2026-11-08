@@ -24,7 +24,7 @@ TESTS = ["Mod.Tests.WalkA.One", "Mod.Tests.WalkA.Two", "Mod.Tests.WalkB.One",
 # limit is that many GiB, the first match, printing an OutOfMemoryException). TEST_HOLD_MB holds that many MiB resident
 # for TEST_HOLD_S seconds. A test run appends start/end to TEST_ORDER and its argv as JSON to TEST_ARGV. TEST_FAIL_MANY=N
 # makes the run's matches N failing tests, Mod.Tests.Many.T0 on; TEST_TRX_SRC names a file copied to the trx logger's
-# LogFileName in the results directory.
+# LogFileName in the results directory. A run with the trx logger prints dotnet's `Results File:` line.
 STUB = """#!/usr/bin/env python3
 import json, os, re, shutil, sys, time
 tests = %r
@@ -66,6 +66,8 @@ if lg and os.environ.get("TEST_TRX_SRC"):
     rd = a[a.index("--results-directory") + 1]
     os.makedirs(rd, exist_ok=True)
     shutil.copy(os.environ["TEST_TRX_SRC"], os.path.join(rd, lg[0].split("=", 1)[1]))
+if lg:
+    print("Results File: " + os.path.join(a[a.index("--results-directory") + 1], lg[0].split("=", 1)[1]))
 many = int(os.environ.get("TEST_FAIL_MANY", "0"))
 if many:
     hit = ["Mod.Tests.Many.T%%d" %% i for i in range(many)]
@@ -114,6 +116,7 @@ try { Invoke-Test (@('1.22') + @(%s)) } catch { Write-Host "threw: $_" }
 
 
 RUNS = []  # the argv of each stub test run of the last run_pwsh, in start order
+LOGS = []  # the text of each host log of the last run_pwsh
 
 
 def run_pwsh(body, env_extra=None, args="", manifest=MANIFEST, stub=STUB):
@@ -135,6 +138,12 @@ def run_pwsh(body, env_extra=None, args="", manifest=MANIFEST, stub=STUB):
         if os.path.exists(order):
             with open(order) as f:
                 seen = f.read().split()
+        LOGS[:] = []
+        logdir = os.path.join(repo, ".exmod", "test-logs")
+        if os.path.isdir(logdir):
+            for name in sorted(os.listdir(logdir)):
+                with open(os.path.join(logdir, name)) as f:
+                    LOGS.append(f.read())
         RUNS[:] = []
         if os.path.exists(argv):
             with open(argv) as f:
@@ -430,6 +439,30 @@ class RunRecordTests(unittest.TestCase):
         self.assertIsInstance(w["seconds"], (int, float))
         self.assertRegex(w["time"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
         self.assertEqual((0, 3, []), (by["walks"]["exit"], by["walks"]["tests"], by["walks"]["failures"]))
+        self.assertEqual((3, 0), (by["walks"]["passed"], by["walks"]["failed"]))
+
+    def test_the_host_log_keeps_no_results_file_line(self):
+        # Fails when the trx logger's `Results File:` line stays in the host's output and so in its log.
+        out, rows = run_records(args="'-Filter', 'FullyQualifiedName~.Other.'")
+        self.assertEqual(1, len(rows), out)
+        self.assertEqual(1, len(LOGS))
+        self.assertIn("Passed!", LOGS[0])
+        self.assertNotIn("Results File", LOGS[0])
+        self.assertNotIn("Results File", out)
+
+    def test_commit_and_dirty_come_from_the_checkout(self):
+        # Fails when commit is not HEAD, or dirty is not true exactly when a tracked file is modified.
+        body = (
+            "$r = $env:TEST_REPO; git -C $r init -q; git -C $r config user.email a@b; git -C $r config user.name a; "
+            "git -C $r add -A; git -C $r commit -q -m x; Write-Host \"HEAD=$(git -C $r rev-parse HEAD)\"; "
+            "if ($env:TEST_DIRTY) { Add-Content -LiteralPath (Join-Path $r 'exmod.json') ' ' }; "
+            "'untracked' | Set-Content -LiteralPath (Join-Path $r 'new.txt')")
+        args = "'-Filter', 'FullyQualifiedName~.Other.'"
+        out, rows = run_records(args=args, body=body)
+        head = re.search(r"HEAD=([0-9a-f]{40,64})", out).group(1)
+        self.assertEqual((head, False), (rows[0]["commit"], rows[0]["dirty"]), out)
+        _, rows = run_records(args=args, body=body, env_extra={"TEST_DIRTY": "1"})
+        self.assertIs(True, rows[0]["dirty"])
 
     def test_a_filtered_whole_assembly_row_has_no_part_and_the_filter(self):
         # Fails when part is written for an unpartitioned host or filtered is not the -Filter flag.

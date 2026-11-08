@@ -921,6 +921,7 @@ function Invoke-Test([string[]]$Argv) {
               $sampler = Start-ExmodMemorySampler $item.Blame $reservation.Record
               $hostWatch = [System.Diagnostics.Stopwatch]::StartNew()
               $out = & $dotnet @attemptArgs 2>&1
+              $out = @($out | Where-Object { "$_" -notmatch '^\s*Results File: .*run-.*\.trx\s*$' })
               $ranExit = $LASTEXITCODE
               $hostWatch.Stop()
               $hostOut = $out
@@ -1075,8 +1076,8 @@ line per run (label, filtered, filter, shareGb, limitGb, peakGb, seconds, exit, 
 After each host ends one JSON line is appended to $EXMOD_RUN_LOG (~/.cache/exmod/test-runs.jsonl): run ($EXMOD_RUN_ID, else
 one id per exmod process), trigger ($EXMOD_RUN_TRIGGER, else direct), root, commit, dirty, label, part, filter, filtered,
 exit, seconds, time, tests, passed, failed, skipped, failures (at most 50, then truncated: true) and classes (seconds of the
-40 largest test classes, from a trx file the host writes beside its blame results and exmod deletes). A failure to write or
-read it changes nothing else about the run.
+40 largest test classes, from a trx file the host writes beside its blame results and exmod deletes). A -Coverage run writes
+no record. A failure to write or read it changes nothing else about the run.
 Where there is a process table (EXMOD_PROC_DIR, /proc; none on Windows) a share is granted on real use and no waiter holds
 a lock while it waits: each second one decision grants it when MemAvailable less EXMOD_MEMORY_FLOOR_GB (10) less what the
 running hosts may still grow to (their charge, the share until recorded peaks say less, less the resident size of their
