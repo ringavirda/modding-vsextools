@@ -115,7 +115,7 @@ internal static class FixturePath {
   /// <paramref name="relativePath"/> (e.g. <c>"exmods/mods/iiex/.../blastcore.json"</c>) resolved
   /// against the nearest ancestor of <see cref="RepoRoot"/> that carries its first path segment as
   /// a directory - the sibling family checkout a contributor's own workspace clones next to this
-  /// one, whether this repo sits there directly or nested under <c>.worktrees/</c>. Null when no
+  /// one, whether this repo sits there directly or nested under <c>sessions/.worktrees/</c>. Null when no
   /// such ancestor exists.
   /// </summary>
   public static string? Workspace(string relativePath) {

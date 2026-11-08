@@ -599,9 +599,9 @@ Try-Case 'project' { Split-Path (Get-ExmodLiveProject) -Leaf }
         workspace = os.path.join(self.tmp, "ws")
         touch(os.path.join(workspace, "Directory.Build.props"), "<Project />")
         shutil.copytree(self.exlib, os.path.join(workspace, "exlib"))
-        lane = os.path.join(workspace, ".worktrees", "exmods-lane")
+        lane = os.path.join(workspace, "sessions", ".worktrees", "exmods-lane")
         shutil.copytree(self.repo, lane)
-        os.makedirs(os.path.join(workspace, ".worktrees", "exlib"))
+        os.makedirs(os.path.join(workspace, "sessions", ".worktrees", "exlib"))
         got = run_cases(lane, "Try-Case 'root' { Get-ScenarioExlibRoot }", ExlibRoot="")
         self.assertEqual(os.path.join(workspace, "exlib"), got["root"])
 
@@ -625,8 +625,8 @@ Try-Case 'project' { Split-Path (Get-ExmodLiveProject) -Leaf }
         workspace = os.path.join(self.tmp, "ws")
         touch(os.path.join(workspace, "Directory.Build.props"), "<Project />")
         self.sibling_exlib(os.path.join(workspace, "exlib"), "Built.csproj")
-        self.sibling_exlib(os.path.join(workspace, ".worktrees", "exlib"), "Beside.csproj")
-        lane = os.path.join(workspace, ".worktrees", "exmods-lane")
+        self.sibling_exlib(os.path.join(workspace, "sessions", ".worktrees", "exlib"), "Beside.csproj")
+        lane = os.path.join(workspace, "sessions", ".worktrees", "exmods-lane")
         shutil.copytree(self.repo, lane)
         self.assertEqual("Built.csproj", run_cases(lane, body, ExlibRoot="")["dep"])
 
