@@ -42,6 +42,7 @@ function Get-ShapesRoot {
 # never the default server one: the dedicated-server archive ships almost no assets/survival/textures,
 # so a render or schematic against it comes out entirely in the magenta missing-texture placeholder.
 function Invoke-ExlibShapes([string]$Subcommand, [string[]]$Argv) {
+  Get-ShapesRoot | Out-Null
   $game = Get-Opt $Argv '--game' $null
   if (-not $game) { $game = Resolve-GameInstall $CurrentGameVersion 'client' }
 
@@ -72,6 +73,7 @@ function Get-ExlibShapesRunDll([string]$Game) {
 # failed gate, 3 an open question, 2 usage, none of them an exmod error. Needs no game install unless
 # the tool has to be built.
 function Invoke-ShapeTool([string[]]$Argv) {
+  Get-ShapesRoot | Out-Null
   $game = if ($env:EXMOD_SHAPES_NO_BUILD) { $null } else { Resolve-GameInstall $CurrentGameVersion 'client' }
   $dll = Get-ExlibShapesRunDll $game
   dotnet $dll @Argv | Out-Host
@@ -187,6 +189,7 @@ function Invoke-Schematic([string[]]$Argv) { Invoke-ExlibShapes 'schematic' $Arg
 function Invoke-Scene([string[]]$Argv) { Invoke-ExlibShapes 'scene' $Argv }
 function Invoke-Block([string[]]$Argv) { Invoke-ExlibShapes 'block' $Argv }
 function Invoke-ShapesBuild([string[]]$Argv) {
+  Get-ShapesRoot | Out-Null
   $game = Get-Opt $Argv '--game' $null
   if (-not $game) { $game = Resolve-GameInstall $CurrentGameVersion 'client' }
   if (Test-ExlibShapesStale (Get-ExlibShapesDll) $game) { Build-ExlibShapes $game } else { 'exlib-shapes is current.' }

@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  VS_VERSION: "1.22"
-
 jobs:
   scripts:
     runs-on: ubuntu-latest
@@ -38,13 +35,5 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
-      - uses: actions/cache@v4
-        with:
-          # The downloaded archive is not kept: the extracted install is what the job needs, and
-          # caching both doubles an already large entry.
-          path: |
-            .game
-            !.game/.cache
-          key: vs-game-client-${{ env.VS_VERSION }}
       - name: Test the verify tool
         run: bash scripts/exmod.sh test latest

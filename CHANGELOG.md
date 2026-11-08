@@ -22,6 +22,13 @@
   the scratch-server steps.
 - `exmod scenario` takes `-Shards <n>` (n servers on the ports from `-Port` upward, smoke's 42499 skipped, the names dealt out over them, one count line over all), `-Mods <dir>[,...]` (extra mod folders staged beside the live mod) and `-KeepData` (each scratch data path kept and printed).
 - `exmod scenario -Keep` leaves the plots standing and the server up: it prints the port, the data path and how to join, relays the terminal's lines to the server console until Ctrl+C or a closed stdin, then stops it, with the exit code a run without `-Keep` gives; the count line prints before the hold, and a joining player is an admin. Run from a repository without a `live` key (exmods), it builds the live mod and the exlib mod from exlib's source (`ExlibRoot`, else the workspace's exlib) and copies each mod's tests/live into Scenarios/<modid>; a bare stem belongs to the first mod of exmod.json.
+- `exmod shapes-build`'s help names `scene` among the commands that build the tool themselves.
+- `exmod render`, `schematic`, `block` and `item` run the built shapes tool and build it only when
+  its output is missing or older than its inputs. `exmod shapes-build` builds it on its own and
+  publishes the output to a new folder under `.exmod/shapes/`, switching the `current` symlink to it
+  by rename, keeping the previous publish and deleting older ones past 10 minutes. With
+  `EXMOD_SHAPES_NO_BUILD` set those commands run `current` with no lock and refuse when nothing is
+  published, so renders are not held up by a build or suite.
 
 ### Fixed
 
