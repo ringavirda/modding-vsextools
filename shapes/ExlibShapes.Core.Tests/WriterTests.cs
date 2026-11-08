@@ -222,8 +222,9 @@ public partial class WriterTests(ITestOutputHelper output) {
 
   [SkippableFact]
   public void Every_vsmc_saved_workspace_file_is_written_back_byte_for_byte() {
-    string? root = WorkspacePath.Of("workbench");
-    Skip.If(root is null, "no workbench checkout beside this one");
+    string? root =
+      WorkspacePath.Of("workbench") ?? WorkspacePath.Of("exmods/workbench");
+    Skip.If(root is null, "no workbench or exmods checkout beside this one");
     var files = Directory
       .EnumerateFiles(root!, "*.json", SearchOption.AllDirectories)
       .Where(f => {
@@ -249,8 +250,10 @@ public partial class WriterTests(ITestOutputHelper output) {
   [InlineData("furnaces/coke-oven/furnace-megablock-chargedoor-proposed.json")]
   [InlineData("machine-tools/lathe/machine-mp-megablock-lathe-proposed.json")]
   public void Finished_shape_is_stable_for_geometry_through_runtime(string rel) {
-    string? path = WorkspacePath.Of("workbench/shapes-finished/" + rel);
-    Skip.If(path is null, "no workbench checkout beside this one");
+    string? path =
+      WorkspacePath.Of("workbench/shapes-finished/" + rel)
+      ?? WorkspacePath.Of("exmods/workbench/shapes-finished/" + rel);
+    Skip.If(path is null, "no workbench or exmods checkout beside this one");
     Shape shape = Reader.ReadFile(path!);
     Settings registry = RegistryFor(shape);
     string runtime = RuntimeWriter.Write(shape, registry, "iiex");
@@ -294,9 +297,11 @@ public partial class WriterTests(ITestOutputHelper output) {
 
   [SkippableFact]
   public void Repeat_finished_shape_equals_the_converters_runtime() {
-    string? path = WorkspacePath.Of(
-      "workbench/shapes-finished/pumps/engine-pump/machine-pipe-block-engine-fluidpump-improved-proposed.json"
-    );
+    const string pump =
+      "shapes-finished/pumps/engine-pump/machine-pipe-block-engine-fluidpump-improved-proposed.json";
+    string? path =
+      WorkspacePath.Of("workbench/" + pump)
+      ?? WorkspacePath.Of("exmods/workbench/" + pump);
     string? tool = WorkspacePath.Of("exmods/infra/tools/convert-shape.py");
     string? python = new[]
     {

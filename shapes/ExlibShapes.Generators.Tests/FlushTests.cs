@@ -302,15 +302,17 @@ public class FlushTests {
     string? dir = AppContext.BaseDirectory;
     string? file = null;
     while (dir != null && file == null) {
-      string f = System.IO.Path.Combine(
-        dir,
-        "workbench/shapes-finished/machine-tools/lathe/machine-mp-megablock-lathe-proposed.json"
-      );
-      if (System.IO.File.Exists(f))
-        file = f;
+      foreach (string home in new[] { "workbench", "exmods/workbench" }) {
+        string f = System.IO.Path.Combine(
+          dir,
+          home + "/shapes-finished/machine-tools/lathe/machine-mp-megablock-lathe-proposed.json"
+        );
+        if (System.IO.File.Exists(f))
+          file = f;
+      }
       dir = System.IO.Path.GetDirectoryName(dir);
     }
-    Skip.If(file == null, "the lathe drawing is not in this workspace");
+    Skip.If(file == null, "no workbench or exmods checkout holds the lathe drawing");
     Shape lathe = Reader.Read(System.IO.File.ReadAllText(file!));
     List<string> paths =
     [
