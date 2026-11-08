@@ -1,6 +1,6 @@
 name: Release
 
-# Publishes a tagged version: the exlib-verify and exlib-shapes NuGet packages as GitHub release
+# Publishes a tagged version: the exlib-verify NuGet package as GitHub release
 # assets, and to NuGet.org through trusted publishing once the NUGET_USER repository variable is
 # set. No tag is created by this workflow itself; it only runs once one exists.
 on:
@@ -45,7 +45,7 @@ jobs:
       - name: Test
         run: bash scripts/exmod.sh test latest
 
-      # The NuGet packages, built independently of anything else (see the csprojs' pack metadata:
+      # The NuGet package, built independently of anything else (see the csprojs' pack metadata:
       # PackageId, PackageVersion read from exmod.json's "tools", Authors, Description,
       # RepositoryUrl, PackageTags, PackageProjectUrl, PackageReadmeFile,
       # PackageLicenseExpression=MIT).

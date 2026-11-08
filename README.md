@@ -3,7 +3,7 @@
 The build and release tooling for Vintage Story mods built on Expanded Library: `exmod`, one
 CLI for the whole lifecycle of a repository (provision the toolchain and the game, build, test,
 format, verify shipped assets, render shapes and schematics, run a client or a server, smoke-boot,
-package, release), the packaging build it drives, the `exlib-verify` and `exlib-shapes` tools, and
+package, release), the packaging build it drives, the `exlib-verify` tool, and
 the helper scripts behind them.
 
 ## Using it from a repository
@@ -58,11 +58,11 @@ source
 | `item-views` | render an item-views/1 dump to its gui, tp, fp, ground and iso pictures and a contact sheet |
 | `shapes-build` | build the shapes tool when its output is stale |
 
-`render`, `schematic`, `scene`, `block`, `item` and `item-views` run the built shapes tool, and build it first only when its
+`render`, `schematic`, `scene`, `block`, `item` and `item-views` run the built shape tool from the exshapes checkout (`EXSHAPES_HOME`, else the nearest ancestor of this checkout holding `exshapes/ExlibShapes`; with neither they refuse with `clone exshapes beside extools or set EXSHAPES_HOME`), and build it first only when its
 output is missing or older than its sources, the assets project it references, the props it imports
 or the game's `VintagestoryAPI.dll`; the tool references no exlib or mod assembly. A build rewrites
 the tool's `bin/` and `obj/`, so `exmod shapes-build` also publishes the output to a new folder under
-`.exmod/shapes/` and switches the `current` symlink to it by rename, keeping the previous publish and
+`.exmod/shapes/` of the exshapes checkout and switches the `current` symlink to it by rename, keeping the previous publish and
 deleting older ones once they are over 10 minutes old. With `EXMOD_SHAPES_NO_BUILD` set, the commands
 run `current` with no lock, so renders side by side are not held up by a build or suite; only the
 build takes a workspace's build lock:
@@ -128,8 +128,7 @@ wrappers/        the two launchers a consuming repository checks in
 scripts/         the launchers again, pointed at this checkout, so extools drives itself
 pack/            the packaging build (Cake Frosting), manifest-driven
 verify/          exlib-verify, a .NET tool that checks a mod's shipped assets with no game running
-shapes/          exlib-shapes, a .NET tool that renders shapes, blocks and multiblock schematics
-assets/          the lenient asset store and block/item catalogue shared by verify and shapes
+assets/          the lenient asset store and block/item catalogue shared by verify and the shape tool
 tools/           the API publicizer provisioning applies, the coverage gate, the released-codes derivation
 templates/ci/    GitHub Actions templates for a consuming repository
 ```
@@ -176,13 +175,13 @@ that push is what runs CI; tags are cut from `main`. Push `dev` freely, it runs 
 
 ## Releasing
 
-Bump `"tools"` in `exmod.json` (it is also `exlib-verify`'s and `exlib-shapes`'s package version),
+Bump `"tools"` in `exmod.json` (it is also `exlib-verify`'s package version),
 note the change in `CHANGELOG.md`, tag `v<version>`, push the tag. A consuming repository moves by
 editing its own `"tools"` pin.
 
 ## Developing
 
-`bash scripts/exmod.sh test latest` builds and tests the verify and shapes tools against a
+`bash scripts/exmod.sh test latest` builds and tests the verify tool against a
 provisioned game install (`bash scripts/exmod.sh provision game -Kind server` fetches the
 dedicated-server archive, which needs no licence). A series' test projects build in one parallel MSBuild call. `exmod test -NoBuild` runs the suites against
 what is already built and fails a lane whose test assembly is missing. The scripts are PowerShell 7; `exmod.sh`

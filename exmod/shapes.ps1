@@ -9,7 +9,30 @@
 #   exmod item        itemtype file -> an iso PNG or an enlarged icon, or its gui and ground views, a manifest
 #   exmod item-views  item-views/1 dump -> a PNG per view, a manifest
 
-# Runs shapes/ExlibShapes's tool for one subcommand. Without EXMOD_SHAPES_NO_BUILD it runs the built
+# The shape tool's checkout (exshapes): EXSHAPES_HOME, else the nearest ancestor of $ToolsRoot that
+# holds exshapes/ExlibShapes. Refuses when neither exists. Resolved on first use and kept in
+# $ShapesRoot, so commands that never touch the shape tool need no checkout.
+function Get-ShapesRoot {
+  if ($script:ShapesRoot) { return $script:ShapesRoot }
+  $found = $null
+  if ($env:EXSHAPES_HOME -and (Test-Path -LiteralPath (Join-Path $env:EXSHAPES_HOME 'ExlibShapes'))) {
+    $found = $env:EXSHAPES_HOME
+  } elseif (-not $env:EXSHAPES_HOME) {
+    $dir = $ToolsRoot
+    while ($dir) {
+      $candidate = Join-Path $dir 'exshapes'
+      if (Test-Path -LiteralPath (Join-Path $candidate 'ExlibShapes')) { $found = $candidate; break }
+      $parent = Split-Path $dir -Parent
+      if (-not $parent -or $parent -eq $dir) { break }
+      $dir = $parent
+    }
+  }
+  if (-not $found) { throw 'exlib-shapes: clone exshapes beside extools or set EXSHAPES_HOME' }
+  $script:ShapesRoot = [System.IO.Path]::GetFullPath($found)
+  $script:ShapesRoot
+}
+
+# Runs exshapes/ExlibShapes's tool for one subcommand. Without EXMOD_SHAPES_NO_BUILD it runs the built
 # output, building it first only when that is missing or older than its inputs. With it set, it runs
 # the published copy `exmod shapes-build` left under `current`, takes no lock and builds nothing, so
 # a build or suite elsewhere never holds a render up; it refuses when nothing is published.
@@ -55,26 +78,32 @@ function Invoke-ShapeTool([string[]]$Argv) {
   $LASTEXITCODE
 }
 
-# The built tool: Debug output of shapes/ExlibShapes.
+# The built tool: Debug output of exshapes/ExlibShapes.
 function Get-ExlibShapesDll {
-  Join-Path $ToolsRoot 'shapes/ExlibShapes/bin/Debug/net10.0/exlib-shapes.dll'
+  Join-Path (Get-ShapesRoot) 'ExlibShapes/bin/Debug/net10.0/exlib-shapes.dll'
 }
 
 # True when $Dll is missing or older than any input of the build: the sources and project files of
 # ExlibShapes, the ExlibAssets project it references and the shape tool's Core, Checks, Generators
-# and Ops projects, the shapes/Directory.Build.targets that embeds their versions, the props, packages and SDK pin they
-# import, exmod.json (the package version), and the game's VintagestoryAPI.dll. bin/ and obj/ are
+# and Ops projects, the exshapes Directory.Build.targets that embeds their versions, the props, packages and SDK pin they
+# import in either checkout, exshapes' exmod.json (the package version), and the game's VintagestoryAPI.dll. bin/ and obj/ are
 # not inputs.
 function Test-ExlibShapesStale([string]$Dll, [string]$Game) {
   if (-not (Test-Path -LiteralPath $Dll)) { return $true }
   $built = (Get-Item -LiteralPath $Dll).LastWriteTimeUtc
   $inputs = @()
-  foreach ($dir in 'shapes/ExlibShapes', 'shapes/ExlibShapes.Core', 'shapes/ExlibShapes.Checks', 'shapes/ExlibShapes.Generators', 'shapes/ExlibShapes.Ops', 'assets/ExlibAssets') {
-    $inputs += Get-ChildItem (Join-Path $ToolsRoot $dir) -Recurse -File |
+  $st = Get-ShapesRoot
+  $dirs = @('ExlibShapes', 'ExlibShapes.Core', 'ExlibShapes.Checks', 'ExlibShapes.Generators', 'ExlibShapes.Ops') | ForEach-Object { Join-Path $st $_ }
+  $dirs += Join-Path $ToolsRoot 'assets/ExlibAssets'
+  foreach ($dir in $dirs) {
+    $inputs += Get-ChildItem $dir -Recurse -File |
       Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' -and $_.Name -ne 'README.md' }
   }
-  foreach ($name in 'shapes/Directory.Build.targets', 'Directory.Build.props', 'Directory.Build.targets', 'Directory.Build.rsp', 'Directory.Packages.props', 'global.json', 'exmod.json') {
-    $inputs += Get-Item -LiteralPath (Join-Path $ToolsRoot $name)
+  foreach ($root in $st, $ToolsRoot) {
+    foreach ($name in 'Directory.Build.props', 'Directory.Build.targets', 'Directory.Build.rsp', 'Directory.Packages.props', 'global.json', 'exmod.json') {
+      $file = Join-Path $root $name
+      if (Test-Path -LiteralPath $file) { $inputs += Get-Item -LiteralPath $file }
+    }
   }
   $api = Join-Path $Game 'VintagestoryAPI.dll'
   if (Test-Path -LiteralPath $api) { $inputs += Get-Item -LiteralPath $api }
@@ -92,15 +121,15 @@ function Get-ShapesBuildStamp([string]$BuildDir) {
 # Builds the tool. A build rewrites bin/ and obj/, so renders side by side run from the published
 # copy, never from them.
 function Build-ExlibShapes([string]$Game) {
-  $proj = Join-Path $ToolsRoot 'shapes/ExlibShapes/ExlibShapes.csproj'
-  dotnet build $proj -c Debug -p:GamePath=$Game -clp:ErrorsOnly
+  $proj = Join-Path (Get-ShapesRoot) 'ExlibShapes/ExlibShapes.csproj'
+  dotnet build $proj -c Debug -p:GamePath=$Game "-p:ExtoolsRoot=$ToolsRoot/" -clp:ErrorsOnly
   if ($LASTEXITCODE -ne 0) { throw "exlib-shapes build failed (exit $LASTEXITCODE)." }
   (Get-Item -LiteralPath (Get-ExlibShapesDll)).LastWriteTimeUtc = [datetime]::UtcNow
 }
 
 # The folder the published copies live under: one publish-* folder per publish and `current`, a
 # symlink to the one renders run from.
-function Get-ShapesPublishRoot { Join-Path $ToolsRoot '.exmod/shapes' }
+function Get-ShapesPublishRoot { Join-Path (Get-ShapesRoot) '.exmod/shapes' }
 
 # The publish folder `current` names, resolved so a render keeps reading it after a later publish
 # moves the link; $null when nothing is published there.
@@ -180,7 +209,7 @@ exmod render FILE --out=DIR [--views a,b,...] [--ppu N] [--anim CLIP --frames N]
   [--highlight PATH...] [--selective PATTERN,...] [--no-grid] [--no-edges] [--game PATH] [--repo PATH]
 
 Renders a shape file's named views (or one animation clip's frames) to PNG - see
-shapes/ExlibShapes/README.md for the full option list and the standalone `exlib-shapes` tool.
+exshapes/ExlibShapes/README.md for the full option list and the standalone `exlib-shapes` tool.
 `--out` needs the `=` form here: PowerShell's own parameter binder treats a bare `--out` token as
 an ambiguous prefix of its common `-OutVariable`/`-OutBuffer` parameters and refuses it outright.
 
@@ -211,7 +240,7 @@ exmod schematic FILE --out=DIR [--views plan,iso] [--angle N] [--layer N|all] [-
 
 Renders a blocktype file's multiblockStructure or megablock footprint to a plan-grid SVG per Y
 layer, an isometric textured composite, and a `<stem>.json` manifest the wiki's directive reads - see
-shapes/ExlibShapes/README.md for the full option list and the standalone `exlib-shapes` tool.
+exshapes/ExlibShapes/README.md for the full option list and the standalone `exlib-shapes` tool.
 `--out` needs the `=` form here: PowerShell's own parameter binder treats a bare `--out` token as
 an ambiguous prefix of its common `-OutVariable`/`-OutBuffer` parameters and refuses it outright.
 
@@ -267,7 +296,7 @@ exmod block FILE --out=DIR [--variant CODE] [--views iso,north,east,south,west,u
 Renders one variant of a blocktype file the way the game draws it in the world - its own shape
 under its shapeByType turn, painted with its texture map, or a unit cube when it ships no shape -
 one PNG per view, plus the plan of the footprint it reserves when it declares one, and a
-`<stem>.json` manifest the wiki's generator reads. See shapes/ExlibShapes/README.md for the full option
+`<stem>.json` manifest the wiki's generator reads. See exshapes/ExlibShapes/README.md for the full option
 list and the standalone `exlib-shapes` tool. `--out` needs the `=` form here: PowerShell's own
 parameter binder treats a bare `--out` token as an ambiguous prefix of its common
 `-OutVariable`/`-OutBuffer` parameters and refuses it outright.
@@ -303,7 +332,7 @@ the centre slot of a 3 x 3 grid of inventory slots, `tp` the player holding it, 
 side and from the front right side by side, `fp` its hands holding it seen from the eye (both need the game's player shape among
 the assets), `ground`
 the item lying on a stone block, all from the itemtype's own transforms and held clips.
-See shapes/ExlibShapes/README.md for the full option list and the standalone `exlib-shapes` tool.
+See exshapes/ExlibShapes/README.md for the full option list and the standalone `exlib-shapes` tool.
 `--out` needs the `=` form here: PowerShell's own parameter binder treats a bare `--out` token as
 an ambiguous prefix of its common `-OutVariable`/`-OutBuffer` parameters and refuses it outright.
 
@@ -357,9 +386,9 @@ Add-ExmodCommand -Group source -Name shapes-build -Summary 'build the shapes too
 } -Detail @'
 exmod shapes-build [--game PATH]
 
-Builds shapes/ExlibShapes when its output is missing or older than its sources, the ExlibAssets
+Builds exshapes/ExlibShapes when its output is missing or older than its sources, the ExlibAssets
 project it references, the props it imports or the game's VintagestoryAPI.dll, then publishes the
-output to a new folder under .exmod/shapes and points the `current` symlink there by rename. The
+output to a new folder under exshapes/.exmod/shapes and points the `current` symlink there by rename. The
 previous publish stays; older ones are deleted once they are more than 10 minutes old. render,
 schematic, scene, block, item and item-views build the tool themselves the same way, unless
 EXMOD_SHAPES_NO_BUILD is set: then they run `current` with no lock, and refuse when nothing is

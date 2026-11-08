@@ -36,9 +36,9 @@ class ShapesPublishTests(unittest.TestCase):
         touch(os.path.join(self.tmp, "build", "runtimes", "x.so"), "native")
         self.root = os.path.join(self.tmp, "publish")
 
-    def run_body(self, body, expect=0):
+    def run_body(self, body, expect=0, extra=None):
         script = exmod_script(HEAD + body)
-        env = exmod_env(os.path.join(self.tmp, "local"), TEST_REPO=self.repo, TEST_TMP=self.tmp)
+        env = exmod_env(os.path.join(self.tmp, "local"), TEST_REPO=self.repo, TEST_TMP=self.tmp, **(extra or {}))
         out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script],
                              env=env, capture_output=True, text=True)
         self.assertEqual(expect, out.returncode, out.stdout + out.stderr)
@@ -128,45 +128,71 @@ try { Invoke-ExlibShapes 'render' @('a.json'); 'ran' } catch { $_.Exception.Mess
         self.assertIn("exmod shapes-build", got[-1])
 
     def fake_tools_root(self):
-        """A tools checkout with every input of the shapes build one hour old and a built exe dll now."""
+        """A tools checkout and an exshapes checkout with every input of the shapes build one hour old
+        and a built exe dll now. Returns both roots and the input files as (root, relative path)."""
         fake = os.path.join(self.tmp, "tools")
+        st = os.path.join(self.tmp, "exshapes")
         dirs = ["ExlibShapes", "ExlibShapes.Core", "ExlibShapes.Checks", "ExlibShapes.Generators", "ExlibShapes.Ops"]
-        files = [os.path.join("shapes", d, "x.cs") for d in dirs]
-        files += [os.path.join("assets", "ExlibAssets", "x.cs"), os.path.join("shapes", "Directory.Build.targets")]
-        files += ["Directory.Build.props", "Directory.Build.targets", "Directory.Build.rsp",
-                  "Directory.Packages.props", "global.json", "exmod.json"]
+        names = ["Directory.Build.props", "Directory.Build.targets", "Directory.Build.rsp",
+                 "Directory.Packages.props", "global.json", "exmod.json"]
+        files = [(st, os.path.join(d, "x.cs")) for d in dirs]
+        files += [(fake, os.path.join("assets", "ExlibAssets", "x.cs"))]
+        files += [(st, n) for n in names] + [(fake, n) for n in names]
         old = os.path.getmtime(self.tmp) - 3600
-        for f in files:
-            path = os.path.join(fake, f)
+        for root, f in files:
+            path = os.path.join(root, f)
             touch(path, "x")
             os.utime(path, (old, old))
-        dll = os.path.join(fake, "shapes", "ExlibShapes", "bin", "Debug", "net10.0", "exlib-shapes.dll")
+        dll = os.path.join(st, "ExlibShapes", "bin", "Debug", "net10.0", "exlib-shapes.dll")
         touch(dll, "tool")
-        return fake, files
+        return fake, st, files
 
     def test_stale_sees_a_change_in_each_project_the_tool_is_built_from(self):
-        # Fails if Core, Checks, Generators, Ops or shapes/Directory.Build.targets is left out of the
-        # inputs, so a change confined to one of them would run the old build.
-        fake, files = self.fake_tools_root()
-        env_fake = "$ToolsRoot = $env:TEST_FAKE"
-        for f in files:
-            if f.endswith("ExlibShapes" + os.sep + "x.cs") or f.startswith("assets"):
-                continue
-            path = os.path.join(fake, f)
+        # Fails if Core, Checks, Generators, Ops, ExlibAssets or either checkout's props, targets,
+        # rsp, packages, SDK pin or manifest is left out of the inputs, so a change confined to one
+        # of them would run the old build.
+        fake, st, files = self.fake_tools_root()
+        body = "$ToolsRoot = $env:TEST_FAKE\nTest-ExlibShapesStale (Get-ExlibShapesDll) 'nogame'"
+        script = exmod_script(HEAD + body)
+        env = exmod_env(os.path.join(self.tmp, "local"), TEST_REPO=self.repo, TEST_TMP=self.tmp,
+                        TEST_FAKE=fake, EXSHAPES_HOME=st)
+        def stale():
+            out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script],
+                                 env=env, capture_output=True, text=True)
+            self.assertEqual(0, out.returncode, out.stdout + out.stderr)
+            return out.stdout.splitlines()[-1]
+        for root, f in files:
+            path = os.path.join(root, f)
             old = os.path.getmtime(path)
-            body = env_fake + "\nTest-ExlibShapesStale (Get-ExlibShapesDll) 'nogame'"
-            script = exmod_script(HEAD + body)
-            env = exmod_env(os.path.join(self.tmp, "local"), TEST_REPO=self.repo, TEST_TMP=self.tmp, TEST_FAKE=fake)
-            def stale():
-                out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", script],
-                                     env=env, capture_output=True, text=True)
-                self.assertEqual(0, out.returncode, out.stdout + out.stderr)
-                return out.stdout.splitlines()[-1]
-            with self.subTest(changed=f):
+            with self.subTest(changed=path):
                 self.assertEqual("False", stale())
                 os.utime(path, (old + 7200, old + 7200))
                 self.assertEqual("True", stale())
                 os.utime(path, (old, old))
+
+    def test_shapes_root_missing_prints_the_refusal(self):
+        # Fails if a tools checkout with no exshapes above it and no EXSHAPES_HOME resolves to
+        # anything, or the refusal loses its instruction.
+        fake = os.path.join(self.tmp, "alone", "extools")
+        os.makedirs(fake)
+        got = self.run_body("""
+$ToolsRoot = $env:TEST_FAKE
+try { Get-ShapesRoot } catch { $_.Exception.Message }""", extra={"TEST_FAKE": fake, "EXSHAPES_HOME": ""})
+        self.assertEqual("exlib-shapes: clone exshapes beside extools or set EXSHAPES_HOME", got[-1])
+
+    def test_shapes_root_follows_exshapes_home_then_the_nearest_ancestor(self):
+        # Fails if EXSHAPES_HOME is ignored, or the ancestor search skips the nearest exshapes.
+        near = os.path.join(self.tmp, "ws", "exshapes", "ExlibShapes")
+        os.makedirs(near)
+        tools = os.path.join(self.tmp, "ws", "sessions", ".worktrees", "extools-x")
+        os.makedirs(tools)
+        home = os.path.join(self.tmp, "home", "ExlibShapes")
+        os.makedirs(home)
+        body = "$ToolsRoot = $env:TEST_FAKE\nGet-ShapesRoot"
+        by_ancestor = self.run_body(body, extra={"TEST_FAKE": tools, "EXSHAPES_HOME": ""})[-1]
+        by_home = self.run_body(body, extra={"TEST_FAKE": tools, "EXSHAPES_HOME": os.path.dirname(home)})[-1]
+        self.assertEqual(os.path.dirname(near), by_ancestor)
+        self.assertEqual(os.path.dirname(home), by_home)
 
     def test_publish_stamp_follows_the_newest_dll_so_a_core_only_change_republishes(self):
         # Fails if the stamp is the exe dll's write time alone: a rebuild that rewrites only

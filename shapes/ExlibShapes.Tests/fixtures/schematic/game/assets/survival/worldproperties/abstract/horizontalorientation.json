@@ -1,9 +1,0 @@
-{
-  "code": "side",
-  "variants": [
-    { "Code": "north" },
-    { "Code": "east" },
-    { "Code": "south" },
-    { "Code": "west" }
-  ]
-}
