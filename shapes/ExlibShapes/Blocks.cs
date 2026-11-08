@@ -289,8 +289,8 @@ public sealed class BlockIndex {
       dirs.Add(dir);
   }
 
-  /// <summary>The repository <paramref name="file"/> sits in (the nearest ancestor holding
-  /// <c>workbench/</c>, <c>mods/</c> or <c>.game/</c>), plus its sibling <c>exlib</c> checkout when
+  /// <summary>The repository <see cref="TextureRoots.Build"/> finds for <paramref name="file"/> (for a
+  /// file under the workspace's <c>workbench</c>, the workspace's <c>exmods</c>), plus its sibling <c>exlib</c> checkout when
   /// present (family blocks resolve framework-only selectors, <c>exlib:structurefiller</c> among
   /// them, only there) - the roots a schematic CLI passes to <see cref="Build"/> when the caller
   /// gave none explicitly.</summary>

@@ -9,6 +9,8 @@ public static class ModsRoot {
   /// ancestor (<paramref name="root"/> included) holding <c>exmod.workspace.json</c>, when that
   /// folder holds <c>mods/</c>; else <paramref name="root"/>.
   /// </summary>
+  /// <param name="root">An absolute directory; a relative one is searched only through its own segments.</param>
+  /// <returns><paramref name="root"/> or the workspace's <c>exmods</c> folder, never null. Reads the disk, changes nothing.</returns>
   public static string Of(string root) {
     if (Directory.Exists(Path.Combine(root, "mods")))
       return root;
