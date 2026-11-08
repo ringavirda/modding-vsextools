@@ -220,28 +220,35 @@ public partial class WriterTests(ITestOutputHelper output) {
     Directory.Delete(dir, true);
   }
 
+  // Removing the ReplaceLineEndings normalisation makes every file differ.
   [SkippableFact]
   public void Every_vsmc_saved_workspace_file_is_written_back_byte_for_byte() {
-    string? root =
-      WorkspacePath.Of("workbench") ?? WorkspacePath.Of("exmods/workbench");
-    Skip.If(root is null, "no workbench or exmods checkout beside this one");
-    var files = Directory
-      .EnumerateFiles(root!, "*.json", SearchOption.AllDirectories)
-      .Where(f => {
-        string text = File.ReadAllText(f);
-        return text.Contains("\r\n") && !EmptiedSizes().IsMatch(text);
-      })
+    string? root = WorkspacePath.Of("workbench");
+    Skip.If(
+      root is null && WorkspacePath.Of("exmods") is null,
+      "no workbench or exmods checkout beside this one"
+    );
+    Assert.True(root != null, "clone workbench beside exmods");
+    var files = VsmcSavedCorpus
+      .Paths.Select(p => Path.Combine(root!, p))
+      .Where(File.Exists)
+      .Where(f => !EmptiedSizes().IsMatch(File.ReadAllText(f)))
       .ToList();
     var different = files
       .Where(f => {
-        string text = File.ReadAllText(f);
+        string text = File.ReadAllText(f).ReplaceLineEndings("\r\n");
         return VsmcWriter.Write(Reader.Read(text)) != text;
       })
       .ToList();
-    output.WriteLine($"{files.Count} CRLF files, {different.Count} differ");
+    output.WriteLine(
+      $"{files.Count} Model Creator files, {different.Count} differ"
+    );
     foreach (string f in different.Take(20))
       output.WriteLine(f);
-    Assert.True(files.Count > 50, $"only {files.Count} CRLF files found");
+    Assert.True(
+      files.Count > 50,
+      $"only {files.Count} Model Creator files found"
+    );
     Assert.Empty(different);
   }
 
@@ -250,10 +257,12 @@ public partial class WriterTests(ITestOutputHelper output) {
   [InlineData("furnaces/coke-oven/furnace-megablock-chargedoor-proposed.json")]
   [InlineData("machine-tools/lathe/machine-mp-megablock-lathe-proposed.json")]
   public void Finished_shape_is_stable_for_geometry_through_runtime(string rel) {
-    string? path =
-      WorkspacePath.Of("workbench/shapes-finished/" + rel)
-      ?? WorkspacePath.Of("exmods/workbench/shapes-finished/" + rel);
-    Skip.If(path is null, "no workbench or exmods checkout beside this one");
+    string? path = WorkspacePath.Of("workbench/shapes-finished/" + rel);
+    Skip.If(
+      path is null && WorkspacePath.Of("exmods") is null,
+      "no workbench or exmods checkout beside this one"
+    );
+    Assert.True(path != null, "clone workbench beside exmods");
     Shape shape = Reader.ReadFile(path!);
     Settings registry = RegistryFor(shape);
     string runtime = RuntimeWriter.Write(shape, registry, "iiex");
@@ -299,9 +308,7 @@ public partial class WriterTests(ITestOutputHelper output) {
   public void Repeat_finished_shape_equals_the_converters_runtime() {
     const string pump =
       "shapes-finished/pumps/engine-pump/machine-pipe-block-engine-fluidpump-improved-proposed.json";
-    string? path =
-      WorkspacePath.Of("workbench/" + pump)
-      ?? WorkspacePath.Of("exmods/workbench/" + pump);
+    string? path = WorkspacePath.Of("workbench/" + pump);
     string? tool = WorkspacePath.Of("exmods/infra/tools/convert-shape.py");
     string? python = new[]
     {
@@ -309,9 +316,11 @@ public partial class WriterTests(ITestOutputHelper output) {
       "/usr/local/bin/python3",
     }.FirstOrDefault(File.Exists);
     Skip.If(
-      path is null || tool is null || python is null,
-      "no workbench or exmods checkout or python3"
+      path is null && WorkspacePath.Of("exmods") is null,
+      "no workbench or exmods checkout beside this one"
     );
+    Assert.True(path != null, "clone workbench beside exmods");
+    Skip.If(tool is null || python is null, "no converter or python3");
 
     Shape shape = Reader.ReadFile(path!);
     string dir = Directory.CreateTempSubdirectory().FullName;

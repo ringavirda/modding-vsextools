@@ -301,18 +301,23 @@ public class FlushTests {
   public void The_lathe_head_bush_pair_of_its_drawing_passes_flushcheck() {
     string? dir = AppContext.BaseDirectory;
     string? file = null;
+    bool exmods = false;
     while (dir != null && file == null) {
-      foreach (string home in new[] { "workbench", "exmods/workbench" }) {
-        string f = System.IO.Path.Combine(
-          dir,
-          home + "/shapes-finished/machine-tools/lathe/machine-mp-megablock-lathe-proposed.json"
-        );
-        if (System.IO.File.Exists(f))
-          file = f;
-      }
+      string f = System.IO.Path.Combine(
+        dir,
+        "workbench/shapes-finished/machine-tools/lathe/machine-mp-megablock-lathe-proposed.json"
+      );
+      if (System.IO.File.Exists(f))
+        file = f;
+      if (System.IO.Directory.Exists(System.IO.Path.Combine(dir, "exmods")))
+        exmods = true;
       dir = System.IO.Path.GetDirectoryName(dir);
     }
-    Skip.If(file == null, "no workbench or exmods checkout holds the lathe drawing");
+    Skip.If(
+      file == null && !exmods,
+      "no workbench or exmods checkout holds the lathe drawing"
+    );
+    Assert.True(file != null, "clone workbench beside exmods");
     Shape lathe = Reader.Read(System.IO.File.ReadAllText(file!));
     List<string> paths =
     [
