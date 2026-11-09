@@ -812,8 +812,129 @@ function Merge-ExmodPartitionResults($Results) {
   return $out
 }
 
+# The types a C# file declares: { Name; Indent; Start }, Indent the column of the declaration and Start its offset in $Text.
+function Get-ExmodCsTypes([string]$Text) {
+  $decl = '(?m)^([ \t]*)(?:\[[^\]\r\n]*\][ \t]*)*(?:(?:public|internal|private|protected|file|static|sealed|abstract|partial|unsafe|readonly|ref|new)[ \t]+)*(?:class|struct|interface|enum|record(?:[ \t]+(?:class|struct))?)[ \t]+([A-Za-z_]\w*)'
+  foreach ($m in [regex]::Matches($Text, $decl)) {
+    [pscustomobject]@{ Name = $m.Groups[2].Value; Indent = $m.Groups[1].Length; Start = $m.Index }
+  }
+}
+
+# The outermost types of a test file: { Name; HasTests }, HasTests when the text from the type to the next outermost
+# one holds a [Fact] or [Theory] style attribute. A type nested in another is not listed: a filter term cannot name it.
+function Get-ExmodTestClasses([string]$Text) {
+  $types = @(Get-ExmodCsTypes $Text)
+  if (-not $types) { return }
+  $top = ($types | Measure-Object -Property Indent -Minimum).Minimum
+  $tops = @($types | Where-Object { $_.Indent -eq $top })
+  for ($i = 0; $i -lt $tops.Count; $i++) {
+    $end = if ($i + 1 -lt $tops.Count) { $tops[$i + 1].Start } else { $Text.Length }
+    $body = $Text.Substring($tops[$i].Start, $end - $tops[$i].Start)
+    [pscustomobject]@{ Name = $tops[$i].Name; HasTests = [bool]($body -match '\[\w*(?:Fact|Theory)\b') }
+  }
+}
+
+function Add-ExmodAffected($Entries, [string]$Name, [string]$Why, [bool]$Direct) {
+  if (-not $Entries.Contains($Name)) { $Entries[$Name] = [pscustomobject]@{ Name = $Name; Why = [System.Collections.Generic.List[string]]::new(); Direct = $false } }
+  if ($Why -notin $Entries[$Name].Why) { $Entries[$Name].Why.Add($Why) }
+  if ($Direct) { $Entries[$Name].Direct = $true }
+}
+
+# The test classes a change can fail, from the changed paths $Changed (relative to $Root, `/`-separated) and the test
+# project folders $TestDirs (absolute). Returns { Classes = @({ Name; Why; Direct }); SkippedHeavy = @(names); Filter }.
+#   1. every class with tests declared in a changed .cs file under a test folder;
+#   2. every class with tests in a test file that names, as a whole word, a type declared in another changed .cs file
+#      (a deleted file's types are read from $Base);
+#   3. every class of $Always, which must be declared in some test file;
+#   a changed .json file, or file under an `assets` folder, takes the classes of the test files that name its base name
+#   (of three characters or more, so a locale file `en.json` names nothing).
+# A class of $Heavy stays out unless 1 or 2 put it in (Direct). Filter is `FullyQualifiedName~.<class>.` terms joined by
+# `|`, empty with no class.
+function Get-ExmodAffectedPlan([string]$Root, [string[]]$Changed, [string[]]$TestDirs, [string[]]$Always, [string[]]$Heavy, [string]$Base) {
+  $prefixes = @($TestDirs | ForEach-Object { [IO.Path]::GetRelativePath($Root, $_).Replace('\', '/').TrimEnd('/') + '/' })
+  $inTests = { param($rel) foreach ($pre in $prefixes) { if ($rel.StartsWith($pre, [StringComparison]::Ordinal)) { return $true } }; return $false }
+
+  $tests = @()
+  foreach ($dir in $TestDirs) {
+    foreach ($f in (Get-ChildItem -LiteralPath $dir -Recurse -Filter '*.cs' -File | Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' })) {
+      $text = Get-Content -LiteralPath $f.FullName -Raw
+      $tests += [pscustomobject]@{ Rel = [IO.Path]::GetRelativePath($Root, $f.FullName).Replace('\', '/'); Text = $text; Classes = @(Get-ExmodTestClasses $text) }
+    }
+  }
+
+  $entries = [ordered]@{}
+  $changedTests = @($Changed | Where-Object { $_.EndsWith('.cs') -and (& $inTests $_) })
+  foreach ($t in ($tests | Where-Object { $_.Rel -in $changedTests })) {
+    foreach ($c in ($t.Classes | Where-Object { $_.HasTests })) { Add-ExmodAffected $entries $c.Name "changed test file $($t.Rel)" $true }
+  }
+
+  $sourceTypes = [ordered]@{}
+  foreach ($rel in ($Changed | Where-Object { $_.EndsWith('.cs') -and -not (& $inTests $_) })) {
+    $path = Join-Path $Root $rel
+    $text = if (Test-Path -LiteralPath $path -PathType Leaf) { Get-Content -LiteralPath $path -Raw } else { (git -C $Root show "${Base}:$rel" 2>$null) -join "`n" }
+    foreach ($ty in (Get-ExmodCsTypes $text)) { if (-not $sourceTypes.Contains($ty.Name)) { $sourceTypes[$ty.Name] = $rel } }
+  }
+  $assetNames = [ordered]@{}
+  foreach ($rel in ($Changed | Where-Object { -not $_.EndsWith('.cs') -and ($_.EndsWith('.json') -or $_ -match '(^|/)assets/') })) {
+    $name = [IO.Path]::GetFileNameWithoutExtension($rel)
+    if ($name.Length -ge 3 -and -not $assetNames.Contains($name)) { $assetNames[$name] = $rel }
+  }
+  foreach ($set in @(@{ Names = $sourceTypes; Direct = $true }, @{ Names = $assetNames; Direct = $false })) {
+    if ($set.Names.Count -eq 0) { continue }
+    $named = [regex]::new('(?<![A-Za-z0-9_])(?:' + (($set.Names.Keys | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')(?![A-Za-z0-9_])')
+    foreach ($t in $tests) {
+      $hit = @($named.Matches($t.Text) | ForEach-Object { $_.Value } | Select-Object -Unique -First 3)
+      if (-not $hit) { continue }
+      $why = ($hit | ForEach-Object { "names $_ ($($set.Names[$_]))" }) -join ', '
+      foreach ($c in ($t.Classes | Where-Object { $_.HasTests })) { Add-ExmodAffected $entries $c.Name $why $set.Direct }
+    }
+  }
+
+  $declared = @($tests | ForEach-Object { $_.Classes } | ForEach-Object { $_.Name })
+  foreach ($name in $Always) {
+    if ($name -notin $declared) { throw "exmod.json: affectedAlways names $name, which no test file declares." }
+    Add-ExmodAffected $entries $name 'affectedAlways' $false
+  }
+
+  $skipped = @($entries.Values | Where-Object { -not $_.Direct -and $_.Name -in $Heavy } | ForEach-Object { $_.Name })
+  $classes = @($entries.Values | Where-Object { $_.Name -notin $skipped } | Sort-Object Name)
+  $filter = (@($classes | ForEach-Object { "FullyQualifiedName~.$($_.Name)." }) -join '|')
+  return [pscustomobject]@{ Classes = $classes; SkippedHeavy = $skipped; Filter = $filter }
+}
+
+# The heavy test classes: one per line of $EXMOD_HEAVY_TESTS (default ~/src/claude-tools/claude/repos/modding-vsex/heavy-tests.txt),
+# text after `#` ignored; empty when the file is missing.
+function Get-ExmodHeavyClasses {
+  $path = if ($env:EXMOD_HEAVY_TESTS) { $env:EXMOD_HEAVY_TESTS } else { Join-Path $HOME 'src/claude-tools/claude/repos/modding-vsex/heavy-tests.txt' }
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return @() }
+  return @(Get-Content -LiteralPath $path | ForEach-Object { ($_ -split '#')[0].Trim() } | Where-Object { $_ })
+}
+
+# Get-ExmodAffectedPlan for this checkout: the paths `git diff` names between $Base and HEAD, the manifest's test projects
+# and `affectedAlways`, and the heavy classes. Throws when git cannot diff $Base.
+function Get-ExmodAffectedPlanHere([string]$Base) {
+  $changed = @(git -C $RepoRoot diff --name-only --relative "$Base...HEAD" 2>&1)
+  if ($LASTEXITCODE -ne 0) { throw "git diff $Base...HEAD failed at ${RepoRoot}: $($changed -join ' ')" }
+  $manifest = Get-ExmodManifest
+  $always = if ($manifest.PSObject.Properties['affectedAlways']) { @($manifest.affectedAlways) } else { @() }
+  $dirs = @((Get-ExmodTestProjects).Values | ForEach-Object { if (Test-Path -LiteralPath $_.Proj -PathType Container) { $_.Proj } else { Split-Path -Parent $_.Proj } } | Select-Object -Unique)
+  $plan = Get-ExmodAffectedPlan $RepoRoot $changed $dirs $always (Get-ExmodHeavyClasses) $Base
+  $plan | Add-Member -NotePropertyName ChangedCount -NotePropertyValue $changed.Count -PassThru
+}
+
+function Write-ExmodAffectedPlan($Plan, [string]$Base) {
+  Write-Host "Affected test classes (base $Base, $($Plan.ChangedCount) changed file(s)):"
+  foreach ($c in $Plan.Classes) {
+    $why = ($c.Why | Select-Object -First 3) -join '; '
+    $more = if ($c.Why.Count -gt 3) { " (+$($c.Why.Count - 3) more)" } else { '' }
+    Write-Host ("  {0,-44} {1}{2}" -f $c.Name, $why, $more)
+  }
+  if ($Plan.SkippedHeavy) { Write-Host "Left out, heavy and not directly affected: $($Plan.SkippedHeavy -join ', ')" }
+  Write-Host "$($Plan.Classes.Count) class(es)."
+}
+
 function Invoke-Test([string[]]$Argv) {
-  $positional = @(Get-Positional $Argv @('-Throttle', '-Filter', '-Parts') @('-Coverage', '-AcceptDrop', '-NoBuild', '-StopOnRed'))
+  $positional = @(Get-Positional $Argv @('-Throttle', '-Filter', '-Parts', '-Base') @('-Coverage', '-AcceptDrop', '-NoBuild', '-StopOnRed', '-Affected', '-List'))
   $version = if ($positional.Count -gt 0) { $positional[0] } else { 'latest' }
   $throttle = [int](Get-Opt $Argv '-Throttle' 0)
   $coverage = Get-Flag $Argv '-Coverage'
@@ -826,6 +947,19 @@ function Invoke-Test([string[]]$Argv) {
   $partsArg = Get-Opt $Argv '-Parts' ''
   $stopOnRed = ((Get-Flag $Argv '-StopOnRed') -or "$env:EXMOD_RUN_TRIGGER".StartsWith('landing:')) -and $env:EXMOD_STOP_ON_RED -ne '0'
   if ($partsArg -and $filter) { throw "-Parts and -Filter cannot be combined: -Filter runs an assembly whole." }
+  $affected = Get-Flag $Argv '-Affected'
+  $baseArg = Get-Opt $Argv '-Base' ''
+  $listOnly = Get-Flag $Argv '-List'
+  if (($baseArg -or $listOnly) -and -not $affected) { throw "-Base and -List need -Affected." }
+  if ($affected) {
+    if ($filter -or $partsArg -or $coverage) { throw "-Affected builds its own filter: it cannot be combined with -Filter, -Parts or -Coverage." }
+    $baseRef = if ($baseArg) { $baseArg } else { 'dev' }
+    $plan = Get-ExmodAffectedPlanHere $baseRef
+    Write-ExmodAffectedPlan $plan $baseRef
+    if ($listOnly) { return }
+    if (-not $plan.Classes) { Write-Host 'Nothing affected: no test run.'; return }
+    $filter = $plan.Filter
+  }
   $census = Get-ExmodCensusPath
 
   # The units wait for memory shares while the caller's flock holds the build lock, and a -Coverage run that holds
@@ -1257,7 +1391,7 @@ function Invoke-Test([string[]]$Argv) {
 Add-ExmodCommand -Group source -Name test -Summary 'run the test suites, one lane per game version' -Action {
   param([string[]]$Argv) Invoke-Test $Argv
 } -Detail @'
-exmod test [latest|all|1.22|1.21|1.20] [-Filter <expr>] [-Parts <names>|red] [-StopOnRed] [-Throttle <n>] [-Coverage] [-AcceptDrop] [-NoBuild]
+exmod test [latest|all|1.22|1.21|1.20] [-Filter <expr>] [-Parts <names>|red] [-Affected [-Base <ref>] [-List]] [-StopOnRed] [-Throttle <n>] [-Coverage] [-AcceptDrop] [-NoBuild]
 
 Builds every test project for the requested series (unless -NoBuild), then runs the suites in parallel - one lane per
 (series, project). Missing runtimes and game binaries are provisioned on demand, so a fresh clone
@@ -1272,6 +1406,15 @@ mod projects they share build once.
               parts that exited non-zero or were stopped in the last run at this repository root that has partition
               records in $EXMOD_RUN_LOG. An unknown name errors naming the valid ones, `red` with none exits 2, and
               -Parts with -Filter errors. Like -Filter it neither reads nor writes the census
+  -Affected   run only the test classes the change can fail, as one -Filter run (it neither reads nor writes the census):
+              from `git diff --name-only <base>...HEAD` (-Base, default dev) every class with tests in a changed test
+              .cs file; every class whose file names, as a whole word, a type declared in another changed .cs file; the
+              classes of the manifest's `affectedAlways`, which a repo lists for its guards that read the whole tree;
+              and, for a changed .json file or one under an `assets` folder, the classes whose file names its base name
+              (three characters or more).
+              A class listed in $EXMOD_HEAVY_TESTS (default ~/src/claude-tools/claude/repos/modding-vsex/heavy-tests.txt)
+              enters only through the first two. Prints each class with why it is in; -List stops there and runs nothing.
+              Combined with -Filter, -Parts or -Coverage it errors
   -StopOnRed  on the first partition host that exits non-zero, stop the hosts still running and start no more, each
               recorded as stopped; on by default when EXMOD_RUN_TRIGGER starts with `landing:`, and
               EXMOD_STOP_ON_RED=0 turns it off. Only partitioned assemblies stop or trigger it
