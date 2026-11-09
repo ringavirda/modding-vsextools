@@ -666,6 +666,62 @@ class MemoryTests(unittest.TestCase):
         self.assertRegex(out, r"memory: b released 2 GiB at \d\d:\d\d:\d\d, held \d+ s$")
 
 
+    def share(self, filter_text, memory=None, peaks=(), filtered=True, heavy=False):
+        """Get-ExmodTestShare for A.Tests as `ShareGb|LimitGb|RetryShareGb|ShareSource`, with `memory` as the manifest's
+        A.Tests testMemory entry (none when None) and `peaks` as rows of the memory log."""
+        manifest = {"testMemory": {"A.Tests": memory}} if memory else {}
+        touch(os.path.join(self.repo, "exmod.json"), json.dumps(manifest))
+        rows = [{"label": "1.22/A.Tests", "filtered": True, "filter": "F", "peakGb": None, **p} for p in peaks]
+        touch(os.path.join(self.tmp, "local", "memory-peaks.jsonl"), "".join(json.dumps(r) + "\n" for r in rows))
+        flag = "$true" if filtered else "$false"
+        body = (f"$s = Get-ExmodTestShare 'A.Tests' $null {flag} '{filter_text}'; "
+                "\"$($s.ShareGb)|$($s.LimitGb)|$($s.RetryShareGb)|$($s.ShareSource)\"")
+        env = {"EXMOD_HEAVY": "1"} if heavy else {}
+        return self.start(body, **env).finish(30).strip().splitlines()[-1].split("|")
+
+    ENTRY = {"heapGb": 20, "filterHeapGb": 15, "filterStartGb": 4}
+
+    def test_a_filtered_run_takes_the_largest_recorded_peak_of_its_filter_plus_headroom(self):
+        # Fails if the ledger peak is ignored (the heavy filtered run takes 21), if the headroom is dropped (8 instead of 9),
+        # or if a row of another filter, an unfiltered row or a lower peak decides (30, 40 or 3.1).
+        peaks = [{"peakGb": 3.1}, {"peakGb": 7.2}, {"peakGb": 5.0},
+                 {"peakGb": 30, "filter": "G"}, {"peakGb": 40, "filtered": False}, {"peakGb": 50, "label": "1.22/B.Tests"}]
+        share, limit, _, source = self.share("F", self.ENTRY, peaks, heavy=True)
+        self.assertEqual(("9", "20"), (share, limit))
+        self.assertEqual("recorded peak 7.2 GiB + 1", source)
+
+    def test_a_filtered_run_with_no_recorded_peak_takes_the_heap_it_starts_under_plus_headroom(self):
+        # Fails if the unfiltered size is taken for the filtered run (EXMOD_HEAVY=1 on a filter no part owns: 21, not 5).
+        share, limit, _, source = self.share("F", self.ENTRY, [{"peakGb": None}])
+        self.assertEqual(("5", "4", "heap 4 GiB + 1"), (share, limit, source))
+        share, limit, _, source = self.share("DisplayName~x", self.ENTRY, heavy=True)
+        self.assertEqual(("21", "20", "heap 20 GiB + 1"), (share, limit, source))
+        share, _, _, source = self.share("F", self.ENTRY, filtered=False)
+        self.assertEqual(("21", "configured heap"), (share, source))
+
+    def test_a_filtered_run_of_an_assembly_with_no_entry_takes_the_small_default(self):
+        # Fails if the unlimited unfiltered share (4) is taken for the filtered run, or if the default ignores a recorded peak.
+        share, limit, _, source = self.share("F")
+        self.assertEqual(("2", "", "default for a filtered run with no testMemory entry"), (share, limit, source))
+        self.assertEqual("4", self.share("F", filtered=False)[0])
+        self.assertEqual("4", self.share("F", peaks=[{"peakGb": 2.6}])[0])
+
+    def test_the_share_of_the_rerun_after_an_out_of_memory_grows_with_its_heap(self):
+        # Fails if the rerun share is the first share (5), drops the headroom (8), or falls below a larger recorded peak.
+        entry = {"heapGb": 12, "filterHeapGb": 8, "filterStartGb": 3}
+        share, _, retry, _ = self.share("F", entry)
+        self.assertEqual(("4", "9"), (share, retry))
+        share, _, retry, _ = self.share("F", entry, [{"peakGb": 10.5}])
+        self.assertEqual(("12", "12"), (share, retry))
+
+    def test_the_took_line_says_where_the_share_came_from(self):
+        # Fails if Lock-ExmodMemory leaves -Source off the line, or prints a share part when none is given.
+        out = self.start("$r = Lock-ExmodMemory 2 'a' -Source 'recorded peak 1.0 GiB + 1'; Unlock-ExmodMemory $r; "
+                         "$r = Lock-ExmodMemory 2 'b'; Unlock-ExmodMemory $r").finish(30)
+        self.assertRegex(out, r"memory: a took 2 GiB of 4 at \d\d:\d\d:\d\d after \d+ s \(share: recorded peak 1\.0 GiB \+ 1\)\n")
+        self.assertRegex(out, r"memory: b took 2 GiB of 4 at \d\d:\d\d:\d\d after \d+ s\n")
+
+
 @unittest.skipUnless(PWSH, "pwsh not found")
 class HarnessEnvTests(unittest.TestCase):
     def test_the_callers_memory_settings_are_not_passed_on(self):

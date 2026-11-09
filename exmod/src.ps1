@@ -405,7 +405,70 @@ function Get-ExmodFilterReachGb([string]$Project, [string]$Filter) {
   return $most
 }
 
-# The memory a test unit takes: { ShareGb; LimitGb; FilterLimitGb; HeavyGb; RetryLimitGb; RetryShareGb }. ShareGb is the whole GiB taken
+# GiB added to the memory a filtered run is expected to use (its recorded peak, or the heap it starts under) to make its share.
+$ExmodFilterHeadroomGb = 1
+
+# GiB a filtered run of a test unit with no `testMemory` figure and no recorded peak takes, run under no limit.
+$ExmodFilterDefaultShareGb = 2
+
+# The largest `peakGb` recorded in $EXMOD_MEMORY_LOG (its last 256 KiB) for a filtered run of the assembly $Project, in any
+# game series, with the filter text $Filter; $null when no such row has a peak or the log cannot be read.
+function Get-ExmodFilterPeakGb([string]$Project, [string]$Filter) {
+  $log = if ($env:EXMOD_MEMORY_LOG) { $env:EXMOD_MEMORY_LOG } else { Join-Path ([Environment]::GetFolderPath('UserProfile')) '.cache/exmod/memory-peaks.jsonl' }
+  try {
+    $fs = [System.IO.File]::Open($log, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+    try {
+      $from = [Math]::Max(0L, $fs.Length - 262144)
+      [void]$fs.Seek($from, [System.IO.SeekOrigin]::Begin)
+      $text = [System.IO.StreamReader]::new($fs, [System.Text.Encoding]::UTF8).ReadToEnd()
+    }
+    finally { $fs.Dispose() }
+    $lines = $text.Split("`n")
+    $pattern = '^(?:[^/]+/)?' + [regex]::Escape($Project) + '$'
+    $most = $null
+    for ($i = $(if ($from -gt 0) { 1 } else { 0 }); $i -lt $lines.Count; $i++) {
+      try { $row = $lines[$i] | ConvertFrom-Json } catch { continue }
+      if ($row.filtered -ne $true -or $null -eq $row.peakGb -or $row.filter -cne $Filter -or "$($row.label)" -notmatch $pattern) { continue }
+      if ($null -eq $most -or [double]$row.peakGb -gt $most) { $most = [double]$row.peakGb }
+    }
+    return $most
+  }
+  catch { return $null }
+}
+
+# The memory a test unit takes: { ShareGb; ShareSource; LimitGb; FilterLimitGb; HeavyGb; RetryLimitGb; RetryShareGb }. ShareGb is
+# the whole GiB taken from the budget and ShareSource the text saying where it came from. LimitGb is the GC heap limit the
+# host runs under, or $null for none; FilterLimitGb and HeavyGb are set only when the run is under the filter limit, as
+# that limit and as the limit EXMOD_HEAVY=1 would run it under. RetryLimitGb and RetryShareGb are set only when the run
+# has a larger limit to rerun under after an OutOfMemoryException: that limit and that rerun's share, its limit plus the
+# headroom and never below ShareGb.
+# An unfiltered run takes its configured share (Get-ExmodConfiguredTestShare). A run with -Filter takes the largest peak
+# the memory log records for the same assembly and filter text (Get-ExmodFilterPeakGb) rounded up plus the headroom; with
+# no such peak, the heap limit it starts under plus the headroom; with no `testMemory` entry either, the small default.
+# $Project: the test assembly. $PartHeapGb: the partition's own `heapGb`, or $null. $Filtered: the run has -Filter.
+# $Filter: the run's -Filter expression, or $null.
+function Get-ExmodTestShare([string]$Project, $PartHeapGb, [bool]$Filtered, [string]$Filter = $null) {
+  $share = Get-ExmodConfiguredTestShare $Project $PartHeapGb $Filtered $Filter
+  $source = "heap $($share.LimitGb) GiB + $ExmodFilterHeadroomGb"
+  if ($Filtered) {
+    $peak = Get-ExmodFilterPeakGb $Project $Filter
+    if ($null -ne $peak) {
+      $share.ShareGb = [int][Math]::Ceiling($peak + $ExmodFilterHeadroomGb)
+      $source = "recorded peak {0:0.0} GiB + {1}" -f $peak, $ExmodFilterHeadroomGb
+    }
+    elseif ($null -eq $share.LimitGb) {
+      $share.ShareGb = $ExmodFilterDefaultShareGb
+      $source = 'default for a filtered run with no testMemory entry'
+    }
+    else { $share.ShareGb = $share.LimitGb + $ExmodFilterHeadroomGb }
+    if ($null -ne $share.RetryLimitGb) { $share.RetryShareGb = [Math]::Max($share.RetryLimitGb + $ExmodFilterHeadroomGb, $share.ShareGb) }
+  }
+  else { $source = 'configured heap' }
+  $share | Add-Member -NotePropertyName ShareSource -NotePropertyValue $source -Force
+  return $share
+}
+
+# The configured memory a test unit takes, before any recorded peak: { ShareGb; LimitGb; FilterLimitGb; HeavyGb; RetryLimitGb; RetryShareGb }. ShareGb is the whole GiB taken
 # from the budget; LimitGb the GC heap limit the host runs under, or $null for none; FilterLimitGb and HeavyGb are set only
 # when the run is under the filter limit, as that limit and as the limit EXMOD_HEAVY=1 would run it under. RetryLimitGb
 # and RetryShareGb are set only when the run starts under `filterStartGb`: the filter limit it reruns under after an
@@ -415,7 +478,7 @@ function Get-ExmodFilterReachGb([string]$Project, [string]$Filter) {
 # $Project: the test assembly. $PartHeapGb: the partition's own `heapGb`, or $null. $Filtered: the run has -Filter.
 # $Filter: the run's -Filter expression, or $null. A filter that names one setup row (Test-ExmodRowFilter) of an assembly
 # with `rowHeapGb` starts under that limit whatever EXMOD_HEAVY says, with `filterHeapGb` as the rerun limit when it is higher.
-function Get-ExmodTestShare([string]$Project, $PartHeapGb, [bool]$Filtered, [string]$Filter = $null) {
+function Get-ExmodConfiguredTestShare([string]$Project, $PartHeapGb, [bool]$Filtered, [string]$Filter = $null) {
   $mem = Get-ExmodTestMemory $Project
   $heap = if ($null -ne $PartHeapGb) { [int]$PartHeapGb } elseif ($mem) { $mem.HeapGb } else { $null }
   if ($Filtered -and $mem -and $null -ne $mem.RowHeapGb -and (Test-ExmodRowFilter $Filter)) {
@@ -1051,6 +1114,7 @@ function Invoke-Test([string[]]$Argv) {
           if (& $abort) { return (& $abandon) }
           $limitGb = $item.Share.LimitGb
           $shareGb = $item.Share.ShareGb
+          $shareSource = $item.Share.ShareSource
           $retryGb = $item.Share.RetryLimitGb
           while ($true) {
             $attemptArgs = $testArgs
@@ -1063,7 +1127,7 @@ function Invoke-Test([string[]]$Argv) {
             $gaveUp = $false
             $killed = $false
             try {
-              $reservation = Lock-ExmodMemory -Gb $shareGb -Label $label -Filtered:([bool]$filter) -OnWait { $started[$mine] = $true } -Abort $abort
+              $reservation = Lock-ExmodMemory -Gb $shareGb -Label $label -Filtered:([bool]$filter) -Source $shareSource -OnWait { $started[$mine] = $true } -Abort $abort
               $started[$mine] = $true
               $sampler = Start-ExmodMemorySampler $item.Blame $reservation.Record
               $hostWatch = [System.Diagnostics.Stopwatch]::StartNew()
@@ -1094,6 +1158,7 @@ function Invoke-Test([string[]]$Argv) {
               Write-Host "memory: $label ran out of memory under $limitGb GiB, retrying once under $retryGb GiB"
               $limitGb = $retryGb
               $shareGb = $item.Share.RetryShareGb
+              $shareSource = "rerun under $limitGb GiB after out of memory"
               $retryGb = $null
               continue
             }
@@ -1245,6 +1310,8 @@ shows an OutOfMemoryException, reruns once under filterHeapGb. While a host runs
 sampled every EXMOD_MEMORY_SAMPLE_MS (3000) ms on Linux; the `released` line ends with `, peak <p> GiB`, and one JSON
 line per run (label, filtered, filter, shareGb, limitGb, peakGb, seconds, exit, time) is appended to $EXMOD_MEMORY_LOG
 (~/.cache/exmod/memory-peaks.jsonl).
+A -Filter run takes a share of the largest peak recorded in that log for the same assembly and filter text, rounded up, plus 1 GiB;
+without one, of its starting heap limit plus 1 GiB (an assembly with no entry: 2 GiB). The took line ends `(share: <source>)`.
 After each host ends one JSON line is appended to $EXMOD_RUN_LOG (~/.cache/exmod/test-runs.jsonl): run ($EXMOD_RUN_ID, else
 one id per exmod process), trigger ($EXMOD_RUN_TRIGGER, else direct), root, commit, dirty, label, part, filter, filtered,
 exit, seconds, time, tests, passed, failed, skipped, failures (at most 50, then truncated: true) and classes (seconds of the
