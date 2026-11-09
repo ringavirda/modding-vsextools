@@ -1372,7 +1372,7 @@ function Unlock-ExmodMemory($Reservation, $PeakGb = $null) {
 }
 
 # Commands that take the build lock themselves around the parts that build, or never need it.
-$NoBuildLockCommands = @('check', 'test', 'smoke', 'scenario', 'render', 'shapetool', 'server', 'client', 'debug-adapter')
+$NoBuildLockCommands = @('check', 'test', 'smoke', 'scenario', 'render', 'shapetool', 'server', 'client', 'debug-adapter', 'results')
 
 function Invoke-ExmodCommand($Resolved, [string[]]$Argv) {
   if ($Resolved.Name -in $NoBuildLockCommands) { & $Resolved.Action $Argv; return }

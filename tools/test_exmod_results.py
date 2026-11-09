@@ -48,6 +48,15 @@ class ResultsTests(unittest.TestCase):
         self.assertNotIn("run old", out)
         self.assertNotIn("run else", out)
 
+    def test_a_repeated_label_counts_its_last_record_and_the_header_takes_the_newest(self):
+        # Fails when an earlier red attempt outweighs a later green one, or the header reads the oldest record.
+        log = [row("r", "walks", exit=1, commit="1111111"), row("r", "rest", commit="1111111"),
+               row("r", "walks", exit=0, commit="2222222"), row("r", "rest", commit="2222222")]
+        code, out = results(log)
+        self.assertEqual(0, code, out)
+        self.assertIn("commit 2222222", out)
+        self.assertEqual(2, out.count("part "), out)
+
     def test_a_commit_prefix_picks_that_commits_newest_run(self):
         # Fails when the prefix is ignored (the newest run prints) or matched anywhere but the start of the hash.
         log = [row("a1", "walks", commit="abc1234"), row("a2", "rest", commit="abc1234"),

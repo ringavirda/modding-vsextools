@@ -597,6 +597,16 @@ function Read-ExmodRunLog {
   return $rows
 }
 
+# The last record of each label in $Rows, in file order of those records.
+function Select-ExmodLastPerLabel($Rows) {
+  $rows = @($Rows)
+  return @(for ($i = 0; $i -lt $rows.Count; $i++) {
+      $later = $false
+      for ($j = $i + 1; $j -lt $rows.Count; $j++) { if ($rows[$j].label -eq $rows[$i].label) { $later = $true; break } }
+      if (-not $later) { $rows[$i] }
+    })
+}
+
 # The labels of the partition hosts, in the newest run at $Root whose records name a part, that exited non-zero or
 # were stopped (a record without `stopped` was not); $null when no such run is in the log. The newest run is the one
 # of the last such record in file order.
@@ -604,7 +614,7 @@ function Get-ExmodRedParts([string]$Root) {
   $rows = @(Read-ExmodRunLog | Where-Object { $_.root -eq $Root -and $_.part })
   if (-not $rows) { return $null }
   $run = $rows[-1].run
-  return @($rows | Where-Object { $_.run -eq $run -and ($_.exit -ne 0 -or $_.stopped -eq $true) } |
+  return @(Select-ExmodLastPerLabel @($rows | Where-Object { $_.run -eq $run }) | Where-Object { ($_.exit -ne 0 -or $_.stopped -eq $true) } |
       ForEach-Object { $_.label } | Select-Object -Unique)
 }
 
@@ -1256,8 +1266,8 @@ function Invoke-Results([string[]]$Argv) {
     exit 2
   }
   $run = $rows[-1].run
-  $rows = @($rows | Where-Object { $_.run -eq $run })
-  $head = $rows[0]
+  $rows = @(Select-ExmodLastPerLabel @($rows | Where-Object { $_.run -eq $run }))
+  $head = $rows[-1]
   $time = $rows[-1].time
   if ($time -is [datetime]) { $time = $time.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture) }
   Write-Host "run $run  trigger $($head.trigger)  commit $($head.commit)  dirty $($head.dirty)  time $time"

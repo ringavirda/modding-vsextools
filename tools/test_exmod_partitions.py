@@ -23,11 +23,11 @@ TESTS = ["Mod.Tests.WalkA.One", "Mod.Tests.WalkA.Two", "Mod.Tests.WalkB.One",
 # of one kind, `|` or `&` joined, FullyQualifiedName~ ~ != !=) and prints the VSTest summary of the
 # matches, failing when TEST_FAIL names a test among them (or, with TEST_OOM, or TEST_OOM_AT=<GiB> when the run's heap
 # limit is that many GiB, the first match, printing an OutOfMemoryException). TEST_HOLD_MB holds that many MiB resident
-# for TEST_HOLD_S seconds. TEST_SLOW=<text>:<s>[,...] sleeps s seconds in a run whose filter contains text. A test run appends start/end to TEST_ORDER and its argv as JSON to TEST_ARGV. TEST_FAIL_MANY=N
+# for TEST_HOLD_S seconds. TEST_CHILD=<file> makes a slowed run start a `sleep 300` child and append its pid to the file. TEST_SLOW=<text>:<s>[,...] sleeps s seconds in a run whose filter contains text. A test run appends start/end to TEST_ORDER and its argv as JSON to TEST_ARGV. TEST_FAIL_MANY=N
 # makes the run's matches N failing tests, Mod.Tests.Many.T0 on; TEST_TRX_SRC names a file copied to the trx logger's
 # LogFileName in the results directory. A run with the trx logger prints dotnet's `Results File:` line.
 STUB = """#!/usr/bin/env python3
-import json, os, re, shutil, sys, time
+import json, os, re, shutil, subprocess, sys, time
 tests = %r
 a = sys.argv[1:]
 if a[:1] != ["test"]:
@@ -56,6 +56,9 @@ time.sleep(float(os.environ.get("TEST_HOLD_S", "0")))
 for slow in filter(None, os.environ.get("TEST_SLOW", "").split(",")):
     key, secs = slow.rsplit(":", 1)
     if key in f:
+        child = os.environ.get("TEST_CHILD")
+        if child:
+            open(child, "a").write(str(subprocess.Popen(["sleep", "300"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).pid) + "\\n")
         time.sleep(float(secs))
 argv = os.environ.get("TEST_ARGV")
 if argv:
@@ -259,6 +262,13 @@ class PartitionTests(unittest.TestCase):
         self.assertEqual(2, len(RUNS), out)
         self.assertIn("FullyQualifiedName~.World.", self.ran_filters())
         self.assertNotIn("FullyQualifiedName~.WalkA.|FullyQualifiedName~.WalkB.", self.ran_filters())
+
+    def test_parts_red_ignores_a_part_whose_last_record_is_green(self):
+        # Fails when an earlier red record of a label outweighs a later green one: a part would run.
+        r = lambda e: {"run": "r", "root": "{repo}", "part": "walks", "label": "1.22/A.Tests/walks", "exit": e}
+        run_pwsh("", args="'-Parts', 'red'", runlog=[r(1), r(0)])
+        self.assertEqual([2], EXITS)
+        self.assertEqual([], RUNS)
 
     def test_parts_red_runs_the_red_parts_of_the_newest_run_at_this_root(self):
         # Fails when red reads an older run, another checkout's rows, counts a stopped part as green, or a corrupt
@@ -477,21 +487,29 @@ class PartitionTests(unittest.TestCase):
 
 
 
+def child_alive(pid):
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            return f.read().rsplit(")", 1)[1].split()[0] != "Z"
+    except OSError:
+        return False
+
+
 STOP_ENV = {"EXMOD_PROC_DIR": "/proc", "TEST_FAIL": "Mod.Tests.WalkA.One"}
 
 
-def stop_run(args="", env_extra=None, log=None, manifest=MANIFEST, slow="World:30,!~:30"):
+def stop_run(args="", env_extra=None, log=None, manifest=MANIFEST, slow="World:30,!~:30", body=""):
     """(output, rows, seconds) of a stubbed run in which the walks part fails first and the others are slow."""
     started = time.time()
     out, rows = None, None
     env = {**STOP_ENV, "TEST_SLOW": slow, **(env_extra or {})}
     if log:
         env["EXMOD_RUN_LOG"] = log
-        out, _, _, _ = run_pwsh("", env, args=args, manifest=manifest)
+        out, _, _, _ = run_pwsh(body, env, args=args, manifest=manifest)
         with open(log) as f:
             rows = [json.loads(l) for l in f if l.strip()]
     else:
-        out, rows = run_records(args=args, env_extra=env, manifest=manifest)
+        out, rows = run_records(args=args, env_extra=env, manifest=manifest, body=body)
     return out, {r["part"]: r for r in rows}, time.time() - started
 
 
@@ -520,6 +538,42 @@ class StopOnRedTests(unittest.TestCase):
         self.assertGreater(by["worlds"]["seconds"], 0, out)
         self.assertEqual(0, by["rest"]["seconds"], out)
         self.assertEqual(1, len(RUNS), out)
+
+    def test_stopping_a_part_stops_the_processes_it_started(self):
+        # Fails when the host is killed without its tree (Kill($false)): the sleeper the stub starts stays alive.
+        with tempfile.TemporaryDirectory() as d:
+            pids = os.path.join(d, "pids")
+            out, by, _ = stop_run("'-Throttle', '2'", {"EXMOD_RUN_TRIGGER": "landing:x", "TEST_CHILD": pids})
+            self.assert_stopped_run(out, by, 0)
+            children = [int(l) for l in open(pids).read().split()]
+            self.assertTrue(children, out)
+            try:
+                self.assertEqual([], [c for c in children if child_alive(c)], out)
+            finally:
+                for c in children:
+                    try:
+                        os.kill(c, 9)
+                    except OSError:
+                        pass
+
+    def test_a_stopped_run_is_not_a_count_drop(self):
+        # Fails when a stopped part counts as a result with a Total (0): the assembly then falls below its census.
+        seed = ("$c = Join-Path $env:TEST_REPO '.exmod/census/detached.json'; "
+                "New-Item -ItemType Directory -Force (Split-Path $c) | Out-Null; "
+                "'{\"1.22/A.Tests\": 9}' | Set-Content $c")
+        out, by, seconds = stop_run("'-Throttle', '2'", {"EXMOD_RUN_TRIGGER": "landing:x"}, body=seed)
+        self.assert_stopped_run(out, by, seconds)
+        self.assertNotIn("fell below", out)
+
+    def test_a_part_waiting_without_a_process_table_gives_it_up(self):
+        # Fails when the lock-file memory wait is not aborted: worlds and rest wait for walks' share, then run.
+        out, by, seconds = stop_run(env_extra={"EXMOD_RUN_TRIGGER": "landing:x", "EXMOD_PROC_DIR": "/nonexistent",
+                                               "EXMOD_MEMORY_GB": "10"},
+                                    manifest=manifest(heap=5), slow="World:3,!~:30")
+        for part in ("worlds", "rest"):
+            self.assertIs(True, by[part]["stopped"], out)
+            self.assertEqual(0, by[part]["seconds"], out)
+        self.assertLess(seconds, 20, out)
 
     def test_a_part_waiting_for_its_memory_share_gives_it_up(self):
         # Fails when the memory wait is not aborted: rest keeps waiting for a share until worlds' 30 s end.
