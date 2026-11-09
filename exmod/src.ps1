@@ -612,10 +612,11 @@ function Get-ExmodRedParts([string]$Root) {
 # ($RunId), trigger ($EXMOD_RUN_TRIGGER, else "direct"), root, commit, dirty ($Tree), label, part, filter, filtered,
 # exit, seconds, UTC time, the tests/passed/failed/skipped counts of the host's summary line (null without one), the
 # names of up to 50 failing tests (and truncated: true when there were more) and the seconds of the 40 largest test
-# classes from $TrxPath (null when it cannot be read). $Output is the host's output lines. $TrxPath is deleted. The
+# classes from $TrxPath (null when it cannot be read). With $Stopped the host was stopped or never started: exit is null
+# and `stopped: true` is added. $Output is the host's output lines. $TrxPath is deleted. The
 # append holds the file exclusively (retrying while another host holds it), as concurrent appends overwrite each other.
 # Writes nothing else and never throws.
-function Add-ExmodTestRunRecord([string]$RunId, [string]$Root, $Tree, [string]$Label, [string]$Part, [bool]$Filtered, [string]$Filter, [int]$ExitCode, [double]$Seconds, $Output, [string]$TrxPath) {
+function Add-ExmodTestRunRecord([string]$RunId, [string]$Root, $Tree, [string]$Label, [string]$Part, [bool]$Filtered, [string]$Filter, [int]$ExitCode, [double]$Seconds, $Output, [string]$TrxPath, [switch]$Stopped) {
   try {
     $classes = $null
     if ($TrxPath -and (Test-Path -LiteralPath $TrxPath)) {
@@ -634,7 +635,7 @@ function Add-ExmodTestRunRecord([string]$RunId, [string]$Root, $Tree, [string]$L
       root = $Root; commit = $Tree.Commit; dirty = $Tree.Dirty
       label = $Label; part = if ($Part) { $Part } else { $null }
       filter = if ($Filter) { $Filter } else { $null }; filtered = $Filtered
-      exit = $ExitCode; seconds = [Math]::Round($Seconds, 1)
+      exit = if ($Stopped) { $null } else { $ExitCode }; seconds = [Math]::Round($Seconds, 1)
       time = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture)
       tests = if ($counts) { [int]$counts[0].Groups[4].Value } else { $null }
       passed = if ($counts) { [int]$counts[0].Groups[2].Value } else { $null }
@@ -643,6 +644,7 @@ function Add-ExmodTestRunRecord([string]$RunId, [string]$Root, $Tree, [string]$L
       failures = $names
     }
     if ($failures.Count -gt 50) { $row['truncated'] = $true }
+    if ($Stopped) { $row['stopped'] = $true }
     $row['classes'] = $classes
     $bytes = [System.Text.Encoding]::UTF8.GetBytes((ConvertTo-Json $row -Compress -Depth 4) + "`n")
     $log = $null
@@ -654,6 +656,32 @@ function Add-ExmodTestRunRecord([string]$RunId, [string]$Root, $Tree, [string]$L
     finally { $log.Dispose() }
   }
   catch { }
+}
+
+# Kills the process trees of the test hosts of this process still running: the children whose command line holds one of
+# $Needles (a host's unique results directory, followed by the argument separator so a name that is a prefix of another
+# does not match). Reads $env:EXMOD_PROC_DIR (default /proc); does nothing where the process table does not exist
+# (Windows) and ignores a host that has ended meanwhile.
+function Stop-ExmodTestHosts([string[]]$Needles) {
+  $procDir = if ($env:EXMOD_PROC_DIR) { $env:EXMOD_PROC_DIR } else { '/proc' }
+  if ([System.OperatingSystem]::IsWindows() -or -not (Test-Path -LiteralPath $procDir -PathType Container)) { return }
+  $parent = [Environment]::ProcessId
+  foreach ($dir in [System.IO.Directory]::GetDirectories($procDir)) {
+    $id = [System.IO.Path]::GetFileName($dir)
+    if ($id -notmatch '^\d+$') { continue }
+    try {
+      $stat = [System.IO.File]::ReadAllText("$dir/stat")
+      if ([int]($stat.Substring($stat.LastIndexOf(')') + 2).Split(' ')[1]) -ne $parent) { continue }
+      $cmd = [System.IO.File]::ReadAllText("$dir/cmdline")
+      foreach ($needle in $Needles) {
+        if ($cmd.Contains("$needle$([char]0)", [System.StringComparison]::Ordinal)) {
+          [System.Diagnostics.Process]::GetProcessById([int]$id).Kill($true)
+          break
+        }
+      }
+    }
+    catch { }
+  }
 }
 
 # The `dotnet test` filter that selects what none of $Filters selects. Each filter is `|`-joined terms
@@ -693,7 +721,7 @@ function Merge-ExmodPartitionResults($Results) {
 }
 
 function Invoke-Test([string[]]$Argv) {
-  $positional = @(Get-Positional $Argv @('-Throttle', '-Filter', '-Parts') @('-Coverage', '-AcceptDrop', '-NoBuild'))
+  $positional = @(Get-Positional $Argv @('-Throttle', '-Filter', '-Parts') @('-Coverage', '-AcceptDrop', '-NoBuild', '-StopOnRed'))
   $version = if ($positional.Count -gt 0) { $positional[0] } else { 'latest' }
   $throttle = [int](Get-Opt $Argv '-Throttle' 0)
   $coverage = Get-Flag $Argv '-Coverage'
@@ -704,6 +732,7 @@ function Invoke-Test([string[]]$Argv) {
   # an unqualified term as a substring match on the fully qualified name.
   $filter = Get-Opt $Argv '-Filter' ''
   $partsArg = Get-Opt $Argv '-Parts' ''
+  $stopOnRed = ((Get-Flag $Argv '-StopOnRed') -or "$env:EXMOD_RUN_TRIGGER".StartsWith('landing:')) -and $env:EXMOD_STOP_ON_RED -ne '0'
   if ($partsArg -and $filter) { throw "-Parts and -Filter cannot be combined: -Filter runs an assembly whole." }
   $census = Get-ExmodCensusPath
 
@@ -911,6 +940,7 @@ function Invoke-Test([string[]]$Argv) {
   if ($waves.Count -gt 1) {
     Write-Host "EXLIB_WRITE_GOLDENS is set: the $CurrentGameVersion lanes run first, the older series after them."
   }
+  $stop = [System.Collections.Concurrent.ConcurrentDictionary[string, string]]::new()
   $results = @(Invoke-WithTestPhase {
       foreach ($item in $units) {
         if (Test-Path -LiteralPath $item.Blame) { Remove-Item -LiteralPath $item.Blame -Recurse -Force }
@@ -928,6 +958,9 @@ function Invoke-Test([string[]]$Argv) {
       $runRecordFn = ${function:Add-ExmodTestRunRecord}.ToString()
       $runLogPathFn = ${function:Get-ExmodRunLogPath}.ToString()
       $trxFn = ${function:Read-ExmodTrxClassSeconds}.ToString()
+      $stopHostsFn = ${function:Stop-ExmodTestHosts}.ToString()
+      $stopOn = $stopOnRed
+      $needles = @($units | Where-Object { $_.Part } | ForEach-Object { "$($_.Blame)" })
       $runId = Get-ExmodRunId
       $runRoot = $RepoRoot
       $runTree = Get-ExmodRunTree $RepoRoot
@@ -946,6 +979,10 @@ function Invoke-Test([string[]]$Argv) {
           ${function:Add-ExmodTestRunRecord} = $using:runRecordFn
           ${function:Get-ExmodRunLogPath} = $using:runLogPathFn
           ${function:Read-ExmodTrxClassSeconds} = $using:trxFn
+          ${function:Stop-ExmodTestHosts} = $using:stopHostsFn
+          $stopOn = $using:stopOn
+          $needles = $using:needles
+          $stop = $using:stop
           $runId = $using:runId
           $runRoot = $using:runRoot
           $runTree = $using:runTree
@@ -972,6 +1009,17 @@ function Invoke-Test([string[]]$Argv) {
           }
           $mine = & $gateKey $item.Seq
           $label = "$($item.Version)/$($item.Project)$(if ($item.Part) { "/$($item.Part)" })"
+          $partUnit = $stopOn -and $item.Part
+          $abort = { $partUnit -and $stop.ContainsKey('red') }
+          $abandon = {
+            $started[$mine] = $true
+            [void](Add-ExmodTestRunRecord $runId $runRoot $runTree $label $item.Part ([bool]$filter) $runFilter 0 0 @() '' -Stopped)
+            [pscustomobject]@{
+              Name = "$($item.Version)/$($item.Project)"; Ok = $false; Line = 'stopped'; Failures = @(); Total = $null
+              Log = $item.Log; Part = $item.Part
+            }
+          }
+          if (& $abort) { return (& $abandon) }
           $limitGb = $item.Share.LimitGb
           $shareGb = $item.Share.ShareGb
           $retryGb = $item.Share.RetryLimitGb
@@ -983,8 +1031,10 @@ function Invoke-Test([string[]]$Argv) {
             $hostWatch = $null
             $hostOut = $null
             $hostExit = $null
+            $gaveUp = $false
+            $killed = $false
             try {
-              $reservation = Lock-ExmodMemory -Gb $shareGb -Label $label -Filtered:([bool]$filter) -OnWait { $started[$mine] = $true }
+              $reservation = Lock-ExmodMemory -Gb $shareGb -Label $label -Filtered:([bool]$filter) -OnWait { $started[$mine] = $true } -Abort $abort
               $started[$mine] = $true
               $sampler = Start-ExmodMemorySampler $item.Blame $reservation.Record
               $hostWatch = [System.Diagnostics.Stopwatch]::StartNew()
@@ -994,16 +1044,23 @@ function Invoke-Test([string[]]$Argv) {
               $hostWatch.Stop()
               $hostOut = $out
               $hostExit = $ranExit
+              if ($partUnit -and $ranExit -ne 0) {
+                $retrying = $null -ne $retryGb -and ($out | Select-String -Pattern 'OutOfMemoryException' -Quiet)
+                if ($stop.ContainsKey('red')) { $killed = $true }
+                elseif (-not $retrying -and $stop.TryAdd('red', $label)) { Stop-ExmodTestHosts $needles }
+              }
             }
+            catch [System.OperationCanceledException] { $gaveUp = $true }
             finally {
               $started[$mine] = $true
               $peakGb = Stop-ExmodMemorySampler $sampler
               Unlock-ExmodMemory $reservation -PeakGb $peakGb
-              if ($reservation) { Add-ExmodMemoryPeakRecord $label ([bool]$filter) $runFilter $reservation $limitGb $peakGb $ranExit }
+              if ($reservation -and -not $killed) { Add-ExmodMemoryPeakRecord $label ([bool]$filter) $runFilter $reservation $limitGb $peakGb $ranExit }
               if ($null -ne $hostExit) {
-                [void](Add-ExmodTestRunRecord $runId $runRoot $runTree $label $item.Part ([bool]$filter) $runFilter $hostExit $hostWatch.Elapsed.TotalSeconds $hostOut $trxPath)
+                [void](Add-ExmodTestRunRecord $runId $runRoot $runTree $label $item.Part ([bool]$filter) $runFilter $hostExit $hostWatch.Elapsed.TotalSeconds $hostOut $trxPath -Stopped:$killed)
               }
             }
+            if ($gaveUp) { return (& $abandon) }
             if ($null -ne $retryGb -and $ranExit -ne 0 -and ($out | Select-String -Pattern 'OutOfMemoryException' -Quiet)) {
               Write-Host "memory: $label ran out of memory under $limitGb GiB, retrying once under $retryGb GiB"
               $limitGb = $retryGb
@@ -1015,6 +1072,12 @@ function Invoke-Test([string[]]$Argv) {
           }
           $LASTEXITCODE = $ranExit
           $out | Set-Content -LiteralPath $item.Log
+          if ($killed) {
+            return [pscustomobject]@{
+              Name = "$($item.Version)/$($item.Project)"; Ok = $false; Line = 'stopped'; Failures = @(); Total = $null
+              Log = $item.Log; Part = $item.Part
+            }
+          }
           $ok = ($LASTEXITCODE -eq 0)
           $line = ($out | Select-String -Pattern 'Passed!|Failed!|error' | Select-Object -Last 1)
 
@@ -1079,6 +1142,11 @@ function Invoke-Test([string[]]$Argv) {
     }
   }
 
+  if ($stop.ContainsKey('red')) {
+    $stoppedParts = @($results | ForEach-Object { $_.Parts } | Where-Object { $_.Line -eq 'stopped' })
+    Write-Host "Stopped on red: $($stop['red']) failed first; $($stoppedParts.Count) part(s) stopped or not started."
+  }
+
   if ($filter -or $partsArg) {
     Write-Host "Census not read or written: $(if ($filter) { '-Filter' } else { '-Parts' }) counts a subset."
     Assert-ExmodTestRun $results @() $census
@@ -1095,7 +1163,7 @@ function Invoke-Test([string[]]$Argv) {
 Add-ExmodCommand -Group source -Name test -Summary 'run the test suites, one lane per game version' -Action {
   param([string[]]$Argv) Invoke-Test $Argv
 } -Detail @'
-exmod test [latest|all|1.22|1.21|1.20] [-Filter <expr>] [-Parts <names>|red] [-Throttle <n>] [-Coverage] [-AcceptDrop] [-NoBuild]
+exmod test [latest|all|1.22|1.21|1.20] [-Filter <expr>] [-Parts <names>|red] [-StopOnRed] [-Throttle <n>] [-Coverage] [-AcceptDrop] [-NoBuild]
 
 Builds every test project for the requested series (unless -NoBuild), then runs the suites in parallel - one lane per
 (series, project). Missing runtimes and game binaries are provisioned on demand, so a fresh clone
@@ -1110,6 +1178,9 @@ mod projects they share build once.
               parts that exited non-zero or were stopped in the last run at this repository root that has partition
               records in $EXMOD_RUN_LOG. An unknown name errors naming the valid ones, `red` with none exits 2, and
               -Parts with -Filter errors. Like -Filter it neither reads nor writes the census
+  -StopOnRed  on the first partition host that exits non-zero, stop the hosts still running and start no more, each
+              recorded as stopped; on by default when EXMOD_RUN_TRIGGER starts with `landing:`, and
+              EXMOD_STOP_ON_RED=0 turns it off. Only partitioned assemblies stop or trigger it
   -Throttle   lanes to run at once; the default is all of them
   -Coverage   instead of the lanes, collect cobertura over the solution and ratchet it against
               the manifest's coverageFloors file, else tests/ or infra/test/coverage-floors.json;

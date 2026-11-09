@@ -9,6 +9,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -22,7 +23,7 @@ TESTS = ["Mod.Tests.WalkA.One", "Mod.Tests.WalkA.Two", "Mod.Tests.WalkB.One",
 # of one kind, `|` or `&` joined, FullyQualifiedName~ ~ != !=) and prints the VSTest summary of the
 # matches, failing when TEST_FAIL names a test among them (or, with TEST_OOM, or TEST_OOM_AT=<GiB> when the run's heap
 # limit is that many GiB, the first match, printing an OutOfMemoryException). TEST_HOLD_MB holds that many MiB resident
-# for TEST_HOLD_S seconds. A test run appends start/end to TEST_ORDER and its argv as JSON to TEST_ARGV. TEST_FAIL_MANY=N
+# for TEST_HOLD_S seconds. TEST_SLOW=<text>:<s>[,...] sleeps s seconds in a run whose filter contains text. A test run appends start/end to TEST_ORDER and its argv as JSON to TEST_ARGV. TEST_FAIL_MANY=N
 # makes the run's matches N failing tests, Mod.Tests.Many.T0 on; TEST_TRX_SRC names a file copied to the trx logger's
 # LogFileName in the results directory. A run with the trx logger prints dotnet's `Results File:` line.
 STUB = """#!/usr/bin/env python3
@@ -52,6 +53,10 @@ limit = [x for x in a if x.startswith("DOTNET_GCHeapHardLimit=")]
 oom = os.environ.get("TEST_OOM") or (os.environ.get("TEST_OOM_AT") and limit == ["DOTNET_GCHeapHardLimit=0x%%X" %% (int(os.environ["TEST_OOM_AT"]) << 30)])
 held = b"x" * (int(os.environ.get("TEST_HOLD_MB", "0")) << 20)
 time.sleep(float(os.environ.get("TEST_HOLD_S", "0")))
+for slow in filter(None, os.environ.get("TEST_SLOW", "").split(",")):
+    key, secs = slow.rsplit(":", 1)
+    if key in f:
+        time.sleep(float(secs))
 argv = os.environ.get("TEST_ARGV")
 if argv:
     open(argv, "a").write(json.dumps(a) + "\\n")
@@ -470,6 +475,104 @@ class PartitionTests(unittest.TestCase):
         self.assertEqual({"1.22/A.Tests": len(TESTS)}, recorded, out)
         self.assertEqual(["start", "end"], seen)
 
+
+
+STOP_ENV = {"EXMOD_PROC_DIR": "/proc", "TEST_FAIL": "Mod.Tests.WalkA.One"}
+
+
+def stop_run(args="", env_extra=None, log=None, manifest=MANIFEST, slow="World:30,!~:30"):
+    """(output, rows, seconds) of a stubbed run in which the walks part fails first and the others are slow."""
+    started = time.time()
+    out, rows = None, None
+    env = {**STOP_ENV, "TEST_SLOW": slow, **(env_extra or {})}
+    if log:
+        env["EXMOD_RUN_LOG"] = log
+        out, _, _, _ = run_pwsh("", env, args=args, manifest=manifest)
+        with open(log) as f:
+            rows = [json.loads(l) for l in f if l.strip()]
+    else:
+        out, rows = run_records(args=args, env_extra=env, manifest=manifest)
+    return out, {r["part"]: r for r in rows}, time.time() - started
+
+
+@unittest.skipUnless(PWSH, "pwsh not found")
+@unittest.skipIf(sys.platform == "win32", "the dotnet stub is a shell script")
+class StopOnRedTests(unittest.TestCase):
+    @staticmethod
+    def ran_filters_of(runs):
+        return sorted(a[a.index("--filter") + 1] for a in runs)
+
+    def assert_stopped_run(self, out, by, seconds):
+        self.assertEqual(1, by["walks"]["exit"], out)
+        self.assertNotIn("stopped", by["walks"])
+        for part in ("worlds", "rest"):
+            self.assertIs(True, by[part]["stopped"], out)
+            self.assertIsNone(by[part]["exit"])
+        self.assertLess(seconds, 25, out)
+        self.assertIn("threw: 1 test run(s) failed: 1.22/A.Tests", out)
+        self.assertIn("Stopped on red: 1.22/A.Tests/walks failed first; 2 part(s) stopped or not started.", out)
+
+    def test_a_landing_trigger_stops_the_running_part_and_skips_the_queued_one(self):
+        # Fails when the stop is dropped (the 30 s parts run out), when the running host is not killed (worlds is
+        # recorded with its exit) or when a part queued behind the throttle still starts (rest has a seconds value).
+        out, by, seconds = stop_run("'-Throttle', '2'", {"EXMOD_RUN_TRIGGER": "landing:x"})
+        self.assert_stopped_run(out, by, seconds)
+        self.assertGreater(by["worlds"]["seconds"], 0, out)
+        self.assertEqual(0, by["rest"]["seconds"], out)
+        self.assertEqual(1, len(RUNS), out)
+
+    def test_a_part_waiting_for_its_memory_share_gives_it_up(self):
+        # Fails when the memory wait is not aborted: rest keeps waiting for a share until worlds' 30 s end.
+        out, by, seconds = stop_run(env_extra={"EXMOD_RUN_TRIGGER": "landing:x", "EXMOD_MEMORY_FLOOR_GB": "50"},
+                                    manifest=manifest(heap=5))
+        self.assert_stopped_run(out, by, seconds)
+        self.assertEqual(0, by["rest"]["seconds"], out)
+
+    def test_a_direct_run_does_not_stop(self):
+        # Fails when stopping is on without a trigger or the flag: worlds and rest would be stopped.
+        out, by, _ = stop_run(slow="World:2,!~:2")
+        self.assertEqual({"walks": 1, "worlds": 0, "rest": 0}, {k: v["exit"] for k, v in by.items()}, out)
+        self.assertTrue(all("stopped" not in v for v in by.values()), out)
+        self.assertNotIn("Stopped on red", out)
+
+    def test_stop_on_red_stops_a_direct_run(self):
+        # Fails when -StopOnRed is not read as an option (the flag is then taken as the version) or not honoured.
+        out, by, seconds = stop_run("'-StopOnRed'")
+        self.assert_stopped_run(out, by, seconds)
+
+    def test_stop_on_red_zero_turns_the_landing_stop_off(self):
+        # Fails when EXMOD_STOP_ON_RED=0 is ignored: worlds and rest would be stopped.
+        out, by, _ = stop_run("'-StopOnRed'", {"EXMOD_RUN_TRIGGER": "landing:x", "EXMOD_STOP_ON_RED": "0"},
+                              slow="World:2,!~:2")
+        self.assertTrue(all("stopped" not in v for v in by.values()), out)
+        self.assertEqual(0, by["worlds"]["exit"], out)
+
+    def test_parts_red_then_selects_the_stopped_parts(self):
+        # Fails when the stopped rows are not red to -Parts red: only the failed part would run.
+        with tempfile.TemporaryDirectory() as d:
+            log = os.path.join(d, "runs.jsonl")
+            stop_run("'-Throttle', '2'", {"EXMOD_RUN_TRIGGER": "landing:x", "TEST_FAIL": "Mod.Tests.World.One"},
+                     log=log, slow="World:2,!~:30")
+            with open(log) as f:
+                rows = [{**json.loads(l), "root": "{repo}"} for l in f if l.strip()]
+        out, _, _, _ = run_pwsh("", args="'-Parts', 'red'", runlog=rows)
+        self.assertEqual(["FullyQualifiedName!~.WalkA.&FullyQualifiedName!~.WalkB.&FullyQualifiedName!~.World.",
+                          "FullyQualifiedName~.World."], self.ran_filters_of(RUNS), out)
+
+    def test_a_non_partitioned_assembly_never_stops_or_triggers(self):
+        # Fails when a whole-assembly host failing triggers the stop or is stopped itself.
+        out, by, _ = stop_run("", {"EXMOD_RUN_TRIGGER": "landing:x", "TEST_FAIL": "Mod.Tests.WalkA.One"},
+                              manifest={"partitions": {}}, slow="")
+        self.assertNotIn("Stopped on red", out)
+        self.assertEqual({None}, set(by), out)
+        self.assertNotIn("stopped", by[None])
+
+    def test_a_green_landing_run_records_no_stopped_key(self):
+        # Fails when stopped is written on every record.
+        out, rows = run_records(env_extra={"EXMOD_RUN_TRIGGER": "landing:x"})
+        self.assertEqual(3, len(rows), out)
+        self.assertTrue(all("stopped" not in r and r["exit"] == 0 for r in rows), out)
+        self.assertIn("All 1 test run(s) passed.", out)
 
 
 def run_records(args="", env_extra=None, manifest=MANIFEST, body=""):

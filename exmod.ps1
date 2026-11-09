@@ -1090,7 +1090,8 @@ function Get-ExmodMemoryBudget {
 # row that cannot be written is ignored.
 # Only Get-FlockAncestorHolder is called, so a -Parallel runspace takes both functions as text.
 # $Gb: GiB to take, at least 1. $Label: names the holder in the lines and the log row. $OnWait: invoked once, with no
-# arguments, when the first waits line is printed. $Filtered: the run is filtered; the charge reads only recorded rows of the
+# arguments, when the first waits line is printed. $Abort: polled each second while waiting; when it returns true the wait
+# ends by throwing a System.OperationCanceledException, with nothing taken. $Filtered: the run is filtered; the charge reads only recorded rows of the
 # same label, share and filtered flag.
 # Returns {Gb; Budget; Label; Streams; Taken; Waited; Record; Released} (Waited in s; Record the path of its booked-<id>.json
 # in the memory dir, {owner, gb, charge, pids}, where the sampler writes the host PIDs; Streams empty on the real-use path),
@@ -1098,7 +1099,7 @@ function Get-ExmodMemoryBudget {
 # $env:EXMOD_BUILD_LOCK (a holder of the build lock must never wait for memory) and when a slot file cannot be opened;
 # every stream held is disposed first. When the process dies the OS drops a share held as lock files, and a later decision
 # ignores and deletes a share held as a booked-<id>.json.
-function Lock-ExmodMemory([int]$Gb, [string]$Label, [scriptblock]$OnWait, [switch]$Filtered) {
+function Lock-ExmodMemory([int]$Gb, [string]$Label, [scriptblock]$OnWait, [switch]$Filtered, [scriptblock]$Abort) {
   if ($env:EXMOD_BUILD_LOCK_HELD) { throw "memory share asked for by $Label while the build lock is held" }
   if ($env:EXMOD_BUILD_LOCK) {
     $outer = Get-FlockAncestorHolder $env:EXMOD_BUILD_LOCK
@@ -1234,6 +1235,7 @@ function Lock-ExmodMemory([int]$Gb, [string]$Label, [scriptblock]$OnWait, [switc
       $charge = & $chargeOf
       & $writeJson $askPath ([ordered]@{ owner = [Environment]::ProcessId; gb = $take; charge = $charge; priority = [int]$priority; asked = $askedMs; label = $Label })
       while ($true) {
+        if ($Abort -and (& $Abort)) { throw [System.OperationCanceledException]::new("memory wait for $Label abandoned") }
         $turn = & $open (Join-Path $dir 'turn.lock')
         if (-not $turn) { Start-Sleep -Milliseconds 100; continue }
         try {
@@ -1283,6 +1285,7 @@ function Lock-ExmodMemory([int]$Gb, [string]$Label, [scriptblock]$OnWait, [switc
     }
     else {
       while ($true) {
+        if ($Abort -and (& $Abort)) { throw [System.OperationCanceledException]::new("memory wait for $Label abandoned") }
         if ($priority -and -not $priorityFile) {
           for ($i = 0; $i -lt 16 -and -not $priorityFile; $i++) { $priorityFile = & $open (Join-Path $dir "priority-$i.lock") }
           if (-not $priorityFile) { & $stall 'a priority file'; Start-Sleep -Seconds 1; continue }
