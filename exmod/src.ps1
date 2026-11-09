@@ -1173,6 +1173,55 @@ An unfiltered run fails on an assembly that discovers no tests and on a count be
 writes the census when every assembly passed; a -Filter run neither reads nor writes it.
 '@
 
+# Prints the newest run at $RepoRoot in the run log (or the newest of the commit starting with the first positional
+# argument), its parts and its failing test names. Exit 0 when every record is green, 1 when any exited non-zero or was
+# stopped, 2 when no such run exists.
+function Invoke-Results([string[]]$Argv) {
+  $positional = @(Get-Positional $Argv @() @())
+  $which = if ($positional.Count -gt 0) { $positional[0] } else { 'last' }
+  $rows = @(Read-ExmodRunLog | Where-Object { $_.root -eq $RepoRoot -and ($which -eq 'last' -or "$($_.commit)".StartsWith($which)) })
+  if (-not $rows) {
+    Write-Host "No run at $RepoRoot$(if ($which -ne 'last') { " for commit $which" }) in $(Get-ExmodRunLogPath)."
+    exit 2
+  }
+  $run = $rows[-1].run
+  $rows = @($rows | Where-Object { $_.run -eq $run })
+  $head = $rows[0]
+  $time = $rows[-1].time
+  if ($time -is [datetime]) { $time = $time.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture) }
+  Write-Host "run $run  trigger $($head.trigger)  commit $($head.commit)  dirty $($head.dirty)  time $time"
+  $red = $false
+  $failing = @()
+  $cut = $false
+  foreach ($r in $rows) {
+    $stopped = $r.stopped -eq $true
+    if ($stopped -or $r.exit -ne 0) { $red = $true }
+    $part = if ($r.part) { $r.part } else { '-' }
+    $exitText = if ($null -eq $r.exit) { '-' } else { "$($r.exit)" }
+    Write-Host ("{0}  part {1}  exit {2}  tests {3}  failed {4}  {5} s{6}" -f $r.label, $part, $exitText, $r.tests, $r.failed, $r.seconds, $(if ($stopped) { '  stopped' } else { '' }))
+    $failing += @($r.failures)
+    if ($r.truncated -eq $true) { $cut = $true }
+  }
+  if ($failing) {
+    Write-Host 'Failing:'
+    foreach ($name in $failing) { Write-Host "  $name" }
+    if ($cut) { Write-Host '  (the list is truncated at 50 per part)' }
+  }
+  if ($red) { exit 1 }
+}
+
+Add-ExmodCommand -Group source -Name results -Summary 'print the verdict of a recorded test run' -Action {
+  param([string[]]$Argv) Invoke-Results $Argv
+} -Detail @'
+exmod results [<commit prefix>|last]
+
+Reads $EXMOD_RUN_LOG (~/.cache/exmod/test-runs.jsonl) and prints the newest run recorded at this repository root, or the
+newest run of the commit whose hash starts with the prefix: run id, trigger, commit, dirty and time, one line per host
+(label, part, exit, tests, failed, seconds, and `stopped` for a host that was stopped), then the names of the failing
+tests, with a line when a host's list was truncated. Lines of the log that are not records are skipped.
+Exit 0 when every host is green, 1 when any exited non-zero or was stopped, 2 when no run matches.
+'@
+
 #endregion
 
 #region format
