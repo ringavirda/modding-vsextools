@@ -117,9 +117,12 @@ try { Invoke-Test (@('1.22') + @(%s)) } catch { Write-Host "threw: $_" }
 
 RUNS = []  # the argv of each stub test run of the last run_pwsh, in start order
 LOGS = []  # the text of each host log of the last run_pwsh
+EXITS = []  # the exit code of the last run_pwsh's pwsh process
 
 
-def run_pwsh(body, env_extra=None, args="", manifest=MANIFEST, stub=STUB):
+def run_pwsh(body, env_extra=None, args="", manifest=MANIFEST, stub=STUB, runlog=None):
+    """runlog: lines written to the run log before the run, each a dict (its "{repo}" values become the checkout's
+    path) or a raw string; EXMOD_RUN_LOG names that file."""
     assert PWSH
     with tempfile.TemporaryDirectory() as d:
         repo = os.path.join(d, "repo")
@@ -131,9 +134,19 @@ def run_pwsh(body, env_extra=None, args="", manifest=MANIFEST, stub=STUB):
         argv = os.path.join(d, "argv.log")
         env = exmod_env(os.path.join(d, "local"), TEST_REPO=repo, TEST_STUB=stubpath, TEST_ORDER=order,
                         TEST_ARGV=argv, **(env_extra or {}))
-        out = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command",
-                              exmod_script(RUN % (body, args))],
-                             env=env, capture_output=True, text=True).stdout
+        if runlog is not None:
+            env["EXMOD_RUN_LOG"] = os.path.join(d, "seeded-runs.jsonl")
+            with open(env["EXMOD_RUN_LOG"], "w") as f:
+                for row in runlog:
+                    if isinstance(row, dict):
+                        row = json.dumps({k: v.replace("{repo}", repo) if isinstance(v, str) else v
+                                          for k, v in row.items()})
+                    f.write(row + "\n")
+        done = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command",
+                               exmod_script(RUN % (body, args))],
+                              env=env, capture_output=True, text=True)
+        out = done.stdout
+        EXITS[:] = [done.returncode]
         seen = []
         if os.path.exists(order):
             with open(order) as f:
@@ -222,6 +235,65 @@ class PartitionTests(unittest.TestCase):
         self.assertRegex(out, r"PASS  1\.22/A\.Tests\s+Passed!.*Total:\s+3")
         self.assertNotIn("partitions", out)
         self.assertEqual(["start", "end"], seen)
+
+    @staticmethod
+    def ran_filters():
+        return sorted(a[a.index("--filter") + 1] for a in RUNS)
+
+    def test_parts_names_run_only_that_part_and_leave_the_census_alone(self):
+        # Fails when -Parts is ignored (all three parts run) or when a -Parts run writes the census.
+        out, _, recorded, _ = run_pwsh("", args="'-Parts', 'worlds'")
+        self.assertEqual(["FullyQualifiedName~.World."], self.ran_filters(), out)
+        self.assertRegex(out, r"worlds\s+Passed!.*Total:\s+2")
+        self.assertIn("Census not read or written: -Parts", out)
+        self.assertIsNone(recorded)
+
+    def test_parts_takes_two_names_and_runs_those_two(self):
+        # Fails when only the first name of the list is taken or the names are not split on commas.
+        out, _, _, _ = run_pwsh("", args="'-Parts', 'worlds,rest'")
+        self.assertEqual(2, len(RUNS), out)
+        self.assertIn("FullyQualifiedName~.World.", self.ran_filters())
+        self.assertNotIn("FullyQualifiedName~.WalkA.|FullyQualifiedName~.WalkB.", self.ran_filters())
+
+    def test_parts_red_runs_the_red_parts_of_the_newest_run_at_this_root(self):
+        # Fails when red reads an older run, another checkout's rows, counts a stopped part as green, or a corrupt
+        # line ends the read.
+        def row(run, part, exit, root="{repo}", **extra):
+            return {"run": run, "root": root, "part": part, "label": f"1.22/A.Tests/{part}", "exit": exit, **extra}
+        log = [row("old", "rest", 1), row("new", "walks", 0), "{not json", row("new", "worlds", 1),
+               row("new", "rest", 0, stopped=True), row("other", "walks", 1, root="/elsewhere"), "{\"half\":"]
+        out, _, recorded, _ = run_pwsh("", args="'-Parts', 'red'", runlog=log)
+        self.assertEqual(2, len(RUNS), out)
+        self.assertEqual(sorted(["FullyQualifiedName~.World.", "FullyQualifiedName!~.WalkA.&FullyQualifiedName!~.WalkB.&FullyQualifiedName!~.World."]),
+                         self.ran_filters())
+        self.assertIsNone(recorded)
+
+    def test_parts_red_with_no_red_part_exits_two_and_runs_nothing(self):
+        # Fails when red with nothing red runs every part, or exits 0 or 1.
+        log = [{"run": "r", "root": "{repo}", "part": "walks", "label": "1.22/A.Tests/walks", "exit": 0},
+               {"run": "x", "root": "/elsewhere", "part": "walks", "label": "1.22/A.Tests/walks", "exit": 1}]
+        out, _, _, _ = run_pwsh("", args="'-Parts', 'red'", runlog=log)
+        self.assertEqual([2], EXITS)
+        self.assertEqual([], RUNS)
+        self.assertIn("no red part", out)
+
+    def test_parts_red_with_no_log_exits_two(self):
+        # Fails when a missing run log reads as a green run of nothing.
+        out, _, _, _ = run_pwsh("", args="'-Parts', 'red'", runlog=[])
+        self.assertEqual([2], EXITS)
+        self.assertEqual([], RUNS)
+
+    def test_an_unknown_part_is_an_error_naming_the_valid_parts(self):
+        # Fails when an unknown name is ignored (the known ones run) or the message omits the valid names.
+        out, _, _, _ = run_pwsh("", args="'-Parts', 'worlds,nope'")
+        self.assertIn("threw: -Parts: no partition named nope; the parts are walks, worlds, rest, or red.", out)
+        self.assertEqual([], RUNS)
+
+    def test_parts_with_filter_is_an_error(self):
+        # Fails when -Filter and -Parts are accepted together.
+        out, _, _, _ = run_pwsh("", args="'-Parts', 'worlds', '-Filter', 'FullyQualifiedName~.Other.'")
+        self.assertIn("threw: -Parts and -Filter cannot be combined", out)
+        self.assertEqual([], RUNS)
 
     def test_a_part_runs_under_its_heap_limit_in_hex_bytes(self):
         # Fails when the -e DOTNET_GCHeapHardLimit argument is not passed to dotnet test.

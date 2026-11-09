@@ -576,6 +576,38 @@ function Read-ExmodTrxClassSeconds([string]$Path, [int]$Top = 40) {
   finally { if ($reader) { $reader.Dispose() } }
 }
 
+# The file of test-run records: $EXMOD_RUN_LOG, else ~/.cache/exmod/test-runs.jsonl.
+function Get-ExmodRunLogPath {
+  if ($env:EXMOD_RUN_LOG) { return $env:EXMOD_RUN_LOG }
+  return Join-Path $HOME '.cache/exmod/test-runs.jsonl'
+}
+
+# The records of the run log in file order, each as an object; a line that is not a JSON object with a `run` key
+# (concurrent appends can interleave) is skipped. Empty when the file is missing or unreadable.
+function Read-ExmodRunLog {
+  $path = Get-ExmodRunLogPath
+  $rows = @()
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $rows }
+  try { $lines = @(Get-Content -LiteralPath $path -ErrorAction Stop) } catch { return $rows }
+  foreach ($line in $lines) {
+    if (-not "$line".Trim()) { continue }
+    try { $row = ConvertFrom-Json "$line" -ErrorAction Stop } catch { continue }
+    if ($row -is [pscustomobject] -and $row.PSObject.Properties['run']) { $rows += $row }
+  }
+  return $rows
+}
+
+# The labels of the partition hosts, in the newest run at $Root whose records name a part, that exited non-zero or
+# were stopped (a record without `stopped` was not); $null when no such run is in the log. The newest run is the one
+# of the last such record in file order.
+function Get-ExmodRedParts([string]$Root) {
+  $rows = @(Read-ExmodRunLog | Where-Object { $_.root -eq $Root -and $_.part })
+  if (-not $rows) { return $null }
+  $run = $rows[-1].run
+  return @($rows | Where-Object { $_.run -eq $run -and ($_.exit -ne 0 -or $_.stopped -eq $true) } |
+      ForEach-Object { $_.label } | Select-Object -Unique)
+}
+
 # Appends one JSON line for a finished test host to $EXMOD_RUN_LOG (default ~/.cache/exmod/test-runs.jsonl): run
 # ($RunId), trigger ($EXMOD_RUN_TRIGGER, else "direct"), root, commit, dirty ($Tree), label, part, filter, filtered,
 # exit, seconds, UTC time, the tests/passed/failed/skipped counts of the host's summary line (null without one), the
@@ -590,7 +622,7 @@ function Add-ExmodTestRunRecord([string]$RunId, [string]$Root, $Tree, [string]$L
       $classes = Read-ExmodTrxClassSeconds $TrxPath
       Remove-Item -LiteralPath $TrxPath -Force -ErrorAction SilentlyContinue
     }
-    $path = if ($env:EXMOD_RUN_LOG) { $env:EXMOD_RUN_LOG } else { Join-Path $HOME '.cache/exmod/test-runs.jsonl' }
+    $path = Get-ExmodRunLogPath
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $path) | Out-Null
     $counts = @($Output | Select-String -Pattern 'Failed:\s*(\d+),\s*Passed:\s*(\d+),\s*Skipped:\s*(\d+),\s*Total:\s*(\d+)' -AllMatches |
         ForEach-Object { $_.Matches } | Select-Object -Last 1)
@@ -661,7 +693,7 @@ function Merge-ExmodPartitionResults($Results) {
 }
 
 function Invoke-Test([string[]]$Argv) {
-  $positional = @(Get-Positional $Argv @('-Throttle', '-Filter') @('-Coverage', '-AcceptDrop', '-NoBuild'))
+  $positional = @(Get-Positional $Argv @('-Throttle', '-Filter', '-Parts') @('-Coverage', '-AcceptDrop', '-NoBuild'))
   $version = if ($positional.Count -gt 0) { $positional[0] } else { 'latest' }
   $throttle = [int](Get-Opt $Argv '-Throttle' 0)
   $coverage = Get-Flag $Argv '-Coverage'
@@ -671,6 +703,8 @@ function Invoke-Test([string[]]$Argv) {
   # (`FullyQualifiedName~Boiler`, `Name=X|Name=Y`). A bare class name works because the runner treats
   # an unqualified term as a substring match on the fully qualified name.
   $filter = Get-Opt $Argv '-Filter' ''
+  $partsArg = Get-Opt $Argv '-Parts' ''
+  if ($partsArg -and $filter) { throw "-Parts and -Filter cannot be combined: -Filter runs an assembly whole." }
   $census = Get-ExmodCensusPath
 
   # The units wait for memory shares while the caller's flock holds the build lock, and a -Coverage run that holds
@@ -759,6 +793,31 @@ function Invoke-Test([string[]]$Argv) {
     return
   }
 
+  # -Parts: the partition names to run, or `red`, the parts that failed or were stopped in the last partitioned run.
+  $partNames = $null
+  $redLabels = $null
+  if ($partsArg) {
+    $declared = @()
+    foreach ($v in $wanted) {
+      foreach ($p in $projects.Values | Where-Object { $v -in $_.Series }) {
+        $declared += @((Get-ExmodPartitions $p.Project).Parts | ForEach-Object { $_.Name })
+      }
+    }
+    $declared = @($declared | Select-Object -Unique)
+    if ($partsArg -eq 'red') {
+      $redLabels = Get-ExmodRedParts $RepoRoot
+      if (-not $redLabels) {
+        Write-Host "-Parts red: no red part in the last partitioned run at $RepoRoot ($(Get-ExmodRunLogPath))."
+        exit 2
+      }
+    }
+    else {
+      $partNames = @($partsArg -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+      $unknown = @($partNames | Where-Object { $_ -notin $declared })
+      if ($unknown) { throw "-Parts: no partition named $($unknown -join ', '); the parts are $($declared -join ', '), or red." }
+    }
+  }
+
   $work = foreach ($v in $wanted) {
     foreach ($mod in $projects.Keys) {
       # A sample or an extra project (samples/HelloExpanded.csproj, verify/ExlibVerify.Tests/ExlibVerify.Tests.csproj)
@@ -807,12 +866,15 @@ function Invoke-Test([string[]]$Argv) {
   $units = foreach ($item in $built) {
     $partitions = if ($filter) { $null } else { Get-ExmodPartitions $item.Project }
     if (-not $partitions) {
+      if ($partsArg) { continue }
       $share = Get-ExmodTestShare $item.Project $null ([bool]$filter) $filter
       $item | Select-Object * |
         Add-Member -NotePropertyName Share -NotePropertyValue $share -PassThru -Force
       continue
     }
     foreach ($part in $partitions.Parts) {
+      if ($partNames -and $part.Name -notin $partNames) { continue }
+      if ($redLabels -and "$($item.Version)/$($item.Project)/$($part.Name)" -notin $redLabels) { continue }
       $share = Get-ExmodTestShare $item.Project $part.HeapGb $false
       $item | Select-Object * |
         Add-Member -NotePropertyName Part -NotePropertyValue $part.Name -PassThru -Force |
@@ -821,6 +883,10 @@ function Invoke-Test([string[]]$Argv) {
         Add-Member -NotePropertyName Log -NotePropertyValue ($item.Log -replace '\.log$', "-$($part.Name).log") -PassThru -Force |
         Add-Member -NotePropertyName Blame -NotePropertyValue "$($item.Blame)-$($part.Name)" -PassThru -Force
     }
+  }
+  if ($partsArg -and -not @($units)) {
+    Write-Host "-Parts $partsArg selects no partition of the series run ($($wanted -join ', '))."
+    exit 2
   }
   $manifestIndex = 0
   $units = @($units | ForEach-Object { $_ | Add-Member -NotePropertyName ManifestIndex -NotePropertyValue ($manifestIndex++) -PassThru -Force } |
@@ -860,6 +926,7 @@ function Invoke-Test([string[]]$Argv) {
       $stopSamplerFn = ${function:Stop-ExmodMemorySampler}.ToString()
       $recordFn = ${function:Add-ExmodMemoryPeakRecord}.ToString()
       $runRecordFn = ${function:Add-ExmodTestRunRecord}.ToString()
+      $runLogPathFn = ${function:Get-ExmodRunLogPath}.ToString()
       $trxFn = ${function:Read-ExmodTrxClassSeconds}.ToString()
       $runId = Get-ExmodRunId
       $runRoot = $RepoRoot
@@ -877,6 +944,7 @@ function Invoke-Test([string[]]$Argv) {
           ${function:Stop-ExmodMemorySampler} = $using:stopSamplerFn
           ${function:Add-ExmodMemoryPeakRecord} = $using:recordFn
           ${function:Add-ExmodTestRunRecord} = $using:runRecordFn
+          ${function:Get-ExmodRunLogPath} = $using:runLogPathFn
           ${function:Read-ExmodTrxClassSeconds} = $using:trxFn
           $runId = $using:runId
           $runRoot = $using:runRoot
@@ -1011,8 +1079,8 @@ function Invoke-Test([string[]]$Argv) {
     }
   }
 
-  if ($filter) {
-    Write-Host "Census not read or written: -Filter counts a subset."
+  if ($filter -or $partsArg) {
+    Write-Host "Census not read or written: $(if ($filter) { '-Filter' } else { '-Parts' }) counts a subset."
     Assert-ExmodTestRun $results @() $census
   }
   else {
@@ -1027,7 +1095,7 @@ function Invoke-Test([string[]]$Argv) {
 Add-ExmodCommand -Group source -Name test -Summary 'run the test suites, one lane per game version' -Action {
   param([string[]]$Argv) Invoke-Test $Argv
 } -Detail @'
-exmod test [latest|all|1.22|1.21|1.20] [-Filter <expr>] [-Throttle <n>] [-Coverage] [-AcceptDrop] [-NoBuild]
+exmod test [latest|all|1.22|1.21|1.20] [-Filter <expr>] [-Parts <names>|red] [-Throttle <n>] [-Coverage] [-AcceptDrop] [-NoBuild]
 
 Builds every test project for the requested series (unless -NoBuild), then runs the suites in parallel - one lane per
 (series, project). Missing runtimes and game binaries are provisioned on demand, so a fresh clone
@@ -1038,6 +1106,10 @@ mod projects they share build once.
   all         every supported series
   -Filter     handed to dotnet test --filter, so it takes that grammar: FullyQualifiedName~Boiler,
               Name=X|Name=Y, or a bare class name (an unqualified term is a substring match)
+  -Parts      run only the named partitions (comma-separated) of the assemblies the manifest partitions, or `red`: the
+              parts that exited non-zero or were stopped in the last run at this repository root that has partition
+              records in $EXMOD_RUN_LOG. An unknown name errors naming the valid ones, `red` with none exits 2, and
+              -Parts with -Filter errors. Like -Filter it neither reads nor writes the census
   -Throttle   lanes to run at once; the default is all of them
   -Coverage   instead of the lanes, collect cobertura over the solution and ratchet it against
               the manifest's coverageFloors file, else tests/ or infra/test/coverage-floors.json;
