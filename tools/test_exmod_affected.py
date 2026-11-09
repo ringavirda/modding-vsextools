@@ -16,7 +16,7 @@ from exmod_harness import PWSH, exmod_env, exmod_script, touch  # noqa: E402
 
 CSPROJ = "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>\n"
 
-# Prints what a test run was handed, one JSON argv line per call in $TEST_ARGV, and passes.
+# Appends each test call's argv as a JSON line to $TEST_ARGV and passes.
 DOTNET = """#!/usr/bin/env python3
 import json, os, sys
 a = sys.argv[1:]
@@ -97,7 +97,7 @@ class AffectedTests(unittest.TestCase):
         return r
 
     def test_a_changed_test_file_names_its_classes_with_tests_and_not_its_helpers(self):
-        # Fails when rule 1 is dropped (the changed file's classes are not added) or helpers are taken for test classes.
+        # Fails when the changed file's classes are not added or helpers are taken for test classes.
         r = self.repo()
         r.write("tests/A.Tests/One.cs", test_class("OneTests"))
         r.write("tests/A.Tests/Other.cs", test_class("OtherTests"))
@@ -110,7 +110,7 @@ class AffectedTests(unittest.TestCase):
         self.assertIn("1 class(es).", out)
 
     def test_a_changed_source_type_selects_the_classes_whose_file_names_it_as_a_whole_word(self):
-        # Fails when rule 2 is dropped, or when the name match is a substring match (FooBarTests would be in).
+        # Fails when types of changed source files select no test class, or when the name match is a substring match (FooBarTests would be in).
         r = self.repo()
         r.write("src/Foo.cs", "namespace A;\n\npublic class Foo\n{\n}\n")
         r.write("tests/A.Tests/FooTests.cs", test_class("FooTests", "[Fact] public void T() { var f = new Foo(); }"))
@@ -135,7 +135,7 @@ class AffectedTests(unittest.TestCase):
         self.assertEqual(["GoneTests"], classes_of(out), out)
 
     def test_affected_always_joins_whatever_changed_and_a_name_no_test_declares_is_an_error(self):
-        # Fails when rule 3 is dropped, or a stale name passes silently.
+        # Fails when affectedAlways adds nothing, or a stale name passes silently.
         r = self.repo(manifest={"affectedAlways": ["GuardTests"]})
         r.write("tests/A.Tests/Guard.cs", test_class("GuardTests"))
         r.write("tests/A.Tests/One.cs", test_class("OneTests"))
@@ -152,7 +152,7 @@ class AffectedTests(unittest.TestCase):
         self.assertIn("affectedAlways names MissingTests, which no test file declares", out)
 
     def test_a_heavy_class_is_not_let_in_by_affected_always_or_an_asset_but_is_by_a_changed_file_or_type(self):
-        # Fails when a heavy class listed in affectedAlways, or one naming a changed asset, runs: rule 4 let rule 3 in.
+        # Fails when a heavy class listed in affectedAlways, or one naming a changed asset, runs.
         r = self.repo(manifest={"affectedAlways": ["HeavyGuards"]}, heavy=["HeavyGuards", "HeavyType", "HeavyEdit"])
         r.write("src/Thing.cs", "namespace A;\n\npublic class Thing\n{\n}\n")
         r.write("assets/data/widget.json", "{}")
