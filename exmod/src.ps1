@@ -321,12 +321,14 @@ function Test-ExmodWholeGb($Value) {
   return ($Value -is [int] -or $Value -is [long]) -and $Value -ge 1
 }
 
-# The manifest's `testMemory` entry for the test assembly $Project: { HeapGb; FilterHeapGb; FilterStartGb } in GiB,
-# FilterHeapGb and FilterStartGb $null when the entry has none, or $null when the manifest has no entry for the assembly.
+# The manifest's `testMemory` entry for the test assembly $Project: { HeapGb; FilterHeapGb; FilterStartGb; RowHeapGb } in GiB,
+# FilterHeapGb, FilterStartGb and RowHeapGb $null when the entry has none, or $null when the manifest has no entry for the assembly.
 # `heapGb` is the GC heap limit the assembly's test host runs under unfiltered; `filterHeapGb` the lower one it runs under
 # with -Filter; `filterStartGb` the still lower one a -Filter run tries first, rerun under filterHeapGb on an
-# OutOfMemoryException. Throws `exmod.json: testMemory.<assembly>.heapGb must be a whole number of GiB above 0` (the same
-# for filterHeapGb and filterStartGb) when a value is missing, fractional, below 1 or not a number.
+# OutOfMemoryException; `rowHeapGb` the one a -Filter that names a single setup row runs under (Test-ExmodRowFilter),
+# in place of filterStartGb, rerun under filterHeapGb on an OutOfMemoryException. Throws
+# `exmod.json: testMemory.<assembly>.heapGb must be a whole number of GiB above 0` (the same for filterHeapGb,
+# filterStartGb and rowHeapGb) when a value is missing, fractional, below 1 or not a number.
 function Get-ExmodTestMemory([string]$Project) {
   $m = Get-ExmodManifest
   if (-not $m.PSObject.Properties['testMemory'] -or -not $m.testMemory.PSObject.Properties[$Project]) { return $null }
@@ -343,7 +345,18 @@ function Get-ExmodTestMemory([string]$Project) {
     if (-not (Test-ExmodWholeGb $entry.filterStartGb)) { throw "exmod.json: testMemory.$Project.filterStartGb must be a whole number of GiB above 0" }
     $filterStart = [int]$entry.filterStartGb
   }
-  return [pscustomobject]@{ HeapGb = [int]$heap; FilterHeapGb = $filterHeap; FilterStartGb = $filterStart }
+  $rowHeap = $null
+  if ($entry.PSObject.Properties['rowHeapGb']) {
+    if (-not (Test-ExmodWholeGb $entry.rowHeapGb)) { throw "exmod.json: testMemory.$Project.rowHeapGb must be a whole number of GiB above 0" }
+    $rowHeap = [int]$entry.rowHeapGb
+  }
+  return [pscustomobject]@{ HeapGb = [int]$heap; FilterHeapGb = $filterHeap; FilterStartGb = $filterStart; RowHeapGb = $rowHeap }
+}
+
+# True when $Filter is one `DisplayName~row: <name>\)` term and nothing else: the filter that selects the one xunit row
+# of a SetupTheory test whose display name ends `(row: <name>)`. A `|` or `&` joined filter is not one row.
+function Test-ExmodRowFilter([string]$Filter) {
+  return [bool]$Filter -and $Filter -match '^\s*DisplayName\s*~\s*row: [^|&()]+\\\)\s*$'
 }
 
 # GiB added to a test host's GC heap limit to make its share of the memory budget: the host's memory outside the
@@ -400,10 +413,16 @@ function Get-ExmodFilterReachGb([string]$Project, [string]$Filter) {
 # partition parts its filter can reach (Get-ExmodFilterReachGb), or the filter share when that is no more than the
 # start limit; a filter that cannot be shown to miss a heavier part takes the assembly's whole heap.
 # $Project: the test assembly. $PartHeapGb: the partition's own `heapGb`, or $null. $Filtered: the run has -Filter.
-# $Filter: the run's -Filter expression, or $null.
+# $Filter: the run's -Filter expression, or $null. A filter that names one setup row (Test-ExmodRowFilter) of an assembly
+# with `rowHeapGb` starts under that limit whatever EXMOD_HEAVY says, with `filterHeapGb` as the rerun limit when it is higher.
 function Get-ExmodTestShare([string]$Project, $PartHeapGb, [bool]$Filtered, [string]$Filter = $null) {
   $mem = Get-ExmodTestMemory $Project
   $heap = if ($null -ne $PartHeapGb) { [int]$PartHeapGb } elseif ($mem) { $mem.HeapGb } else { $null }
+  if ($Filtered -and $mem -and $null -ne $mem.RowHeapGb -and (Test-ExmodRowFilter $Filter)) {
+    $row = $mem.RowHeapGb
+    $retry = if ($null -ne $mem.FilterHeapGb -and $mem.FilterHeapGb -gt $row) { $mem.FilterHeapGb } else { $null }
+    return [pscustomobject]@{ ShareGb = $row + $ExmodHostOverheadGb; LimitGb = $row; FilterLimitGb = $row; HeavyGb = $heap; RetryLimitGb = $retry; RetryShareGb = $(if ($retry) { $retry + $ExmodHostOverheadGb }) }
+  }
   $useFilterLimit = $Filtered -and $mem -and $null -ne $mem.FilterHeapGb
   if ($useFilterLimit -and $env:EXMOD_HEAVY -eq '1') {
     $start = if ($null -ne $mem.FilterStartGb) { $mem.FilterStartGb } else { $mem.FilterHeapGb }

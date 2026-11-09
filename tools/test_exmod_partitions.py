@@ -39,8 +39,9 @@ if "--list-tests" in a:
     sys.exit(0)
 f = a[a.index("--filter") + 1] if "--filter" in a else ""
 def term(t):
-    m = re.fullmatch(r"FullyQualifiedName(!?)([~=])(.+)", t)
+    m = re.fullmatch(r"(?:FullyQualifiedName|DisplayName)(!?)([~=])(.+)", t)
     neg, op, v = m.groups()
+    v = v.replace("\\)", ")")
     return lambda n: ((v in n) if op == "~" else (n == v)) != (neg == "!")
 def match(n):
     if not f:
@@ -48,7 +49,7 @@ def match(n):
     if "&" in f:
         return all(term(t)(n) for t in f.split("&"))
     return any(term(t)(n) for t in f.split("|"))
-hit = [n for n in tests if match(n)]
+hit = [n for n in tests + (["Mod.Tests.Rows.Case(row: alpha)"] if "DisplayName" in f else []) if match(n)]
 limit = [x for x in a if x.startswith("DOTNET_GCHeapHardLimit=")]
 oom = os.environ.get("TEST_OOM") or (os.environ.get("TEST_OOM_AT") and limit == ["DOTNET_GCHeapHardLimit=0x%%X" %% (int(os.environ["TEST_OOM_AT"]) << 30)])
 held = b"x" * (int(os.environ.get("TEST_HOLD_MB", "0")) << 20)
@@ -98,7 +99,7 @@ MANIFEST = {"partitions": {"A.Tests": {"parts": [
     {"name": "rest"}]}}}
 
 
-def manifest(heap=None, filter_heap=None, part_heaps=(None, None, None), filter_start=None, **extra):
+def manifest(heap=None, filter_heap=None, part_heaps=(None, None, None), filter_start=None, row=None, **extra):
     """MANIFEST with testMemory for A.Tests (when heap is given) and heapGb on the parts that have one."""
     m = json.loads(json.dumps(MANIFEST))
     for part, h in zip(m["partitions"]["A.Tests"]["parts"], part_heaps):
@@ -110,6 +111,8 @@ def manifest(heap=None, filter_heap=None, part_heaps=(None, None, None), filter_
             m["testMemory"]["A.Tests"]["filterHeapGb"] = filter_heap
         if filter_start is not None:
             m["testMemory"]["A.Tests"]["filterStartGb"] = filter_start
+        if row is not None:
+            m["testMemory"]["A.Tests"]["rowHeapGb"] = row
     m.update(extra)
     return m
 
@@ -428,6 +431,36 @@ class PartitionTests(unittest.TestCase):
         for bad in (0, 2.5, "x"):
             out, _, _, _ = run_pwsh("", manifest=manifest(heap=8, filter_heap=3, filter_start=bad))
             self.assertIn("exmod.json: testMemory.A.Tests.filterStartGb must be a whole number of GiB above 0", out)
+
+    def test_a_filter_naming_one_setup_row_takes_the_row_limit_and_any_other_filter_does_not(self):
+        # Fails when rowHeapGb is ignored (the row run takes filterStartGb, 5), when the row run is not recognised as one
+        # row (a `|` joined pair, a name without the closing paren and a FullyQualifiedName filter then take 2 GiB).
+        limit = lambda g: "DOTNET_GCHeapHardLimit=0x%X" % (g << 30)
+        m = manifest(heap=12, filter_heap=8, filter_start=5, row=2)
+        out, _, _, _ = run_pwsh("", args=r"'-Filter', 'DisplayName~row: alpha\)'", manifest=m)
+        self.assertEqual([limit(2)], [a[a.index("-e") + 1] for a in RUNS], out)
+        self.assertRegex(out, r"memory: 1\.22/A\.Tests took 3 GiB of 54")
+        for other in (r"DisplayName~row: alpha\)|DisplayName~row: beta\)", "DisplayName~row: alpha", "FullyQualifiedName~row: alpha"):
+            out, _, _, _ = run_pwsh("", args="'-Filter', '%s'" % other, manifest=m)
+            self.assertEqual([limit(5)], [a[a.index("-e") + 1] for a in RUNS], out)
+
+    def test_a_row_run_ignores_the_heavy_flag_and_reruns_once_under_the_filter_limit_after_an_oom(self):
+        # Fails when EXMOD_HEAVY=1 sends the row run to the whole heap (12), when no retry follows the OutOfMemoryException,
+        # or when the retry is not under filterHeapGb (8).
+        limit = lambda g: "DOTNET_GCHeapHardLimit=0x%X" % (g << 30)
+        args = r"'-Filter', 'DisplayName~row: alpha\)'"
+        m = manifest(heap=12, filter_heap=8, filter_start=5, row=2)
+        out, _, _, _ = run_pwsh("", {"EXMOD_HEAVY": "1"}, args=args, manifest=m)
+        self.assertEqual([limit(2)], [a[a.index("-e") + 1] for a in RUNS], out)
+        out, _, _, _ = run_pwsh("", {"TEST_OOM_AT": "2"}, args=args, manifest=m)
+        self.assertEqual([limit(2), limit(8)], [a[a.index("-e") + 1] for a in RUNS], out)
+        self.assertIn("ran out of memory under 2 GiB, retrying once under 8 GiB", out)
+
+    def test_a_row_heap_gb_that_is_not_a_whole_number_above_zero_is_refused(self):
+        # Fails when Get-ExmodTestMemory does not validate rowHeapGb.
+        for bad in (0, 2.5, "x"):
+            out, _, _, _ = run_pwsh("", manifest=manifest(heap=8, filter_heap=3, row=bad))
+            self.assertIn("exmod.json: testMemory.A.Tests.rowHeapGb must be a whole number of GiB above 0", out)
 
     def test_the_release_line_carries_the_peak_and_one_json_line_is_appended_per_run(self):
         # Fails when the peak is left off the release line, or when no JSON line is written to EXMOD_MEMORY_LOG.
