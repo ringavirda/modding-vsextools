@@ -610,7 +610,7 @@ class StopOnRedTests(unittest.TestCase):
 
     def test_a_part_waiting_for_its_memory_share_gives_it_up(self):
         # Fails when the memory wait is not aborted: rest keeps waiting for a share until worlds' 30 s end.
-        out, by, seconds = stop_run(env_extra={"EXMOD_RUN_TRIGGER": "landing:x", "EXMOD_MEMORY_FLOOR_GB": "50"},
+        out, by, seconds = stop_run(env_extra={"EXMOD_RUN_TRIGGER": "landing:x", "EXMOD_MEMORY_FLOOR_GB": "60"},
                                     manifest=manifest(heap=5))
         self.assert_stopped_run(out, by, seconds)
         self.assertEqual(0, by["rest"]["seconds"], out)

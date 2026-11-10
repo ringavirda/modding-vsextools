@@ -1461,12 +1461,10 @@ exit, seconds, time, tests, passed, failed, skipped, failures (at most 50, then 
 40 largest test classes, from a trx file the host writes beside its blame results and exmod deletes). A -Coverage run writes
 no record. A failure to write or read it changes nothing else about the run.
 Where there is a process table (EXMOD_PROC_DIR, /proc; none on Windows) a share is granted on real use and no waiter holds
-a lock while it waits: each second one decision grants it when MemAvailable less EXMOD_MEMORY_FLOOR_GB (10) less what the
-running hosts may still grow to (their charge, the share until recorded peaks say less, less the resident size of their
-process tree) is at least its charge, or when nothing is running. The charge is the p95 of the last 50 peaks in
-EXMOD_MEMORY_LOG plus 1 GiB once 5 are recorded for the label and share, at most the share. A share above
-EXMOD_MEMORY_SMALL_GB (6) is granted in order (priority first, then arrival); a smaller one goes ahead of it, except that
-once the oldest big share has waited EXMOD_MEMORY_BIG_WAIT_S (600) s it leaves that share's charge free. The took line ends
+a lock while it waits: each second one decision grants it when MemAvailable less EXMOD_MEMORY_FLOOR_GB (10) is at least its
+charge, or when no test host is running. The charge is the p95 of the last 50 peaks in EXMOD_MEMORY_LOG plus 1 GiB once 5
+are recorded for the label and share, at most the share. Nothing else is weighed: not what the running hosts may still
+grow to, not arrival order, not the share's size; EXMOD_MEMORY_PRIORITY is accepted and changes nothing. The took line ends
 `(real use: <h> GiB available)`. Without a process table the booking files in EXMOD_MEMORY_DIR decide, a waiter holding the
 turn and its files.
 An assembly with no entry takes 4 GiB and runs under no limit. -Coverage takes the whole budget and runs alone. The

@@ -324,12 +324,6 @@ class MemoryTests(unittest.TestCase):
             rec["charge"] = charge
         touch(os.path.join(self.mem, f"booked-{name}.json"), json.dumps(rec))
 
-    def put_ask(self, name, gb, priority=0, age_s=0, owner=None, charge=None):
-        """A waiting ask of gb GiB made age_s seconds ago, owned by this (live) process unless owner is given."""
-        touch(os.path.join(self.mem, f"ask-{name}.json"), json.dumps({
-            "owner": os.getpid() if owner is None else owner, "gb": gb, "charge": gb if charge is None else charge,
-            "priority": priority, "asked": int((time.time() - age_s) * 1000), "label": name}))
-
     def dead_pid(self):
         p = subprocess.Popen(["true"])
         p.wait()
@@ -376,17 +370,6 @@ class MemoryTests(unittest.TestCase):
         self.assertIn("(real use: 30 GiB available)", w.text())
         w.finish()
 
-    def test_a_share_is_refused_while_the_running_hosts_still_have_room_to_grow(self):
-        # Fails if the remaining growth is left out of the headroom (14 - 10 = 4 admits the share at once).
-        self.full_budget()
-        self.fake_proc(100, 0.5)
-        self.book("a", 4, [100])
-        w = self.ask_real(2, 14)
-        w.never("took", 5)
-        self.fake_proc(100, 4)
-        w.wait_for("(real use: 4 GiB available)", 8)
-        w.finish()
-
     def test_the_floor_is_kept(self):
         # Fails if the floor is not subtracted: 11 GiB available admits the share of 2.
         self.full_budget()
@@ -404,20 +387,6 @@ class MemoryTests(unittest.TestCase):
         w.wait_for("(real use: 3 GiB available)", 8)
         w.finish()
 
-    def test_a_host_with_no_pids_counts_its_whole_share(self):
-        # Fails if an unknown size counts as nothing still to grow: 15 - 10 - 4 = 1 refuses a share of 2.
-        self.full_budget()
-        self.book("a", 4, [])
-        w = self.ask_real(2, 15)
-        w.never("took", 4)
-
-    def test_a_host_whose_pid_is_gone_counts_its_whole_share(self):
-        # Fails if a PID missing from the process table counts as nothing still to grow.
-        self.full_budget()
-        self.book("b", 4, [999])
-        w = self.ask_real(2, 15)
-        w.never("took", 4)
-
     def test_without_a_process_table_only_the_booked_rule_admits(self):
         # Fails if the real-use rule runs with no process table (it then throws reading the missing table).
         self.full_budget()
@@ -433,103 +402,108 @@ class MemoryTests(unittest.TestCase):
         self.assertRegex(out, r'\{"owner":\d+,"gb":2,"charge":2(\.0)?,"pids":\[\]\}')
         self.assertIn("left=0", out)
 
-    def test_the_real_use_waiter_holds_no_lock_and_leaves_an_ask(self):
-        # Fails if the waiter keeps turn.lock or a booking file while it waits (the lock probes time out).
+    def peaks_log(self, label, share, peak, n=5):
+        log = os.path.join(self.tmp, f"peaks-{label}.jsonl")
+        touch(log, "".join(json.dumps({"label": label, "shareGb": share, "filtered": False, "peakGb": peak}) + "\n" for _ in range(n)))
+        return log
+
+    def test_the_real_use_waiter_holds_no_lock_and_no_file_while_it_waits(self):
+        # Fails if the waiter keeps turn.lock, a slot file or a booking of its own while it waits (the lock probes time out).
         self.fake_proc(100, 0)
         self.book("a", 8, [100])
-        self.set_available(10)
+        self.set_available(6)
         w = self.start("$r = Lock-ExmodMemory 8 'big' -OnWait { Write-Host 'on-wait' }; Unlock-ExmodMemory $r",
                        budget=40, EXMOD_PROC_DIR=self.proc, EXMOD_MEMORY_FLOOR_GB="0")
         w.wait_for("waits for 8 GiB")
-        self.assertIn("2 of 40 GiB free", w.text())
-        asks = self.files(r"ask-.*\.json")
-        self.assertEqual(1, len(asks))
-        with open(os.path.join(self.mem, asks[0])) as f:
-            rec = json.load(f)
-        self.assertEqual((8, 8, 0, "big"), (rec["gb"], rec["charge"], rec["priority"], rec["label"]))
+        self.assertIn("6 of 40 GiB free", w.text())
         self.assertTrue(self.lockable("turn.lock"))
         self.assertTrue(self.lockable("0.lock"))
-        self.assertEqual([], self.files(r"booked-(?!a\.).*\.json"))
-        self.fake_proc(100, 8)
-        w.wait_for("took 8 GiB of 40", 5)
         self.assertEqual([], self.files(r"ask-.*\.json"))
-        self.assertEqual(1, w.finish().count("on-wait"), w.text())
-        self.assertEqual("2", self.rows()[0][4])
-
-    def test_a_small_ask_is_granted_while_a_big_ask_waits(self):
-        # Fails if small asks take the big-order rule (the small ask queues behind the big one).
-        self.fake_proc(100, 0)
-        self.book("a", 8, [100])
-        big = self.ask_free(8, "big", 10)
-        big.wait_for("waits for 8 GiB")
-        small = self.ask_free(1, "small", 10)
-        small.wait_for("took 1 GiB of 40", 8)
-        self.assertNotIn("took", big.text())
-
-    def test_big_asks_are_granted_in_order_priority_first(self):
-        # Fails if the first-among-big check is dropped (the plain ask is granted behind a priority one) or priority is ignored in the order.
-        self.fake_proc(100, 1)
-        self.book("a", 1, [100])
-        self.put_ask("older", 8, priority=0, age_s=100)
-        first = self.ask_free(8, "prio", 40, EXMOD_MEMORY_PRIORITY="1")
-        first.wait_for("took 8 GiB of 40", 8)
-        first.finish()
-        os.remove(os.path.join(self.mem, "ask-older.json"))
-        self.put_ask("prio", 8, priority=1, age_s=0)
-        plain = self.ask_free(8, "plain", 40)
-        plain.never("took", 4)
-        os.remove(os.path.join(self.mem, "ask-prio.json"))
-        plain.wait_for("took 8 GiB of 40", 5)
-
-    def test_big_asks_of_equal_priority_are_granted_oldest_first(self):
-        # Fails if arrival time is dropped from the big-ask order (the younger ask sorts first by name and is granted).
-        self.fake_proc(100, 1)
-        self.book("a", 1, [100])
-        self.put_ask("older", 8, age_s=100)
-        w = self.ask_free(8, "w", 40)
-        w.never("took", 4)
-        os.remove(os.path.join(self.mem, "ask-older.json"))
+        self.assertEqual([], self.files(r"booked-(?!a\.).*\.json"))
+        self.set_available(10)
         w.wait_for("took 8 GiB of 40", 5)
+        self.assertEqual(1, w.finish().count("on-wait"), w.text())
+        self.assertEqual("6", self.rows()[0][4])
 
-    def test_a_big_ask_is_granted_at_its_charge_not_its_share(self):
-        # Fails if the big ask is compared at its take (room 2 is below 8 and the ask waits; its charge is 1.5).
-        log = os.path.join(self.tmp, "peaks.jsonl")
-        touch(log, "".join(json.dumps({"label": "w", "shareGb": 8, "filtered": False, "peakGb": 0.5}) + "\n" for _ in range(5)))
-        self.fake_proc(100, 0)
-        self.book("a", 8, [100])
-        w = self.ask_free(8, "w", 10, EXMOD_MEMORY_LOG=log)
-        w.wait_for("took 8 GiB of 40", LOAD)
+    def test_a_run_whose_charge_fits_is_granted_while_a_large_host_runs(self):
+        # Fails if what the running host may still grow to is charged again (the host of 20 GiB at 1 GiB resident leaves 5 - 19 < 2).
+        self.fake_proc(100, 1)
+        self.book("a", 20, [100])
+        w = self.ask_free(2, "w", 5)
+        w.wait_for("took 2 GiB of 40", 8)
+        self.assertIn("(real use: 5 GiB available)", w.text())
+        w.finish()
 
-    def test_a_small_ask_leaves_room_for_a_big_ask_past_the_big_wait(self):
-        # Fails if the aged rule is dropped (the small ask is granted at room 4 while the big ask of 8 has waited 700 s).
-        self.fake_proc(100, 0)
-        self.book("a", 8, [100])
-        self.put_ask("big", 8, age_s=700)
-        small = self.ask_free(2, "small", 12)
-        small.wait_for("waits for 2 GiB")
-        small.never("took", 3)
-        self.put_ask("big", 8, age_s=10)
-        small.wait_for("took 2 GiB of 40", 5)
+    def test_a_small_and_a_large_run_are_each_granted_when_their_own_charge_fits(self):
+        # Fails if order is restored: a large run leaves the charge of a waiting priority run (8) free, so with 4 GiB room the
+        # large run of charge 2 and the small run are held for it.
+        self.fake_proc(100, 1)
+        self.book("a", 4, [100])
+        prio = self.ask_free(8, "prio", 4, EXMOD_MEMORY_PRIORITY="1")
+        prio.wait_for("waits for 8 GiB")
+        large = self.ask_free(8, "large", 4, EXMOD_MEMORY_LOG=self.peaks_log("large", 8, 1.0))
+        large.wait_for("took 8 GiB of 40", 8)
+        small = self.ask_free(1, "small", 4)
+        small.wait_for("took 1 GiB of 40", 8)
+        self.assertNotIn("took", prio.text())
+        self.set_available(12)
+        prio.wait_for("took 8 GiB of 40", 8)
 
-    def test_a_small_ask_leaves_the_charge_of_an_aged_big_ask(self):
-        # Fails if the aged rule adds the big ask's share instead of its charge (need 2 + 8 = 10 exceeds room 4; charge 2 needs 4).
-        self.fake_proc(100, 0)
-        self.book("a", 8, [100])
-        self.put_ask("big", 8, age_s=700, charge=2)
-        small = self.ask_free(2, "small", 12)
-        small.wait_for("took 2 GiB of 40", LOAD)
+    def test_a_run_waits_while_room_is_under_its_charge_and_is_granted_when_it_rises(self):
+        # Fails if the room is not compared to the charge (always granted): 3 GiB room, charge 4, then 5.
+        self.fake_proc(100, 1)
+        self.book("a", 4, [100])
+        w = self.ask_free(4, "w", 3)
+        w.wait_for("waits for 4 GiB")
+        w.never("took", 3)
+        self.set_available(5)
+        w.wait_for("(real use: 5 GiB available)", 8)
+        w.finish()
 
-    def test_a_small_ask_leaves_room_for_the_oldest_big_ask_not_the_first_in_order(self):
-        # Fails if the aged rule reads the first big ask in grant order (the younger priority ask is not aged and the small ask is granted at room 4).
-        self.fake_proc(100, 0)
+    def test_the_priority_setting_changes_nothing(self):
+        # Fails if a priority run is granted ahead of its room (at 1 GiB) or a plain run is held for it.
+        self.fake_proc(100, 1)
+        self.book("a", 4, [100])
+        prio = self.ask_free(2, "prio", 1, EXMOD_MEMORY_PRIORITY="1")
+        prio.wait_for("waits for 2 GiB")
+        prio.never("took", 3)
+        self.set_available(3)
+        plain = self.ask_free(1, "plain", 3)
+        plain.wait_for("took 1 GiB of 40", 8)
+        prio.wait_for("took 2 GiB of 40", 8)
+
+    def test_two_asks_at_once_with_room_for_one_are_not_both_granted(self):
+        # Fails if the booking is written after turn.lock is released (both see no running host and both are granted).
+        self.set_available(1)
+        a = self.ask_free(2, "a", 1, hold_s=20)
+        b = self.ask_free(2, "b", 1, hold_s=20)
+        deadline = time.time() + LOAD
+        while time.time() < deadline and not (a.has("took") or b.has("took")):
+            time.sleep(0.05)
+        time.sleep(4)
+        self.assertEqual(1, (a.text() + b.text()).count("took 2 GiB"), a.text() + b.text())
+
+    def test_no_live_booking_grants_a_run_over_the_room(self):
+        # Fails if a booking of a dead owner counts as a running host (1 GiB room refuses the run of 4).
+        self.book("dead", 40, [], owner=self.dead_pid())
+        w = self.ask_free(4, "w", 1)
+        w.wait_for("took 4 GiB of 40")
+        self.assertFalse(os.path.exists(os.path.join(self.mem, "booked-dead.json")))
+
+    def test_the_charge_decides_not_the_take(self):
+        # Fails if the take is compared instead of the charge (room 4 is under 8; the recorded peaks make the charge 1.5), or if
+        # fewer than five rows count (4 rows leave the charge at 8).
+        self.fake_proc(100, 1)
         self.book("a", 8, [100])
-        self.put_ask("old", 8, priority=0, age_s=700)
-        self.put_ask("young", 8, priority=1, age_s=10)
-        small = self.ask_free(2, "small", 12)
-        small.wait_for("waits for 2 GiB")
-        small.never("took", 3)
-        os.remove(os.path.join(self.mem, "ask-old.json"))
-        small.wait_for("took 2 GiB of 40", 5)
+        few = self.ask_free(8, "w", 4, EXMOD_MEMORY_LOG=self.peaks_log("w", 8, 0.5, n=4))
+        few.wait_for("waits for 8 GiB")
+        few.never("took", 3)
+        os.killpg(few.proc.pid, signal.SIGKILL)
+        many = self.ask_free(8, "w", 4, hold_s=4, EXMOD_MEMORY_LOG=self.peaks_log("w", 8, 0.5, n=5))
+        many.wait_for("took 8 GiB of 40", 8)
+        booked = [f for f in self.files(r"booked-.*\.json") if f != "booked-a.json"]
+        with open(os.path.join(self.mem, booked[0])) as f:
+            self.assertEqual(1.5, json.load(f)["charge"])
 
     def charge_of(self, log, gb, filtered=False):
         """The charge booked by an ask of gb GiB labelled w against the peak log, filtered or not."""
@@ -557,83 +531,11 @@ class MemoryTests(unittest.TestCase):
         shutil.rmtree(self.mem)
         self.assertAlmostEqual(8, self.charge_of(log, 8))
 
-    def test_charge_comes_from_recorded_peaks_and_falls_back_to_the_take(self):
-        # Fails if charge is always the take (the ask of 4 never fits room 2) or ignores the 5-row minimum (4 rows admit it).
-        log = os.path.join(self.tmp, "peaks.jsonl")
-
-        def row(label, share, peak):
-            return json.dumps({"label": label, "shareGb": share, "peakGb": peak}) + "\n"
-
-        noise = row("w", 4, None) + row("other", 4, 30) + row("w", 8, 30)
-        touch(log, noise + row("w", 4, 0.5) * 4)
-        self.fake_proc(100, 0)
-        self.book("a", 8, [100])
-        few = self.ask_free(4, "w", 10, EXMOD_MEMORY_LOG=log)
-        few.wait_for("waits for 4 GiB")
-        few.never("took", 3)
-        with open(os.path.join(self.mem, self.files(r"ask-.*\.json")[0])) as f:
-            self.assertEqual(4, json.load(f)["charge"])
-        os.killpg(few.proc.pid, signal.SIGKILL)
-        os.remove(os.path.join(self.mem, self.files(r"ask-.*\.json")[0]))
-        touch(log, noise + row("w", 4, 0.5) * 5)
-        many = self.ask_free(4, "w", 10, hold_s=4, EXMOD_MEMORY_LOG=log)
-        many.wait_for("took 4 GiB of 40", 5)
-        booked = [f for f in self.files(r"booked-.*\.json") if f != "booked-a.json"]
-        with open(os.path.join(self.mem, booked[0])) as f:
-            self.assertEqual(1.5, json.load(f)["charge"])
-
-    def test_a_running_reservation_is_charged_its_charge_not_its_share(self):
-        # Fails if headroom reads gb (room 6 - 8 is below zero and the ask of 3 waits).
-        self.fake_proc(100, 0)
-        self.book("a", 8, [100], charge=2)
-        w = self.ask_free(3, "w", 6)
-        w.wait_for("(real use: 4 GiB available)")
-
-    def test_a_grant_is_visible_to_the_next_decision(self):
-        # Fails if the booking is written after turn.lock is released (the ask file is gone while turn.lock is free and no booking exists).
-        os.makedirs(self.mem)
-        fd = os.open(os.path.join(self.mem, "turn.lock"), os.O_CREAT | os.O_RDWR)
-        self.fds.append(fd)
-        self.ask_free(2, "w", 40, hold_s=4)
-        seen = False
-        deadline = time.time() + LOAD
-        while time.time() < deadline:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                continue
-            try:
-                if self.files(r"ask-.*\.json"):
-                    seen = True
-                elif seen:
-                    self.assertEqual(1, len(self.files(r"booked-.*\.json")), "the ask is gone and the booking is not written")
-                    return
-            finally:
-                fcntl.flock(fd, fcntl.LOCK_UN)
-            time.sleep(0.0005)
-        self.fail("the ask was never seen and granted")
-
     def test_no_live_reservation_grants_a_whole_budget_ask(self):
         # Fails if the no-reservation branch is dropped (40 GiB asked of 1 GiB available waits).
         self.set_available(1)
         w = self.ask(40, "w", budget=40, EXMOD_PROC_DIR=self.proc)
         w.wait_for("took 40 GiB of 40")
-
-    def test_a_dead_owners_ask_is_ignored_and_deleted(self):
-        # Fails if the liveness check on asks is dropped (the dead priority ask stays first among the big asks).
-        self.fake_proc(100, 1)
-        self.book("a", 1, [100])
-        self.put_ask("dead", 8, priority=1, owner=self.dead_pid())
-        w = self.ask_free(8, "w", 40)
-        w.wait_for("took 8 GiB of 40")
-        self.assertFalse(os.path.exists(os.path.join(self.mem, "ask-dead.json")))
-
-    def test_a_dead_owners_record_is_ignored_and_deleted(self):
-        # Fails if the liveness check on bookings is dropped (the dead 40 GiB booking leaves no room and counts as live).
-        self.book("dead", 40, [], owner=self.dead_pid())
-        w = self.ask_free(4, "w", 12)
-        w.wait_for("took 4 GiB of 40")
-        self.assertFalse(os.path.exists(os.path.join(self.mem, "booked-dead.json")))
 
     def test_a_reservation_with_no_streams_is_released_and_its_record_removed(self):
         # Fails if Unlock-ExmodMemory returns early on empty Streams (no released line, the record is left).

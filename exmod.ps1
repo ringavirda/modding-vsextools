@@ -1063,19 +1063,13 @@ function Get-ExmodMemoryBudget {
 # Takes a share of $Gb GiB of the machine's memory budget, waiting until it is granted. The budget is Get-ExmodMemoryBudget
 # (MemTotal less 10 GiB, or $env:EXMOD_MEMORY_GB). A share above the budget is cut to the budget with a line saying so.
 # On a system with a process table ($env:EXMOD_PROC_DIR, default /proc; none on Windows) the grant is by real use and no
-# waiter holds a lock or a booking while it waits. On arrival it writes ask-<id>.json in $env:EXMOD_MEMORY_DIR (default
-# ~/.cache/exmod/memory): {owner, gb, charge, priority, asked, label}. charge is what the share is expected to reach: with 5
-# or more rows of $env:EXMOD_MEMORY_LOG (default ~/.cache/exmod/memory-peaks.jsonl, its last 256 KiB) of this label and
-# share size, the p95 of the last 50 peaks plus 1 GiB, at least 1 and at most the share; otherwise the share. Each
-# second the waiter takes turn.lock for one decision (retrying after 100 ms when it is held) with
-# room = MemAvailable less $env:EXMOD_MEMORY_FLOOR_GB GiB (default 10) less, for each live booked-<id>.json, its charge (gb
-# when it has none) less the resident size of the process tree of its host PIDs (nothing when none are known). Asks and
-# bookings whose owner is dead are ignored and deleted. With no live booking the ask is granted whatever its size. An
-# ask is small when its share is at most $env:EXMOD_MEMORY_SMALL_GB (default 6). A small ask is granted when room is at
-# least its charge, and, once the oldest big ask has waited over $env:EXMOD_MEMORY_BIG_WAIT_S s (default 600), at least
-# its charge plus that ask's. A big ask is granted when it is first among the big asks (priority 1 before 0, then the
-# time asked, then the file name) and room is at least its charge. The grant writes booked-<id>.json {owner, gb, charge,
-# pids} and deletes the ask before the turn is released, and the took line ends `(real use: <h> GiB available)`.
+# waiter holds a lock or a booking while it waits. charge is what the share is expected to reach: with 5 or more rows of
+# $env:EXMOD_MEMORY_LOG (default ~/.cache/exmod/memory-peaks.jsonl, its last 256 KiB) of this label and share size, the
+# p95 of the last 50 peaks plus 1 GiB, at least 1 and at most the share; otherwise the share. Each second the waiter takes
+# turn.lock for one decision (retrying after 100 ms when it is held): it is granted when room = MemAvailable less
+# $env:EXMOD_MEMORY_FLOOR_GB GiB (default 10) is at least its charge, or when no live booked-<id>.json exists. Bookings whose
+# owner is dead are ignored and deleted. The grant writes booked-<id>.json {owner, gb, charge, pids} before the turn is
+# released, and the took line ends `(real use: <h> GiB available)`.
 # Without a process table the waiter takes turn.lock and keeps it, keeps the first $Gb free of the budget's files
 # <i>.lock in the memory dir (one per GiB, held open with FileShare.None, flock(2) on Linux) and re-probes each second
 # until it holds $Gb; it is granted when MemAvailable (meminfo) is at least $Gb GiB or when every file was free. With
@@ -1143,39 +1137,15 @@ function Lock-ExmodMemory([int]$Gb, [string]$Label, [scriptblock]$OnWait, [switc
   $headroom = {
     $reserved.Live = 0
     $reserved.Bad = $false
-    $parentOf = @{}
-    foreach ($proc in [System.IO.Directory]::GetDirectories($procDir)) {
-      $id = [System.IO.Path]::GetFileName($proc)
-      if ($id -notmatch '^\d+$') { continue }
-      try { $stat = [System.IO.File]::ReadAllText("$proc/stat") } catch { continue }
-      $parentOf[[int]$id] = [int]($stat.Substring($stat.LastIndexOf(')') + 2).Split(' ')[1])
-    }
-    $growth = 0.0
     foreach ($file in [System.IO.Directory]::GetFiles($dir, 'booked-*.json')) {
       try { $rec = [System.IO.File]::ReadAllText($file) | ConvertFrom-Json } catch { $reserved.Bad = $true; return $null }
       if (-not (& $alive $rec.owner)) { Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue; continue }
       $reserved.Live++
-      $tree = [System.Collections.Generic.HashSet[int]]::new()
-      foreach ($id in @($rec.pids)) { if ($parentOf.ContainsKey([int]$id)) { [void]$tree.Add([int]$id) } }
-      do {
-        $grew = $false
-        foreach ($id in $parentOf.Keys) {
-          if (-not $tree.Contains($id) -and $tree.Contains($parentOf[$id])) { [void]$tree.Add($id); $grew = $true }
-        }
-      } while ($grew)
-      $bytes = [int64]0
-      foreach ($id in $tree) {
-        try { $bytes += [int64]([System.IO.File]::ReadAllText("$procDir/$id/statm").Split(' ')[1]) * 4096 } catch { }
-      }
-      $charged = if ($null -ne $rec.PSObject.Properties['charge']) { [double]$rec.charge } else { [double]$rec.gb }
-      $growth += [Math]::Max(0.0, $charged - $bytes / 1GB)
     }
     $a = & $available
     if ($a -ge [double]::MaxValue) { return $null }
-    return $a - $floorGb - $growth
+    return $a - $floorGb
   }
-  $smallGb = if ($env:EXMOD_MEMORY_SMALL_GB) { [double]$env:EXMOD_MEMORY_SMALL_GB } else { 6.0 }
-  $bigWaitS = if ($env:EXMOD_MEMORY_BIG_WAIT_S) { [double]$env:EXMOD_MEMORY_BIG_WAIT_S } else { 600.0 }
   $writeJson = {
     param($path, $value)
     [System.IO.File]::WriteAllText("$path.tmp", (ConvertTo-Json $value -Compress))
@@ -1222,18 +1192,13 @@ function Lock-ExmodMemory([int]$Gb, [string]$Label, [scriptblock]$OnWait, [switc
     if ($OnWait) { & $OnWait }
   }
   $record = $null
-  $askPath = $null
   $freeFirst = 0
   $free = 0
   $avail = 0.0
   try {
     if ($realUse) {
       $askId = [guid]::NewGuid().ToString('N')
-      $askName = "ask-$askId.json"
-      $askPath = Join-Path $dir $askName
-      $askedMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
       $charge = & $chargeOf
-      & $writeJson $askPath ([ordered]@{ owner = [Environment]::ProcessId; gb = $take; charge = $charge; priority = [int]$priority; asked = $askedMs; label = $Label })
       while ($true) {
         if ($Abort -and (& $Abort)) { throw [System.OperationCanceledException]::new("memory wait for $Label abandoned") }
         $turn = & $open (Join-Path $dir 'turn.lock')
@@ -1241,25 +1206,9 @@ function Lock-ExmodMemory([int]$Gb, [string]$Label, [scriptblock]$OnWait, [switc
         try {
           $room = & $headroom
           $avail = & $available
-          $nowMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-          $asks = [System.Collections.Generic.List[object]]::new()
-          foreach ($file in [System.IO.Directory]::GetFiles($dir, 'ask-*.json')) {
-            try { $rec = [System.IO.File]::ReadAllText($file) | ConvertFrom-Json } catch { continue }
-            if (-not (& $alive $rec.owner)) { Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue; continue }
-            $asks.Add([pscustomobject]@{ Name = [System.IO.Path]::GetFileName($file); Gb = [double]$rec.gb; Charge = [double]$rec.charge; Priority = [int]$rec.priority; Asked = [int64]$rec.asked })
-          }
-          $bigs = @($asks | Where-Object { $_.Gb -gt $smallGb } | Sort-Object @{ Expression = { -$_.Priority } }, Asked, Name)
           $fits = $false
           if ($reserved.Live -eq 0 -and -not $reserved.Bad) { $fits = $true }
-          elseif ($null -ne $room) {
-            if ($take -le $smallGb) {
-              $need = $charge
-              $oldest = @($bigs | Sort-Object Asked, Name)[0]
-              if ($oldest -and ($nowMs - $oldest.Asked) / 1000.0 -gt $bigWaitS) { $need += $oldest.Charge }
-              $fits = $room -ge $need
-            }
-            else { $fits = $bigs.Count -gt 0 -and $bigs[0].Name -eq $askName -and $room -ge $charge }
-          }
+          elseif ($null -ne $room) { $fits = $room -ge $charge }
           if (-not $probed) { $probed = $true; $freeFirst = if ($null -ne $room) { [int][Math]::Floor($room) } else { 0 } }
           if ($fits) {
             $byUse = if ($null -ne $room) { $room } else { 0.0 }
@@ -1268,7 +1217,6 @@ function Lock-ExmodMemory([int]$Gb, [string]$Label, [scriptblock]$OnWait, [switc
               & $writeJson $record ([ordered]@{ owner = [Environment]::ProcessId; gb = $take; charge = $charge; pids = @() })
             }
             catch { $record = $null }
-            Remove-Item -LiteralPath $askPath -Force -ErrorAction SilentlyContinue
             $granted = $true
             break
           }
@@ -1333,7 +1281,6 @@ function Lock-ExmodMemory([int]$Gb, [string]$Label, [scriptblock]$OnWait, [switc
   finally {
     if (-not $granted) { foreach ($s in $held) { $s.Dispose() } }
     if ($turn) { $turn.Dispose() }
-    if ($askPath) { Remove-Item -LiteralPath $askPath -Force -ErrorAction SilentlyContinue }
     if ($priorityFile) { $priorityFile.Dispose() }
   }
   $taken = Get-Date
