@@ -14,7 +14,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from exmod_harness import PWSH, exmod_env, exmod_script, touch  # noqa: E402
 from test_exmod_affected import CSPROJ, DOTNET, git  # noqa: E402
-from test_exmod_affected import test_class as class_source  # noqa: E402
+from test_exmod_affected import class_source  # noqa: E402
 
 LANE = os.path.join("sessions", ".worktrees", "lane")
 

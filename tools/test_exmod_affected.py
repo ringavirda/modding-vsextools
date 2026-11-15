@@ -27,7 +27,7 @@ print("Passed!  - Failed: 0, Passed: 1, Skipped: 0, Total: 1")
 """
 
 
-def test_class(name, body="[Fact] public void T() { }"):
+def class_source(name, body="[Fact] public void T() { }"):
     return f"namespace A.Tests;\n\npublic class {name}\n{{\n  {body}\n}}\n"
 
 
@@ -99,10 +99,10 @@ class AffectedTests(unittest.TestCase):
     def test_a_changed_test_file_names_its_classes_with_tests_and_not_its_helpers(self):
         # Fails when the changed file's classes are not added or helpers are taken for test classes.
         r = self.repo()
-        r.write("tests/A.Tests/One.cs", test_class("OneTests"))
-        r.write("tests/A.Tests/Other.cs", test_class("OtherTests"))
+        r.write("tests/A.Tests/One.cs", class_source("OneTests"))
+        r.write("tests/A.Tests/Other.cs", class_source("OtherTests"))
         r.commit()
-        r.write("tests/A.Tests/One.cs", test_class("OneTests") + "\npublic class OneHelper\n{\n  public int X;\n}\n")
+        r.write("tests/A.Tests/One.cs", class_source("OneTests") + "\npublic class OneHelper\n{\n  public int X;\n}\n")
         r.commit()
         out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD~1'")
         self.assertEqual(["OneTests"], classes_of(out), out)
@@ -113,9 +113,9 @@ class AffectedTests(unittest.TestCase):
         # Fails when types of changed source files select no test class, or when the name match is a substring match (FooBarTests would be in).
         r = self.repo()
         r.write("src/Foo.cs", "namespace A;\n\npublic class Foo\n{\n}\n")
-        r.write("tests/A.Tests/FooTests.cs", test_class("FooTests", "[Fact] public void T() { var f = new Foo(); }"))
-        r.write("tests/A.Tests/FooBarTests.cs", test_class("FooBarTests", "[Fact] public void T() { var f = new FooBar(); }"))
-        r.write("tests/A.Tests/NoneTests.cs", test_class("NoneTests"))
+        r.write("tests/A.Tests/FooTests.cs", class_source("FooTests", "[Fact] public void T() { var f = new Foo(); }"))
+        r.write("tests/A.Tests/FooBarTests.cs", class_source("FooBarTests", "[Fact] public void T() { var f = new FooBar(); }"))
+        r.write("tests/A.Tests/NoneTests.cs", class_source("NoneTests"))
         r.commit()
         r.write("src/Foo.cs", "namespace A;\n\npublic class Foo\n{\n  public int X;\n}\n")
         r.commit()
@@ -127,7 +127,7 @@ class AffectedTests(unittest.TestCase):
         # Fails when a deleted file's types are not read from the base.
         r = self.repo()
         r.write("src/Gone.cs", "namespace A;\n\npublic struct Gone\n{\n}\n")
-        r.write("tests/A.Tests/GoneTests.cs", test_class("GoneTests", "[Fact] public void T() { var g = default(Gone); }"))
+        r.write("tests/A.Tests/GoneTests.cs", class_source("GoneTests", "[Fact] public void T() { var g = default(Gone); }"))
         r.commit()
         os.remove(os.path.join(r.root, "src/Gone.cs"))
         r.commit()
@@ -137,16 +137,16 @@ class AffectedTests(unittest.TestCase):
     def test_affected_always_joins_whatever_changed_and_a_name_no_test_declares_is_an_error(self):
         # Fails when affectedAlways adds nothing, or a stale name passes silently.
         r = self.repo(manifest={"affectedAlways": ["GuardTests"]})
-        r.write("tests/A.Tests/Guard.cs", test_class("GuardTests"))
-        r.write("tests/A.Tests/One.cs", test_class("OneTests"))
+        r.write("tests/A.Tests/Guard.cs", class_source("GuardTests"))
+        r.write("tests/A.Tests/One.cs", class_source("OneTests"))
         r.commit()
-        r.write("tests/A.Tests/One.cs", test_class("OneTests", "[Fact] public void U() { }"))
+        r.write("tests/A.Tests/One.cs", class_source("OneTests", "[Fact] public void U() { }"))
         r.commit()
         out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD~1'")
         self.assertEqual(["GuardTests", "OneTests"], classes_of(out), out)
         self.assertRegex(out, r"GuardTests\s+affectedAlways")
         stale = self.repo(manifest={"affectedAlways": ["MissingTests"]})
-        stale.write("tests/A.Tests/One.cs", test_class("OneTests"))
+        stale.write("tests/A.Tests/One.cs", class_source("OneTests"))
         stale.commit()
         out, _ = stale.run("'-Affected', '-List', '-Base', 'HEAD'")
         self.assertIn("affectedAlways names MissingTests, which no test file declares", out)
@@ -156,14 +156,14 @@ class AffectedTests(unittest.TestCase):
         r = self.repo(manifest={"affectedAlways": ["HeavyGuards"]}, heavy=["HeavyGuards", "HeavyType", "HeavyEdit"])
         r.write("src/Thing.cs", "namespace A;\n\npublic class Thing\n{\n}\n")
         r.write("assets/data/widget.json", "{}")
-        r.write("tests/A.Tests/HeavyGuards.cs", test_class("HeavyGuards", "[Fact] public void T() { var s = \"widget\"; }"))
-        r.write("tests/A.Tests/HeavyType.cs", test_class("HeavyType", "[Fact] public void T() { var t = new Thing(); }"))
-        r.write("tests/A.Tests/HeavyEdit.cs", test_class("HeavyEdit"))
-        r.write("tests/A.Tests/Light.cs", test_class("LightTests"))
+        r.write("tests/A.Tests/HeavyGuards.cs", class_source("HeavyGuards", "[Fact] public void T() { var s = \"widget\"; }"))
+        r.write("tests/A.Tests/HeavyType.cs", class_source("HeavyType", "[Fact] public void T() { var t = new Thing(); }"))
+        r.write("tests/A.Tests/HeavyEdit.cs", class_source("HeavyEdit"))
+        r.write("tests/A.Tests/Light.cs", class_source("LightTests"))
         r.commit()
         r.write("src/Thing.cs", "namespace A;\n\npublic class Thing\n{\n  public int X;\n}\n")
         r.write("assets/data/widget.json", "{ \"a\": 1 }")
-        r.write("tests/A.Tests/HeavyEdit.cs", test_class("HeavyEdit", "[Fact] public void U() { }"))
+        r.write("tests/A.Tests/HeavyEdit.cs", class_source("HeavyEdit", "[Fact] public void U() { }"))
         r.commit()
         out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD~1'")
         self.assertEqual(["HeavyEdit", "HeavyType"], classes_of(out), out)
@@ -174,8 +174,8 @@ class AffectedTests(unittest.TestCase):
         r = self.repo()
         r.write("assets/lang/en.json", "{}")
         r.write("assets/recipes/shingle.json", "{}")
-        r.write("tests/A.Tests/Recipe.cs", test_class("RecipeTests", "[Fact] public void T() { var f = \"shingle\"; }"))
-        r.write("tests/A.Tests/Lang.cs", test_class("LangTests", "[Fact] public void T() { var f = \"en\"; }"))
+        r.write("tests/A.Tests/Recipe.cs", class_source("RecipeTests", "[Fact] public void T() { var f = \"shingle\"; }"))
+        r.write("tests/A.Tests/Lang.cs", class_source("LangTests", "[Fact] public void T() { var f = \"en\"; }"))
         r.commit()
         r.write("assets/lang/en.json", "{ \"a\": 1 }")
         r.write("assets/recipes/shingle.json", "{ \"a\": 1 }")
@@ -187,18 +187,18 @@ class AffectedTests(unittest.TestCase):
     def test_the_base_decides_what_changed_and_dev_is_the_default(self):
         # Fails when -Base is ignored (every run diffs against dev).
         r = self.repo()
-        r.write("tests/A.Tests/One.cs", test_class("OneTests"))
-        r.write("tests/A.Tests/Two.cs", test_class("TwoTests"))
+        r.write("tests/A.Tests/One.cs", class_source("OneTests"))
+        r.write("tests/A.Tests/Two.cs", class_source("TwoTests"))
         r.commit()
-        r.write("tests/A.Tests/One.cs", test_class("OneTests", "[Fact] public void U() { }"))
+        r.write("tests/A.Tests/One.cs", class_source("OneTests", "[Fact] public void U() { }"))
         first = r.commit()
-        r.write("tests/A.Tests/Two.cs", test_class("TwoTests", "[Fact] public void U() { }"))
+        r.write("tests/A.Tests/Two.cs", class_source("TwoTests", "[Fact] public void U() { }"))
         r.commit()
         out, _ = r.run(f"'-Affected', '-List', '-Base', '{first}'")
         self.assertEqual(["TwoTests"], classes_of(out), out)
         self.assertIn("base " + first, out)
         git(r.root, "checkout", "-q", "-b", "work", "HEAD~2")
-        r.write("tests/A.Tests/One.cs", test_class("OneTests", "[Fact] public void V() { }"))
+        r.write("tests/A.Tests/One.cs", class_source("OneTests", "[Fact] public void V() { }"))
         r.commit()
         out, _ = r.run("'-Affected', '-List'")
         self.assertEqual(["OneTests"], classes_of(out), out)
@@ -207,11 +207,11 @@ class AffectedTests(unittest.TestCase):
     def test_a_list_run_builds_and_tests_nothing_and_a_run_hands_dotnet_the_filter(self):
         # Fails when -List runs the tests, or the run's --filter is not the plan's terms.
         r = self.repo()
-        r.write("tests/A.Tests/One.cs", test_class("OneTests"))
-        r.write("tests/A.Tests/Two.cs", test_class("TwoTests"))
+        r.write("tests/A.Tests/One.cs", class_source("OneTests"))
+        r.write("tests/A.Tests/Two.cs", class_source("TwoTests"))
         r.commit()
-        r.write("tests/A.Tests/One.cs", test_class("OneTests", "[Fact] public void U() { }"))
-        r.write("tests/A.Tests/Two.cs", test_class("TwoTests", "[Fact] public void U() { }"))
+        r.write("tests/A.Tests/One.cs", class_source("OneTests", "[Fact] public void U() { }"))
+        r.write("tests/A.Tests/Two.cs", class_source("TwoTests", "[Fact] public void U() { }"))
         r.commit()
         out, runs = r.run("'-Affected', '-List', '-Base', 'HEAD~1'")
         self.assertEqual([], runs, out)
@@ -225,7 +225,7 @@ class AffectedTests(unittest.TestCase):
     def test_a_change_that_selects_nothing_runs_no_test_and_a_bad_combination_or_base_is_refused(self):
         # Fails when an empty plan runs the whole suite, or -Affected combines with -Filter, or -List stands alone.
         r = self.repo()
-        r.write("tests/A.Tests/One.cs", test_class("OneTests"))
+        r.write("tests/A.Tests/One.cs", class_source("OneTests"))
         r.write("README.md", "a")
         r.commit()
         r.write("README.md", "b")
