@@ -37,6 +37,8 @@
   by rename, keeping the previous publish and deleting older ones past 10 minutes. With
   `EXMOD_SHAPES_NO_BUILD` set those commands run `current` with no lock and refuse when nothing is
   published, so renders are not held up by a build or suite.
+- A partition part may take `paths` instead of `filter`: folders of the test project, relative to its folder, which become one `FullyQualifiedName~.<Class>.` and one `FullyQualifiedName~.<Class>+` term per top-level class declared there; a part takes a filter or paths, never both. `exmod test -List` without `-Affected` lists the partitions of every partitioned assembly; `-Base` alone throws `-Base needs -Affected.`, where `-Base` and `-List` both needed `-Affected` before.
+- Every test host keeps its per-test seconds in `$EXMOD_TIMES_DIR` (default `~/.cache/exmod/test-times`), one folder per run id holding a `<series>-<project>[-<part>].tsv` per host and a `run.json` (root, commit, branch, `filtered`, trigger, time); the newest 60 filtered run folders and, apart from them, the newest 60 unfiltered ones are kept. A run's log row names its folder in the `times` key. A run prints `Slowest classes:` after its results: the 25 classes with the most seconds, summed across parts, each with the parts it ran in.
 
 ### Fixed
 
