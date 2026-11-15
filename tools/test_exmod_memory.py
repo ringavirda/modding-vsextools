@@ -568,18 +568,22 @@ class MemoryTests(unittest.TestCase):
         self.assertRegex(out, r"memory: b released 2 GiB at \d\d:\d\d:\d\d, held \d+ s$")
 
 
-    def share(self, filter_text, memory=None, peaks=(), filtered=True, heavy=False):
-        """Get-ExmodTestShare for A.Tests as `ShareGb|LimitGb|RetryShareGb|ShareSource`, with `memory` as the manifest's
-        A.Tests testMemory entry (none when None) and `peaks` as rows of the memory log."""
+    def share(self, filter_text, memory=None, peaks=(), filtered=True, heavy=False, names=None):
+        """Get-ExmodTestShare for A.Tests as `ShareGb|LimitGb|RetryShareGb|ShareSource|RetryLimitGb`, with `memory` as the
+        manifest's A.Tests testMemory entry (none when None), `peaks` as rows of the memory log and `names` as the lines
+        of the newest recorded test-names file of the assembly."""
         manifest = {"testMemory": {"A.Tests": memory}} if memory else {}
         touch(os.path.join(self.repo, "exmod.json"), json.dumps(manifest))
-        rows = [{"label": "1.22/A.Tests", "filtered": True, "filter": "F", "peakGb": None, **p} for p in peaks]
+        rows = [{"label": "1.22/A.Tests", "filtered": True, "filter": "F", "peakGb": None, "limitGb": None, **p} for p in peaks]
         touch(os.path.join(self.tmp, "local", "memory-peaks.jsonl"), "".join(json.dumps(r) + "\n" for r in rows))
+        times = os.path.join(self.tmp, "times")
+        if names is not None:
+            touch(os.path.join(times, "run1", "1.22-A.Tests.tsv"), "".join(f"Passed\t0.001\t{c}\t{d}\n" for c, d in names))
         flag = "$true" if filtered else "$false"
         body = (f"$s = Get-ExmodTestShare 'A.Tests' $null {flag} '{filter_text}'; "
-                "\"$($s.ShareGb)|$($s.LimitGb)|$($s.RetryShareGb)|$($s.ShareSource)\"")
+                "\"$($s.ShareGb)|$($s.LimitGb)|$($s.RetryShareGb)|$($s.ShareSource)|$($s.RetryLimitGb)\"")
         env = {"EXMOD_HEAVY": "1"} if heavy else {}
-        return self.start(body, **env).finish(30).strip().splitlines()[-1].split("|")
+        return self.start(body, EXMOD_TIMES_DIR=times, **env).finish(30).strip().splitlines()[-1].split("|")
 
     ENTRY = {"heapGb": 20, "filterHeapGb": 15, "filterStartGb": 4}
 
@@ -588,33 +592,90 @@ class MemoryTests(unittest.TestCase):
         # or if a row of another filter, an unfiltered row or a lower peak decides (30, 40 or 3.1).
         peaks = [{"peakGb": 3.1}, {"peakGb": 7.2}, {"peakGb": 5.0},
                  {"peakGb": 30, "filter": "G"}, {"peakGb": 40, "filtered": False}, {"peakGb": 50, "label": "1.22/B.Tests"}]
-        share, limit, _, source = self.share("F", self.ENTRY, peaks, heavy=True)
+        share, limit, _, source, _ = self.share("F", self.ENTRY, peaks, heavy=True)
         self.assertEqual(("9", "20"), (share, limit))
         self.assertEqual("recorded peak 7.2 GiB + 1", source)
 
+    def test_a_filtered_run_under_the_filter_limit_starts_at_the_peak_rounded_up_plus_one(self):
+        # Fails if the peak is not rounded up and raised by one (9 or 10 instead of 11), if the share is not the limit
+        # plus one (11), or if the rerun is lost while the limit is below filterHeapGb.
+        share, limit, retry, source, retry_limit = self.share("F", self.ENTRY, [{"peakGb": 9.2, "limitGb": 15}])
+        self.assertEqual(("12", "11", "16", "15"), (share, limit, retry, retry_limit))
+        self.assertEqual("recorded peak 9.2 GiB, heap 11 GiB + 1", source)
+
+    def test_a_peak_of_a_run_that_stayed_under_its_limit_less_half_a_gib_counts_and_one_that_hit_it_does_not(self):
+        # Fails if rows are kept at their limit (the 3.9 at 4 sets the limit to 5), if a peak within half a GiB of its limit counts
+        # (the 5.5 at 6 sets 8) or if one just under that margin is ignored (the 5.4 at 6).
+        share, limit, _, source, _ = self.share("F", self.ENTRY, [{"peakGb": 3.9, "limitGb": 4}])
+        self.assertEqual(("5", "4", "heap 4 GiB + 1"), (share, limit, source))
+        share, limit, _, _, _ = self.share("F", self.ENTRY, [{"peakGb": 3.9, "limitGb": 4}, {"peakGb": 5.5, "limitGb": 6}])
+        self.assertEqual(("5", "4"), (share, limit))
+        share, limit, _, _, _ = self.share("F", self.ENTRY, [{"peakGb": 3.9, "limitGb": 4}, {"peakGb": 5.4, "limitGb": 6}])
+        self.assertEqual(("8", "7"), (share, limit))
+
+    def test_a_filter_with_no_peak_starts_at_filter_start_plus_one_gib_per_hundred_tests_it_matches(self):
+        # Fails if the start is filterStartGb always (5 instead of 15 below), if the count is not divided (1,004 or 5), or if the cap is dropped.
+        names = [("A.Tests.Big", f"Big.T{i}") for i in range(1000)] + [("A.Tests.Small", f"Small.T{i}") for i in range(544)]
+        share, limit, retry, source, retry_limit = self.share("FullyQualifiedName~.Big.", self.ENTRY, names=names)
+        self.assertEqual(("15", "14", "16", "15"), (share, limit, retry, retry_limit))
+        self.assertEqual("1000 tests, heap 14 GiB + 1", source)
+        share, limit, _, _, _ = self.share("FullyQualifiedName~.Small.", self.ENTRY, names=names)
+        self.assertEqual(("11", "10"), (share, limit))
+        share, limit, retry, _, _ = self.share("FullyQualifiedName~A.Tests", self.ENTRY, names=names)
+        self.assertEqual(("16", "15", ""), (share, limit, retry))
+
+    def test_the_count_reads_each_kind_of_term_and_a_bare_class_name(self):
+        # Fails if a kind of term is not counted, a test matched by two terms is counted twice, or the tests-per-GiB key is ignored.
+        names = [("A.Tests.One", f"One.T{i}") for i in range(30)] + [("A.Tests.Two", f"row: x{i}") for i in range(30)]
+        entry = {**self.ENTRY, "filterTestsPerGb": 10}
+        filters = {"FullyQualifiedName~.One.": 7, "One": 7, "DisplayName~row: x": 7, "FullyQualifiedName=A.Tests.One.One.T3": 5,
+                   "FullyQualifiedName~.One.|One|DisplayName~row: x1": 9}
+        for text, limit in filters.items():
+            self.assertEqual(str(limit), self.share(text, entry, names=names)[1], text)
+
+    def test_an_unreadable_filter_or_no_names_starts_at_filter_start(self):
+        # Fails if a filter outside the understood terms is counted anyway, or the missing names file is not tolerated.
+        names = [("A.Tests.One", f"One.T{i}") for i in range(1000)]
+        for text in ("FullyQualifiedName~One&Category=x", "(FullyQualifiedName~One)", "Category=x", "FullyQualifiedName!~One"):
+            self.assertEqual("4", self.share(text, self.ENTRY, names=names)[1], text)
+        shutil.rmtree(os.path.join(self.tmp, "times"))
+        self.assertEqual("4", self.share("FullyQualifiedName~One", self.ENTRY)[1])
+
+    def test_a_filterTestsPerGb_that_is_not_a_whole_number_is_refused(self):
+        # Fails if the key is read unchecked (the run takes the default instead of throwing).
+        out = self.share_text("F", {**self.ENTRY, "filterTestsPerGb": 0})
+        self.assertIn("exmod.json: testMemory.A.Tests.filterTestsPerGb must be a whole number of GiB above 0", out)
+
+    def share_text(self, filter_text, memory):
+        touch(os.path.join(self.repo, "exmod.json"), json.dumps({"testMemory": {"A.Tests": memory}}))
+        return self.start(f"try {{ Get-ExmodTestShare 'A.Tests' $null $true '{filter_text}' }} catch {{ $_.Exception.Message }}").finish(30)
+
     def test_a_filtered_run_with_no_recorded_peak_takes_the_heap_it_starts_under_plus_headroom(self):
         # Fails if the unfiltered size is taken for the filtered run (EXMOD_HEAVY=1 on a filter no part owns: 21, not 5).
-        share, limit, _, source = self.share("F", self.ENTRY, [{"peakGb": None}])
+        share, limit, _, source, _ = self.share("F", self.ENTRY, [{"peakGb": None}])
         self.assertEqual(("5", "4", "heap 4 GiB + 1"), (share, limit, source))
-        share, limit, _, source = self.share("DisplayName~x", self.ENTRY, heavy=True)
+        share, limit, _, source, _ = self.share("DisplayName~x", self.ENTRY, heavy=True)
         self.assertEqual(("21", "20", "heap 20 GiB + 1"), (share, limit, source))
-        share, _, _, source = self.share("F", self.ENTRY, filtered=False)
+        share, _, _, source, _ = self.share("F", self.ENTRY, filtered=False)
         self.assertEqual(("21", "configured heap"), (share, source))
 
     def test_a_filtered_run_of_an_assembly_with_no_entry_takes_the_small_default(self):
         # Fails if the unlimited unfiltered share (4) is taken for the filtered run, or if the default ignores a recorded peak.
-        share, limit, _, source = self.share("F")
+        share, limit, _, source, _ = self.share("F")
         self.assertEqual(("2", "", "default for a filtered run with no testMemory entry"), (share, limit, source))
         self.assertEqual("4", self.share("F", filtered=False)[0])
         self.assertEqual("4", self.share("F", peaks=[{"peakGb": 2.6}])[0])
 
     def test_the_share_of_the_rerun_after_an_out_of_memory_grows_with_its_heap(self):
-        # Fails if the rerun share is the first share (5), drops the headroom (8), or falls below a larger recorded peak.
+        # Fails if the rerun share is the first share (5), drops the headroom (8), or the rerun goes below filterHeapGb
+        # (the limit of 1,000 tests below is 14, its rerun 15).
         entry = {"heapGb": 12, "filterHeapGb": 8, "filterStartGb": 3}
-        share, _, retry, _ = self.share("F", entry)
+        share, _, retry, _, _ = self.share("F", entry)
         self.assertEqual(("4", "9"), (share, retry))
-        share, _, retry, _ = self.share("F", entry, [{"peakGb": 10.5}])
-        self.assertEqual(("12", "12"), (share, retry))
+        share, limit, retry, _, retry_limit = self.share("F", entry, [{"peakGb": 5.2}])
+        self.assertEqual(("8", "7", "9", "8"), (share, limit, retry, retry_limit))
+        share, limit, retry, _, _ = self.share("F", entry, [{"peakGb": 10.5}])
+        self.assertEqual(("9", "8", ""), (share, limit, retry))
 
     def test_the_took_line_says_where_the_share_came_from(self):
         # Fails if Lock-ExmodMemory leaves -Source off the line, or prints a share part when none is given.
