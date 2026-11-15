@@ -700,6 +700,10 @@ function Invoke-Smoke([string[]]$Argv) {
   $reservation = $null
   $memory = $null
   try {
+    if (-not $modsOpt -and -not (Get-ExmodBuildTargets).Count) {
+      Write-Host "no mods in this repository: smoke skipped"
+      return
+    }
     Invoke-WithBuildLock {
       $stage.ServerDir = Resolve-SmokeServer $version
       $modDirs = if ($modsOpt) { Resolve-ModDirs @($modsOpt -split ',') } else { Get-ScratchDefaultModDirs }
