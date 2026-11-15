@@ -1795,8 +1795,9 @@ exit, seconds, time, tests, passed, failed, skipped, failures (at most 50, then 
 directory under $EXMOD_TIMES_DIR, default ~/.cache/exmod/test-times, holding one tab-separated file per host,
 <label with / as ->.tsv, a line per test: outcome, seconds, class, display name; and run.json with root, commit, branch,
 trigger, time and filtered; the newest 60 filtered and the newest 60 unfiltered run directories stay). A run that wrote
-per-test seconds ends its results with `Slowest classes:`, the 25 classes with the most seconds summed across parts, each line `<seconds> <class> <parts>`. A -Coverage run writes
-no record. A failure to write or read it changes nothing else about the run.
+per-test seconds ends its results with `Slowest classes:`, the 25 classes with the most seconds summed across parts,
+each line `<seconds> <class> <parts>`. A -Coverage run writes no record. A failure to write or read it changes nothing
+else about the run.
 Where there is a process table (EXMOD_PROC_DIR, /proc; none on Windows) a share is granted on real use and no waiter holds
 a lock while it waits: each second one decision grants it when MemAvailable less EXMOD_MEMORY_FLOOR_GB (10) is at least its
 charge, or when no test host is running. The charge is the p95 of the last 50 peaks in EXMOD_MEMORY_LOG plus 1 GiB once 5
