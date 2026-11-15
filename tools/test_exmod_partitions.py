@@ -896,6 +896,7 @@ class RunRecordTests(unittest.TestCase):
             for i in range(1, 65):
                 p = os.path.join(times, f"old{i:02d}")
                 os.makedirs(p)
+                touch(os.path.join(p, "run.json"), json.dumps({"filtered": True}))
                 os.utime(p, (1_700_000_000 - i * 86400, 1_700_000_000 - i * 86400))
             trx = os.path.join(d, "in.trx")
             write_trx(trx, 1, 1)
@@ -906,6 +907,29 @@ class RunRecordTests(unittest.TestCase):
             self.assertIn("fresh", left)
             self.assertIn("old59", left)
             self.assertNotIn("old60", left)
+
+    def test_filtered_and_unfiltered_runs_are_pruned_to_sixty_each(self):
+        # Fails when the two kinds share one limit of sixty: 64 old filtered directories then push every unfiltered one out.
+        with tempfile.TemporaryDirectory() as d:
+            times = os.path.join(d, "times")
+            for kind, filtered in (("f", True), ("u", False)):
+                for i in range(1, 65):
+                    p = os.path.join(times, f"{kind}{i:02d}")
+                    os.makedirs(p)
+                    touch(os.path.join(p, "run.json"), json.dumps({"filtered": filtered}))
+                    stamp = 1_700_000_000 - i * 86400 - (0 if filtered else 1)
+                    os.utime(p, (stamp, stamp))
+            trx = os.path.join(d, "in.trx")
+            write_trx(trx, 1, 1)
+            run_pwsh("", {"EXMOD_RUN_LOG": os.path.join(d, "r.jsonl"), "EXMOD_TIMES_DIR": times, "TEST_TRX_SRC": trx, "EXMOD_RUN_ID": "fresh"},
+                     args="'-Filter', 'FullyQualifiedName~.Other.'")
+            left = sorted(os.listdir(times))
+            self.assertEqual(60, len([n for n in left if n.startswith("u")]), left)
+            self.assertEqual(60, len([n for n in left if n.startswith("f")]), left)
+            self.assertIn("fresh", left)
+            self.assertIn("u60", left)
+            self.assertNotIn("u61", left)
+            self.assertNotIn("f60", left)
 
     def test_two_parts_give_one_slowest_block_summed_and_ordered(self):
         # Fails when a class's seconds are not summed across parts (the order changes), the block is printed per part,
@@ -935,13 +959,16 @@ class RunRecordTests(unittest.TestCase):
             got = [l for l in out.splitlines() if l.startswith("got: ")]
             self.assertEqual(["got: 8.0 Mod.B one,two", "got: 5.0 Mod.A one", "got: 1.0 Mod.C two"], got, out)
 
-    def test_an_unpartitioned_run_prints_no_slowest_block(self):
-        # Fails when the block is printed for a run with no parts.
+    def test_an_unpartitioned_run_prints_the_slowest_block(self):
+        # Fails when the block is printed only for a run with parts.
         with tempfile.TemporaryDirectory() as d:
             trx = os.path.join(d, "in.trx")
             write_trx(trx, 2, 1)
             out, _, _ = run_times(args="'-Filter', 'FullyQualifiedName~.Other.'", env_extra={"TEST_TRX_SRC": trx})
-            self.assertNotIn("Slowest classes:", out)
+            self.assertEqual(1, out.count("Slowest classes:"), out)
+            lines = [l for l in out[out.index("Slowest classes:"):].splitlines()[1:] if l.startswith("  ")]
+            self.assertEqual(2, len(lines), out)
+            self.assertIn("Mod.Tests.C", lines[0])
 
     def test_a_large_trx_is_read_without_loading_it_whole(self):
         # Fails when the reader loads the file whole (XmlDocument or ReadAllText): the process's peak working set then

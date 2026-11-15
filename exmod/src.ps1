@@ -769,8 +769,15 @@ function Write-ExmodTestTimes([string]$RunId, [string]$Root, $Tree, [string]$Lab
       time = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture)
     }
     [System.IO.File]::WriteAllText((Join-Path $dir 'run.json'), (ConvertTo-Json $run -Compress))
-    foreach ($old in @(Get-ChildItem -LiteralPath $store -Directory | Sort-Object LastWriteTimeUtc -Descending | Select-Object -Skip 60)) {
-      Remove-Item -LiteralPath $old.FullName -Recurse -Force -ErrorAction SilentlyContinue
+    $kept = @{ $true = 0; $false = 0 }
+    foreach ($old in @(Get-ChildItem -LiteralPath $store -Directory | Sort-Object LastWriteTimeUtc -Descending)) {
+      $wasFiltered = $false
+      $runJson = Join-Path $old.FullName 'run.json'
+      if (Test-Path -LiteralPath $runJson) {
+        try { $wasFiltered = [bool](Get-Content -LiteralPath $runJson -Raw | ConvertFrom-Json).filtered } catch { }
+      }
+      $kept[$wasFiltered]++
+      if ($kept[$wasFiltered] -gt 60) { Remove-Item -LiteralPath $old.FullName -Recurse -Force -ErrorAction SilentlyContinue }
     }
     return $dir
   }
@@ -1641,13 +1648,11 @@ function Invoke-Test([string[]]$Argv) {
     }
   }
 
-  if (@($units | Where-Object { $_.Part })) {
-    $slowest = @(Get-ExmodSlowestClasses (Join-Path (Get-ExmodTestTimesRoot) (Get-ExmodRunId)) @($units | ForEach-Object { "$($_.Version)-$($_.Project)" } | Select-Object -Unique))
-    if ($slowest) {
-      Write-Host ""
-      Write-Host "Slowest classes:"
-      foreach ($l in $slowest) { Write-Host "  $l" }
-    }
+  $slowest = @(Get-ExmodSlowestClasses (Join-Path (Get-ExmodTestTimesRoot) (Get-ExmodRunId)) @($units | ForEach-Object { "$($_.Version)-$($_.Project)" } | Select-Object -Unique))
+  if ($slowest) {
+    Write-Host ""
+    Write-Host "Slowest classes:"
+    foreach ($l in $slowest) { Write-Host "  $l" }
   }
 
   if ($stop.ContainsKey('red')) {
