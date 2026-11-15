@@ -17,7 +17,8 @@ exmod.json           "tools": "<version>" plus what the repository holds
 ```
 
 Both launchers find this checkout in the same order and stop at the first that holds `exmod.ps1`:
-the `EXTOOLS_HOME` environment variable; the workspace sibling `../extools`; a clone of the pinned
+the `EXTOOLS_HOME` environment variable; the workspace sibling `../extools`; (`exmod.sh` only) the
+`extools` beside the repository's main checkout, which a git worktree of it finds; a clone of the pinned
 tag under `.extools/` (made on first use, moved when the pin changes; `EXTOOLS_URL` overrides the
 clone source). They then run the dispatcher with the repository as its root. `bash scripts/exmod.sh`
 lists every command; `exmod help <command>` describes one. The repository's `exmod.json` names its
