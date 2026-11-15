@@ -1388,8 +1388,44 @@ function Invoke-Test([string[]]$Argv) {
 }
 
 
+# The reason `exmod test` refuses $Argv, or $null: in a lane worktree (a $RepoRoot under sessions/.worktrees) with
+# EXMOD_HEAVY not 1 and EXMOD_RUN_TRIGGER not starting with `landing:`, a run with neither -Filter nor -Affected,
+# a -Filter with a `|`, `&` or parenthesis separated term that is only the IronIndustryExpanded namespace
+# (`<property>~` or `=`, optionally `.Tests`), or a -Filter naming a Get-ExmodHeavyClasses class as a whole word.
+function Get-ExmodLaneTestRefusal([string[]]$Argv) {
+  if ($env:EXMOD_HEAVY -eq '1' -or "$env:EXMOD_RUN_TRIGGER".StartsWith('landing:')) { return $null }
+  $segments = @(($RepoRoot -replace '\\', '/') -split '/')
+  $lane = $false
+  for ($i = 0; $i -lt $segments.Count - 1; $i++) {
+    if ($segments[$i] -ceq 'sessions' -and $segments[$i + 1] -ceq '.worktrees') { $lane = $true }
+  }
+  if (-not $lane) { return $null }
+  $filter = Get-Opt $Argv '-Filter' ''
+  if (-not $filter) {
+    if (Get-Flag $Argv '-Affected') { return $null }
+    return 'it has no -Filter, and a lane never runs a test project unfiltered; the full suite runs at landing. Name the tests the lane changed with -Filter, or use -Affected'
+  }
+  foreach ($class in Get-ExmodHeavyClasses) {
+    if ($filter -cmatch ('(?<!\w)' + [regex]::Escape($class) + '(?!\w)')) {
+      return "its -Filter names $class, a heavy class. Heavy classes run once at the lane's end, or in the loop when the lane's task changes that class or what it guards, with EXMOD_HEAVY=1"
+    }
+  }
+  foreach ($term in ($filter -split '[|&()]')) {
+    if ($term -cmatch '^\s*\w+\s*[~=]\s*IronIndustryExpanded(\.Tests)?\s*$') {
+      return "its -Filter is only a namespace, which selects the whole suite. Name the classes or tests the lane changed; a run of the namespace is the landing's, or the lane's end with EXMOD_HEAVY=1"
+    }
+  }
+  return $null
+}
+
 Add-ExmodCommand -Group source -Name test -Summary 'run the test suites, one lane per game version' -Action {
-  param([string[]]$Argv) Invoke-Test $Argv
+  param([string[]]$Argv)
+  $refusal = Get-ExmodLaneTestRefusal $Argv
+  if ($refusal) {
+    Write-Host "exmod test refused in a lane worktree: $refusal." -ForegroundColor Red
+    exit 2
+  }
+  Invoke-Test $Argv
 } -Detail @'
 exmod test [latest|all|1.22|1.21|1.20] [-Filter <expr>] [-Parts <names>|red] [-Affected [-Base <ref>] [-List]] [-StopOnRed] [-Throttle <n>] [-Coverage] [-AcceptDrop] [-NoBuild]
 
@@ -1428,6 +1464,13 @@ mod projects they share build once.
   -NoBuild    skip the build and run the lanes against what is already built; a lane whose
               Debug test assembly for its framework is missing fails with 'Not built'.
               Ignored by -Coverage
+
+In a lane worktree (this repository's root under a sessions/.worktrees folder) the command refuses, before any build,
+provisioning or lock, and exits 2 when: it has neither -Filter nor -Affected (-Coverage and -Parts count as unfiltered);
+a -Filter term (terms split at `|`, `&` and parentheses) is only the IronIndustryExpanded namespace, as
+`FullyQualifiedName~IronIndustryExpanded` or `=IronIndustryExpanded.Tests`; or the -Filter names, as a whole word, a class
+of $EXMOD_HEAVY_TESTS. EXMOD_HEAVY=1 lifts all three, and a run whose EXMOD_RUN_TRIGGER starts with `landing:` is never
+refused. `exmod check` is not refused.
 
 With EXMOD_BUILD_LOCK set to a file, the build and provisioning part of the run holds that file's flock
 (waiting up to EXMOD_BUILD_LOCK_WAIT seconds, default 3000) and the lanes run with it free; -Coverage holds

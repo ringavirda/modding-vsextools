@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # exmod launcher for a repository that consumes extools. Finds the tools checkout (EXTOOLS_HOME,
-# the workspace sibling ../extools, or a clone of the tag pinned in exmod.json under .extools/),
-# finds pwsh (bootstrapping it into a .dotnet/tools when the machine has none) and forwards every
+# the workspace sibling ../extools, the extools beside the main checkout of a git worktree, or a
+# clone of the tag pinned in exmod.json under .extools/), finds pwsh (bootstrapping it into a
+# .dotnet/tools when the machine has none) and forwards every
 # argument to the dispatcher with this repository as the root. Not a second implementation of
 # anything: exmod.ps1 in the tools checkout holds the commands.
 set -euo pipefail
@@ -14,14 +15,19 @@ tools_pin() {
   sed -nE 's/^[[:space:]]*"tools"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$repo_root/exmod.json" 2>/dev/null | head -n 1
 }
 
-# The extools checkout, first rung that holds exmod.ps1: EXTOOLS_HOME, the sibling ../extools,
-# then .extools/ cloned or moved to the pinned tag.
+# The extools checkout, first rung that holds exmod.ps1: EXTOOLS_HOME, the sibling ../extools, the
+# extools beside the main checkout of this repository's worktree (the parent of git's common dir; skipped
+# without git or outside a repository), then .extools/ cloned or moved to the pinned tag.
 resolve_extools() {
   if [[ -n "${EXTOOLS_HOME:-}" && -f "$EXTOOLS_HOME/exmod.ps1" ]]; then
     printf '%s' "$EXTOOLS_HOME"; return
   fi
   if [[ -f "$repo_root/../extools/exmod.ps1" ]]; then
     (cd "$repo_root/../extools" && pwd); return
+  fi
+  local common
+  if common="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" && [[ -f "$common/../../extools/exmod.ps1" ]]; then
+    (cd "$common/../../extools" && pwd); return
   fi
   local version
   version="$(tools_pin)"

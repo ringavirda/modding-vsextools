@@ -17,7 +17,8 @@ exmod.json           "tools": "<version>" plus what the repository holds
 ```
 
 Both launchers find this checkout in the same order and stop at the first that holds `exmod.ps1`:
-the `EXTOOLS_HOME` environment variable; the workspace sibling `../extools`; a clone of the pinned
+the `EXTOOLS_HOME` environment variable; the workspace sibling `../extools`; (`exmod.sh` only) the
+`extools` beside the repository's main checkout, which a git worktree of it finds; a clone of the pinned
 tag under `.extools/` (made on first use, moved when the pin changes; `EXTOOLS_URL` overrides the
 clone source). They then run the dispatcher with the repository as its root. `bash scripts/exmod.sh`
 lists every command; `exmod help <command>` describes one. The repository's `exmod.json` names its
@@ -184,7 +185,10 @@ editing its own `"tools"` pin.
 `bash scripts/exmod.sh test latest` builds and tests the verify tool against a
 provisioned game install (`bash scripts/exmod.sh provision game -Kind server` fetches the
 dedicated-server archive, which needs no licence). A series' test projects build in one parallel MSBuild call. `exmod test -NoBuild` runs the suites against
-what is already built and fails a lane whose test assembly is missing. The scripts are PowerShell 7; `exmod.sh`
+what is already built and fails a lane whose test assembly is missing. In a lane worktree (a checkout under a `sessions/.worktrees` folder) `test` exits 2
+before building when it has neither `-Filter` nor `-Affected`, when a `-Filter` term is only the `IronIndustryExpanded` namespace,
+or when the `-Filter` names a class of the heavy list (`$EXMOD_HEAVY_TESTS`); `EXMOD_HEAVY=1` lifts all three, and a run with
+`EXMOD_RUN_TRIGGER=landing:...` is never refused. The scripts are PowerShell 7; `exmod.sh`
 installs `pwsh` when the machine has none, into the workspace root's `.dotnet/tools` when an
 `exmod.workspace.json` is above the checkout, else into the checkout's own.
 
