@@ -202,7 +202,13 @@ function Invoke-ShapesBuild([string[]]$Argv) {
   "exlib-shapes published to $dest."
 }
 
-function Invoke-Item([string[]]$Argv) { Invoke-ExlibShapes 'item' $Argv }
+function Invoke-Item([string[]]$Argv) {
+  $named = (Get-Opt $Argv '--views-dump' $null) -or ($Argv | Where-Object { $_ -like '--views-dump=*' })
+  if (-not $named -and $env:EX_ITEM_VIEWS -and (Test-Path -LiteralPath $env:EX_ITEM_VIEWS -PathType Container)) {
+    $Argv = @($Argv) + @('--views-dump', $env:EX_ITEM_VIEWS)
+  }
+  Invoke-ExlibShapes 'item' $Argv
+}
 function Invoke-ItemViews([string[]]$Argv) { Invoke-ExlibShapes 'item-views' $Argv }
 
 Add-ExmodCommand -Group source -Name render -Summary 'render a shape file to textured views or animation frames' -Action {
@@ -325,7 +331,7 @@ published.
 Add-ExmodCommand -Group source -Name item -Summary 'render one itemtype variant to its own picture' -Action {
   param([string[]]$Argv) Invoke-Item $Argv
 } -Detail @'
-exmod item FILE --out=DIR [--variant CODE] [--views gui,tp,fp,ground[,iso]] [--ppu N] [--roots PATH...] [--game PATH]
+exmod item FILE --out=DIR [--variant CODE] [--views gui,tp,fp,ground[,iso]] [--views-dump=DIR] [--ppu N] [--roots PATH...] [--game PATH]
 
 Renders one variant of an itemtype file: the isometric view of its own shape, painted with the
 itemtype's texture map, when it ships a model, and its flat inventory texture enlarged on the same
@@ -335,9 +341,14 @@ the centre slot of a 3 x 3 grid of inventory slots, `tp` the player holding it, 
 side and from the front right side by side, `fp` its hands holding it seen from the eye (both need the game's player shape among
 the assets), `ground`
 the item lying on a stone block, all from the itemtype's own transforms and held clips.
+The views exlib computed come from a folder of item-views/1 dumps, `--views-dump`, EXMOD's
+EX_ITEM_VIEWS when that names an existing folder and the option is not given. Without one, an exlib
+mod item whose itemtype authors no transform is drawn with vanilla's default and warned about per
+view; render it from its dump with `exmod item-views` as well.
 See exshapes/ExlibShapes/README.md for the full option list and the standalone `exlib-shapes` tool.
 `--out` needs the `=` form here: PowerShell's own parameter binder treats a bare `--out` token as
-an ambiguous prefix of its common `-OutVariable`/`-OutBuffer` parameters and refuses it outright.
+an ambiguous prefix of its common `-OutVariable`/`-OutBuffer` parameters and refuses it outright;
+`--views-dump` is forwarded the same way.
 
 The tool is built only when its output is missing or older than its sources. With
 EXMOD_SHAPES_NO_BUILD=1 it runs the copy `exmod shapes-build` published, takes no lock, so renders
@@ -348,6 +359,7 @@ published.
   --out=DIR       where the PNGs and <stem>.json are written
   --variant CODE  the variant to draw (default: the family's first)
   --views LIST    comma-separated: iso, gui, tp, fp, ground (default: the iso render and the icon)
+  --views-dump DIR  a folder of item-views/1 dumps (default: EX_ITEM_VIEWS when it is an existing folder)
   --ppu N         pixels per shape unit for the isometric render (default: 24)
   --roots PATH    extra mod repository roots to resolve textures against (repeatable)
   --game PATH     a specific game install (default: this repository's own provisioned one)
