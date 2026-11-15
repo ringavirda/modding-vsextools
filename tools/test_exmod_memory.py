@@ -13,6 +13,7 @@ import sys
 import tempfile
 import threading
 import time
+import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -626,12 +627,34 @@ class MemoryTests(unittest.TestCase):
 
     def test_the_count_reads_each_kind_of_term_and_a_bare_class_name(self):
         # Fails if a kind of term is not counted, a test matched by two terms is counted twice, or the tests-per-GiB key is ignored.
-        names = [("A.Tests.One", f"One.T{i}") for i in range(30)] + [("A.Tests.Two", f"row: x{i}") for i in range(30)]
+        names = [("A.Tests.One", f"A.Tests.One.T{i}") for i in range(30)] + [("A.Tests.Two", f"A.Tests.Two.Row(row: x{i})") for i in range(30)]
         entry = {**self.ENTRY, "filterTestsPerGb": 10}
-        filters = {"FullyQualifiedName~.One.": 7, "One": 7, "DisplayName~row: x": 7, "FullyQualifiedName=A.Tests.One.One.T3": 5,
+        filters = {"FullyQualifiedName~.One.": 7, "One": 7, "DisplayName~row: x": 7, "FullyQualifiedName=A.Tests.One.T3": 5,
                    "FullyQualifiedName~.One.|One|DisplayName~row: x1": 9}
         for text, limit in filters.items():
             self.assertEqual(str(limit), self.share(text, entry, names=names)[1], text)
+
+    def test_a_fully_qualified_display_name_is_not_prefixed_twice_and_a_contains_term_ignores_case(self):
+        # Fails if the class is prefixed to a display name that already holds it (`=` terms count 0, limit 4), or if `~` is case-sensitive.
+        names = [("A.Tests.Big", f"A.Tests.Big.T{i}") for i in range(30)] + [("A.Tests.Big", f"A.Tests.Big.Row(row: x{i})") for i in range(30)]
+        entry = {**self.ENTRY, "filterTestsPerGb": 10}
+        filters = {"FullyQualifiedName=A.Tests.Big.T3": 5, "FullyQualifiedName=A.Tests.Big.Row": 7,
+                   "FullyQualifiedName~a.tests.big.t": 7, "DisplayName~a.tests.big.row": 7}
+        for text, limit in filters.items():
+            self.assertEqual(str(limit), self.share(text, entry, names=names)[1], text)
+
+    def test_a_newer_filtered_run_does_not_shrink_the_count(self):
+        # Fails if the newest run directory is read whether or not run.json says it was filtered (Big counts 10 names: limit 4, not 14).
+        times = os.path.join(self.tmp, "times")
+        touch(os.path.join(times, "full", "1.22-A.Tests-rest.tsv"), "".join(f"Passed\t0.001\tA.Tests.Big\tA.Tests.Big.T{i}\n" for i in range(1000)))
+        touch(os.path.join(times, "full", "run.json"), json.dumps({"filtered": False}))
+        time.sleep(1.1)
+        touch(os.path.join(times, "newer", "1.22-A.Tests.tsv"), "".join(f"Passed\t0.001\tA.Tests.Small\tA.Tests.Small.T{i}\n" for i in range(10)))
+        touch(os.path.join(times, "newer", "run.json"), json.dumps({"filtered": True}))
+        touch(os.path.join(self.repo, "exmod.json"), json.dumps({"testMemory": {"A.Tests": self.ENTRY}}))
+        body = "$s = Get-ExmodTestShare 'A.Tests' $null $true 'FullyQualifiedName~.Big.'; \"$($s.LimitGb)|$($s.ShareSource)\""
+        out = self.start(body, EXMOD_TIMES_DIR=times).finish(30).strip().splitlines()[-1]
+        self.assertEqual("14", out.split("|")[0], out)
 
     def test_an_unreadable_filter_or_no_names_starts_at_filter_start(self):
         # Fails if a filter outside the understood terms is counted anyway, or the missing names file is not tolerated.
@@ -668,7 +691,7 @@ class MemoryTests(unittest.TestCase):
 
     def test_the_share_of_the_rerun_after_an_out_of_memory_grows_with_its_heap(self):
         # Fails if the rerun share is the first share (5), drops the headroom (8), or the rerun goes below filterHeapGb
-        # (the limit of 1,000 tests below is 14, its rerun 15).
+        # .
         entry = {"heapGb": 12, "filterHeapGb": 8, "filterStartGb": 3}
         share, _, retry, _, _ = self.share("F", entry)
         self.assertEqual(("4", "9"), (share, retry))

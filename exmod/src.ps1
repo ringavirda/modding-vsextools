@@ -351,9 +351,9 @@ function Get-ExmodTestSource([string]$Project) {
   return [pscustomobject]@{ Dir = $dir; Segments = $segments }
 }
 
-# The `FullyQualifiedName~.<Class>.` terms of the part $Part (index $Index) of partitions.$Project that names
-# `paths`: one per class declared in a .cs file under each folder, sorted by name, in the order the folders are
-# listed. $Source is Get-ExmodTestSource's. A class is left out, and so falls to the complement, when $Claimed (the
+# The `FullyQualifiedName~.<Class>.` and `FullyQualifiedName~.<Class>+` (its nested classes) terms of the part $Part
+# (index $Index) of partitions.$Project that names `paths`: a pair per top-level class (declared at column 0) in a .cs
+# file under each folder, sorted by name, in the order the folders are listed. $Source is Get-ExmodTestSource's. A class is left out, and so falls to the complement, when $Claimed (the
 # classes of earlier path parts, added to here) holds it, when a term of $EarlierFilters (the explicit filters of
 # earlier parts) contains `.<Class>.`, or when it is also a namespace segment, as `.<Class>.` would then match every
 # test under that namespace. Throws on a folder that does not exist and on a part left with no class.
@@ -363,7 +363,7 @@ function Resolve-ExmodPartPaths([string]$Project, [int]$Index, $Part, $Source, [
     $folder = Join-Path $Source.Dir $rel
     if (-not (Test-Path -LiteralPath $folder -PathType Container)) { throw "exmod.json: partitions.$Project.parts[$Index] ($($Part.name)) names the folder $rel, which is not under $($Source.Dir)." }
     $names = foreach ($f in Get-ChildItem -LiteralPath $folder -Filter *.cs -Recurse -File) {
-      foreach ($m in [regex]::Matches((Get-Content -LiteralPath $f.FullName -Raw), '(?m)^[ \t]{0,4}(?:(?:public|internal|sealed|static|abstract|partial|file)\s+)*(?:class|record)\s+(\w+)')) { $m.Groups[1].Value }
+      foreach ($m in [regex]::Matches((Get-Content -LiteralPath $f.FullName -Raw), '(?m)^(?:(?:public|internal|sealed|static|abstract|partial|file)\s+)*(?:class|record)\s+(\w+)')) { $m.Groups[1].Value }
     }
     foreach ($name in @($names | Sort-Object -Unique -CaseSensitive)) {
       if ($Claimed.Contains($name)) { continue }
@@ -372,6 +372,7 @@ function Resolve-ExmodPartPaths([string]$Project, [int]$Index, $Part, $Source, [
       if (@($EarlierFilters | Where-Object { $_.Contains($needle) }).Count -gt 0) { continue }
       [void]$Claimed.Add($name)
       $terms += "FullyQualifiedName~$needle"
+      $terms += "FullyQualifiedName~.$name+"
     }
   }
   if (-not $terms) { throw "exmod.json: partitions.$Project.parts[$Index] ($($Part.name)) has no class left under $(@($Part.paths) -join ', ')." }
@@ -524,8 +525,9 @@ function Read-ExmodTestTimesFile([string]$Path) {
   }
 }
 
-# The test names of the newest recorded run of the assembly $Project, from the per-test files Add-ExmodTestRunRecord
-# keeps under Get-ExmodTestTimesRoot: the run directory last written that holds a file of $Project, read by
+# The test names of the newest unfiltered recorded run of the assembly $Project, from the per-test files Add-ExmodTestRunRecord
+# keeps under Get-ExmodTestTimesRoot: the run directory last written that holds a file of $Project and whose run.json
+# does not say `filtered: true`, read by
 # Read-ExmodTestTimesFile. Returns its { Class; Display } pairs, or $null when no run directory has a file of $Project
 # or the store cannot be read.
 function Get-ExmodTestNames([string]$Project) {
@@ -534,6 +536,8 @@ function Get-ExmodTestNames([string]$Project) {
     foreach ($dir in (Get-ChildItem -LiteralPath (Get-ExmodTestTimesRoot) -Directory | Sort-Object LastWriteTimeUtc -Descending)) {
       $files = @(Get-ChildItem -LiteralPath $dir.FullName -File | Where-Object { $_.Name -match $pattern })
       if (-not $files) { continue }
+      $meta = Join-Path $dir.FullName 'run.json'
+      if ((Test-Path -LiteralPath $meta -PathType Leaf) -and ((Get-Content -LiteralPath $meta -Raw | ConvertFrom-Json).filtered -eq $true)) { continue }
       $names = [System.Collections.Generic.List[object]]::new()
       foreach ($f in $files) {
         foreach ($t in (Read-ExmodTestTimesFile $f.FullName)) { $names.Add([pscustomobject]@{ Class = $t.Class; Display = $t.Display }) }
@@ -547,8 +551,9 @@ function Get-ExmodTestNames([string]$Project) {
 
 # The number of tests of the newest recorded run of $Project (Get-ExmodTestNames) that $Filter matches, or $null when the
 # filter is not `|`-joined `FullyQualifiedName~`, `FullyQualifiedName=` and `DisplayName~` terms or bare class names, or
-# no names are recorded. A fully qualified name is the class, a dot and the display name; `=` matches it whole or up to
-# the display name's `(`, and a bare name is a `FullyQualifiedName~` term.
+# no names are recorded. A display name that starts with its class and a dot is the fully qualified name, else the
+# fully qualified name is the class, a dot and the display name; `=` matches it whole or up to the display name's `(`,
+# `~` ignores case, and a bare name is a `FullyQualifiedName~` term.
 function Get-ExmodFilterTestCount([string]$Project, [string]$Filter) {
   if (-not $Filter) { return $null }
   $terms = @()
@@ -562,9 +567,9 @@ function Get-ExmodFilterTestCount([string]$Project, [string]$Filter) {
   $count = 0
   foreach ($n in $names) {
     foreach ($term in $terms) {
-      $full = $n.Class + '.' + $n.Display
+      $full = if ($n.Display.StartsWith($n.Class + '.', [StringComparison]::Ordinal)) { $n.Display } else { $n.Class + '.' + $n.Display }
       $text = if ($term.Prop -eq 'DisplayName') { $n.Display } else { $full }
-      $hit = if ($term.Op -eq '~') { $text.Contains($term.Value) } else { $text -ceq $term.Value -or ($n.Class + '.' + $n.Display.Split('(')[0]) -ceq $term.Value }
+      $hit = if ($term.Op -eq '~') { $text.IndexOf($term.Value, [StringComparison]::OrdinalIgnoreCase) -ge 0 } else { $text -ceq $term.Value -or $full.Split('(')[0] -ceq $term.Value }
       if ($hit) { $count++; break }
     }
   }
@@ -738,9 +743,9 @@ function Stop-ExmodMemorySampler($Sampler) {
 
 # Writes the per-test file of one finished host into Get-ExmodTestTimesRoot/$RunId/<$Label with / as ->.tsv, one line per
 # test of $Tests (Read-ExmodTrxTests): outcome, seconds (3 decimals), class and display name, tab-separated, with tabs
-# and line breaks of a name made spaces; and run.json beside it (root, commit, branch, trigger, UTC time). Keeps the
+# and line breaks of a name made spaces; and run.json beside it (root, commit, branch, whether the run was filtered, trigger, UTC time). Keeps the
 # newest 60 run directories. Returns the run directory, or $null when it cannot be written.
-function Write-ExmodTestTimes([string]$RunId, [string]$Root, $Tree, [string]$Label, $Tests) {
+function Write-ExmodTestTimes([string]$RunId, [string]$Root, $Tree, [string]$Label, $Tests, [bool]$Filtered = $false) {
   try {
     $store = Get-ExmodTestTimesRoot
     $dir = Join-Path $store $RunId
@@ -759,7 +764,7 @@ function Write-ExmodTestTimes([string]$RunId, [string]$Root, $Tree, [string]$Lab
     catch { }
     $global:LASTEXITCODE = $saved
     $run = [ordered]@{
-      root = $Root; commit = $Tree.Commit; branch = $branch
+      root = $Root; commit = $Tree.Commit; branch = $branch; filtered = $Filtered
       trigger = if ($env:EXMOD_RUN_TRIGGER) { $env:EXMOD_RUN_TRIGGER } else { 'direct' }
       time = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture)
     }
@@ -958,7 +963,7 @@ function Add-ExmodTestRunRecord([string]$RunId, [string]$Root, $Tree, [string]$L
       $tests = Read-ExmodTrxTests $TrxPath
       if ($null -ne $tests) {
         $classes = Get-ExmodClassSeconds $tests
-        $times = Write-ExmodTestTimes $RunId $Root $Tree $Label $tests
+        $times = Write-ExmodTestTimes $RunId $Root $Tree $Label $tests $Filtered
       }
       Remove-Item -LiteralPath $TrxPath -Force -ErrorAction SilentlyContinue
     }

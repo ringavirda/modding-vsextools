@@ -237,21 +237,21 @@ class FolderPartTests(unittest.TestCase):
 
     def test_a_folder_part_becomes_one_class_term_per_class(self):
         out = run_paths([{"name": "furnaces", "paths": ["Blocks/Furnaces"]}, {"name": "rest"}], self.FILES)
-        self.assertIn("PART furnaces: FullyQualifiedName~.Hearth.|FullyQualifiedName~.Kiln.", out)
-        self.assertIn("PART rest: FullyQualifiedName!~.Hearth.&FullyQualifiedName!~.Kiln.", out)
+        self.assertIn("PART furnaces: FullyQualifiedName~.Hearth.|FullyQualifiedName~.Hearth+|FullyQualifiedName~.Kiln.|FullyQualifiedName~.Kiln+", out)
+        self.assertIn("PART rest: FullyQualifiedName!~.Hearth.&FullyQualifiedName!~.Hearth+&FullyQualifiedName!~.Kiln.&FullyQualifiedName!~.Kiln+", out)
 
     def test_a_class_two_path_parts_name_runs_in_the_first_only(self):
         # Fails when first-claim is dropped: Kiln is then in both furnaces and blocks.
         out = run_paths([{"name": "furnaces", "paths": ["Blocks/Furnaces"]}, {"name": "blocks", "paths": ["Blocks"]},
                          {"name": "rest"}], self.FILES)
-        self.assertIn("PART furnaces: FullyQualifiedName~.Hearth.|FullyQualifiedName~.Kiln.", out)
-        self.assertIn("PART blocks: FullyQualifiedName~.Bellows.\n", out)
+        self.assertIn("PART furnaces: FullyQualifiedName~.Hearth.|FullyQualifiedName~.Hearth+|FullyQualifiedName~.Kiln.|FullyQualifiedName~.Kiln+", out)
+        self.assertIn("PART blocks: FullyQualifiedName~.Bellows.|FullyQualifiedName~.Bellows+\n", out)
 
     def test_a_class_an_earlier_filter_names_stays_out_of_the_folder_part(self):
         # Fails when the earlier-term check is dropped: Kiln is then in walks and in furnaces.
         out = run_paths([{"name": "walks", "filter": "FullyQualifiedName~.Kiln."},
                          {"name": "furnaces", "paths": ["Blocks/Furnaces"]}, {"name": "rest"}], self.FILES)
-        self.assertIn("PART furnaces: FullyQualifiedName~.Hearth.\n", out)
+        self.assertIn("PART furnaces: FullyQualifiedName~.Hearth.|FullyQualifiedName~.Hearth+\n", out)
 
     def test_a_class_named_as_a_namespace_segment_falls_to_the_complement(self):
         # Fails when the namespace check is dropped: `.Casting.` would match every test under Mod.Tests.Casting.
@@ -259,7 +259,16 @@ class FolderPartTests(unittest.TestCase):
         files["Blocks/Furnaces/Casting.cs"] = cls("Casting")
         files["Blocks/Casting/Ladle.cs"] = cls("Ladle", "Mod.Tests.Casting")
         out = run_paths([{"name": "furnaces", "paths": ["Blocks/Furnaces"]}, {"name": "rest"}], files)
-        self.assertIn("PART furnaces: FullyQualifiedName~.Hearth.|FullyQualifiedName~.Kiln.\n", out)
+        self.assertIn("PART furnaces: FullyQualifiedName~.Hearth.|FullyQualifiedName~.Hearth+|FullyQualifiedName~.Kiln.|FullyQualifiedName~.Kiln+\n", out)
+
+    def test_a_nested_test_class_follows_its_outer_class_and_adds_no_term_of_its_own(self):
+        # Fails when the `+` term is dropped (Kiln+InTheLoadedGame tests fall to rest) or nested classes are scanned
+        # (a dead `.InTheLoadedGame.` term appears in furnaces).
+        files = {"Blocks/Furnaces/Kiln.cs": "namespace Mod.Tests;\n\npublic class Kiln\n{\n  [Fact] public void A() {}\n\n"
+                                            "  public class InTheLoadedGame\n  {\n    [Fact] public void B() {}\n  }\n}\n"}
+        out = run_paths([{"name": "furnaces", "paths": ["Blocks/Furnaces"]}, {"name": "rest"}], files)
+        self.assertIn("PART furnaces: FullyQualifiedName~.Kiln.|FullyQualifiedName~.Kiln+\n", out)
+        self.assertIn("PART rest: FullyQualifiedName!~.Kiln.&FullyQualifiedName!~.Kiln+\n", out)
 
     def test_a_folder_that_does_not_exist_is_named(self):
         out = run_paths([{"name": "furnaces", "paths": ["Nowhere"]}, {"name": "rest"}], self.FILES)
@@ -272,8 +281,8 @@ class FolderPartTests(unittest.TestCase):
 
     def test_the_listing_prints_each_part_with_its_heap_and_term_count(self):
         out = run_paths([{"name": "furnaces", "heapGb": 8, "paths": ["Blocks/Furnaces"]}, {"name": "rest"}], self.FILES)
-        self.assertRegex(out, r"furnaces\s+8 GiB\s+2 term\(s\)")
-        self.assertRegex(out, r"rest\s+default heap\s+2 term\(s\)")
+        self.assertRegex(out, r"furnaces\s+8 GiB\s+4 term\(s\)")
+        self.assertRegex(out, r"rest\s+default heap\s+4 term\(s\)")
 
 
 @unittest.skipUnless(PWSH, "pwsh not found")
@@ -860,7 +869,7 @@ class RunRecordTests(unittest.TestCase):
 
     def test_each_host_writes_its_tests_and_run_json_and_the_row_names_the_directory(self):
         # Fails when the trx is deleted before it is read (no tsv, times null), when a line loses a column, the label's
-        # slashes stay in the file name, run.json is missing or `times` is not the run directory.
+        # slashes stay in the file name, run.json is missing, does not say a -Filter run is filtered or `times` is not the run directory.
         with tempfile.TemporaryDirectory() as d:
             trx = os.path.join(d, "in.trx")
             write_trx(trx, 3, 2)
@@ -872,8 +881,12 @@ class RunRecordTests(unittest.TestCase):
             self.assertEqual("Passed\t0.003\tMod.Tests.C02\tT1", lines[-1])
             self.assertEqual({"r1"}, {os.path.basename(r["times"]) for r in rows})
             run = json.loads(files["r1/run.json"])
-            self.assertEqual(["root", "commit", "branch", "trigger", "time"], list(run))
+            self.assertEqual(["root", "commit", "branch", "filtered", "trigger", "time"], list(run))
+            self.assertEqual(rows[0]["filtered"], run["filtered"])
             self.assertEqual("night", run["trigger"])
+            self.assertIs(False, run["filtered"])
+            _, _, files = run_times(args="'-Filter', 'FullyQualifiedName~.Other.'", env_extra={"TEST_TRX_SRC": trx, "EXMOD_RUN_ID": "r2"})
+            self.assertIs(True, json.loads(files["r2/run.json"])["filtered"])
             self.assertEqual("repo", os.path.basename(run["root"]))
 
     def test_the_store_keeps_the_newest_sixty_run_directories(self):
