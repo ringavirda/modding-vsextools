@@ -211,6 +211,11 @@ def results_block(out):
     return out[out.index("===== Results ====="):]
 
 
+def without_slowest(block):
+    """`block` without its Slowest classes lines, which follow the per-test files a run wrote."""
+    return re.sub(r"\nSlowest classes:\n(?:  .*\n)*", "", block)
+
+
 def run_paths(parts, files):
     """The parts exmod resolves from `parts` (a manifest parts list) over a test folder holding `files`, a map of
     relative path to text, followed by the output of the partition listing."""
@@ -1004,7 +1009,8 @@ class RunRecordTests(unittest.TestCase):
                 self.assertEqual(1, len(rows), name)
                 self.assertIsNone(rows[0]["classes"], name)
                 self.assertEqual(3, rows[0]["tests"], name)
-                self.assertEqual(re.sub(r"held \d+ s", "", results_block(base_out)), re.sub(r"held \d+ s", "", results_block(out)), name)
+                self.assertEqual(re.sub(r"held \d+ s", "", without_slowest(results_block(base_out))),
+                                 re.sub(r"held \d+ s", "", without_slowest(results_block(out))), name)
                 self.assertNotIn("threw:", out, name)
 
     def test_an_unwritable_log_leaves_the_run_unchanged(self):
