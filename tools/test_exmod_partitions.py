@@ -727,23 +727,36 @@ class StopOnRedTests(unittest.TestCase):
         self.assertIn("All 1 test run(s) passed.", out)
 
 
-def run_records(args="", env_extra=None, manifest=MANIFEST, body=""):
-    """(output, rows) of a stubbed run with EXMOD_RUN_LOG in a folder of its own; rows is [] when nothing was written."""
+def run_times(args="", env_extra=None, manifest=MANIFEST, body=""):
+    """(output, rows, files) of a stubbed run with EXMOD_RUN_LOG and EXMOD_TIMES_DIR in a folder of its own; rows is []
+    when nothing was written and files maps each path under the times folder to its text."""
     with tempfile.TemporaryDirectory() as d:
         log = os.path.join(d, "test-runs.jsonl")
-        out, _, _, _ = run_pwsh(body, {"EXMOD_RUN_LOG": log, **(env_extra or {})}, args=args, manifest=manifest)
+        times = os.path.join(d, "times")
+        out, _, _, _ = run_pwsh(body, {"EXMOD_RUN_LOG": log, "EXMOD_TIMES_DIR": times, **(env_extra or {})}, args=args, manifest=manifest)
         rows = []
         if os.path.exists(log):
             with open(log) as f:
                 rows = [json.loads(l) for l in f if l.strip()]
-        return out, rows
+        files = {}
+        for base, _, names in os.walk(times):
+            for n in names:
+                with open(os.path.join(base, n)) as f:
+                    files[os.path.relpath(os.path.join(base, n), times)] = f.read()
+        return out, rows, files
+
+
+def run_records(args="", env_extra=None, manifest=MANIFEST, body=""):
+    """(output, rows) of a stubbed run; see run_times."""
+    out, rows, _ = run_times(args, env_extra, manifest, body)
+    return out, rows
 
 
 @unittest.skipUnless(PWSH, "pwsh not found")
 @unittest.skipIf(sys.platform == "win32", "the dotnet stub is a shell script")
 class RunRecordTests(unittest.TestCase):
     KEYS = ["run", "trigger", "root", "commit", "dirty", "label", "part", "filter", "filtered", "exit", "seconds",
-            "time", "tests", "passed", "failed", "skipped", "failures", "classes"]
+            "time", "tests", "passed", "failed", "skipped", "failures", "classes", "times"]
 
     def test_a_partitioned_host_writes_one_row_with_every_key(self):
         # Fails when a key is dropped or renamed, when part is left out of a partition's row, or when the counts
@@ -763,6 +776,7 @@ class RunRecordTests(unittest.TestCase):
         self.assertIsNone(w["commit"])
         self.assertIsNone(w["dirty"])
         self.assertIsNone(w["classes"])
+        self.assertIsNone(w["times"])
         self.assertIsInstance(w["seconds"], (int, float))
         self.assertRegex(w["time"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
         self.assertEqual((0, 3, []), (by["walks"]["exit"], by["walks"]["tests"], by["walks"]["failures"]))
@@ -816,7 +830,7 @@ class RunRecordTests(unittest.TestCase):
         self.assertEqual(50, len(rows[0]["failures"]))
         self.assertEqual(("Mod.Tests.Many.T0", "Mod.Tests.Many.T49"), (rows[0]["failures"][0], rows[0]["failures"][-1]))
         self.assertIs(True, rows[0]["truncated"])
-        self.assertEqual(["failures", "truncated", "classes"], list(rows[0])[-3:])
+        self.assertEqual(["failures", "truncated", "classes", "times"], list(rows[0])[-4:])
         _, rows = run_records(args="'-Filter', 'FullyQualifiedName~.Other.'", env_extra={"TEST_FAIL_MANY": "50"})
         self.assertEqual(50, len(rows[0]["failures"]))
         self.assertNotIn("truncated", rows[0])
@@ -843,6 +857,78 @@ class RunRecordTests(unittest.TestCase):
             out, _ = run_records(env_extra={"TRX_FILE": trx}, body=body)
             self.assertIn("classes: 2", out)
             self.assertIn("left: False", out)
+
+    def test_each_host_writes_its_tests_and_run_json_and_the_row_names_the_directory(self):
+        # Fails when the trx is deleted before it is read (no tsv, times null), when a line loses a column, the label's
+        # slashes stay in the file name, run.json is missing or `times` is not the run directory.
+        with tempfile.TemporaryDirectory() as d:
+            trx = os.path.join(d, "in.trx")
+            write_trx(trx, 3, 2)
+            out, rows, files = run_times(env_extra={"TEST_TRX_SRC": trx, "EXMOD_RUN_ID": "r1", "EXMOD_RUN_TRIGGER": "night"})
+            self.assertEqual(3, len(rows), out)
+            self.assertEqual({"r1/run.json", "r1/1.22-A.Tests-walks.tsv", "r1/1.22-A.Tests-worlds.tsv", "r1/1.22-A.Tests-rest.tsv"}, set(files))
+            lines = files["r1/1.22-A.Tests-walks.tsv"].splitlines()
+            self.assertEqual(6, len(lines))
+            self.assertEqual("Passed\t0.003\tMod.Tests.C02\tT1", lines[-1])
+            self.assertEqual({"r1"}, {os.path.basename(r["times"]) for r in rows})
+            run = json.loads(files["r1/run.json"])
+            self.assertEqual(["root", "commit", "branch", "trigger", "time"], list(run))
+            self.assertEqual("night", run["trigger"])
+            self.assertEqual("repo", os.path.basename(run["root"]))
+
+    def test_the_store_keeps_the_newest_sixty_run_directories(self):
+        # Fails when old run directories are not pruned, or the newest is.
+        with tempfile.TemporaryDirectory() as d:
+            times = os.path.join(d, "times")
+            for i in range(1, 65):
+                p = os.path.join(times, f"old{i:02d}")
+                os.makedirs(p)
+                os.utime(p, (1_700_000_000 - i * 86400, 1_700_000_000 - i * 86400))
+            trx = os.path.join(d, "in.trx")
+            write_trx(trx, 1, 1)
+            run_pwsh("", {"EXMOD_RUN_LOG": os.path.join(d, "r.jsonl"), "EXMOD_TIMES_DIR": times, "TEST_TRX_SRC": trx, "EXMOD_RUN_ID": "fresh"},
+                     args="'-Filter', 'FullyQualifiedName~.Other.'")
+            left = sorted(os.listdir(times))
+            self.assertEqual(60, len(left), left)
+            self.assertIn("fresh", left)
+            self.assertIn("old59", left)
+            self.assertNotIn("old60", left)
+
+    def test_two_parts_give_one_slowest_block_summed_and_ordered(self):
+        # Fails when a class's seconds are not summed across parts (the order changes), the block is printed per part,
+        # or the list is longer than 25.
+        with tempfile.TemporaryDirectory() as d:
+            trx = os.path.join(d, "in.trx")
+            write_trx(trx, 30, 10)
+            out, _, _ = run_times(env_extra={"TEST_TRX_SRC": trx})
+            self.assertEqual(1, out.count("Slowest classes:"), out)
+            block = out[out.index("Slowest classes:"):].splitlines()[1:]
+            lines = [l for l in block if l.startswith("  ")]
+            self.assertEqual(25, len(lines), out)
+            self.assertEqual("  0.9 Mod.Tests.C29 rest,walks,worlds", lines[0])
+            self.assertEqual("  0.2 Mod.Tests.C05 rest,walks,worlds", lines[-1])
+            self.assertNotIn("Slowest classes:", out[:out.index("===== Results =====")])
+
+    def test_a_class_split_over_parts_ranks_by_its_total(self):
+        # Fails when a class's seconds are not added across the files of its parts: B (4+4) must outrank A (5).
+        with tempfile.TemporaryDirectory() as d:
+            for name, rows in (("1.22-A.Tests-one.tsv", "Passed\t5.000\tMod.A\tt\nPassed\t4.000\tMod.B\tt\n"),
+                               ("1.22-A.Tests-two.tsv", "Passed\t4.000\tMod.B\tt\nPassed\t1.000\tMod.C\tt\n")):
+                os.makedirs(os.path.join(d, "r"), exist_ok=True)
+                with open(os.path.join(d, "r", name), "w") as f:
+                    f.write(rows)
+            body = "Get-ExmodSlowestClasses (Join-Path $env:TIMES_SEED 'r') @('1.22-A.Tests') | ForEach-Object { \"got: $_\" }"
+            out, _, _ = run_times(env_extra={"TIMES_SEED": d}, body=body)
+            got = [l for l in out.splitlines() if l.startswith("got: ")]
+            self.assertEqual(["got: 8.0 Mod.B one,two", "got: 5.0 Mod.A one", "got: 1.0 Mod.C two"], got, out)
+
+    def test_an_unpartitioned_run_prints_no_slowest_block(self):
+        # Fails when the block is printed for a run with no parts.
+        with tempfile.TemporaryDirectory() as d:
+            trx = os.path.join(d, "in.trx")
+            write_trx(trx, 2, 1)
+            out, _, _ = run_times(args="'-Filter', 'FullyQualifiedName~.Other.'", env_extra={"TEST_TRX_SRC": trx})
+            self.assertNotIn("Slowest classes:", out)
 
     def test_a_large_trx_is_read_without_loading_it_whole(self):
         # Fails when the reader loads the file whole (XmlDocument or ReadAllText): the process's peak working set then

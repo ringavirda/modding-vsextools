@@ -506,23 +506,37 @@ function Get-ExmodFilterPeakGb([string]$Project, [string]$Filter) {
   catch { return $null }
 }
 
+# The folder of the per-test files: $EXMOD_TIMES_DIR, else ~/.cache/exmod/test-times. One subfolder per run id.
+function Get-ExmodTestTimesRoot {
+  if ($env:EXMOD_TIMES_DIR) { return $env:EXMOD_TIMES_DIR }
+  return Join-Path ([Environment]::GetFolderPath('UserProfile')) '.cache/exmod/test-times'
+}
+
+# The tests of one per-test file $Path (Write-ExmodTestTimes), a line `outcome<TAB>seconds<TAB>class<TAB>display name`
+# as { Outcome; Seconds; Class; Display }; a line of any other shape is skipped.
+function Read-ExmodTestTimesFile([string]$Path) {
+  foreach ($line in [System.IO.File]::ReadLines($Path)) {
+    $cols = $line.Split("`t", 4)
+    if ($cols.Count -ne 4) { continue }
+    $seconds = 0.0
+    [void][double]::TryParse($cols[1], [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$seconds)
+    [pscustomobject]@{ Outcome = $cols[0]; Seconds = $seconds; Class = $cols[2]; Display = $cols[3] }
+  }
+}
+
 # The test names of the newest recorded run of the assembly $Project, from the per-test files Add-ExmodTestRunRecord
-# keeps under $EXMOD_TIMES_DIR (default ~/.cache/exmod/test-times): the run directory last written that holds a file
-# of $Project, its files' lines taken as `outcome<TAB>seconds<TAB>class<TAB>display name`. Returns the lines' { Class;
-# Display } pairs, or $null when no run directory has a file of $Project or the store cannot be read.
+# keeps under Get-ExmodTestTimesRoot: the run directory last written that holds a file of $Project, read by
+# Read-ExmodTestTimesFile. Returns its { Class; Display } pairs, or $null when no run directory has a file of $Project
+# or the store cannot be read.
 function Get-ExmodTestNames([string]$Project) {
-  $root = if ($env:EXMOD_TIMES_DIR) { $env:EXMOD_TIMES_DIR } else { Join-Path ([Environment]::GetFolderPath('UserProfile')) '.cache/exmod/test-times' }
   try {
     $pattern = '^[^-]+-' + [regex]::Escape($Project) + '(?:-[^-]+)?\.tsv$'
-    foreach ($dir in (Get-ChildItem -LiteralPath $root -Directory | Sort-Object LastWriteTimeUtc -Descending)) {
+    foreach ($dir in (Get-ChildItem -LiteralPath (Get-ExmodTestTimesRoot) -Directory | Sort-Object LastWriteTimeUtc -Descending)) {
       $files = @(Get-ChildItem -LiteralPath $dir.FullName -File | Where-Object { $_.Name -match $pattern })
       if (-not $files) { continue }
       $names = [System.Collections.Generic.List[object]]::new()
       foreach ($f in $files) {
-        foreach ($line in [System.IO.File]::ReadLines($f.FullName)) {
-          $cols = $line.Split("`t", 4)
-          if ($cols.Count -eq 4) { $names.Add([pscustomobject]@{ Class = $cols[2]; Display = $cols[3] }) }
-        }
+        foreach ($t in (Read-ExmodTestTimesFile $f.FullName)) { $names.Add([pscustomobject]@{ Class = $t.Class; Display = $t.Display }) }
       }
       return , $names.ToArray()
     }
@@ -722,6 +736,64 @@ function Stop-ExmodMemorySampler($Sampler) {
   return $Sampler.State.PeakBytes / 1GB
 }
 
+# Writes the per-test file of one finished host into Get-ExmodTestTimesRoot/$RunId/<$Label with / as ->.tsv, one line per
+# test of $Tests (Read-ExmodTrxTests): outcome, seconds (3 decimals), class and display name, tab-separated, with tabs
+# and line breaks of a name made spaces; and run.json beside it (root, commit, branch, trigger, UTC time). Keeps the
+# newest 60 run directories. Returns the run directory, or $null when it cannot be written.
+function Write-ExmodTestTimes([string]$RunId, [string]$Root, $Tree, [string]$Label, $Tests) {
+  try {
+    $store = Get-ExmodTestTimesRoot
+    $dir = Join-Path $store $RunId
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $lines = @(foreach ($t in $Tests) {
+        $name = $t.Name -replace '[\t\r\n]+', ' '
+        '{0}{4}{1}{4}{2}{4}{3}' -f $t.Outcome, $t.Seconds.ToString('0.000', [System.Globalization.CultureInfo]::InvariantCulture), $t.Class, $name, "`t"
+      })
+    [System.IO.File]::WriteAllLines((Join-Path $dir (($Label -replace '/', '-') + '.tsv')), [string[]]$lines)
+    $saved = $global:LASTEXITCODE
+    $branch = $null
+    try {
+      $head = @(git -C $Root rev-parse --abbrev-ref HEAD 2>$null)
+      if ($LASTEXITCODE -eq 0 -and $head.Count -eq 1) { $branch = $head[0] }
+    }
+    catch { }
+    $global:LASTEXITCODE = $saved
+    $run = [ordered]@{
+      root = $Root; commit = $Tree.Commit; branch = $branch
+      trigger = if ($env:EXMOD_RUN_TRIGGER) { $env:EXMOD_RUN_TRIGGER } else { 'direct' }
+      time = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture)
+    }
+    [System.IO.File]::WriteAllText((Join-Path $dir 'run.json'), (ConvertTo-Json $run -Compress))
+    foreach ($old in @(Get-ChildItem -LiteralPath $store -Directory | Sort-Object LastWriteTimeUtc -Descending | Select-Object -Skip 60)) {
+      Remove-Item -LiteralPath $old.FullName -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    return $dir
+  }
+  catch { return $null }
+}
+
+# The lines of `Slowest classes:` for the run directory $Dir: the $Top classes of its per-test files with the most
+# seconds, summed across files, as `<seconds> <class> <parts>` largest first. A file name is
+# `<version>-<project>[-<part>].tsv`; $Prefixes are the `<version>-<project>` of the run's hosts, and <parts> is the
+# comma-joined part names of the files holding the class, `-` for a host without parts. Empty when $Dir holds no file.
+function Get-ExmodSlowestClasses([string]$Dir, [string[]]$Prefixes, [int]$Top = 25) {
+  $seconds = @{}
+  $parts = @{}
+  foreach ($f in @(Get-ChildItem -LiteralPath $Dir -Filter '*.tsv' -File -ErrorAction SilentlyContinue)) {
+    $base = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
+    $part = '-'
+    foreach ($prefix in $Prefixes) { if ($base.StartsWith("$prefix-")) { $part = $base.Substring($prefix.Length + 1) } }
+    foreach ($t in (Read-ExmodTestTimesFile $f.FullName)) {
+      $seconds[$t.Class] = [double]$seconds[$t.Class] + $t.Seconds
+      if (-not $parts.ContainsKey($t.Class)) { $parts[$t.Class] = [System.Collections.Generic.SortedSet[string]]::new() }
+      [void]$parts[$t.Class].Add($part)
+    }
+  }
+  foreach ($entry in ($seconds.GetEnumerator() | Sort-Object @{ Expression = { $_.Value }; Descending = $true }, Key | Select-Object -First $Top)) {
+    '{0} {1} {2}' -f $entry.Value.ToString('0.0', [System.Globalization.CultureInfo]::InvariantCulture), $entry.Key, ($parts[$entry.Key] -join ',')
+  }
+}
+
 # Appends one JSON line for a finished test host to $EXMOD_MEMORY_LOG (default ~/.cache/exmod/memory-peaks.jsonl):
 # label, filtered, filter, shareGb, limitGb (null for none), peakGb (null when not sampled), seconds the share was
 # held, exit code and UTC time. $Reservation is the one Lock-ExmodMemory returned. Failing to write is ignored.
@@ -769,41 +841,62 @@ function Get-ExmodRunTree([string]$Root) {
   return $tree
 }
 
-# Seconds per test class in the trx file $Path as an ordered map of the $Top largest, read with a streaming XmlReader
-# (a result's duration by test id, then the class of each test definition). $null when the file is missing or unreadable.
-function Read-ExmodTrxClassSeconds([string]$Path, [int]$Top = 40) {
+# The tests of the trx file $Path as { Outcome; Seconds; Class; Name } in file order (Name is the display name), read
+# with a streaming XmlReader (a result's outcome and duration by test id, then the class and name of each test
+# definition; a test without a result is left out). $null when the file is missing or unreadable.
+function Read-ExmodTrxTests([string]$Path) {
   $reader = $null
   try {
     $settings = [System.Xml.XmlReaderSettings]::new()
     $settings.DtdProcessing = [System.Xml.DtdProcessing]::Prohibit
     $reader = [System.Xml.XmlReader]::Create($Path, $settings)
-    $byTest = @{}
-    $byClass = @{}
+    $seconds = @{}
+    $outcomes = @{}
+    $tests = [System.Collections.Generic.List[object]]::new()
     while ($reader.Read()) {
       if ($reader.NodeType -ne [System.Xml.XmlNodeType]::Element) { continue }
       if ($reader.LocalName -eq 'UnitTestResult') {
         $id = $reader.GetAttribute('testId')
         $duration = $reader.GetAttribute('duration')
         if ($id -and $duration) {
-          $byTest[$id] = [double]$byTest[$id] + [TimeSpan]::Parse($duration, [System.Globalization.CultureInfo]::InvariantCulture).TotalSeconds
+          $seconds[$id] = [double]$seconds[$id] + [TimeSpan]::Parse($duration, [System.Globalization.CultureInfo]::InvariantCulture).TotalSeconds
+          $outcomes[$id] = $reader.GetAttribute('outcome')
         }
       }
       elseif ($reader.LocalName -eq 'UnitTest') {
         $id = $reader.GetAttribute('id')
+        $name = $reader.GetAttribute('name')
         if ($id -and $reader.ReadToDescendant('TestMethod')) {
           $class = $reader.GetAttribute('className')
-          if ($class -and $byTest.ContainsKey($id)) { $byClass[$class] = [double]$byClass[$class] + $byTest[$id] }
+          if ($class -and $seconds.ContainsKey($id)) {
+            $tests.Add([pscustomobject]@{ Outcome = "$($outcomes[$id])"; Seconds = $seconds[$id]; Class = $class; Name = "$name" })
+          }
         }
       }
     }
-    $classes = [ordered]@{}
-    foreach ($entry in ($byClass.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First $Top)) {
-      $classes[$entry.Key] = [Math]::Round($entry.Value, 3)
-    }
-    return $classes
+    return , $tests.ToArray()
   }
   catch { return $null }
   finally { if ($reader) { $reader.Dispose() } }
+}
+
+# Seconds per class of $Tests (Read-ExmodTrxTests) as an ordered map of the $Top largest.
+function Get-ExmodClassSeconds($Tests, [int]$Top = 40) {
+  $byClass = @{}
+  foreach ($t in $Tests) { $byClass[$t.Class] = [double]$byClass[$t.Class] + $t.Seconds }
+  $classes = [ordered]@{}
+  foreach ($entry in ($byClass.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First $Top)) {
+    $classes[$entry.Key] = [Math]::Round($entry.Value, 3)
+  }
+  return $classes
+}
+
+# Seconds per test class in the trx file $Path as an ordered map of the $Top largest. $null when the file is missing or
+# unreadable.
+function Read-ExmodTrxClassSeconds([string]$Path, [int]$Top = 40) {
+  $tests = Read-ExmodTrxTests $Path
+  if ($null -eq $tests) { return $null }
+  return Get-ExmodClassSeconds $tests $Top
 }
 
 # The file of test-run records: $EXMOD_RUN_LOG, else ~/.cache/exmod/test-runs.jsonl.
@@ -852,15 +945,21 @@ function Get-ExmodRedParts([string]$Root) {
 # ($RunId), trigger ($EXMOD_RUN_TRIGGER, else "direct"), root, commit, dirty ($Tree), label, part, filter, filtered,
 # exit, seconds, UTC time, the tests/passed/failed/skipped counts of the host's summary line (null without one), the
 # names of up to 50 failing tests (and truncated: true when there were more) and the seconds of the 40 largest test
-# classes from $TrxPath (null when it cannot be read). With $Stopped the host was stopped or never started: exit is null
+# classes from $TrxPath (null when it cannot be read) and `times`, the run directory Write-ExmodTestTimes wrote the
+# host's per-test file into (null when there is none). With $Stopped the host was stopped or never started: exit is null
 # and `stopped: true` is added. $Output is the host's output lines. $TrxPath is deleted. The
 # append holds the file exclusively (retrying while another host holds it), as concurrent appends overwrite each other.
 # Writes nothing else and never throws.
 function Add-ExmodTestRunRecord([string]$RunId, [string]$Root, $Tree, [string]$Label, [string]$Part, [bool]$Filtered, [string]$Filter, [int]$ExitCode, [double]$Seconds, $Output, [string]$TrxPath, [switch]$Stopped) {
   try {
     $classes = $null
+    $times = $null
     if ($TrxPath -and (Test-Path -LiteralPath $TrxPath)) {
-      $classes = Read-ExmodTrxClassSeconds $TrxPath
+      $tests = Read-ExmodTrxTests $TrxPath
+      if ($null -ne $tests) {
+        $classes = Get-ExmodClassSeconds $tests
+        $times = Write-ExmodTestTimes $RunId $Root $Tree $Label $tests
+      }
       Remove-Item -LiteralPath $TrxPath -Force -ErrorAction SilentlyContinue
     }
     $path = Get-ExmodRunLogPath
@@ -886,6 +985,7 @@ function Add-ExmodTestRunRecord([string]$RunId, [string]$Root, $Tree, [string]$L
     if ($failures.Count -gt 50) { $row['truncated'] = $true }
     if ($Stopped) { $row['stopped'] = $true }
     $row['classes'] = $classes
+    $row['times'] = $times
     $bytes = [System.Text.Encoding]::UTF8.GetBytes((ConvertTo-Json $row -Compress -Depth 4) + "`n")
     $log = $null
     for ($try = 0; $try -lt 300 -and -not $log; $try++) {
@@ -1343,7 +1443,10 @@ function Invoke-Test([string[]]$Argv) {
       $recordFn = ${function:Add-ExmodMemoryPeakRecord}.ToString()
       $runRecordFn = ${function:Add-ExmodTestRunRecord}.ToString()
       $runLogPathFn = ${function:Get-ExmodRunLogPath}.ToString()
-      $trxFn = ${function:Read-ExmodTrxClassSeconds}.ToString()
+      $trxFn = ${function:Read-ExmodTrxTests}.ToString()
+      $classSecondsFn = ${function:Get-ExmodClassSeconds}.ToString()
+      $timesFn = ${function:Write-ExmodTestTimes}.ToString()
+      $timesRootFn = ${function:Get-ExmodTestTimesRoot}.ToString()
       $stopHostsFn = ${function:Stop-ExmodTestHosts}.ToString()
       $stopOn = $stopOnRed
       $needles = @($units | Where-Object { $_.Part } | ForEach-Object { "$($_.Blame)" })
@@ -1364,7 +1467,10 @@ function Invoke-Test([string[]]$Argv) {
           ${function:Add-ExmodMemoryPeakRecord} = $using:recordFn
           ${function:Add-ExmodTestRunRecord} = $using:runRecordFn
           ${function:Get-ExmodRunLogPath} = $using:runLogPathFn
-          ${function:Read-ExmodTrxClassSeconds} = $using:trxFn
+          ${function:Read-ExmodTrxTests} = $using:trxFn
+          ${function:Get-ExmodClassSeconds} = $using:classSecondsFn
+          ${function:Write-ExmodTestTimes} = $using:timesFn
+          ${function:Get-ExmodTestTimesRoot} = $using:timesRootFn
           ${function:Stop-ExmodTestHosts} = $using:stopHostsFn
           $stopOn = $using:stopOn
           $needles = $using:needles
@@ -1530,6 +1636,15 @@ function Invoke-Test([string[]]$Argv) {
     }
   }
 
+  if (@($units | Where-Object { $_.Part })) {
+    $slowest = @(Get-ExmodSlowestClasses (Join-Path (Get-ExmodTestTimesRoot) (Get-ExmodRunId)) @($units | ForEach-Object { "$($_.Version)-$($_.Project)" } | Select-Object -Unique))
+    if ($slowest) {
+      Write-Host ""
+      Write-Host "Slowest classes:"
+      foreach ($l in $slowest) { Write-Host "  $l" }
+    }
+  }
+
   if ($stop.ContainsKey('red')) {
     $stoppedParts = @($results | ForEach-Object { $_.Parts } | Where-Object { $_.Line -eq 'stopped' })
     Write-Host "Stopped on red: $($stop['red']) failed first; $($stoppedParts.Count) part(s) stopped or not started."
@@ -1666,7 +1781,11 @@ without one, of its starting heap limit plus 1 GiB (an assembly with no entry: 2
 After each host ends one JSON line is appended to $EXMOD_RUN_LOG (~/.cache/exmod/test-runs.jsonl): run ($EXMOD_RUN_ID, else
 one id per exmod process), trigger ($EXMOD_RUN_TRIGGER, else direct), root, commit, dirty, label, part, filter, filtered,
 exit, seconds, time, tests, passed, failed, skipped, failures (at most 50, then truncated: true) and classes (seconds of the
-40 largest test classes, from a trx file the host writes beside its blame results and exmod deletes). A -Coverage run writes
+40 largest test classes, from a trx file the host writes beside its blame results and exmod deletes) and times (the run's
+directory under $EXMOD_TIMES_DIR, default ~/.cache/exmod/test-times, holding one tab-separated file per host,
+<label with / as ->.tsv, a line per test: outcome, seconds, class, display name; and run.json with root, commit, branch,
+trigger and time; the newest 60 run directories stay). A partitioned run ends its results with `Slowest classes:`, the 25
+classes with the most seconds summed across parts, each line `<seconds> <class> <parts>`. A -Coverage run writes
 no record. A failure to write or read it changes nothing else about the run.
 Where there is a process table (EXMOD_PROC_DIR, /proc; none on Windows) a share is granted on real use and no waiter holds
 a lock while it waits: each second one decision grants it when MemAvailable less EXMOD_MEMORY_FLOOR_GB (10) is at least its
