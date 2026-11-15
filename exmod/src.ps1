@@ -279,12 +279,14 @@ function Invoke-WithTestPhase([scriptblock]$Body) {
 }
 
 # The partitions the manifest declares for the test assembly $Project, or $null. The manifest's
-# `partitions` is keyed by assembly name; an entry is { parts: [{ name, filter, heapGb? }, ..., { name }] }.
-# Every part but the last carries a `dotnet test` filter made only of `|`-joined terms such as
-# `FullyQualifiedName~.Walk.`; the last carries none and runs the complement of the others, so a class
-# added later always lands in a partition. Returns { Parts = @({ Name; Filter; HeapGb }) } with the last
-# part's Filter built by Get-ExmodComplementFilter and HeapGb the part's own `heapGb` in GiB or $null; throws on a
-# malformed entry, a `heapGb` that is not a whole number above 0 included.
+# `partitions` is keyed by assembly name; an entry is { parts: [{ name, filter | paths, heapGb? }, ..., { name }] }.
+# Every part but the last carries either a `dotnet test` filter made only of `|`-joined terms such as
+# `FullyQualifiedName~.Walk.`, or `paths`, folders of the test project (relative to its folder) that
+# Resolve-ExmodPartPaths turns into one `FullyQualifiedName~.<Class>.` term per class declared there; never both.
+# The last part carries neither and runs the complement of the others, so a class added later always lands in a
+# partition. Returns { Parts = @({ Name; Filter; HeapGb }) } with the last part's Filter built by
+# Get-ExmodComplementFilter and HeapGb the part's own `heapGb` in GiB or $null; throws on a malformed entry, a
+# `heapGb` that is not a whole number above 0, or a folder that does not exist or holds no class left to claim.
 function Get-ExmodPartitions([string]$Project) {
   $m = Get-ExmodManifest
   if (-not $m.PSObject.Properties['partitions'] -or -not $m.partitions.PSObject.Properties[$Project]) { return $null }
@@ -292,14 +294,31 @@ function Get-ExmodPartitions([string]$Project) {
   $parts = @($entry.parts)
   if ($parts.Count -lt 2) { throw "exmod.json: partitions.$Project needs at least two parts." }
   $declared = @()
+  $filters = @()
+  $explicit = @()
+  $claimed = [System.Collections.Generic.HashSet[string]]::new()
+  $source = $null
   for ($i = 0; $i -lt $parts.Count; $i++) {
     $p = $parts[$i]
     if (-not $p.name) { throw "exmod.json: partitions.$Project.parts[$i] has no name." }
     $last = ($i -eq $parts.Count - 1)
     $hasFilter = [bool]($p.PSObject.Properties['filter'] -and $p.filter)
-    if ($last -and $hasFilter) { throw "exmod.json: the last part of partitions.$Project is the complement and takes no filter." }
-    if (-not $last -and -not $hasFilter) { throw "exmod.json: partitions.$Project.parts[$i] ($($p.name)) has no filter." }
-    if (-not $last) { $declared += $p.filter }
+    $hasPaths = [bool]($p.PSObject.Properties['paths'] -and @($p.paths).Count -gt 0)
+    if ($hasFilter -and $hasPaths) { throw "exmod.json: partitions.$Project.parts[$i] ($($p.name)) has both filter and paths." }
+    if ($last -and ($hasFilter -or $hasPaths)) { throw "exmod.json: the last part of partitions.$Project is the complement and takes no filter." }
+    if (-not $last -and -not $hasFilter -and -not $hasPaths) { throw "exmod.json: partitions.$Project.parts[$i] ($($p.name)) has no filter." }
+    if ($last) { continue }
+    if ($hasPaths) {
+      if (-not $source) { $source = Get-ExmodTestSource $Project }
+      $terms = Resolve-ExmodPartPaths $Project $i $p $source $explicit $claimed
+      $filters += ($terms -join '|')
+      $declared += ($terms -join '|')
+    }
+    else {
+      $filters += $p.filter
+      $declared += $p.filter
+      $explicit += $p.filter
+    }
   }
   $heap = for ($i = 0; $i -lt $parts.Count; $i++) {
     $p = $parts[$i]
@@ -311,9 +330,52 @@ function Get-ExmodPartitions([string]$Project) {
   }
   $heap = @($heap)
   $out = @()
-  for ($i = 0; $i -lt $parts.Count - 1; $i++) { $out += [pscustomobject]@{ Name = $parts[$i].name; Filter = $parts[$i].filter; HeapGb = $heap[$i] } }
+  for ($i = 0; $i -lt $parts.Count - 1; $i++) { $out += [pscustomobject]@{ Name = $parts[$i].name; Filter = $filters[$i]; HeapGb = $heap[$i] } }
   $out += [pscustomobject]@{ Name = $parts[-1].name; Filter = Get-ExmodComplementFilter $declared; HeapGb = $heap[-1] }
   return [pscustomobject]@{ Parts = $out }
+}
+
+# The folder of the test project $Project and its namespace segments: { Dir; Segments } with Segments the set of
+# every name between the dots of a `namespace` declaration in the project's .cs files. Throws when the manifest
+# has no test project of that name.
+function Get-ExmodTestSource([string]$Project) {
+  $entry = @((Get-ExmodTestProjects).Values | Where-Object { $_.Project -eq $Project }) | Select-Object -First 1
+  if (-not $entry) { throw "exmod.json: partitions.$Project names no test project." }
+  $dir = if (Test-Path -LiteralPath $entry.Proj -PathType Container) { $entry.Proj } else { Split-Path -Parent $entry.Proj }
+  $segments = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+  foreach ($f in Get-ChildItem -LiteralPath $dir -Filter *.cs -Recurse -File) {
+    foreach ($m in [regex]::Matches((Get-Content -LiteralPath $f.FullName -Raw), '(?m)^\s*namespace\s+([\w.]+)')) {
+      foreach ($seg in $m.Groups[1].Value.Split('.')) { [void]$segments.Add($seg) }
+    }
+  }
+  return [pscustomobject]@{ Dir = $dir; Segments = $segments }
+}
+
+# The `FullyQualifiedName~.<Class>.` terms of the part $Part (index $Index) of partitions.$Project that names
+# `paths`: one per class declared in a .cs file under each folder, sorted by name, in the order the folders are
+# listed. $Source is Get-ExmodTestSource's. A class is left out, and so falls to the complement, when $Claimed (the
+# classes of earlier path parts, added to here) holds it, when a term of $EarlierFilters (the explicit filters of
+# earlier parts) contains `.<Class>.`, or when it is also a namespace segment, as `.<Class>.` would then match every
+# test under that namespace. Throws on a folder that does not exist and on a part left with no class.
+function Resolve-ExmodPartPaths([string]$Project, [int]$Index, $Part, $Source, [string[]]$EarlierFilters, $Claimed) {
+  $terms = @()
+  foreach ($rel in @($Part.paths)) {
+    $folder = Join-Path $Source.Dir $rel
+    if (-not (Test-Path -LiteralPath $folder -PathType Container)) { throw "exmod.json: partitions.$Project.parts[$Index] ($($Part.name)) names the folder $rel, which is not under $($Source.Dir)." }
+    $names = foreach ($f in Get-ChildItem -LiteralPath $folder -Filter *.cs -Recurse -File) {
+      foreach ($m in [regex]::Matches((Get-Content -LiteralPath $f.FullName -Raw), '(?m)^[ \t]{0,4}(?:(?:public|internal|sealed|static|abstract|partial|file)\s+)*(?:class|record)\s+(\w+)')) { $m.Groups[1].Value }
+    }
+    foreach ($name in @($names | Sort-Object -Unique -CaseSensitive)) {
+      if ($Claimed.Contains($name)) { continue }
+      if ($Source.Segments.Contains($name)) { continue }
+      $needle = ".$name."
+      if (@($EarlierFilters | Where-Object { $_.Contains($needle) }).Count -gt 0) { continue }
+      [void]$Claimed.Add($name)
+      $terms += "FullyQualifiedName~$needle"
+    }
+  }
+  if (-not $terms) { throw "exmod.json: partitions.$Project.parts[$Index] ($($Part.name)) has no class left under $(@($Part.paths) -join ', ')." }
+  return $terms
 }
 
 # True when $Value is a JSON integer of at least 1.
@@ -950,7 +1012,19 @@ function Invoke-Test([string[]]$Argv) {
   $affected = Get-Flag $Argv '-Affected'
   $baseArg = Get-Opt $Argv '-Base' ''
   $listOnly = Get-Flag $Argv '-List'
-  if (($baseArg -or $listOnly) -and -not $affected) { throw "-Base and -List need -Affected." }
+  if ($baseArg -and -not $affected) { throw "-Base needs -Affected." }
+  if ($listOnly -and -not $affected) {
+    foreach ($p in (Get-ExmodTestProjects).Values) {
+      $partitions = Get-ExmodPartitions $p.Project
+      if (-not $partitions) { continue }
+      Write-Host "$($p.Project):"
+      foreach ($part in $partitions.Parts) {
+        $heap = if ($part.HeapGb) { "$($part.HeapGb) GiB" } else { 'default heap' }
+        Write-Host ("  {0,-12} {1,-14} {2} term(s)" -f $part.Name, $heap, @($part.Filter -split '[|&]').Count)
+      }
+    }
+    return
+  }
   if ($affected) {
     if ($filter -or $partsArg -or $coverage) { throw "-Affected builds its own filter: it cannot be combined with -Filter, -Parts or -Coverage." }
     $baseRef = if ($baseArg) { $baseArg } else { 'dev' }
@@ -1450,6 +1524,7 @@ mod projects they share build once.
               (three characters or more).
               A class listed in $EXMOD_HEAVY_TESTS (default ~/src/claude-tools/claude/repos/modding-vsex/heavy-tests.txt)
               enters only through the first two. Prints each class with why it is in; -List stops there and runs nothing.
+              Without -Affected, -List prints each partition of each test assembly: its name, heap and term count.
               Combined with -Filter, -Parts or -Coverage it errors
   -StopOnRed  on the first partition host that exits non-zero, stop the hosts still running and start no more, each
               recorded as stopped; on by default when EXMOD_RUN_TRIGGER starts with `landing:`, and
@@ -1481,8 +1556,9 @@ With EXLIB_WRITE_GOLDENS set, the current series' lanes run first and the older 
 an older series' golden write compares against the shared goldens the current series' write rewrites.
 
 A test assembly the manifest lists under `partitions` runs, without -Filter, as one process per partition
-(see Get-ExmodPartitions): each partition but the last is a `|`-joined filter, the last runs everything
-they leave out. The counts, failures and logs are summed, so the census, zero and drop rules see one
+(see Get-ExmodPartitions): each partition but the last is a `|`-joined filter or `paths`, folders of the test project
+resolved on every run into one `FullyQualifiedName~.<Class>.` term per class declared there (a class an earlier part
+claims or names, or that is a namespace segment, is left to the complement); the last runs everything they leave out. The counts, failures and logs are summed, so the census, zero and drop rules see one
 assembly. A -Filter run is not partitioned.
 
 Every test host takes a share of the machine's memory budget (MemTotal less 10 GiB, $EXMOD_MEMORY_GB sets it) before it

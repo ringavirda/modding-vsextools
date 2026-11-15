@@ -211,6 +211,71 @@ def results_block(out):
     return out[out.index("===== Results ====="):]
 
 
+def run_paths(parts, files):
+    """The parts exmod resolves from `parts` (a manifest parts list) over a test folder holding `files`, a map of
+    relative path to text, followed by the output of the partition listing."""
+    with tempfile.TemporaryDirectory() as d:
+        for rel, text in files.items():
+            touch(os.path.join(d, rel), text)
+        m = {"partitions": {"A.Tests": {"parts": parts}}, "testMemory": {"A.Tests": {"heapGb": 9}}}
+        body = ("function Get-ExmodTestProjects { [ordered]@{ a = [pscustomobject]@{ Project = 'A.Tests'; Proj = '%s'; Series = @('1.22') } } }\n"
+                "try { foreach ($p in (Get-ExmodPartitions 'A.Tests').Parts) { Write-Host \"PART $($p.Name): $($p.Filter)\" } } catch { Write-Host \"threw: $_\" }"
+                % os.path.join(d, "a.csproj"))
+        out, _, _, _ = run_pwsh(body, args="'-List'", manifest=m)
+    return out
+
+
+def cls(name, ns="Mod.Tests"):
+    return f"namespace {ns};\n\npublic sealed class {name}\n{{\n}}\n"
+
+
+@unittest.skipUnless(PWSH, "pwsh not found")
+@unittest.skipIf(sys.platform == "win32", "the dotnet stub is a shell script")
+class FolderPartTests(unittest.TestCase):
+    FILES = {"Blocks/Furnaces/Kiln.cs": cls("Kiln"), "Blocks/Furnaces/Hearth.cs": cls("Hearth"),
+             "Blocks/Bellows.cs": cls("Bellows")}
+
+    def test_a_folder_part_becomes_one_class_term_per_class(self):
+        out = run_paths([{"name": "furnaces", "paths": ["Blocks/Furnaces"]}, {"name": "rest"}], self.FILES)
+        self.assertIn("PART furnaces: FullyQualifiedName~.Hearth.|FullyQualifiedName~.Kiln.", out)
+        self.assertIn("PART rest: FullyQualifiedName!~.Hearth.&FullyQualifiedName!~.Kiln.", out)
+
+    def test_a_class_two_path_parts_name_runs_in_the_first_only(self):
+        # Fails when first-claim is dropped: Kiln is then in both furnaces and blocks.
+        out = run_paths([{"name": "furnaces", "paths": ["Blocks/Furnaces"]}, {"name": "blocks", "paths": ["Blocks"]},
+                         {"name": "rest"}], self.FILES)
+        self.assertIn("PART furnaces: FullyQualifiedName~.Hearth.|FullyQualifiedName~.Kiln.", out)
+        self.assertIn("PART blocks: FullyQualifiedName~.Bellows.\n", out)
+
+    def test_a_class_an_earlier_filter_names_stays_out_of_the_folder_part(self):
+        # Fails when the earlier-term check is dropped: Kiln is then in walks and in furnaces.
+        out = run_paths([{"name": "walks", "filter": "FullyQualifiedName~.Kiln."},
+                         {"name": "furnaces", "paths": ["Blocks/Furnaces"]}, {"name": "rest"}], self.FILES)
+        self.assertIn("PART furnaces: FullyQualifiedName~.Hearth.\n", out)
+
+    def test_a_class_named_as_a_namespace_segment_falls_to_the_complement(self):
+        # Fails when the namespace check is dropped: `.Casting.` would match every test under Mod.Tests.Casting.
+        files = dict(self.FILES)
+        files["Blocks/Furnaces/Casting.cs"] = cls("Casting")
+        files["Blocks/Casting/Ladle.cs"] = cls("Ladle", "Mod.Tests.Casting")
+        out = run_paths([{"name": "furnaces", "paths": ["Blocks/Furnaces"]}, {"name": "rest"}], files)
+        self.assertIn("PART furnaces: FullyQualifiedName~.Hearth.|FullyQualifiedName~.Kiln.\n", out)
+
+    def test_a_folder_that_does_not_exist_is_named(self):
+        out = run_paths([{"name": "furnaces", "paths": ["Nowhere"]}, {"name": "rest"}], self.FILES)
+        self.assertIn("names the folder Nowhere", out)
+
+    def test_a_part_with_a_filter_and_paths_is_refused(self):
+        out = run_paths([{"name": "furnaces", "filter": "FullyQualifiedName~.Kiln.", "paths": ["Blocks"]},
+                         {"name": "rest"}], self.FILES)
+        self.assertIn("has both filter and paths", out)
+
+    def test_the_listing_prints_each_part_with_its_heap_and_term_count(self):
+        out = run_paths([{"name": "furnaces", "heapGb": 8, "paths": ["Blocks/Furnaces"]}, {"name": "rest"}], self.FILES)
+        self.assertRegex(out, r"furnaces\s+8 GiB\s+2 term\(s\)")
+        self.assertRegex(out, r"rest\s+default heap\s+2 term\(s\)")
+
+
 @unittest.skipUnless(PWSH, "pwsh not found")
 @unittest.skipIf(sys.platform == "win32", "the dotnet stub is a shell script")
 class PartitionTests(unittest.TestCase):
