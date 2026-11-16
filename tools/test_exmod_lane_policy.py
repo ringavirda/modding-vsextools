@@ -22,7 +22,7 @@ LANE = os.path.join("sessions", ".worktrees", "lane")
 class Checkout:
     """A checkout with one test project, `exmod test <args>` run in it through the command's own action."""
 
-    def __init__(self, under=LANE):
+    def __init__(self, under=LANE, env_list=True):
         self.dir = tempfile.TemporaryDirectory()
         self.root = os.path.join(self.dir.name, under)
         os.makedirs(self.root)
@@ -33,7 +33,9 @@ class Checkout:
         git(self.root, "add", "-A")
         git(self.root, "commit", "-q", "-m", "base")
         self.heavy = os.path.join(self.dir.name, "heavy-tests.txt")
-        touch(self.heavy, "CraftWalkGuards # 10\n")
+        self.env_list = env_list
+        if env_list:
+            touch(self.heavy, "CraftWalkGuards # 10\n")
         self.stub = os.path.join(self.dir.name, "dotnet")
         touch(self.stub, DOTNET)
         os.chmod(self.stub, os.stat(self.stub).st_mode | stat.S_IEXEC)
@@ -48,7 +50,7 @@ class Checkout:
         body = ("function Resolve-DotnetHost { $env:TEST_STUB }\n"
                 f"& (Resolve-ExmodCommand 'test').Action -Argv @({args})\n")
         full = exmod_env(os.path.join(self.dir.name, "local"), TEST_REPO=self.root, TEST_STUB=self.stub,
-                         TEST_ARGV=self.argv, EXMOD_HEAVY_TESTS=self.heavy, **env)
+                         TEST_ARGV=self.argv, **({"EXMOD_HEAVY_TESTS": self.heavy} if self.env_list else {}), **env)
         done = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", exmod_script(body)],
                               env=full, capture_output=True, text=True)
         runs = []
@@ -143,3 +145,47 @@ class OutsideALane(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(PWSH, "needs pwsh")
+class HeavyListSource(unittest.TestCase):
+    FILTER = "'1.22', '-Filter', 'FullyQualifiedName~CraftWalkGuards'"
+
+    def setUp(self):
+        self.lane = Checkout(env_list=False)
+        self.addCleanup(self.lane.close)
+
+    def test_repo_file_names_a_heavy_class(self):
+        """Fails when the reader ignores heavy-tests.txt at the checkout root."""
+        touch(os.path.join(self.lane.root, "heavy-tests.txt"), "CraftWalkGuards # 10\n")
+        code, out, runs = self.lane.run(self.FILTER)
+        self.assertEqual(code, 2, out)
+        self.assertIn("names CraftWalkGuards, a heavy class", out)
+        self.assertEqual(runs, [])
+
+    def test_missing_file_is_an_empty_list(self):
+        """Fails when a repository without heavy-tests.txt makes the reader throw."""
+        code, out, runs = self.lane.run(self.FILTER)
+        self.assertNotEqual(code, 2, out)
+        self.assertNotIn("heavy class", out)
+        self.assertEqual(len(runs), 1, out)
+
+    def test_home_default_is_not_read(self):
+        """Fails when the list under $HOME/src/claude-tools/claude/repos/modding-vsex is the default again."""
+        home = os.path.join(self.lane.dir.name, "home")
+        touch(os.path.join(home, "src/claude-tools/claude/repos/modding-vsex/heavy-tests.txt"), "CraftWalkGuards\n")
+        code, out, runs = self.lane.run(self.FILTER, HOME=home)
+        self.assertNotIn("heavy class", out)
+        self.assertEqual(len(runs), 1, out)
+
+    def test_env_file_wins_over_repo_file(self):
+        """Fails when heavy-tests.txt at the root is read before $EXMOD_HEAVY_TESTS."""
+        touch(os.path.join(self.lane.root, "heavy-tests.txt"), "CraftWalkGuards\n")
+        other = os.path.join(self.lane.dir.name, "other.txt")
+        touch(other, "OtherGuards\n")
+        code, out, runs = self.lane.run(self.FILTER, EXMOD_HEAVY_TESTS=other)
+        self.assertNotIn("heavy class", out)
+        self.assertEqual(len(runs), 1, out)
+        code, out, runs = self.lane.run("'1.22', '-Filter', 'FullyQualifiedName~OtherGuards'", EXMOD_HEAVY_TESTS=other)
+        self.assertEqual(code, 2, out)
+        self.assertIn("names OtherGuards, a heavy class", out)

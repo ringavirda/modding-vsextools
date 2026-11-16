@@ -1357,10 +1357,10 @@ function Get-ExmodAffectedPlan([string]$Root, [string[]]$Changed, [string[]]$Tes
   return [pscustomobject]@{ Classes = $classes; SkippedHeavy = $skipped; Filter = $filter }
 }
 
-# The heavy test classes: one per line of $EXMOD_HEAVY_TESTS (default ~/src/claude-tools/claude/repos/modding-vsex/heavy-tests.txt),
+# The heavy test classes: one per line of $EXMOD_HEAVY_TESTS when set, else of heavy-tests.txt at $RepoRoot beside exmod.json,
 # text after `#` ignored; empty when the file is missing.
 function Get-ExmodHeavyClasses {
-  $path = if ($env:EXMOD_HEAVY_TESTS) { $env:EXMOD_HEAVY_TESTS } else { Join-Path $HOME 'src/claude-tools/claude/repos/modding-vsex/heavy-tests.txt' }
+  $path = if ($env:EXMOD_HEAVY_TESTS) { $env:EXMOD_HEAVY_TESTS } else { Join-Path $RepoRoot 'heavy-tests.txt' }
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return @() }
   return @(Get-Content -LiteralPath $path | ForEach-Object { ($_ -split '#')[0].Trim() } | Where-Object { $_ })
 }
@@ -1940,7 +1940,7 @@ mod projects they share build once.
               and a repo that `depends` on exlib reads the exlib checkout ($ExlibRoot) the same way, its `src/` .cs
               files diffed from the merge-base of its HEAD with `int` (`dev` when `int` holds the HEAD), -ExlibBase <ref>
               names another, and the plan prints the checkout and base it read.
-              A class listed in $EXMOD_HEAVY_TESTS (default ~/src/claude-tools/claude/repos/modding-vsex/heavy-tests.txt)
+              A class listed in $EXMOD_HEAVY_TESTS (default heavy-tests.txt at the repository root)
               enters only through the first two. Prints each class with why it is in; -List stops there and runs nothing.
               Without -Affected, -List prints each partition of each test assembly: its name, heap and term count.
               Combined with -Filter, -Parts or -Coverage it errors
@@ -1962,7 +1962,7 @@ In a lane worktree (this repository's root under a sessions/.worktrees folder) t
 provisioning or lock, and exits 2 when: it has neither -Filter nor -Affected (-Coverage and -Parts count as unfiltered);
 a -Filter term (terms split at `|`, `&` and parentheses) is only the IronIndustryExpanded namespace, as
 `FullyQualifiedName~IronIndustryExpanded` or `=IronIndustryExpanded.Tests`; or the -Filter names, as a whole word, a class
-of $EXMOD_HEAVY_TESTS. EXMOD_HEAVY=1 lifts all three, and a run whose EXMOD_RUN_TRIGGER starts with `landing:` is never
+of $EXMOD_HEAVY_TESTS (default heavy-tests.txt at the repository root). EXMOD_HEAVY=1 lifts all three, and a run whose EXMOD_RUN_TRIGGER starts with `landing:` is never
 refused. `exmod check` is not refused.
 
 With EXMOD_BUILD_LOCK set to a file, the build and provisioning part of the run holds that file's flock
