@@ -333,6 +333,21 @@ class AffectedSightTests(unittest.TestCase):
         out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD~1'")
         self.assertEqual(["BetaTests", "OtherTests"], classes_of(out), out)
 
+    def test_a_changed_value_also_selects_the_classes_naming_a_source_type_that_reads_it(self):
+        # Fails when the source files naming a changed member are not read as changed (the hop), so ReaderTests, which names only the Reader type, drops out.
+        r = self.member_repo()
+        r.write("src/Reader.cs", "namespace A;\n\npublic class Reader\n{\n  public int Get() => CfgValues.Beta;\n}\n")
+        r.write("src/Idle.cs", "namespace A;\n\npublic class Idle\n{\n  public int Get() => CfgValues.Alpha;\n}\n")
+        r.write("tests/A.Tests/Reader.cs", class_source("ReaderTests", "[Fact] public void T() { var v = new Reader(); }"))
+        r.write("tests/A.Tests/IdleUse.cs", class_source("IdleUseTests", "[Fact] public void T() { var v = new Idle(); }"))
+        r.commit()
+        text = open(os.path.join(r.root, "src/CfgConfig.cs")).read()
+        r.write("src/CfgConfig.cs", text.replace("Beta = 2", "Beta = 5"))
+        r.commit()
+        out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD~1'")
+        self.assertEqual(["BetaTests", "OtherTests", "ReaderTests"], classes_of(out), out)
+        self.assertIn("names Reader (src/Reader.cs, reads member Beta)", out)
+
     def test_a_change_outside_every_member_of_a_member_type_takes_every_class_naming_the_type(self):
         # Fails when a changed line with no member above it is skipped, so the member beside it alone selects.
         r = self.member_repo()

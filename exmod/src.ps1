@@ -1242,7 +1242,7 @@ function Add-ExmodAffected($Entries, [string]$Name, [string]$Why, [bool]$Direct)
 #   whole drops them, and a heavy class does not hide them.
 #   $MemberTypes (manifest `affectedMembers`): a changed source file declaring one of these types selects the test files
 #   that name the type (a `...Config` type also as its generated `...Values`) and a member whose lines the diff touched,
-#   not every file that names the type.
+#   not every file that names the type; a source file naming such a member also selects as though it had changed.
 #   $Exlib (Get-ExmodExlibChanges): the types of its changed `src/` .cs files select like those of $Changed.
 # A class of $Heavy stays out unless 1 or 2 put it in (Direct). Filter is `FullyQualifiedName~.<class>.` terms joined by
 # `|` (a row selection its own terms), empty with no class.
@@ -1280,6 +1280,22 @@ function Get-ExmodAffectedPlan([string]$Root, [string[]]$Changed, [string[]]$Tes
       }
       foreach ($alias in $(if ($ty.Name -in $MemberTypes) { Get-ExmodTypeAliases $ty.Name } else { $ty.Name })) {
         if (-not $sourceTypes.Contains($alias)) { $sourceTypes[$alias] = $rel }
+      }
+    }
+  }
+  if ($memberSets.Count -gt 0) {
+    $members = @($memberSets.Values | ForEach-Object { $_.Keys } | Select-Object -Unique)
+    $memberRx = [regex]::new('(?<![A-Za-z0-9_])(?:' + (($members | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')(?![A-Za-z0-9_])')
+    $configFiles = @($memberSets.Values | ForEach-Object { $_.Values })
+    foreach ($rel in @(git -C $Root ls-files '*.cs')) {
+      if ((& $inTests $rel) -or $rel -in $configFiles) { continue }
+      $path = Join-Path $Root $rel
+      if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+      $text = Get-Content -LiteralPath $path -Raw
+      $read = @($memberRx.Matches($text) | ForEach-Object { $_.Value } | Select-Object -First 1)
+      if (-not $read) { continue }
+      foreach ($ty in (Get-ExmodCsTypes $text)) {
+        if (-not $sourceTypes.Contains($ty.Name)) { $sourceTypes[$ty.Name] = "$rel, reads member $($read[0])" }
       }
     }
   }
