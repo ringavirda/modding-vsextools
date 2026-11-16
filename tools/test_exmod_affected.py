@@ -223,7 +223,7 @@ class AffectedTests(unittest.TestCase):
                          runs[0][runs[0].index("--filter") + 1], runs)
 
     def test_a_change_that_selects_nothing_runs_no_test_and_a_bad_combination_or_base_is_refused(self):
-        # Fails when an empty plan runs the whole suite, or -Affected combines with -Filter, or -List stands alone.
+        # Fails when an empty plan runs the whole suite, or -Affected combines with -Filter, or -Base stands alone.
         r = self.repo()
         r.write("tests/A.Tests/One.cs", class_source("OneTests"))
         r.write("README.md", "a")
@@ -235,8 +235,8 @@ class AffectedTests(unittest.TestCase):
         self.assertIn("Nothing affected", out)
         out, _ = r.run("'-Affected', '-Filter', 'X'")
         self.assertIn("-Affected builds its own filter", out)
-        out, _ = r.run("'-List'")
-        self.assertIn("-Base and -List need -Affected", out)
+        out, _ = r.run("'-Base', 'HEAD~1'")
+        self.assertIn("-Base needs -Affected.", out)
         out, _ = r.run("'-Affected', '-Base', 'nosuchref'")
         self.assertIn("git diff nosuchref...HEAD failed", out)
 

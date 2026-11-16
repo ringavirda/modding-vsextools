@@ -375,6 +375,11 @@ function Remove-ScratchServer { }
 @unittest.skipUnless(PWSH, "pwsh not found")
 @unittest.skipIf(sys.platform == "win32", "the lock is flock(2)")
 class StageAndBootTests(LockCase):
+    def setUp(self):
+        super().setUp()
+        touch(os.path.join(self.repo, "exmod.json"), json.dumps({"mods": {"a": {"path": "mods/a"}}}))
+        touch(os.path.join(self.repo, "mods/a/src/A.csproj"), "<Project />")
+
     def stamps_of(self, call, count):
         code, out = self.run_body(SMOKE_STAGE + call, EXMOD_PORTS_DIR=os.path.join(self.tmp, "ports"))
         self.assertEqual(0, code, out)
@@ -413,7 +418,7 @@ class StageAndBootTests(LockCase):
         """Runs `call` with a Start-ScratchServer that stamps how many of the budget's slot files are locked; returns
         (that count or None, output)."""
         if manifest is not None:
-            touch(os.path.join(self.repo, "exmod.json"), json.dumps(manifest))
+            touch(os.path.join(self.repo, "exmod.json"), json.dumps({"mods": {"a": {"path": "mods/a"}}, **manifest}))
         stub = ("function Start-ScratchServer { $n = 0; Get-ChildItem $env:EXMOD_MEMORY_DIR -Filter '*.lock' -ErrorAction SilentlyContinue | "
                 "Where-Object { $_.Name -match '^\\d+\\.lock$' } | ForEach-Object { & flock -n $_.FullName true; "
                 "if ($LASTEXITCODE -ne 0) { $n++ } }; Add-Content $env:TEST_STAMPS \"memory-held $n\"; throw 'stop here' }\n")
