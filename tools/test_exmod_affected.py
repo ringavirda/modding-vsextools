@@ -394,6 +394,20 @@ class AffectedSightTests(unittest.TestCase):
         self.assertIn(f"exlib: read {lib}, base merge-base HEAD int (", out)
         self.assertIn("1 changed file(s).", out)
 
+    def test_an_exlib_lane_that_int_already_holds_reads_nothing_and_never_diffs_from_dev(self):
+        # Fails when a lane whose HEAD int holds falls back to dev as its base (its own commit, landed, selects again).
+        r = self.exlib_consumer()
+        lib = self.exlib_repo(r)
+        git(lib, "checkout", "-q", "-b", "lane", "int")
+        touch(os.path.join(lib, "src/Widget.cs"), "namespace L;\n\npublic class Widget\n{\n  public int X;\n}\n")
+        git(lib, "add", "-A")
+        git(lib, "commit", "-q", "-m", "lane")
+        git(lib, "branch", "-f", "int", "lane")
+        out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD'")
+        self.assertEqual([], classes_of(out), out)
+        self.assertIn(f"exlib: read {lib}, base merge-base HEAD int (", out)
+        self.assertIn("0 changed file(s).", out)
+
     def test_an_exlib_checkout_off_a_lane_reads_nothing_without_a_base_and_a_missing_checkout_is_said(self):
         # Fails when a checkout at int, dev or detached takes a default base (int's commits since dev select), when
         # -ExlibBase is not honoured there, or when the missing checkout passes silently.
