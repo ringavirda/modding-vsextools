@@ -1194,8 +1194,8 @@ function Get-ExmodSetupIds([string]$Root, [string[]]$Changed, $Entry, [string]$B
 # The exlib checkout a repository builds against and what changed in it: { Root; Ref; Base; Changed; Note }, or $null
 # when the manifest has no `depends.exlib`. The root is $env:ExlibRoot, else `exlib` beside the nearest
 # Directory.Build.props above $Root that sets ExlibRoot. The base is the merge-base of the checkout's HEAD with
-# $BaseRef, default `int`, or `dev` when `int` already holds the HEAD. Changed is empty with a Note when no checkout or
-# base is found.
+# $BaseRef, default `int`. Without $BaseRef a checkout that is not on a lane branch (on `int`, `dev` or `main`, or
+# detached) reads no changes. Changed is empty with a Note when no checkout or base is found, or when it reads none.
 function Get-ExmodExlibChanges([string]$Root, $Manifest, [string]$BaseRef) {
   $deps = if ($Manifest.PSObject.Properties['depends']) { $Manifest.depends } else { $null }
   if (-not $deps -or -not $deps.PSObject.Properties['exlib']) { return $null }
@@ -1212,9 +1212,10 @@ function Get-ExmodExlibChanges([string]$Root, $Manifest, [string]$BaseRef) {
   if ($lib -eq $Root.TrimEnd('/', '\')) { return $null }
   $ref = $BaseRef
   if (-not $ref) {
+    $branch = @(git -C $lib symbolic-ref --quiet --short HEAD 2>$null)
+    if ($LASTEXITCODE -ne 0) { return (& $none "$lib is detached and no -ExlibBase names a base") }
+    if ($branch[0] -in @('int', 'dev', 'main')) { return (& $none "$lib is on $($branch[0]) and no -ExlibBase names a base") }
     $ref = 'int'
-    git -C $lib merge-base --is-ancestor HEAD int 2>$null
-    if ($LASTEXITCODE -eq 0) { $ref = 'dev' }
   }
   $sha = @(git -C $lib merge-base HEAD $ref 2>&1)
   if ($LASTEXITCODE -ne 0) { return (& $none "no merge-base of HEAD with $ref at $lib") }
@@ -1938,8 +1939,9 @@ mod projects they share build once.
               changed (`Type`, or `...Values` for a `...Config` type, and the member both named in the test file); the manifest's `affectedSetups` ({ class, files,
               recordings }) make a changed setup file or recording select only its setup's rows of that class, heavy or not;
               and a repo that `depends` on exlib reads the exlib checkout ($ExlibRoot) the same way, its `src/` .cs
-              files diffed from the merge-base of its HEAD with `int` (`dev` when `int` holds the HEAD), -ExlibBase <ref>
-              names another, and the plan prints the checkout and base it read.
+              files diffed from the merge-base of its HEAD with `int`, -ExlibBase <ref> names another; a checkout on
+              `int`, `dev` or `main`, or detached, reads no exlib changes without -ExlibBase. The plan prints the
+              checkout and base it read.
               A class listed in $EXMOD_HEAVY_TESTS (default heavy-tests.txt at the repository root)
               enters only through the first two. Prints each class with why it is in; -List stops there and runs nothing.
               Without -Affected, -List prints each partition of each test assembly: its name, heap and term count.

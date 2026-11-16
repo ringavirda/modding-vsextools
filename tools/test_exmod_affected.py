@@ -394,8 +394,9 @@ class AffectedSightTests(unittest.TestCase):
         self.assertIn(f"exlib: read {lib}, base merge-base HEAD int (", out)
         self.assertIn("1 changed file(s).", out)
 
-    def test_an_exlib_checkout_at_int_diffs_from_dev_and_a_missing_checkout_is_said(self):
-        # Fails when a checkout at int takes int as its base (nothing changed), or the missing checkout passes silently.
+    def test_an_exlib_checkout_off_a_lane_reads_nothing_without_a_base_and_a_missing_checkout_is_said(self):
+        # Fails when a checkout at int, dev or detached takes a default base (int's commits since dev select), when
+        # -ExlibBase is not honoured there, or when the missing checkout passes silently.
         r = self.exlib_consumer()
         lib = self.exlib_repo(r)
         git(lib, "checkout", "-q", "int")
@@ -403,14 +404,20 @@ class AffectedSightTests(unittest.TestCase):
         git(lib, "add", "-A")
         git(lib, "commit", "-q", "-m", "int moves")
         out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD'")
+        self.assertEqual([], classes_of(out), out)
+        self.assertIn(f"exlib: {lib} is on int and no -ExlibBase names a base, its changes are not read.", out)
+        out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD', '-ExlibBase', 'dev'")
         self.assertEqual(["IdleTests"], classes_of(out), out)
         self.assertIn("base merge-base HEAD dev (", out)
-        out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD', '-ExlibBase', 'int'")
+        git(lib, "checkout", "-q", "--detach", "int")
+        out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD'")
         self.assertEqual([], classes_of(out), out)
+        self.assertIn(f"exlib: {lib} is detached and no -ExlibBase names a base", out)
+        out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD', '-ExlibBase', 'dev'")
+        self.assertEqual(["IdleTests"], classes_of(out), out)
         r.env["ExlibRoot"] = os.path.join(r.dir.name, "nowhere")
         out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD'")
         self.assertIn("exlib: no exlib checkout found", out)
-
 
 if __name__ == "__main__":
     unittest.main()
