@@ -1094,6 +1094,135 @@ function Get-ExmodTestClasses([string]$Text) {
   }
 }
 
+# The member names a changed C# file's diff touches: from `git diff -U0 $Base...HEAD`, the declaration on each changed or
+# removed line, or for a comment or attribute line the declaration below it, or for a line inside a member the nearest
+# declaration above it at a smaller indent. Returns the names, or
+# $null when the file is deleted, has no diff or a changed line sits outside every member (the caller then takes the type).
+function Get-ExmodChangedMembers([string]$Root, [string]$Rel, [string]$Base) {
+  $path = Join-Path $Root $Rel
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
+  $lines = @(Get-Content -LiteralPath $path)
+  $diff = @(git -C $Root diff -U0 "$Base...HEAD" -- $Rel 2>$null)
+  if ($LASTEXITCODE -ne 0 -or -not $diff) { return $null }
+  $decl = '^\s*(?:\[[^\]]*\]\s*)*(?:(?:public|internal|private|protected|static|readonly|const|sealed|override|virtual|abstract|required|new|unsafe|volatile|partial)\s+)+(?!.*\b(?:class|struct|interface|enum|record)\b)[\w<>\[\],.?\s]+?\s+(\w+)\s*(?:=>|=|\(|\{|;)'
+  $indent = { param($l) $l.Length - $l.TrimStart().Length }
+  $enclosing = {
+    param($i)
+    if ($lines[$i].TrimStart() -match '^(//|\[)') {
+      for ($j = $i + 1; $j -lt $lines.Count; $j++) {
+        if (-not $lines[$j].Trim() -or $lines[$j].TrimStart() -match '^(//|\[)') { continue }
+        if ($lines[$j] -match $decl) { return $Matches[1] }
+        break
+      }
+    }
+    $mine = & $indent $lines[$i]
+    for ($j = $i - 1; $j -ge 0; $j--) {
+      if (-not $lines[$j].Trim() -or (& $indent $lines[$j]) -ge $mine) { continue }
+      if ($lines[$j] -match $decl) { return $Matches[1] }
+    }
+    return $null
+  }
+  $names = [System.Collections.Generic.List[string]]::new()
+  foreach ($l in $diff) {
+    if ($l -match '^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@') {
+      $start = [int]$Matches[1]
+      $count = if ($Matches[2]) { [int]$Matches[2] } else { 1 }
+      $range = if ($count -eq 0) { @($start) } else { @($start..($start + $count - 1)) }
+      foreach ($n in $range) {
+        $i = $n - 1
+        if ($i -lt 0 -or $i -ge $lines.Count -or -not $lines[$i].Trim()) { continue }
+        $name = if ($lines[$i] -match $decl) { $Matches[1] } else { & $enclosing $i }
+        if (-not $name) { return $null }
+        if ($name -notin $names) { $names.Add($name) }
+      }
+    }
+    elseif ($l -match '^-(?!--)' -and $l.Substring(1) -match $decl) {
+      if ($Matches[1] -notin $names) { $names.Add($Matches[1]) }
+    }
+  }
+  if ($names.Count -eq 0) { return $null }
+  return @($names)
+}
+
+# The names a test file reaches a type by: the type, and for a `...Config` type the `...Values` accessor the config
+# generator emits for it.
+function Get-ExmodTypeAliases([string]$Type) {
+  $Type
+  if ($Type.EndsWith('Config') -and $Type.Length -gt 6) { $Type.Substring(0, $Type.Length - 6) + 'Values' }
+}
+
+# The `dotnet test` filter terms of every row of setup $Setup: the main row (`row: <id>)`) and its variants and tick
+# orders (`row: <id>/...`, `row: <id>@...`), exactly, so a setup whose id starts with another's is not selected.
+function Get-ExmodSetupRowTerms([string]$Setup) {
+  @("DisplayName~row: $Setup\)", "DisplayName~row: $Setup/", "DisplayName~row: $Setup@")
+}
+
+# The setup ids a changed path reaches for one `affectedSetups` entry { class; files; recordings } (folders relative to
+# $Root): a changed file under `files` its own `setup` id (its base name when deleted or unnamed) and the setups whose
+# file names that id as `setups/<id>"`; a changed file under `recordings` the id of its base name. Returns
+# { Id; Why } per id.
+function Get-ExmodSetupIds([string]$Root, [string[]]$Changed, $Entry, [string]$Base) {
+  $files = ([string]$Entry.files).TrimEnd('/') + '/'
+  $recordings = ([string]$Entry.recordings).TrimEnd('/') + '/'
+  $found = [ordered]@{}
+  foreach ($rel in $Changed) {
+    if ($rel.StartsWith($files, [StringComparison]::Ordinal) -and $rel.EndsWith('.json') -and $rel.IndexOf('/', $files.Length) -lt 0) {
+      $id = [IO.Path]::GetFileNameWithoutExtension($rel)
+      $path = Join-Path $Root $rel
+      $text = if (Test-Path -LiteralPath $path -PathType Leaf) { Get-Content -LiteralPath $path -Raw } else { (git -C $Root show "${Base}:$rel" 2>$null) -join "`n" }
+      if ($text -match '"setup"\s*:\s*"([^"]+)"') { $id = $Matches[1] }
+      if (-not $found.Contains($id)) { $found[$id] = "changed setup file $rel" }
+      $dir = Join-Path $Root $files
+      if (Test-Path -LiteralPath $dir -PathType Container) {
+        foreach ($f in (Get-ChildItem -LiteralPath $dir -Filter '*.json' -File)) {
+          $other = Get-Content -LiteralPath $f.FullName -Raw
+          if ($other -notmatch ('setups/' + [regex]::Escape($id) + '"')) { continue }
+          $oid = $f.BaseName
+          if ($other -match '"setup"\s*:\s*"([^"]+)"') { $oid = $Matches[1] }
+          if (-not $found.Contains($oid)) { $found[$oid] = "setup file $($f.Name) follows changed $rel" }
+        }
+      }
+    }
+    elseif ($rel.StartsWith($recordings, [StringComparison]::Ordinal) -and $rel.EndsWith('.json')) {
+      $id = [IO.Path]::GetFileNameWithoutExtension($rel)
+      if (-not $found.Contains($id)) { $found[$id] = "changed recording $rel" }
+    }
+  }
+  foreach ($id in $found.Keys) { [pscustomobject]@{ Id = $id; Why = $found[$id] } }
+}
+
+# The exlib checkout a repository builds against and what changed in it: { Root; Ref; Base; Changed; Note }, or $null
+# when the manifest has no `depends.exlib`. The root is $env:ExlibRoot, else `exlib` beside the nearest
+# Directory.Build.props above $Root that sets ExlibRoot. The base is the merge-base of the checkout's HEAD with
+# $BaseRef, default `int`, or `dev` when `int` already holds the HEAD. Changed is empty with a Note when no checkout or
+# base is found.
+function Get-ExmodExlibChanges([string]$Root, $Manifest, [string]$BaseRef) {
+  $deps = if ($Manifest.PSObject.Properties['depends']) { $Manifest.depends } else { $null }
+  if (-not $deps -or -not $deps.PSObject.Properties['exlib']) { return $null }
+  $lib = $env:ExlibRoot
+  if (-not $lib) {
+    for ($dir = Split-Path -Parent $Root; $dir; $dir = Split-Path -Parent $dir) {
+      $props = Join-Path $dir 'Directory.Build.props'
+      if ((Test-Path -LiteralPath $props -PathType Leaf) -and (Get-Content -LiteralPath $props -Raw) -match '<ExlibRoot') { $lib = Join-Path $dir 'exlib'; break }
+    }
+  }
+  $none = { param($why) [pscustomobject]@{ Root = $lib; Ref = ''; Base = ''; Changed = @(); Note = "exlib: $why, its changes are not read." } }
+  if (-not $lib -or -not (Test-Path -LiteralPath $lib -PathType Container)) { return (& $none 'no exlib checkout found (ExlibRoot unset or missing)') }
+  $lib = (Resolve-Path -LiteralPath $lib).Path.TrimEnd('/', '\')
+  if ($lib -eq $Root.TrimEnd('/', '\')) { return $null }
+  $ref = $BaseRef
+  if (-not $ref) {
+    $ref = 'int'
+    git -C $lib merge-base --is-ancestor HEAD int 2>$null
+    if ($LASTEXITCODE -eq 0) { $ref = 'dev' }
+  }
+  $sha = @(git -C $lib merge-base HEAD $ref 2>&1)
+  if ($LASTEXITCODE -ne 0) { return (& $none "no merge-base of HEAD with $ref at $lib") }
+  $changed = @(git -C $lib diff --name-only "$($sha[0])...HEAD" 2>&1)
+  if ($LASTEXITCODE -ne 0) { return (& $none "git diff failed at ${lib}: $($changed -join ' ')") }
+  [pscustomobject]@{ Root = $lib; Ref = $ref; Base = $sha[0]; Changed = $changed; Note = "exlib: read $lib, base merge-base HEAD $ref ($($sha[0].Substring(0, [Math]::Min(9, $sha[0].Length)))), $($changed.Count) changed file(s)." }
+}
+
 function Add-ExmodAffected($Entries, [string]$Name, [string]$Why, [bool]$Direct) {
   if (-not $Entries.Contains($Name)) { $Entries[$Name] = [pscustomobject]@{ Name = $Name; Why = [System.Collections.Generic.List[string]]::new(); Direct = $false } }
   if ($Why -notin $Entries[$Name].Why) { $Entries[$Name].Why.Add($Why) }
@@ -1108,9 +1237,16 @@ function Add-ExmodAffected($Entries, [string]$Name, [string]$Why, [bool]$Direct)
 #   3. every class of $Always, which must be declared in some test file;
 #   a changed .json file, or file under an `assets` folder, takes the classes of the test files that name its base name
 #   (of three characters or more, so a locale file `en.json` names nothing).
+#   $Setups (manifest `affectedSetups`, { class; files; recordings } with folders relative to $Root): a changed setup file
+#   or recording selects only the rows of its setup in that class, as `DisplayName~row: <id>` terms; a class already in
+#   whole drops them, and a heavy class does not hide them.
+#   $MemberTypes (manifest `affectedMembers`): a changed source file declaring one of these types selects the test files
+#   that name the type (a `...Config` type also as its generated `...Values`) and a member whose lines the diff touched,
+#   not every file that names the type.
+#   $Exlib (Get-ExmodExlibChanges): the types of its changed `src/` .cs files select like those of $Changed.
 # A class of $Heavy stays out unless 1 or 2 put it in (Direct). Filter is `FullyQualifiedName~.<class>.` terms joined by
-# `|`, empty with no class.
-function Get-ExmodAffectedPlan([string]$Root, [string[]]$Changed, [string[]]$TestDirs, [string[]]$Always, [string[]]$Heavy, [string]$Base) {
+# `|` (a row selection its own terms), empty with no class.
+function Get-ExmodAffectedPlan([string]$Root, [string[]]$Changed, [string[]]$TestDirs, [string[]]$Always, [string[]]$Heavy, [string]$Base, $Setups = @(), [string[]]$MemberTypes = @(), $Exlib = $null) {
   $prefixes = @($TestDirs | ForEach-Object { [IO.Path]::GetRelativePath($Root, $_).Replace('\', '/').TrimEnd('/') + '/' })
   $inTests = { param($rel) foreach ($pre in $prefixes) { if ($rel.StartsWith($pre, [StringComparison]::Ordinal)) { return $true } }; return $false }
 
@@ -1129,10 +1265,30 @@ function Get-ExmodAffectedPlan([string]$Root, [string[]]$Changed, [string[]]$Tes
   }
 
   $sourceTypes = [ordered]@{}
+  $memberSets = [ordered]@{}
   foreach ($rel in ($Changed | Where-Object { $_.EndsWith('.cs') -and -not (& $inTests $_) })) {
     $path = Join-Path $Root $rel
     $text = if (Test-Path -LiteralPath $path -PathType Leaf) { Get-Content -LiteralPath $path -Raw } else { (git -C $Root show "${Base}:$rel" 2>$null) -join "`n" }
-    foreach ($ty in (Get-ExmodCsTypes $text)) { if (-not $sourceTypes.Contains($ty.Name)) { $sourceTypes[$ty.Name] = $rel } }
+    foreach ($ty in (Get-ExmodCsTypes $text)) {
+      if ($ty.Name -in $MemberTypes) {
+        $members = Get-ExmodChangedMembers $Root $rel $Base
+        if ($members) {
+          if (-not $memberSets.Contains($ty.Name)) { $memberSets[$ty.Name] = [ordered]@{} }
+          foreach ($m in $members) { if (-not $memberSets[$ty.Name].Contains($m)) { $memberSets[$ty.Name][$m] = $rel } }
+          continue
+        }
+      }
+      foreach ($alias in $(if ($ty.Name -in $MemberTypes) { Get-ExmodTypeAliases $ty.Name } else { $ty.Name })) {
+        if (-not $sourceTypes.Contains($alias)) { $sourceTypes[$alias] = $rel }
+      }
+    }
+  }
+  if ($Exlib) {
+    foreach ($rel in ($Exlib.Changed | Where-Object { $_.EndsWith('.cs') -and $_.StartsWith('src/', [StringComparison]::Ordinal) })) {
+      $path = Join-Path $Exlib.Root $rel
+      $text = if (Test-Path -LiteralPath $path -PathType Leaf) { Get-Content -LiteralPath $path -Raw } else { (git -C $Exlib.Root show "$($Exlib.Base):$rel" 2>$null) -join "`n" }
+      foreach ($ty in (Get-ExmodCsTypes $text)) { if (-not $sourceTypes.Contains($ty.Name)) { $sourceTypes[$ty.Name] = "exlib $rel" } }
+    }
   }
   $assetNames = [ordered]@{}
   foreach ($rel in ($Changed | Where-Object { -not $_.EndsWith('.cs') -and ($_.EndsWith('.json') -or $_ -match '(^|/)assets/') })) {
@@ -1150,6 +1306,20 @@ function Get-ExmodAffectedPlan([string]$Root, [string[]]$Changed, [string[]]$Tes
     }
   }
 
+  foreach ($type in $memberSets.Keys) {
+    $aliases = Get-ExmodTypeAliases $type
+    $typeRx = [regex]::new('(?<![A-Za-z0-9_])(?:' + (($aliases | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')(?![A-Za-z0-9_])')
+    $memberRx = [regex]::new('(?<![A-Za-z0-9_])(?:' + (($memberSets[$type].Keys | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')(?![A-Za-z0-9_])')
+    foreach ($t in $tests) {
+      if (-not $typeRx.IsMatch($t.Text)) { continue }
+      $hit = @($memberRx.Matches($t.Text) | ForEach-Object { $_.Value } | Select-Object -Unique -First 3)
+      if (-not $hit) { continue }
+      $via = $typeRx.Match($t.Text).Value
+      $why = ($hit | ForEach-Object { "names $via.$_ ($($memberSets[$type][$_]))" }) -join ', '
+      foreach ($c in ($t.Classes | Where-Object { $_.HasTests })) { Add-ExmodAffected $entries $c.Name $why $true }
+    }
+  }
+
   $declared = @($tests | ForEach-Object { $_.Classes } | ForEach-Object { $_.Name })
   foreach ($name in $Always) {
     if ($name -notin $declared) { throw "exmod.json: affectedAlways names $name, which no test file declares." }
@@ -1158,7 +1328,16 @@ function Get-ExmodAffectedPlan([string]$Root, [string[]]$Changed, [string[]]$Tes
 
   $skipped = @($entries.Values | Where-Object { -not $_.Direct -and $_.Name -in $Heavy } | ForEach-Object { $_.Name })
   $classes = @($entries.Values | Where-Object { $_.Name -notin $skipped } | Sort-Object Name)
-  $filter = (@($classes | ForEach-Object { "FullyQualifiedName~.$($_.Name)." }) -join '|')
+  $terms = @($classes | ForEach-Object { "FullyQualifiedName~.$($_.Name)." })
+  foreach ($entry in $Setups) {
+    $class = [string]$entry.class
+    if ($class -in $classes.Name) { continue }
+    $ids = @(Get-ExmodSetupIds $Root $Changed $entry $Base)
+    if (-not $ids) { continue }
+    $classes += [pscustomobject]@{ Name = $class; Why = [System.Collections.Generic.List[string]]@($ids | ForEach-Object { "rows of $($_.Id): $($_.Why)" }); Direct = $true }
+    $terms += @($ids | ForEach-Object { Get-ExmodSetupRowTerms $_.Id })
+  }
+  $filter = ($terms -join '|')
   return [pscustomobject]@{ Classes = $classes; SkippedHeavy = $skipped; Filter = $filter }
 }
 
@@ -1172,18 +1351,23 @@ function Get-ExmodHeavyClasses {
 
 # Get-ExmodAffectedPlan for this checkout: the paths `git diff` names between $Base and HEAD, the manifest's test projects
 # and `affectedAlways`, and the heavy classes. Throws when git cannot diff $Base.
-function Get-ExmodAffectedPlanHere([string]$Base) {
+function Get-ExmodAffectedPlanHere([string]$Base, [string]$ExlibBase = '') {
   $changed = @(git -C $RepoRoot diff --name-only --relative "$Base...HEAD" 2>&1)
   if ($LASTEXITCODE -ne 0) { throw "git diff $Base...HEAD failed at ${RepoRoot}: $($changed -join ' ')" }
   $manifest = Get-ExmodManifest
   $always = if ($manifest.PSObject.Properties['affectedAlways']) { @($manifest.affectedAlways) } else { @() }
   $dirs = @((Get-ExmodTestProjects).Values | ForEach-Object { if (Test-Path -LiteralPath $_.Proj -PathType Container) { $_.Proj } else { Split-Path -Parent $_.Proj } } | Select-Object -Unique)
-  $plan = Get-ExmodAffectedPlan $RepoRoot $changed $dirs $always (Get-ExmodHeavyClasses) $Base
+  $setups = if ($manifest.PSObject.Properties['affectedSetups']) { @($manifest.affectedSetups) } else { @() }
+  $memberTypes = if ($manifest.PSObject.Properties['affectedMembers']) { @($manifest.affectedMembers) } else { @() }
+  $exlib = Get-ExmodExlibChanges $RepoRoot $manifest $ExlibBase
+  $plan = Get-ExmodAffectedPlan $RepoRoot $changed $dirs $always (Get-ExmodHeavyClasses) $Base $setups $memberTypes $exlib
+  $plan | Add-Member -NotePropertyName Notes -NotePropertyValue @(if ($exlib) { $exlib.Note })
   $plan | Add-Member -NotePropertyName ChangedCount -NotePropertyValue $changed.Count -PassThru
 }
 
 function Write-ExmodAffectedPlan($Plan, [string]$Base) {
   Write-Host "Affected test classes (base $Base, $($Plan.ChangedCount) changed file(s)):"
+  foreach ($note in $Plan.Notes) { Write-Host $note }
   foreach ($c in $Plan.Classes) {
     $why = ($c.Why | Select-Object -First 3) -join '; '
     $more = if ($c.Why.Count -gt 3) { " (+$($c.Why.Count - 3) more)" } else { '' }
@@ -1194,7 +1378,7 @@ function Write-ExmodAffectedPlan($Plan, [string]$Base) {
 }
 
 function Invoke-Test([string[]]$Argv) {
-  $positional = @(Get-Positional $Argv @('-Throttle', '-Filter', '-Parts', '-Base') @('-Coverage', '-AcceptDrop', '-NoBuild', '-StopOnRed', '-Affected', '-List'))
+  $positional = @(Get-Positional $Argv @('-Throttle', '-Filter', '-Parts', '-Base', '-ExlibBase') @('-Coverage', '-AcceptDrop', '-NoBuild', '-StopOnRed', '-Affected', '-List'))
   $version = if ($positional.Count -gt 0) { $positional[0] } else { 'latest' }
   $throttle = [int](Get-Opt $Argv '-Throttle' 0)
   $coverage = Get-Flag $Argv '-Coverage'
@@ -1209,8 +1393,10 @@ function Invoke-Test([string[]]$Argv) {
   if ($partsArg -and $filter) { throw "-Parts and -Filter cannot be combined: -Filter runs an assembly whole." }
   $affected = Get-Flag $Argv '-Affected'
   $baseArg = Get-Opt $Argv '-Base' ''
+  $exlibBaseArg = Get-Opt $Argv '-ExlibBase' ''
   $listOnly = Get-Flag $Argv '-List'
   if ($baseArg -and -not $affected) { throw "-Base needs -Affected." }
+  if ($exlibBaseArg -and -not $affected) { throw "-ExlibBase needs -Affected." }
   if ($listOnly -and -not $affected) {
     foreach ($p in (Get-ExmodTestProjects).Values) {
       $partitions = Get-ExmodPartitions $p.Project
@@ -1226,7 +1412,7 @@ function Invoke-Test([string[]]$Argv) {
   if ($affected) {
     if ($filter -or $partsArg -or $coverage) { throw "-Affected builds its own filter: it cannot be combined with -Filter, -Parts or -Coverage." }
     $baseRef = if ($baseArg) { $baseArg } else { 'dev' }
-    $plan = Get-ExmodAffectedPlanHere $baseRef
+    $plan = Get-ExmodAffectedPlanHere $baseRef $exlibBaseArg
     Write-ExmodAffectedPlan $plan $baseRef
     if ($listOnly) { return }
     if (-not $plan.Classes) { Write-Host 'Nothing affected: no test run.'; return }
@@ -1712,7 +1898,7 @@ Add-ExmodCommand -Group source -Name test -Summary 'run the test suites, one lan
   }
   Invoke-Test $Argv
 } -Detail @'
-exmod test [latest|all|1.22|1.21|1.20] [-Filter <expr>] [-Parts <names>|red] [-Affected [-Base <ref>] [-List]] [-StopOnRed] [-Throttle <n>] [-Coverage] [-AcceptDrop] [-NoBuild]
+exmod test [latest|all|1.22|1.21|1.20] [-Filter <expr>] [-Parts <names>|red] [-Affected [-Base <ref>] [-ExlibBase <ref>] [-List]] [-StopOnRed] [-Throttle <n>] [-Coverage] [-AcceptDrop] [-NoBuild]
 
 Builds every test project for the requested series (unless -NoBuild), then runs the suites in parallel - one lane per
 (series, project). Missing runtimes and game binaries are provisioned on demand, so a fresh clone
@@ -1732,7 +1918,12 @@ mod projects they share build once.
               .cs file; every class whose file names, as a whole word, a type declared in another changed .cs file; the
               classes of the manifest's `affectedAlways`, which a repo lists for its guards that read the whole tree;
               and, for a changed .json file or one under an `assets` folder, the classes whose file names its base name
-              (three characters or more).
+              (three characters or more); a type of the manifest's `affectedMembers` selects by the members whose lines
+              changed (`Type`, or `...Values` for a `...Config` type, and the member both named in the test file); the manifest's `affectedSetups` ({ class, files,
+              recordings }) make a changed setup file or recording select only its setup's rows of that class, heavy or not;
+              and a repo that `depends` on exlib reads the exlib checkout ($ExlibRoot) the same way, its `src/` .cs
+              files diffed from the merge-base of its HEAD with `int` (`dev` when `int` holds the HEAD), -ExlibBase <ref>
+              names another, and the plan prints the checkout and base it read.
               A class listed in $EXMOD_HEAVY_TESTS (default ~/src/claude-tools/claude/repos/modding-vsex/heavy-tests.txt)
               enters only through the first two. Prints each class with why it is in; -List stops there and runs nothing.
               Without -Affected, -List prints each partition of each test assembly: its name, heap and term count.

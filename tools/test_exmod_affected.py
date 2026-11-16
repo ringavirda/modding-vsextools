@@ -55,6 +55,7 @@ class Repo:
         touch(self.stub, DOTNET)
         os.chmod(self.stub, os.stat(self.stub).st_mode | stat.S_IEXEC)
         self.argv = os.path.join(self.dir.name, "argv.log")
+        self.env = {}
 
     def close(self):
         self.dir.cleanup()
@@ -73,7 +74,7 @@ class Repo:
         body = ("function Resolve-DotnetHost { $env:TEST_STUB }\n"
                 f"try {{ Invoke-Test @('1.22', {args}) }} catch {{ Write-Host \"threw: $_\" }}\n")
         env = exmod_env(os.path.join(self.dir.name, "local"), TEST_REPO=self.root, TEST_STUB=self.stub,
-                        TEST_ARGV=self.argv, EXMOD_HEAVY_TESTS=self.heavy)
+                        TEST_ARGV=self.argv, EXMOD_HEAVY_TESTS=self.heavy, **self.env)
         done = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", exmod_script(body)],
                               env=env, capture_output=True, text=True)
         runs = []
@@ -235,10 +236,165 @@ class AffectedTests(unittest.TestCase):
         self.assertIn("Nothing affected", out)
         out, _ = r.run("'-Affected', '-Filter', 'X'")
         self.assertIn("-Affected builds its own filter", out)
-        out, _ = r.run("'-List'")
-        self.assertIn("-Base and -List need -Affected", out)
+        out, runs = r.run("'-List'")
+        self.assertEqual([], runs, out)
+        out, _ = r.run("'-Base', 'HEAD'")
+        self.assertIn("-Base needs -Affected", out)
         out, _ = r.run("'-Affected', '-Base', 'nosuchref'")
         self.assertIn("git diff nosuchref...HEAD failed", out)
+
+
+SETUP_MANIFEST = {"affectedSetups": [{"class": "SetupTests", "files": "tests/A.Tests/live/setups",
+                                      "recordings": "tests/A.Tests/Recordings"}]}
+
+
+def setup_file(setup, extra=""):
+    return json.dumps({"setup": setup, "steps": []}) + extra
+
+
+def filter_of(runs):
+    return runs[0][runs[0].index("--filter") + 1]
+
+
+@unittest.skipUnless(PWSH, "pwsh not available")
+class AffectedSightTests(unittest.TestCase):
+    def repo(self, **kw):
+        r = Repo(**kw)
+        self.addCleanup(r.close)
+        return r
+
+    def setups_repo(self):
+        r = self.repo(manifest=SETUP_MANIFEST, heavy=["SetupTests"])
+        r.write("tests/A.Tests/SetupTests.cs", class_source("SetupTests"))
+        r.write("tests/A.Tests/live/setups/cupola.json", setup_file("cupola"))
+        r.write("tests/A.Tests/live/setups/cupola-cases.json", setup_file("cupola-cases"))
+        r.write("tests/A.Tests/live/setups/lathe.json", setup_file("lathe"))
+        r.write("tests/A.Tests/live/setups/play.json", setup_file("play", ' "after": {"iiex/setups/cupola": 1}'))
+        r.write("tests/A.Tests/Recordings/1.22/lathe.json", "{}")
+        r.commit()
+        return r
+
+    def test_a_changed_setup_file_selects_exactly_its_rows_of_a_heavy_class_and_those_that_follow_it(self):
+        # Fails when a row term is a bare substring (cupola-cases comes in), the heavy class hides the rows, or a file that names the changed setup after it is left out.
+        r = self.setups_repo()
+        r.write("tests/A.Tests/live/setups/cupola.json", setup_file("cupola", " "))
+        r.commit()
+        out, runs = r.run("'-Affected', '-Base', 'HEAD~1'")
+        self.assertEqual(["SetupTests"], classes_of(out), out)
+        self.assertNotIn("Left out", out)
+        self.assertIn("rows of cupola: changed setup file tests/A.Tests/live/setups/cupola.json", out)
+        self.assertIn("rows of play: setup file play.json follows changed", out)
+        self.assertEqual("DisplayName~row: cupola\\)|DisplayName~row: cupola/|DisplayName~row: cupola@|"
+                         "DisplayName~row: play\\)|DisplayName~row: play/|DisplayName~row: play@",
+                         filter_of(runs), runs)
+
+    def test_a_changed_recording_selects_its_setups_rows_and_a_changed_class_takes_them_whole(self):
+        # Fails when a recording selects nothing, or rows are listed beside the whole class that already holds them.
+        r = self.setups_repo()
+        r.write("tests/A.Tests/Recordings/1.22/lathe.json", "{ }")
+        r.commit()
+        out, runs = r.run("'-Affected', '-Base', 'HEAD~1'")
+        self.assertIn("changed recording tests/A.Tests/Recordings/1.22/lathe.json", out)
+        self.assertEqual("DisplayName~row: lathe\\)|DisplayName~row: lathe/|DisplayName~row: lathe@", filter_of(runs), runs)
+        r.write("tests/A.Tests/live/setups/lathe.json", setup_file("lathe", " "))
+        r.write("tests/A.Tests/SetupTests.cs", class_source("SetupTests", "[Fact] public void U() { }"))
+        r.commit()
+        out, runs = r.run("'-Affected', '-Base', 'HEAD~1'")
+        self.assertEqual("FullyQualifiedName~.SetupTests.", filter_of(runs), runs)
+
+    def member_repo(self):
+        r = self.repo(manifest={"affectedMembers": ["CfgConfig"]})
+        r.write("src/CfgConfig.cs", "namespace A;\n\npublic static class CfgConfig\n{\n  public const int Alpha = 1;\n  /// <summary>Beta.</summary>\n  [Range(0, 9)]\n  public const int Beta = 2;\n"
+                "  public static int Gamma()\n  {\n    var x = 3;\n    return x;\n  }\n}\n")
+        r.write("tests/A.Tests/Alpha.cs", class_source("AlphaTests", "[Fact] public void T() { var v = CfgValues.Alpha; }"))
+        r.write("tests/A.Tests/Beta.cs", class_source("BetaTests", "[Fact] public void T() { var v = CfgValues.Beta; }"))
+        r.write("tests/A.Tests/Gamma.cs", class_source("GammaTests", "[Fact] public void T() { var v = CfgValues.Gamma(); }"))
+        r.write("tests/A.Tests/Other.cs", class_source("OtherTests", "[Fact] public void T() { var v = CfgValues.Alpha + CfgValues.Beta; }"))
+        r.write("tests/A.Tests/Unrelated.cs", class_source("UnrelatedTests", "[Fact] public void T() { var v = Alpha; }"))
+        r.commit()
+        return r
+
+    def test_a_changed_value_selects_the_classes_naming_that_member_and_a_changed_body_its_member(self):
+        # Fails when the whole type is taken (every class naming CfgValues runs), when a comment or attribute line is not traced down to its member, when a body line is not traced up to its member, or when the member name alone (no CfgValues) selects.
+        r = self.member_repo()
+        text = open(os.path.join(r.root, "src/CfgConfig.cs")).read()
+        r.write("src/CfgConfig.cs", text.replace("Beta = 2", "Beta = 5"))
+        r.commit()
+        out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD~1'")
+        self.assertEqual(["BetaTests", "OtherTests"], classes_of(out), out)
+        self.assertIn("names CfgValues.Beta (src/CfgConfig.cs)", out)
+        r.write("src/CfgConfig.cs", text.replace("Beta = 2", "Beta = 5").replace("var x = 3;", "var x = 4;"))
+        r.commit()
+        out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD~2'")
+        self.assertEqual(["BetaTests", "GammaTests", "OtherTests"], classes_of(out), out)
+        text = text.replace("Beta = 2", "Beta = 5").replace("var x = 3;", "var x = 4;")
+        r.write("src/CfgConfig.cs", text.replace("/// <summary>Beta.", "/// <summary>The beta.").replace("Range(0, 9)", "Range(0, 8)"))
+        r.commit()
+        out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD~1'")
+        self.assertEqual(["BetaTests", "OtherTests"], classes_of(out), out)
+
+    def test_a_change_outside_every_member_of_a_member_type_takes_every_class_naming_the_type(self):
+        # Fails when a changed line with no member above it is skipped, so the member beside it alone selects.
+        r = self.member_repo()
+        text = open(os.path.join(r.root, "src/CfgConfig.cs")).read()
+        r.write("src/CfgConfig.cs", "using System;\n" + text.replace("Beta = 2", "Beta = 5"))
+        r.commit()
+        out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD~1'")
+        self.assertEqual(["AlphaTests", "BetaTests", "GammaTests", "OtherTests"], classes_of(out), out)
+
+    def exlib_repo(self, repo):
+        lib = os.path.join(repo.dir.name, "exlib")
+        os.makedirs(lib)
+        git(lib, "init", "-q", "-b", "dev")
+        touch(os.path.join(lib, "src/Widget.cs"), "namespace L;\n\npublic class Widget\n{\n}\n")
+        touch(os.path.join(lib, "src/Idle.cs"), "namespace L;\n\npublic class Idle\n{\n}\n")
+        git(lib, "add", "-A")
+        git(lib, "commit", "-q", "-m", "base")
+        git(lib, "branch", "int")
+        repo.env["ExlibRoot"] = lib
+        return lib
+
+    def exlib_consumer(self):
+        r = self.repo(manifest={"depends": {"exlib": {}}})
+        r.write("tests/A.Tests/Widget.cs", class_source("WidgetTests", "[Fact] public void T() { var w = new Widget(); }"))
+        r.write("tests/A.Tests/Idle.cs", class_source("IdleTests", "[Fact] public void T() { var w = new Idle(); }"))
+        r.commit()
+        return r
+
+    def test_an_exlib_lane_selects_the_consumers_classes_by_type_and_prints_the_checkout_and_base(self):
+        # Fails when exlib's changed types are not read, or the base is not the merge-base with int (the int commits would show too).
+        r = self.exlib_consumer()
+        lib = self.exlib_repo(r)
+        git(lib, "checkout", "-q", "int")
+        touch(os.path.join(lib, "src/Idle.cs"), "namespace L;\n\npublic class Idle\n{\n  public int Y;\n}\n")
+        git(lib, "add", "-A")
+        git(lib, "commit", "-q", "-m", "int moves")
+        git(lib, "checkout", "-q", "-b", "lane")
+        touch(os.path.join(lib, "src/Widget.cs"), "namespace L;\n\npublic class Widget\n{\n  public int X;\n}\n")
+        git(lib, "add", "-A")
+        git(lib, "commit", "-q", "-m", "lane")
+        out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD'")
+        self.assertEqual(["WidgetTests"], classes_of(out), out)
+        self.assertIn("names Widget (exlib src/Widget.cs)", out)
+        self.assertIn(f"exlib: read {lib}, base merge-base HEAD int (", out)
+        self.assertIn("1 changed file(s).", out)
+
+    def test_an_exlib_checkout_at_int_diffs_from_dev_and_a_missing_checkout_is_said(self):
+        # Fails when a checkout at int takes int as its base (nothing changed), or the missing checkout passes silently.
+        r = self.exlib_consumer()
+        lib = self.exlib_repo(r)
+        git(lib, "checkout", "-q", "int")
+        touch(os.path.join(lib, "src/Idle.cs"), "namespace L;\n\npublic class Idle\n{\n  public int Y;\n}\n")
+        git(lib, "add", "-A")
+        git(lib, "commit", "-q", "-m", "int moves")
+        out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD'")
+        self.assertEqual(["IdleTests"], classes_of(out), out)
+        self.assertIn("base merge-base HEAD dev (", out)
+        out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD', '-ExlibBase', 'int'")
+        self.assertEqual([], classes_of(out), out)
+        r.env["ExlibRoot"] = os.path.join(r.dir.name, "nowhere")
+        out, _ = r.run("'-Affected', '-List', '-Base', 'HEAD'")
+        self.assertIn("exlib: no exlib checkout found", out)
 
 
 if __name__ == "__main__":
